@@ -1,6 +1,5 @@
 -- lua/autorun/server/init.lua
 
-
 -- Prefix all your variables and functions with the namespace
 local RARELOAD = {}
 RARELOAD.playerPositions = {}
@@ -232,7 +231,6 @@ end)
 
 hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
     if not RARELOAD.settings.addonEnabled then
-        -- If the addon is disabled, prevent the player from spawning
         return false
     end
 
@@ -244,7 +242,6 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         local wasFlying = savedInfo.moveType == MOVETYPE_FLY or savedInfo.moveType == MOVETYPE_FLYGRAVITY
         local wasOnLadder = savedInfo.moveType == MOVETYPE_LADDER
 
-        -- Check if saved move type is valid before setting it
         if savedInfo.moveType and isnumber(savedInfo.moveType) then
             local savedMoveType = tonumber(savedInfo.moveType) or MOVETYPE_WALK
 
@@ -260,40 +257,75 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
                     })
 
                     if traceResult.Hit and traceResult.HitPos then
-                        -- Check if the spawn position is inside a wall
-                        local traceHull = util.TraceHull({
+                        local waterTrace = util.TraceLine({
                             start = traceResult.HitPos,
-                            endpos = traceResult.HitPos,
-                            mins = ply:OBBMins(),
-                            maxs = ply:OBBMaxs(),
+                            endpos = traceResult.HitPos - Vector(0, 0, 100),
                             filter = ply,
-                            mask = MASK_PLAYERSOLID
+                            mask = MASK_WATER
                         })
 
-                        -- If the spawn position is inside a wall, move it a little bit further
-                        while traceHull.StartSolid do
-                            traceResult.HitPos = traceResult.HitPos + Vector(0, 0, 10)
-                            traceHull = util.TraceHull({
-                                start = traceResult.HitPos,
-                                endpos = traceResult.HitPos,
-                                mins = ply:OBBMins(),
-                                maxs = ply:OBBMaxs(),
-                                filter = ply,
-                                mask = MASK_PLAYERSOLID
-                            })
-                        end
+                        if waterTrace.Hit then
+                            print("Player spawn position is underwater. Searching for walkable ground.")
 
-                        -- Check if the spawn position is inside a prop
-                        local entities = ents.FindInBox(traceResult.HitPos + ply:OBBMins(),
-                            traceResult.HitPos + ply:OBBMaxs())
-                        while #entities > 0 do
-                            traceResult.HitPos = traceResult.HitPos + Vector(0, 0, 10)
-                            entities = ents.FindInBox(traceResult.HitPos + ply:OBBMins(),
-                                traceResult.HitPos + ply:OBBMaxs())
+                            -- Perform a spherical search around the initial spawn point
+                            local radius = 2000 -- Increase the radius
+                            local stepSize = 50 -- Reduce the step size
+                            local foundPos = nil
+
+                            for r = stepSize, radius, stepSize do
+                                for theta = 0, 2 * math.pi, math.pi / 16 do -- Increase the resolution of the search
+                                    for phi = 0, math.pi, math.pi / 16 do   -- Increase the resolution of the search
+                                        local x = r * math.sin(phi) * math.cos(theta)
+                                        local y = r * math.sin(phi) * math.sin(theta)
+                                        local z = r * math.cos(phi)
+
+                                        local checkPos = traceResult.HitPos + Vector(x, y, z)
+                                        local checkTrace = util.TraceLine({
+                                            start = checkPos,
+                                            endpos = checkPos - Vector(0, 0, 100),
+                                            filter = ply,
+                                            mask = MASK_SOLID_BRUSHONLY
+                                        })
+
+                                        if checkTrace.Hit and not checkTrace.StartSolid then
+                                            local checkWaterTrace = util.TraceLine({
+                                                start = checkTrace.HitPos,
+                                                endpos = checkTrace.HitPos - Vector(0, 0, 100),
+                                                filter = ply,
+                                                mask = MASK_WATER
+                                            })
+
+                                            if not checkWaterTrace.Hit then
+                                                -- Add an offset to the found position to ensure the player is above the ground
+                                                foundPos = checkTrace.HitPos + Vector(0, 0, 10)
+                                                break
+                                            end
+                                        end
+                                    end
+
+                                    if foundPos then
+                                        break
+                                    end
+                                end
+
+                                if foundPos then
+                                    break
+                                end
+                            end
+
+                            if foundPos then
+                                ply:SetPos(foundPos)
+                                ply:SetMoveType(MOVETYPE_NONE)
+                                print("Found walkable ground for player spawn.")
+                                return
+                            else
+                                print("No walkable ground found. Custom spawn prevented.")
+                                return
+                            end
                         end
 
                         ply:SetPos(traceResult.HitPos)
-                        ply:SetMoveType(MOVETYPE_NONE) -- Set the move type to none
+                        ply:SetMoveType(MOVETYPE_NONE)
                     else
                         print("No walkable ground found. Custom spawn prevented.")
                         return
@@ -316,6 +348,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         end
     end
 end)
+
 
 hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
     if RARELOAD.settings.autoSaveEnabled and IsValid(ply) and ply:IsPlayer() and ply:Alive() then
