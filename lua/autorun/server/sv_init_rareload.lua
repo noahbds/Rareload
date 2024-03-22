@@ -1,29 +1,70 @@
 -- lua/autorun/server/init.lua
 
-local playerPositions = {}
-local addonEnabled = true        -- Initial state is enabled
-local canPlayerSpawn = true      -- Variable to track if the player is allowed to spawn
-local autoSaveEnabled = false
-local printMessageEnabled = true -- Variable to track if messages should be printed
-local lastSavedTime = 0          -- Variable to track the last time the position was saved
 
+-- Prefix all your variables and functions with the namespace
+local RARELOAD = {}
+RARELOAD.playerPositions = {}
+RARELOAD.settings = {
+    addonEnabled = true,
+    spawnModeEnabled = true,
+    autoSaveEnabled = false,
+    printMessageEnabled = true,
+}
+RARELOAD.lastSavedTime = 0
 
--- Vérifie si le dossier 'respawn_at_reload' existe, sinon le crée
-if not file.Exists("respawn_at_reload", "DATA") then
-    file.CreateDir("respawn_at_reload")
-end
-
--- Vérifie si le fichier 'addon_state.txt' existe, sinon le crée et écrit 'true' dedans
-if not file.Exists("respawn_at_reload/addon_state.txt", "DATA") then
-    file.Write("respawn_at_reload/addon_state.txt", "true\ntrue\ntrue\ntrue")
-end
-
--- Function to create the folder if it doesn't exist
-local function EnsureFolderExists()
+local function ensureFolderExists()
     local folderPath = "respawn_at_reload"
     if not file.Exists(folderPath, "DATA") then
         file.CreateDir(folderPath)
     end
+end
+
+-- Function to load addon state from file
+local function loadAddonState()
+    local addonStateFilePath = "respawn_at_reload/addon_state.txt"
+    RARELOAD.settings = {} -- Initialize settings table
+
+    -- Check if the file exists
+    if file.Exists(addonStateFilePath, "DATA") then
+        local addonStateData = file.Read(addonStateFilePath, "DATA")
+        local addonStateLines = string.Explode("\n", addonStateData)
+
+        -- Assign addon settings from file data
+        RARELOAD.settings.addonEnabled = addonStateLines[1] and addonStateLines[1]:lower() == "true"
+        RARELOAD.settings.spawnModeEnabled = addonStateLines[2] and addonStateLines[2]:lower() == "true"
+        RARELOAD.settings.autoSaveEnabled = addonStateLines[3] and addonStateLines[3]:lower() == "true"
+        RARELOAD.settings.printMessageEnabled = addonStateLines[4] and addonStateLines[4]:lower() == "true"
+    else
+        -- If the file doesn't exist, create it with default values
+        local addonStateData = "true\ntrue\nfalse\ntrue"
+        file.Write(addonStateFilePath, addonStateData)
+
+        -- Assign default settings
+        RARELOAD.settings.addonEnabled = true
+        RARELOAD.settings.spawnModeEnabled = true
+        RARELOAD.settings.autoSaveEnabled = false
+        RARELOAD.settings.printMessageEnabled = true
+    end
+end
+
+-- Expose loadAddonState function globally or within the addon table
+loadAddonState() -- Call the function to initialize settings
+
+-- Include other necessary files
+include("weapons/gmod_tool/stools/sv_respawn_at_reload_tool.lua")
+
+
+local function saveAddonState()
+    local addonStateFilePath = "respawn_at_reload/addon_state.txt"
+    file.Write(addonStateFilePath,
+        tostring(RARELOAD.settings.addonEnabled) ..
+        "\n" ..
+        tostring(RARELOAD.settings.spawnModeEnabled) ..
+        "\n" ..
+        tostring(RARELOAD.settings.autoSaveEnabled) ..
+        "\n" ..
+        tostring(RARELOAD.settings.printMessageEnabled)
+    )
 end
 
 concommand.Add("toggle_respawn_at_reload", function(ply)
@@ -32,13 +73,13 @@ concommand.Add("toggle_respawn_at_reload", function(ply)
         return
     end
 
-    addonEnabled = not addonEnabled
+    RARELOAD.settings.addonEnabled = not RARELOAD.settings.addonEnabled
 
-    local status = addonEnabled and "enabled" or "disabled"
+    local status = RARELOAD.settings.addonEnabled and "enabled" or "disabled"
     ply:PrintMessage(HUD_PRINTCONSOLE, "Respawn at Reload addon is now " .. status)
 
     -- Save the addon's enabled state to a file
-    file.Write("respawn_at_reload/addon_state.txt", tostring(addonEnabled))
+    saveAddonState()
 end)
 
 concommand.Add("toggle_spawn_mode", function(ply)
@@ -47,12 +88,12 @@ concommand.Add("toggle_spawn_mode", function(ply)
         return
     end
 
-    spawnWithSavedMoveType = not spawnWithSavedMoveType
+    RARELOAD.settings.spawnModeEnabled = not RARELOAD.settings.spawnModeEnabled
 
-    local status = spawnWithSavedMoveType and "enabled" or "disabled"
+    local status = RARELOAD.settings.spawnModeEnabled and "enabled" or "disabled"
     ply:PrintMessage(HUD_PRINTCONSOLE, "Spawn with saved move type is now " .. status)
     -- Save the spawn mode preference to the addon state file
-    file.Write("respawn_at_reload/addon_state.txt", tostring(addonEnabled) .. "\n" .. tostring(spawnWithSavedMoveType))
+    saveAddonState()
 end)
 
 concommand.Add("toggle_auto_save", function(ply)
@@ -61,13 +102,12 @@ concommand.Add("toggle_auto_save", function(ply)
         return
     end
 
-    autoSaveEnabled = not autoSaveEnabled
+    RARELOAD.settings.autoSaveEnabled = not RARELOAD.settings.autoSaveEnabled
 
-    local status = autoSaveEnabled and "enabled" or "disabled"
+    local status = RARELOAD.settings.autoSaveEnabled and "enabled" or "disabled"
     ply:PrintMessage(HUD_PRINTCONSOLE, "Auto-save position is now " .. status)
     -- Save the auto-save state to the addon state file
-    file.Write("respawn_at_reload/addon_state.txt",
-        tostring(addonEnabled) .. "\n" .. tostring(spawnWithSavedMoveType) .. "\n" .. tostring(autoSaveEnabled))
+    saveAddonState()
 end)
 
 concommand.Add("toggle_print_message", function(ply)
@@ -76,159 +116,139 @@ concommand.Add("toggle_print_message", function(ply)
         return
     end
 
-    printMessageEnabled = not printMessageEnabled
+    RARELOAD.settings.printMessageEnabled = not RARELOAD.settings.printMessageEnabled
 
-    local status = printMessageEnabled and "enabled" or "disabled"
+    local status = RARELOAD.settings.printMessageEnabled and "enabled" or "disabled"
     ply:PrintMessage(HUD_PRINTCONSOLE, "Print message is now " .. status)
 
     -- Save the print message state to the addon state file
-    file.Write("respawn_at_reload/addon_state.txt",
-        tostring(addonEnabled) ..
-        "\n" ..
-        tostring(spawnWithSavedMoveType) .. "\n" .. tostring(autoSaveEnabled) .. "\n" .. tostring(printMessageEnabled))
+    saveAddonState()
 end)
 
-
 concommand.Add("save_position", function(ply, _, _)
-    if not addonEnabled then
+    if not RARELOAD.settings.addonEnabled then
         ply:PrintMessage(HUD_PRINTCONSOLE, "The Respawn at Reload addon is currently disabled.")
         return
     end
 
-    EnsureFolderExists() -- Ensure the folder exists before saving
+    ensureFolderExists() -- Ensure the folder exists before saving
 
     local mapName = game.GetMap()
-    playerPositions[mapName] = playerPositions[mapName] or {}
+    RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
 
     local newPos = ply:GetPos()
-    local oldPos = playerPositions[mapName][ply:SteamID()] and playerPositions[mapName][ply:SteamID()].pos
+    local oldPos = RARELOAD.playerPositions[mapName][ply:SteamID()] and
+        RARELOAD.playerPositions[mapName][ply:SteamID()].pos
 
     -- Check if a position is already saved for the player and if it has changed
     if oldPos and oldPos == newPos then
         return -- Don't save the position or print a message if the position hasn't changed
     elseif oldPos then
-        if not autoSaveEnabled then
+        if not RARELOAD.settings.autoSaveEnabled then
             ply:PrintMessage(HUD_PRINTCONSOLE, "Overwriting your previously saved position and camera orientation.")
         end
     else
-        if not autoSaveEnabled then
+        if not RARELOAD.settings.autoSaveEnabled then
             ply:PrintMessage(HUD_PRINTCONSOLE, "Saved your current position and camera orientation.")
         end
     end
 
     -- Overwrite or save the player's position, movement type, and camera orientation
-    playerPositions[mapName][ply:SteamID()] = {
+    RARELOAD.playerPositions[mapName][ply:SteamID()] = {
         pos = newPos,
         moveType = ply:GetMoveType(),
         ang = ply:EyeAngles() -- Save the player's view angles as an Angle
     }
 
     -- Print a message indicating that the position was saved due to auto-save
-    if printMessageEnabled and autoSaveEnabled then
+    if RARELOAD.settings.printMessageEnabled and RARELOAD.settings.autoSaveEnabled then
         ply:PrintMessage(HUD_PRINTCONSOLE, "Auto Save: Saved your current position and camera orientation.")
     end
 end)
 
 hook.Add("ShutDown", "SavePlayerPosition", function()
-    if not addonEnabled then return end
+    if not RARELOAD.settings.addonEnabled then return end
 
-    EnsureFolderExists() -- Ensure the folder exists before saving
+    ensureFolderExists() -- Ensure the folder exists before saving
 
     local mapName = game.GetMap()
-    file.Write("respawn_at_reload/player_positions_" .. mapName .. ".txt", util.TableToJSON(playerPositions))
+    file.Write("respawn_at_reload/player_positions_" .. mapName .. ".txt", util.TableToJSON(RARELOAD.playerPositions))
 end)
 
 hook.Add("InitPostEntity", "LoadPlayerPosition", function()
     -- Load the addon state, spawn mode preference, and print message state from the file
-    local addonStateFilePath = "respawn_at_reload/addon_state.txt"
-    if file.Exists(addonStateFilePath, "DATA") then
-        local data = file.Read(addonStateFilePath, "DATA")
-        local lines = string.Explode("\n", data)
+    loadAddonState()
 
-        addonEnabled = lines[1] and lines[1]:lower() == "true"
-        spawnWithSavedMoveType = lines[2] and lines[2]:lower() == "true"
-        autoSaveEnabled = lines[3] and lines[3]:lower() == "true"
-        printMessageEnabled = lines[4] and lines[4]:lower() == "true"
-    end
-
-    if printMessageEnabled then
-        if not addonEnabled then
+    if RARELOAD.settings.printMessageEnabled then
+        if not RARELOAD.settings.addonEnabled then
             print("Respawn at Reload addon is currently disabled.")
         end
 
-        if spawnWithSavedMoveType then
+        if RARELOAD.settings.spawnModeEnabled then
             print("Spawn with saved move type is enabled.")
         else
             print("Spawn with saved move type is disabled.")
         end
 
-        if autoSaveEnabled then
+        if RARELOAD.settings.autoSaveEnabled then
             print("Auto-save position is enabled.")
         else
             print("Auto-save position is disabled.")
         end
 
-        if printMessageEnabled then
+        if RARELOAD.settings.printMessageEnabled then
             print("Print message is enabled.")
         else
             print("Print message is disabled.")
         end
     end
 
-    if not addonEnabled then return end
+    if not RARELOAD.settings.addonEnabled then return end
 
-    EnsureFolderExists() -- Ensure the folder exists before loading
+    ensureFolderExists() -- Ensure the folder exists before loading
 
     local mapName = game.GetMap()
     local filePath = "respawn_at_reload/player_positions_" .. mapName .. ".txt"
     if file.Exists(filePath, "DATA") then
         local data = file.Read(filePath, "DATA")
         if data then
-            playerPositions = util.JSONToTable(data)
+            RARELOAD.playerPositions = util.JSONToTable(data)
         end
     end
 end)
 
-
 hook.Add("PlayerDisconnect", "SavePlayerPositionDisconnect", function(ply)
-    if not addonEnabled then return end
+    if not RARELOAD.settings.addonEnabled then return end
 
-    EnsureFolderExists() -- Ensure the folder exists before saving
+    ensureFolderExists() -- Ensure the folder exists before saving
 
     local mapName = game.GetMap()
-    playerPositions[mapName] = playerPositions[mapName] or {}
-    playerPositions[mapName][ply:SteamID()] = {
+    RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
+    RARELOAD.playerPositions[mapName][ply:SteamID()] = {
         pos = ply:GetPos(),
         moveType = ply:GetMoveType() -- Save the player's movement type
     }
 end)
 
-
 hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
-    if not addonEnabled then
+    if not RARELOAD.settings.addonEnabled then
         -- If the addon is disabled, prevent the player from spawning
-        canPlayerSpawn = false
-        return
-    end
-
-    if not canPlayerSpawn then
-        -- If the player is not allowed to spawn, return without executing custom spawn logic
-        return
+        return false
     end
 
     local mapName = game.GetMap()
-    local savedInfo = playerPositions[mapName] and playerPositions[mapName][ply:SteamID()]
+    local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][ply:SteamID()]
 
     if savedInfo then
-        local wasInNoclip = savedInfo.moveType == 8.0
-        local wasFlying = savedInfo.moveType == 4.0 or savedInfo.moveType == 5.0
-        local wasOnLadder = savedInfo.moveType == 9.0
+        local wasInNoclip = savedInfo.moveType == MOVETYPE_NOCLIP
+        local wasFlying = savedInfo.moveType == MOVETYPE_FLY or savedInfo.moveType == MOVETYPE_FLYGRAVITY
+        local wasOnLadder = savedInfo.moveType == MOVETYPE_LADDER
 
         -- Check if saved move type is valid before setting it
         if savedInfo.moveType and isnumber(savedInfo.moveType) then
             local savedMoveType = tonumber(savedInfo.moveType) or MOVETYPE_WALK
 
-            if not spawnWithSavedMoveType then
+            if not RARELOAD.settings.spawnModeEnabled then
                 if wasInNoclip or wasFlying or wasOnLadder then
                     local traceStart = savedInfo.pos
                     local traceEnd = savedInfo.pos - Vector(0, 0, 10000)
@@ -273,7 +293,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
                         end
 
                         ply:SetPos(traceResult.HitPos)
-                        ply:SetMoveType(0.0) -- Set the move type to none
+                        ply:SetMoveType(MOVETYPE_NONE) -- Set the move type to none
                     else
                         print("No walkable ground found. Custom spawn prevented.")
                         return
@@ -295,26 +315,23 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
             print("Error: Invalid saved move type.")
         end
     end
-
-    canPlayerSpawn = false
 end)
 
-
 hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
-    if autoSaveEnabled and IsValid(ply) and ply:IsPlayer() and ply:Alive() then
+    if RARELOAD.settings.autoSaveEnabled and IsValid(ply) and ply:IsPlayer() and ply:Alive() then
         local vel = ply:GetVelocity():Length()
 
-        if vel < 5 and CurTime() - lastSavedTime > 1 then
+        if vel < 5 and CurTime() - RARELOAD.lastSavedTime > 1 then
             -- Player has stopped moving for at least 1 second, check if the position changed
             local currentPos = ply:GetPos()
 
             if not ply.lastSavedPosition or currentPos ~= ply.lastSavedPosition then
                 -- Save their position only if it's different from the last saved position
                 RunConsoleCommand("save_position")
-                lastSavedTime = CurTime() -- Update the last saved time
+                RARELOAD.lastSavedTime = CurTime() -- Update the last saved time
                 ply.lastSavedPosition = currentPos
 
-                if printMessageEnabled and autoSaveEnabled then
+                if RARELOAD.settings.printMessageEnabled and RARELOAD.settings.autoSaveEnabled then
                     ply:PrintMessage(HUD_PRINTCONSOLE, "Auto Save: Saved your current position and camera orientation.")
                 end
             end

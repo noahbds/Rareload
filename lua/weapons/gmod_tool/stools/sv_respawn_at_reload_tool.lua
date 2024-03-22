@@ -1,10 +1,12 @@
+local RARELOAD  = {}
+TOOL            = TOOL or {}
 TOOL.Category   = "Respawn at Reload"
 TOOL.Name       = "Respawn at Reload Config Tool"
 TOOL.Command    = nil
 TOOL.ConfigName = ""
 
 if CLIENT then
-    language.Add("tool.sv_respawn_at_reload_tool.name", "Respawn at reload Configuration Panel")
+    language.Add("tool.sv_respawn_at_reload_tool.name", "Respawn at Reload Configuration Panel")
     language.Add("tool.sv_respawn_at_reload_tool.desc", "Configuration Panel For Respawn At Reload Addon.")
     language.Add("tool.sv_respawn_at_reload_tool.0", "By Noahbds")
 
@@ -12,6 +14,34 @@ if CLIENT then
 
     surface.CreateFont("CTNV", fontParams)
     surface.CreateFont("CTNV2", fontParams)
+end
+
+-- Function to load addon state from file
+local function loadAddonState()
+    local addonStateFilePath = "respawn_at_reload/addon_state.txt"
+    RARELOAD.settings = {} -- Initialize settings table
+
+    -- Check if the file exists
+    if file.Exists(addonStateFilePath, "DATA") then
+        local addonStateData = file.Read(addonStateFilePath, "DATA")
+        local addonStateLines = string.Explode("\n", addonStateData)
+
+        -- Assign addon settings from file data
+        RARELOAD.settings.addonEnabled = addonStateLines[1] and addonStateLines[1]:lower() == "true"
+        RARELOAD.settings.spawnModeEnabled = addonStateLines[2] and addonStateLines[2]:lower() == "true"
+        RARELOAD.settings.autoSaveEnabled = addonStateLines[3] and addonStateLines[3]:lower() == "true"
+        RARELOAD.settings.printMessageEnabled = addonStateLines[4] and addonStateLines[4]:lower() == "true"
+    else
+        -- If the file doesn't exist, create it with default values
+        local addonStateData = "true\ntrue\nfalse\ntrue"
+        file.Write(addonStateFilePath, addonStateData)
+
+        -- Assign default settings
+        RARELOAD.settings.addonEnabled = true
+        RARELOAD.settings.spawnModeEnabled = true
+        RARELOAD.settings.autoSaveEnabled = false
+        RARELOAD.settings.printMessageEnabled = true
+    end
 end
 
 function TOOL.BuildCPanel(panel)
@@ -51,35 +81,23 @@ function TOOL.BuildCPanel(panel)
     end
 
     -- Read addon state from the file
-    local addonStateFilePath = "respawn_at_reload/addon_state.txt"
-    local addonStateData
-
-    -- Check if the file exists
-    if file.Exists(addonStateFilePath, "DATA") then
-        addonStateData = file.Read(addonStateFilePath, "DATA")
-    else
-        -- If the file doesn't exist, create it with default values
-        addonStateData = "true\ntrue\nfalse\ntrue"
-        file.Write(addonStateFilePath, addonStateData)
-    end
-
-    local addonStateLines = string.Explode("\n", addonStateData)
+    loadAddonState()
 
     -- Create a button to toggle respawn behavior with color based on addon state
     CreateStyledButton(panel, "Toggle Respawn at Reload", "toggle_respawn_at_reload",
-        "Enable or disable automatic respawn at reload", addonStateLines[1])
+        "Enable or disable automatic respawn at reload", tostring(RARELOAD.settings.addonEnabled))
 
     -- Create a button to toggle spawn mode with color based on addon state
     CreateStyledButton(panel, "Toggle Move Type", "toggle_spawn_mode",
-        "Switch between different spawn modes", addonStateLines[2])
+        "Switch between different spawn modes", tostring(RARELOAD.settings.spawnModeEnabled))
 
-    -- Create a button to toggle spawn mode with color based on addon state
+    -- Create a button to toggle auto-save with color based on addon state
     CreateStyledButton(panel, "Toggle Auto Save", "toggle_auto_save",
-        "Enable or Disable Auto Saving Position", addonStateLines[3])
+        "Enable or Disable Auto Saving Position", tostring(RARELOAD.settings.autoSaveEnabled))
 
-    -- Create a button to toggle spawn mode with color based on addon state
+    -- Create a button to toggle print messages with color based on addon state
     CreateStyledButton(panel, "Toggle Print Messages", "toggle_print_message",
-        "Enable or Disable Monitoring Messages in Console", addonStateLines[4])
+        "Enable or Disable Monitoring Messages in Console", tostring(RARELOAD.settings.printMessageEnabled))
 
     -- Create a button to save the current position
     local savePositionButton = vgui.Create("DButton", panel)
