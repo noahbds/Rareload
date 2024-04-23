@@ -172,6 +172,15 @@ concommand.Add("save_position", function(ply, _, _)
     }
 
     if RARELOAD.settings.retainInventory then
+        local activeWeapon = ply:GetActiveWeapon()
+        if IsValid(activeWeapon) then
+            playerData.activeWeapon = activeWeapon:GetClass()
+        end
+
+        RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
+    end
+
+    if RARELOAD.settings.retainInventory then
         local inventory = {}
         for _, weapon in pairs(ply:GetWeapons()) do
             if weapon.GetClass then
@@ -179,14 +188,6 @@ concommand.Add("save_position", function(ply, _, _)
             end
         end
         playerData.inventory = inventory
-
-        local activeWeapon = ply:GetActiveWeapon()
-        if IsValid(activeWeapon) then
-            local weaponClass = activeWeapon:GetClass()
-            if weaponClass then
-                playerData.activeWeapon = weaponClass
-            end
-        end
     end
 
     RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
@@ -337,7 +338,11 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         end
 
         if savedInfo.activeWeapon then
-            ply:SelectWeapon(savedInfo.activeWeapon)
+            timer.Simple(1, function()
+                if IsValid(ply) and ply:HasWeapon(savedInfo.activeWeapon) then
+                    ply:SelectWeapon(savedInfo.activeWeapon)
+                end
+            end)
         end
     end
 end)

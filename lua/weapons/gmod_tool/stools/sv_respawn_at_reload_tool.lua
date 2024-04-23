@@ -1,4 +1,3 @@
-local RARELOAD  = {}
 TOOL            = TOOL or {}
 TOOL.Category   = "Respawn at Reload"
 TOOL.Name       = "Respawn at Reload Config Tool"
@@ -19,31 +18,27 @@ end
 
 -- Function to load addon state from file
 local function loadAddonState()
-    local addonStateFilePath = "respawn_at_reload/addon_state.json"
-    local defaultSettings = {
-        addonEnabled = true,
-        spawnModeEnabled = true,
-        autoSaveEnabled = false,
-        printMessageEnabled = true,
-        retainInventory = false
-    }
+    local addonStateFilePath = "respawn_at_reload/addon_state.txt"
+    RARELOAD.settings = {}
 
     if file.Exists(addonStateFilePath, "DATA") then
         local addonStateData = file.Read(addonStateFilePath, "DATA")
         local addonStateLines = string.Explode("\n", addonStateData)
 
-        for key, defaultValue in pairs(defaultSettings) do
-            local line = table.remove(addonStateLines, 1)
-            RARELOAD.settings[key] = line and line:lower() == "true" or defaultValue
-        end
+        RARELOAD.settings.addonEnabled = addonStateLines[1] and addonStateLines[1]:lower() == "true"
+        RARELOAD.settings.spawnModeEnabled = addonStateLines[2] and addonStateLines[2]:lower() == "true"
+        RARELOAD.settings.autoSaveEnabled = addonStateLines[3] and addonStateLines[3]:lower() == "true"
+        RARELOAD.settings.printMessageEnabled = addonStateLines[4] and addonStateLines[4]:lower() == "true"
+        RARELOAD.settings.retainInventory = addonStateLines[5] and addonStateLines[5]:lower() == "true"
     else
-        local addonStateData = ""
-        for _, defaultValue in pairs(defaultSettings) do
-            addonStateData = addonStateData .. tostring(defaultValue) .. "\n"
-        end
-
+        local addonStateData = "true\ntrue\nfalse\ntrue\nfalse"
         file.Write(addonStateFilePath, addonStateData)
-        RARELOAD.settings = defaultSettings
+
+        RARELOAD.settings.addonEnabled = true
+        RARELOAD.settings.spawnModeEnabled = true
+        RARELOAD.settings.autoSaveEnabled = false
+        RARELOAD.settings.printMessageEnabled = true
+        RARELOAD.settings.retainInventory = false
     end
 end
 
@@ -95,7 +90,7 @@ function TOOL.BuildCPanel(panel)
     createButton(panel, "Toggle Print Messages", "toggle_print_message",
         "Enable or Disable Monitoring Messages in Console", RARELOAD.settings.printMessageEnabled)
 
-    createButton(panel, "Toggle Retain Inventory", "toggle_retain_inventory",
+    createButton(panel, "Toggle Keep Inventory", "toggle_retain_inventory",
         "Enable or disable retaining inventory", RARELOAD.settings.retainInventory)
 
     local savePositionButton = vgui.Create("DButton", panel)
