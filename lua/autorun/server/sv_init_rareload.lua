@@ -1,6 +1,6 @@
 -- lua/autorun/server/init.lua
 
--- Prefix all your variables and functions with the namespace
+-- Load the addon settings
 local RARELOAD = {}
 RARELOAD.playerPositions = {}
 RARELOAD.settings = {
@@ -8,6 +8,7 @@ RARELOAD.settings = {
     spawnModeEnabled = true,
     autoSaveEnabled = false,
     printMessageEnabled = true,
+    retainInventory = false,
 }
 RARELOAD.lastSavedTime = 0
 
@@ -21,38 +22,33 @@ end
 -- Function to load addon state from file
 local function loadAddonState()
     local addonStateFilePath = "respawn_at_reload/addon_state.txt"
-    RARELOAD.settings = {} -- Initialize settings table
+    RARELOAD.settings = {}
 
-    -- Check if the file exists
     if file.Exists(addonStateFilePath, "DATA") then
         local addonStateData = file.Read(addonStateFilePath, "DATA")
         local addonStateLines = string.Explode("\n", addonStateData)
 
-        -- Assign addon settings from file data
         RARELOAD.settings.addonEnabled = addonStateLines[1] and addonStateLines[1]:lower() == "true"
         RARELOAD.settings.spawnModeEnabled = addonStateLines[2] and addonStateLines[2]:lower() == "true"
         RARELOAD.settings.autoSaveEnabled = addonStateLines[3] and addonStateLines[3]:lower() == "true"
         RARELOAD.settings.printMessageEnabled = addonStateLines[4] and addonStateLines[4]:lower() == "true"
+        RARELOAD.settings.retainInventory = addonStateLines[5] and addonStateLines[5]:lower() == "true"
     else
-        -- If the file doesn't exist, create it with default values
-        local addonStateData = "true\ntrue\nfalse\ntrue"
+        local addonStateData = "true\ntrue\nfalse\ntrue\nfalse"
         file.Write(addonStateFilePath, addonStateData)
 
-        -- Assign default settings
         RARELOAD.settings.addonEnabled = true
         RARELOAD.settings.spawnModeEnabled = true
         RARELOAD.settings.autoSaveEnabled = false
         RARELOAD.settings.printMessageEnabled = true
+        RARELOAD.settings.retainInventory = false
     end
 end
 
--- Expose loadAddonState function globally or within the addon table
-loadAddonState() -- Call the function to initialize settings
+-- Load the addon state from the file
+loadAddonState()
 
--- Include other necessary files
-include("weapons/gmod_tool/stools/sv_respawn_at_reload_tool.lua")
-
-
+-- Function to save addon state to file
 local function saveAddonState()
     local addonStateFilePath = "respawn_at_reload/addon_state.txt"
     file.Write(addonStateFilePath,
@@ -62,10 +58,13 @@ local function saveAddonState()
         "\n" ..
         tostring(RARELOAD.settings.autoSaveEnabled) ..
         "\n" ..
-        tostring(RARELOAD.settings.printMessageEnabled)
+        tostring(RARELOAD.settings.printMessageEnabled) ..
+        "\n" ..
+        tostring(RARELOAD.settings.retainInventory)
     )
 end
 
+-- Command to toggle the addon's enabled state
 concommand.Add("toggle_respawn_at_reload", function(ply)
     if not ply:IsSuperAdmin() then
         ply:PrintMessage(HUD_PRINTCONSOLE, "You do not have permission to use this command.")
@@ -77,10 +76,10 @@ concommand.Add("toggle_respawn_at_reload", function(ply)
     local status = RARELOAD.settings.addonEnabled and "enabled" or "disabled"
     ply:PrintMessage(HUD_PRINTCONSOLE, "Respawn at Reload addon is now " .. status)
 
-    -- Save the addon's enabled state to a file
     saveAddonState()
 end)
 
+-- Command to toggle the spawn mode preference
 concommand.Add("toggle_spawn_mode", function(ply)
     if not ply:IsSuperAdmin() then
         ply:PrintMessage(HUD_PRINTCONSOLE, "You do not have permission to use this command.")
@@ -91,10 +90,10 @@ concommand.Add("toggle_spawn_mode", function(ply)
 
     local status = RARELOAD.settings.spawnModeEnabled and "enabled" or "disabled"
     ply:PrintMessage(HUD_PRINTCONSOLE, "Spawn with saved move type is now " .. status)
-    -- Save the spawn mode preference to the addon state file
     saveAddonState()
 end)
 
+-- Command to toggle the auto-save position
 concommand.Add("toggle_auto_save", function(ply)
     if not ply:IsSuperAdmin() then
         ply:PrintMessage(HUD_PRINTCONSOLE, "You do not have permission to use this command.")
@@ -105,10 +104,10 @@ concommand.Add("toggle_auto_save", function(ply)
 
     local status = RARELOAD.settings.autoSaveEnabled and "enabled" or "disabled"
     ply:PrintMessage(HUD_PRINTCONSOLE, "Auto-save position is now " .. status)
-    -- Save the auto-save state to the addon state file
     saveAddonState()
 end)
 
+-- Command to toggle the print message in ingame console
 concommand.Add("toggle_print_message", function(ply)
     if not ply:IsSuperAdmin() then
         ply:PrintMessage(HUD_PRINTCONSOLE, "You do not have permission to use this command.")
@@ -120,7 +119,21 @@ concommand.Add("toggle_print_message", function(ply)
     local status = RARELOAD.settings.printMessageEnabled and "enabled" or "disabled"
     ply:PrintMessage(HUD_PRINTCONSOLE, "Print message is now " .. status)
 
-    -- Save the print message state to the addon state file
+    saveAddonState()
+end)
+
+-- Command to toggle the retain inventory
+concommand.Add("toggle_retain_inventory", function(ply)
+    if not ply:IsSuperAdmin() then
+        ply:PrintMessage(HUD_PRINTCONSOLE, "You do not have permission to use this command.")
+        return
+    end
+
+    RARELOAD.settings.retainInventory = not RARELOAD.settings.retainInventory
+
+    local status = RARELOAD.settings.retainInventory and "enabled" or "disabled"
+    ply:PrintMessage(HUD_PRINTCONSOLE, "Retain inventory is now " .. status)
+
     saveAddonState()
 end)
 
@@ -130,7 +143,7 @@ concommand.Add("save_position", function(ply, _, _)
         return
     end
 
-    ensureFolderExists() -- Ensure the folder exists before saving
+    ensureFolderExists()
 
     local mapName = game.GetMap()
     RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
@@ -139,43 +152,63 @@ concommand.Add("save_position", function(ply, _, _)
     local oldPos = RARELOAD.playerPositions[mapName][ply:SteamID()] and
         RARELOAD.playerPositions[mapName][ply:SteamID()].pos
 
-    -- Check if a position is already saved for the player and if it has changed
     if oldPos and oldPos == newPos then
-        return -- Don't save the position or print a message if the position hasn't changed
+        return
     elseif oldPos then
         if not RARELOAD.settings.autoSaveEnabled then
-            ply:PrintMessage(HUD_PRINTCONSOLE, "Overwriting your previously saved position and camera orientation.")
+            ply:PrintMessage(HUD_PRINTCONSOLE,
+                "Overwriting your previously saved position, camera orientation, and inventory.")
         end
     else
         if not RARELOAD.settings.autoSaveEnabled then
-            ply:PrintMessage(HUD_PRINTCONSOLE, "Saved your current position and camera orientation.")
+            ply:PrintMessage(HUD_PRINTCONSOLE, "Saved your current position, camera orientation, and inventory.")
         end
     end
 
-    -- Overwrite or save the player's position, movement type, and camera orientation
-    RARELOAD.playerPositions[mapName][ply:SteamID()] = {
+    local playerData = {
         pos = newPos,
         moveType = ply:GetMoveType(),
-        ang = ply:EyeAngles() -- Save the player's view angles as an Angle
+        ang = ply:EyeAngles()
     }
 
-    -- Print a message indicating that the position was saved due to auto-save
+    if RARELOAD.settings.retainInventory then
+        local inventory = {}
+        for _, weapon in pairs(ply:GetWeapons()) do
+            if weapon.GetClass then
+                table.insert(inventory, weapon:GetClass())
+            end
+        end
+        playerData.inventory = inventory
+
+        local activeWeapon = ply:GetActiveWeapon()
+        if IsValid(activeWeapon) then
+            local weaponClass = activeWeapon:GetClass()
+            if weaponClass then
+                playerData.activeWeapon = weaponClass
+            end
+        end
+    end
+
+    RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
+
     if RARELOAD.settings.printMessageEnabled and RARELOAD.settings.autoSaveEnabled then
-        ply:PrintMessage(HUD_PRINTCONSOLE, "Auto Save: Saved your current position and camera orientation.")
+        ply:PrintMessage(HUD_PRINTCONSOLE, "Auto Save: Saved your current position, camera orientation, and inventory.")
     end
 end)
 
+
+-- create a file if the mapname where to store the data
 hook.Add("ShutDown", "SavePlayerPosition", function()
     if not RARELOAD.settings.addonEnabled then return end
 
-    ensureFolderExists() -- Ensure the folder exists before saving
+    ensureFolderExists()
 
     local mapName = game.GetMap()
     file.Write("respawn_at_reload/player_positions_" .. mapName .. ".txt", util.TableToJSON(RARELOAD.playerPositions))
 end)
 
+-- Check the map and if data is tied to it
 hook.Add("InitPostEntity", "LoadPlayerPosition", function()
-    -- Load the addon state, spawn mode preference, and print message state from the file
     loadAddonState()
 
     if RARELOAD.settings.printMessageEnabled then
@@ -200,11 +233,17 @@ hook.Add("InitPostEntity", "LoadPlayerPosition", function()
         else
             print("Print message is disabled.")
         end
+
+        if RARELOAD.settings.retainInventory then
+            print("Retain inventory is enabled.")
+        else
+            print("Retain inventory is disabled.")
+        end
     end
 
     if not RARELOAD.settings.addonEnabled then return end
 
-    ensureFolderExists() -- Ensure the folder exists before loading
+    ensureFolderExists()
 
     local mapName = game.GetMap()
     local filePath = "respawn_at_reload/player_positions_" .. mapName .. ".txt"
@@ -216,19 +255,21 @@ hook.Add("InitPostEntity", "LoadPlayerPosition", function()
     end
 end)
 
+-- Save the player's position when they disconnect
 hook.Add("PlayerDisconnect", "SavePlayerPositionDisconnect", function(ply)
     if not RARELOAD.settings.addonEnabled then return end
 
-    ensureFolderExists() -- Ensure the folder exists before saving
+    ensureFolderExists()
 
     local mapName = game.GetMap()
     RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
     RARELOAD.playerPositions[mapName][ply:SteamID()] = {
         pos = ply:GetPos(),
-        moveType = ply:GetMoveType() -- Save the player's movement type
+        moveType = ply:GetMoveType()
     }
 end)
 
+-- Respawn the player at their saved position
 hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
     if not RARELOAD.settings.addonEnabled then
         return false
@@ -237,137 +278,153 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
     local mapName = game.GetMap()
     local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][ply:SteamID()]
 
-    if savedInfo then
-        local wasInNoclip = savedInfo.moveType == MOVETYPE_NOCLIP
-        local wasFlying = savedInfo.moveType == MOVETYPE_FLY or savedInfo.moveType == MOVETYPE_FLYGRAVITY
-        local wasOnLadder = savedInfo.moveType == MOVETYPE_LADDER
+    if not savedInfo then
+        return
+    end
 
-        if savedInfo.moveType and isnumber(savedInfo.moveType) then
-            local savedMoveType = tonumber(savedInfo.moveType) or MOVETYPE_WALK
+    local wasInNoclip = savedInfo.moveType == MOVETYPE_NOCLIP
+    local wasFlying = savedInfo.moveType == MOVETYPE_FLY or savedInfo.moveType == MOVETYPE_FLYGRAVITY
+    local wasOnLadder = savedInfo.moveType == MOVETYPE_LADDER
 
-            if not RARELOAD.settings.spawnModeEnabled then
-                if wasInNoclip or wasFlying or wasOnLadder then
-                    local traceStart = savedInfo.pos
-                    local traceEnd = savedInfo.pos - Vector(0, 0, 10000)
-                    local traceResult = util.TraceLine({
-                        start = traceStart,
-                        endpos = traceEnd,
-                        filter = ply,
-                        mask = MASK_SOLID_BRUSHONLY
-                    })
+    if not savedInfo.moveType or not isnumber(savedInfo.moveType) then
+        print("Error: Invalid saved move type.")
+        return
+    end
 
-                    if traceResult.Hit and traceResult.HitPos then
-                        local waterTrace = util.TraceLine({
-                            start = traceResult.HitPos,
-                            endpos = traceResult.HitPos - Vector(0, 0, 100),
-                            filter = ply,
-                            mask = MASK_WATER
-                        })
+    local savedMoveType = tonumber(savedInfo.moveType) or MOVETYPE_WALK
 
-                        if waterTrace.Hit then
-                            print("Player spawn position is underwater. Searching for walkable ground.")
+    if not RARELOAD.settings.spawnModeEnabled then
+        if wasInNoclip or wasFlying or wasOnLadder then
+            local traceResult = TraceLine(savedInfo.pos, savedInfo.pos - Vector(0, 0, 10000), ply, MASK_SOLID_BRUSHONLY)
 
-                            -- Perform a spherical search around the initial spawn point
-                            local radius = 2000 -- Increase the radius
-                            local stepSize = 50 -- Reduce the step size
-                            local foundPos = nil
-
-                            for r = stepSize, radius, stepSize do
-                                for theta = 0, 2 * math.pi, math.pi / 16 do -- Increase the resolution of the search
-                                    for phi = 0, math.pi, math.pi / 16 do   -- Increase the resolution of the search
-                                        local x = r * math.sin(phi) * math.cos(theta)
-                                        local y = r * math.sin(phi) * math.sin(theta)
-                                        local z = r * math.cos(phi)
-
-                                        local checkPos = traceResult.HitPos + Vector(x, y, z)
-                                        local checkTrace = util.TraceLine({
-                                            start = checkPos,
-                                            endpos = checkPos - Vector(0, 0, 100),
-                                            filter = ply,
-                                            mask = MASK_SOLID_BRUSHONLY
-                                        })
-
-                                        if checkTrace.Hit and not checkTrace.StartSolid then
-                                            local checkWaterTrace = util.TraceLine({
-                                                start = checkTrace.HitPos,
-                                                endpos = checkTrace.HitPos - Vector(0, 0, 100),
-                                                filter = ply,
-                                                mask = MASK_WATER
-                                            })
-
-                                            if not checkWaterTrace.Hit then
-                                                -- Add an offset to the found position to ensure the player is above the ground
-                                                foundPos = checkTrace.HitPos + Vector(0, 0, 10)
-                                                break
-                                            end
-                                        end
-                                    end
-
-                                    if foundPos then
-                                        break
-                                    end
-                                end
-
-                                if foundPos then
-                                    break
-                                end
-                            end
-
-                            if foundPos then
-                                ply:SetPos(foundPos)
-                                ply:SetMoveType(MOVETYPE_NONE)
-                                print("Found walkable ground for player spawn.")
-                                return
-                            else
-                                print("No walkable ground found. Custom spawn prevented.")
-                                return
-                            end
-                        end
-
-                        ply:SetPos(traceResult.HitPos)
-                        ply:SetMoveType(MOVETYPE_NONE)
-                    else
-                        print("No walkable ground found. Custom spawn prevented.")
-                        return
-                    end
-                else
-                    ply:SetPos(savedInfo.pos)
-                    local ang = Angle(savedInfo.ang[1], savedInfo.ang[2], savedInfo.ang[3])
-                    ply:SetEyeAngles(ang)
-                end
-            else
-                print("Setting move type to: " .. tostring(savedMoveType))
-                timer.Simple(0, function() ply:SetMoveType(savedMoveType) end)
-                ply:SetPos(savedInfo.pos)
-
-                local ang = Angle(tonumber(savedInfo.ang[1]), tonumber(savedInfo.ang[2]), tonumber(savedInfo.ang[3]))
-                ply:SetEyeAngles(ang)
+            if not traceResult.Hit or not traceResult.HitPos then
+                print("No walkable ground found. Custom spawn prevented.")
+                return
             end
+
+            local waterTrace = TraceLine(traceResult.HitPos, traceResult.HitPos - Vector(0, 0, 100), ply, MASK_WATER)
+
+            if waterTrace.Hit then
+                local foundPos = FindWalkableGround(traceResult.HitPos, ply)
+
+                if not foundPos then
+                    print("No walkable ground found. Custom spawn prevented.")
+                    return
+                end
+
+                ply:SetPos(foundPos)
+                ply:SetMoveType(MOVETYPE_NONE)
+                print("Found walkable ground for player spawn.")
+                return
+            end
+
+            ply:SetPos(traceResult.HitPos)
+            ply:SetMoveType(MOVETYPE_NONE)
         else
-            print("Error: Invalid saved move type.")
+            SetPlayerPositionAndEyeAngles(ply, savedInfo)
+        end
+    else
+        print("Setting move type to: " .. tostring(savedMoveType))
+        timer.Simple(0, function() ply:SetMoveType(savedMoveType) end)
+        SetPlayerPositionAndEyeAngles(ply, savedInfo)
+    end
+
+    if RARELOAD.settings.retainInventory and savedInfo.inventory then
+        ply:StripWeapons()
+
+        for _, weaponClass in ipairs(savedInfo.inventory) do
+            ply:Give(weaponClass)
+        end
+
+        if savedInfo.activeWeapon then
+            ply:SelectWeapon(savedInfo.activeWeapon)
         end
     end
 end)
 
+-- Function to trace a line
+function TraceLine(start, endpos, filter, mask)
+    return util.TraceLine({
+        start = start,
+        endpos = endpos,
+        filter = filter,
+        mask = mask
+    })
+end
 
-hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
-    if RARELOAD.settings.autoSaveEnabled and IsValid(ply) and ply:IsPlayer() and ply:Alive() then
-        local vel = ply:GetVelocity():Length()
+-- Helper function to check if a position is walkable
+function IsWalkable(pos, ply)
+    local checkTrace = util.TraceLine({
+        start = pos,
+        endpos = pos - Vector(0, 0, 100),
+        filter = ply,
+        mask =
+            MASK_SOLID_BRUSHONLY
+    })
+    if checkTrace.Hit and not checkTrace.StartSolid then
+        local checkWaterTrace = util.TraceLine({
+            start = checkTrace.HitPos,
+            endpos = checkTrace.HitPos -
+                Vector(0, 0, 100),
+            filter = ply,
+            mask = MASK_WATER
+        })
+        if not checkWaterTrace.Hit then
+            if util.PointContents(checkTrace.HitPos) == CONTENTS_EMPTY then
+                return true, checkTrace.HitPos + Vector(0, 0, 10)
+            end
+        end
+    end
+    return false
+end
 
-        if vel < 5 and CurTime() - RARELOAD.lastSavedTime > 1 then
-            -- Player has stopped moving for at least 1 second, check if the position changed
-            local currentPos = ply:GetPos()
+-- Find walkable ground for the player to spawn on
+function FindWalkableGround(startPos, ply)
+    local radius = 2000
+    local stepSize = 50
 
-            if not ply.lastSavedPosition or currentPos ~= ply.lastSavedPosition then
-                -- Save their position only if it's different from the last saved position
-                RunConsoleCommand("save_position")
-                RARELOAD.lastSavedTime = CurTime() -- Update the last saved time
-                ply.lastSavedPosition = currentPos
+    for r = stepSize, radius, stepSize do
+        for theta = 0, 2 * math.pi, math.pi / 16 do
+            for phi = 0, math.pi, math.pi / 16 do
+                local x = r * math.sin(phi) * math.cos(theta)
+                local y = r * math.sin(phi) * math.sin(theta)
+                local z = r * math.cos(phi)
 
-                if RARELOAD.settings.printMessageEnabled and RARELOAD.settings.autoSaveEnabled then
-                    ply:PrintMessage(HUD_PRINTCONSOLE, "Auto Save: Saved your current position and camera orientation.")
+                local checkPos = startPos + Vector(x, y, z)
+                local isWalkable, walkablePos = IsWalkable(checkPos, ply)
+                if isWalkable then
+                    return walkablePos
                 end
             end
         end
+    end
+
+    error("Could not find walkable ground")
+end
+
+-- Set the player's position and eye angles
+function SetPlayerPositionAndEyeAngles(ply, savedInfo)
+    ply:SetPos(savedInfo.pos)
+    local ang = Angle(savedInfo.ang[1], savedInfo.ang[2], savedInfo.ang[3])
+    ply:SetEyeAngles(ang)
+end
+
+-- Auto-save the player's position and camera orientation
+hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
+    if not RARELOAD.settings.autoSaveEnabled then return end
+    if not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() then return end
+
+    local vel = ply:GetVelocity():Length()
+    if vel >= 5 or CurTime() - RARELOAD.lastSavedTime <= 1 then return end
+
+    local currentPos = ply:GetPos()
+    if ply.lastSavedPosition and currentPos == ply.lastSavedPosition then return end
+
+    RunConsoleCommand("save_position")
+    RARELOAD.lastSavedTime = CurTime()
+    ply.lastSavedPosition = currentPos
+
+    if RARELOAD.settings.printMessageEnabled then
+        ply:PrintMessage(HUD_PRINTCONSOLE, "Auto Save: Saved your current position and camera orientation.")
     end
 end)

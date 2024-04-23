@@ -16,101 +16,100 @@ if CLIENT then
     surface.CreateFont("CTNV2", fontParams)
 end
 
+
 -- Function to load addon state from file
 local function loadAddonState()
-    local addonStateFilePath = "respawn_at_reload/addon_state.txt"
-    RARELOAD.settings = {} -- Initialize settings table
+    local addonStateFilePath = "respawn_at_reload/addon_state.json"
+    local defaultSettings = {
+        addonEnabled = true,
+        spawnModeEnabled = true,
+        autoSaveEnabled = false,
+        printMessageEnabled = true,
+        retainInventory = false
+    }
 
-    -- Check if the file exists
     if file.Exists(addonStateFilePath, "DATA") then
         local addonStateData = file.Read(addonStateFilePath, "DATA")
         local addonStateLines = string.Explode("\n", addonStateData)
 
-        -- Assign addon settings from file data
-        RARELOAD.settings.addonEnabled = addonStateLines[1] and addonStateLines[1]:lower() == "true"
-        RARELOAD.settings.spawnModeEnabled = addonStateLines[2] and addonStateLines[2]:lower() == "true"
-        RARELOAD.settings.autoSaveEnabled = addonStateLines[3] and addonStateLines[3]:lower() == "true"
-        RARELOAD.settings.printMessageEnabled = addonStateLines[4] and addonStateLines[4]:lower() == "true"
+        for key, defaultValue in pairs(defaultSettings) do
+            local line = table.remove(addonStateLines, 1)
+            RARELOAD.settings[key] = line and line:lower() == "true" or defaultValue
+        end
     else
-        -- If the file doesn't exist, create it with default values
-        local addonStateData = "true\ntrue\nfalse\ntrue"
-        file.Write(addonStateFilePath, addonStateData)
+        local addonStateData = ""
+        for _, defaultValue in pairs(defaultSettings) do
+            addonStateData = addonStateData .. tostring(defaultValue) .. "\n"
+        end
 
-        -- Assign default settings
-        RARELOAD.settings.addonEnabled = true
-        RARELOAD.settings.spawnModeEnabled = true
-        RARELOAD.settings.autoSaveEnabled = false
-        RARELOAD.settings.printMessageEnabled = true
+        file.Write(addonStateFilePath, addonStateData)
+        RARELOAD.settings = defaultSettings
     end
 end
 
-function TOOL.BuildCPanel(panel)
-    -- Function to create a styled button with dynamic color based on addon state
-    local function CreateStyledButton(parent, text, command, tooltip, colorVar)
-        local button = vgui.Create("DButton", parent)
-        button:SetText(text)
-        button:Dock(TOP)
-        button:DockMargin(30, 10, 30, 0)
-        button:SetSize(250, 30)
+local COLOR_ENABLED = Color(50, 150, 255)
+local COLOR_DISABLED = Color(255, 50, 50)
 
-        -- Set initial button color based on the specified variable
-        local color = colorVar and colorVar:lower() == "true" and Color(50, 150, 255) or Color(255, 50, 50)
-        button:SetTextColor(color)
-        button:SetFont("DermaDefaultBold")
-        button:SetColor(color)
+local function createButton(parent, text, command, tooltip, isEnabled)
+    local button = vgui.Create("DButton", parent)
+    button:SetText(text)
+    button:Dock(TOP)
+    button:DockMargin(30, 10, 30, 0)
+    button:SetSize(250, 30)
 
-        button.DoClick = function()
-            RunConsoleCommand(command)
+    local color = isEnabled and COLOR_ENABLED or COLOR_DISABLED
+    button:SetTextColor(color)
+    button:SetColor(color)
 
-            -- Toggle button color when clicked
-            if button:GetColor() == Color(50, 150, 255) then
-                button:SetColor(Color(255, 50, 50))
-                button:SetTextColor(Color(255, 50, 50))
-            else
-                button:SetColor(Color(50, 150, 255))
-                button:SetTextColor(Color(50, 150, 255))
-            end
-        end
-
-        -- Add tooltip for additional information
-        if tooltip then
-            button:SetTooltip(tooltip)
-        end
-
-        return button
+    button.DoClick = function()
+        RunConsoleCommand(command)
+        local currentColor = button:GetColor()
+        local newColor = currentColor == COLOR_ENABLED and COLOR_DISABLED or COLOR_ENABLED
+        button:SetColor(newColor)
+        button:SetTextColor(newColor)
     end
 
-    -- Read addon state from the file
-    loadAddonState()
+    if tooltip then
+        button:SetTooltip(tooltip)
+    end
 
-    -- Create a button to toggle respawn behavior with color based on addon state
-    CreateStyledButton(panel, "Toggle Respawn at Reload", "toggle_respawn_at_reload",
-        "Enable or disable automatic respawn at reload", tostring(RARELOAD.settings.addonEnabled))
+    return button
+end
 
-    -- Create a button to toggle spawn mode with color based on addon state
-    CreateStyledButton(panel, "Toggle Move Type", "toggle_spawn_mode",
-        "Switch between different spawn modes", tostring(RARELOAD.settings.spawnModeEnabled))
+function TOOL.BuildCPanel(panel)
+    local success, err = pcall(loadAddonState)
+    if not success then
+        ErrorNoHalt("Failed to load addon state: " .. err)
+        return
+    end
 
-    -- Create a button to toggle auto-save with color based on addon state
-    CreateStyledButton(panel, "Toggle Auto Save", "toggle_auto_save",
-        "Enable or Disable Auto Saving Position", tostring(RARELOAD.settings.autoSaveEnabled))
+    createButton(panel, "Toggle Respawn at Reload", "toggle_respawn_at_reload",
+        "Enable or disable automatic respawn at reload", RARELOAD.settings.addonEnabled)
 
-    -- Create a button to toggle print messages with color based on addon state
-    CreateStyledButton(panel, "Toggle Print Messages", "toggle_print_message",
-        "Enable or Disable Monitoring Messages in Console", tostring(RARELOAD.settings.printMessageEnabled))
+    createButton(panel, "Toggle Move Type", "toggle_spawn_mode",
+        "Switch between different spawn modes", RARELOAD.settings.spawnModeEnabled)
 
-    -- Create a button to save the current position
+    createButton(panel, "Toggle Auto Save", "toggle_auto_save",
+        "Enable or Disable Auto Saving Position", RARELOAD.settings.autoSaveEnabled)
+
+    createButton(panel, "Toggle Print Messages", "toggle_print_message",
+        "Enable or Disable Monitoring Messages in Console", RARELOAD.settings.printMessageEnabled)
+
+    createButton(panel, "Toggle Retain Inventory", "toggle_retain_inventory",
+        "Enable or disable retaining inventory", RARELOAD.settings.retainInventory)
+
     local savePositionButton = vgui.Create("DButton", panel)
     savePositionButton:SetText("Save Position")
-    savePositionButton:SetTextColor(Color(0, 0, 0)) -- Set the text color to white for visibility
+    savePositionButton:SetTextColor(Color(0, 0, 0))
     savePositionButton:Dock(TOP)
     savePositionButton:DockMargin(30, 10, 30, 0)
     savePositionButton:SetSize(250, 30)
-    savePositionButton.DoClick = function() -- A custom function run when clicked ( note the . instead of : )
+    savePositionButton.DoClick = function()
         RunConsoleCommand("save_position")
     end
 end
 
+-- function for the tool screen
 function TOOL:DrawToolScreen(width, height)
     surface.SetDrawColor(0, 0, 0, 255)
     surface.DrawRect(0, 0, width, height)
