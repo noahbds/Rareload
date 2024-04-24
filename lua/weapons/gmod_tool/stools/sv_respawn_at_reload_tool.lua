@@ -1,3 +1,5 @@
+local RARELOAD  = {}
+
 TOOL            = TOOL or {}
 TOOL.Category   = "Respawn at Reload"
 TOOL.Name       = "Respawn at Reload Config Tool"
@@ -93,6 +95,7 @@ function TOOL.BuildCPanel(panel)
     createButton(panel, "Toggle Keep Inventory", "toggle_retain_inventory",
         "Enable or disable retaining inventory", RARELOAD.settings.retainInventory)
 
+    ---@class DButton
     local savePositionButton = vgui.Create("DButton", panel)
     savePositionButton:SetText("Save Position")
     savePositionButton:SetTextColor(Color(0, 0, 0))
