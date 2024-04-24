@@ -1,3 +1,5 @@
+local RARELOAD  = {}
+
 TOOL            = TOOL or {}
 TOOL.Category   = "Rareload"
 TOOL.Name       = "Rareload Config Tool"
@@ -16,7 +18,32 @@ if CLIENT then
     surface.CreateFont("CTNV2", fontParams2)
 end
 
-LoadAddonState()
+
+-- Function to load addon state from file
+local function loadAddonState()
+    local addonStateFilePath = "rareload/addon_state.txt"
+    RARELOAD.settings = {}
+
+    if file.Exists(addonStateFilePath, "DATA") then
+        local addonStateData = file.Read(addonStateFilePath, "DATA")
+        local addonStateLines = string.Explode("\n", addonStateData)
+
+        RARELOAD.settings.addonEnabled = addonStateLines[1] and addonStateLines[1]:lower() == "true"
+        RARELOAD.settings.spawnModeEnabled = addonStateLines[2] and addonStateLines[2]:lower() == "true"
+        RARELOAD.settings.autoSaveEnabled = addonStateLines[3] and addonStateLines[3]:lower() == "true"
+        RARELOAD.settings.printMessageEnabled = addonStateLines[4] and addonStateLines[4]:lower() == "true"
+        RARELOAD.settings.retainInventory = addonStateLines[5] and addonStateLines[5]:lower() == "true"
+    else
+        local addonStateData = "true\ntrue\nfalse\ntrue\nfalse"
+        file.Write(addonStateFilePath, addonStateData)
+
+        RARELOAD.settings.addonEnabled = true
+        RARELOAD.settings.spawnModeEnabled = true
+        RARELOAD.settings.autoSaveEnabled = false
+        RARELOAD.settings.printMessageEnabled = true
+        RARELOAD.settings.retainInventory = false
+    end
+end
 
 local COLOR_ENABLED = Color(50, 150, 255)
 local COLOR_DISABLED = Color(255, 50, 50)
@@ -48,7 +75,7 @@ local function createButton(parent, text, command, tooltip, isEnabled)
 end
 
 function TOOL.BuildCPanel(panel)
-    local success, err = pcall(LoadAddonState)
+    local success, err = pcall(loadAddonState)
     if not success then
         ErrorNoHalt("Failed to load addon state: " .. err)
         return
@@ -69,10 +96,6 @@ function TOOL.BuildCPanel(panel)
     createButton(panel, "Toggle Keep Inventory", "toggle_retain_inventory",
         "Enable or disable retaining inventory", RARELOAD.settings.retainInventory)
 
-    createButton(panel, "Toggle disableCustomSpawnAtDeath", "toggle_disable_custom_spawn_at_death",
-        "Enable or disable custom spawn at death", RARELOAD.settings.disableCustomSpawnAtDeath)
-
-    ---@class DButton
     local savePositionButton = vgui.Create("DButton", panel)
     savePositionButton:SetText("Save Position")
     savePositionButton:SetTextColor(Color(0, 0, 0))
@@ -85,7 +108,8 @@ function TOOL.BuildCPanel(panel)
 end
 
 function TOOL:DrawToolScreen(width, height)
-    local success, err = pcall(LoadAddonState)
+    -- Load addon state
+    local success, err = pcall(loadAddonState)
     if not success then
         ErrorNoHalt("Failed to load addon state: " .. err)
         return
@@ -98,8 +122,8 @@ function TOOL:DrawToolScreen(width, height)
         backgroundColor = Color(0, 255, 0)
         autoSaveStatusColor = Color(0, 0, 0)
     else
-        backgroundColor = Color(255, 100, 100)
-        autoSaveStatusColor = Color(255, 255, 255)
+        backgroundColor = Color(255, 100, 100)     -- Lighter shade of red for disabled
+        autoSaveStatusColor = Color(255, 255, 255) -- White text color
     end
 
     surface.SetDrawColor(backgroundColor)
@@ -113,13 +137,13 @@ function TOOL:DrawToolScreen(width, height)
     local startY = 90
     local spacing = 30
 
+    -- Draw each setting text
     local settings = {
-        { name = "Rareload",                  enabled = RARELOAD.settings.addonEnabled },
-        { name = "Move Type",                 enabled = RARELOAD.settings.spawnModeEnabled },
-        { name = "Auto Save",                 enabled = RARELOAD.settings.autoSaveEnabled },
-        { name = "Print Messages",            enabled = RARELOAD.settings.printMessageEnabled },
-        { name = "Keep Inventory",            enabled = RARELOAD.settings.retainInventory },
-        { name = "disableCustomSpawnAtDeath", enabled = RARELOAD.settings.disableCustomSpawnAtDeath }
+        { name = "Rareload",       enabled = RARELOAD.settings.addonEnabled },
+        { name = "Move Type",      enabled = RARELOAD.settings.spawnModeEnabled },
+        { name = "Auto Save",      enabled = RARELOAD.settings.autoSaveEnabled },
+        { name = "Print Messages", enabled = RARELOAD.settings.printMessageEnabled },
+        { name = "Keep Inventory", enabled = RARELOAD.settings.retainInventory }
     }
 
     for i, setting in ipairs(settings) do
