@@ -13,7 +13,7 @@ RARELOAD.settings = {
 RARELOAD.lastSavedTime = 0
 
 local function ensureFolderExists()
-    local folderPath = "respawn_at_reload"
+    local folderPath = "rareload"
     if not file.Exists(folderPath, "DATA") then
         file.CreateDir(folderPath)
     end
@@ -21,7 +21,7 @@ end
 
 -- Function to load addon state from file
 local function loadAddonState()
-    local addonStateFilePath = "respawn_at_reload/addon_state.txt"
+    local addonStateFilePath = "rareload/addon_state.txt"
     RARELOAD.settings = {}
 
     if file.Exists(addonStateFilePath, "DATA") then
@@ -50,7 +50,7 @@ loadAddonState()
 
 -- Function to save addon state to file
 local function saveAddonState()
-    local addonStateFilePath = "respawn_at_reload/addon_state.txt"
+    local addonStateFilePath = "rareload/addon_state.txt"
     file.Write(addonStateFilePath,
         tostring(RARELOAD.settings.addonEnabled) ..
         "\n" ..
@@ -65,7 +65,7 @@ local function saveAddonState()
 end
 
 -- Command to toggle the addon's enabled state
-concommand.Add("toggle_respawn_at_reload", function(ply)
+concommand.Add("toggle_rareload", function(ply)
     if not ply:IsSuperAdmin() then
         ply:PrintMessage(HUD_PRINTCONSOLE, "You do not have permission to use this command.")
         return
@@ -205,7 +205,7 @@ hook.Add("ShutDown", "SavePlayerPosition", function()
     ensureFolderExists()
 
     local mapName = game.GetMap()
-    file.Write("respawn_at_reload/player_positions_" .. mapName .. ".txt", util.TableToJSON(RARELOAD.playerPositions))
+    file.Write("rareload/player_positions_" .. mapName .. ".txt", util.TableToJSON(RARELOAD.playerPositions))
 end)
 
 -- Check the map and if data is tied to it
@@ -247,7 +247,7 @@ hook.Add("InitPostEntity", "LoadPlayerPosition", function()
     ensureFolderExists()
 
     local mapName = game.GetMap()
-    local filePath = "respawn_at_reload/player_positions_" .. mapName .. ".txt"
+    local filePath = "rareload/player_positions_" .. mapName .. ".txt"
     if file.Exists(filePath, "DATA") then
         local data = file.Read(filePath, "DATA")
         if data then
@@ -337,8 +337,9 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
             ply:Give(weaponClass)
         end
 
+        -- Restaurer l'arme active
         if savedInfo.activeWeapon then
-            timer.Simple(1, function()
+            timer.Simple(1, function() -- Increase the delay
                 if IsValid(ply) and ply:HasWeapon(savedInfo.activeWeapon) then
                     ply:SelectWeapon(savedInfo.activeWeapon)
                 end
