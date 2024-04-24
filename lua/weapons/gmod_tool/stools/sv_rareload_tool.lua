@@ -1,5 +1,3 @@
-local RARELOAD  = {}
-
 TOOL            = TOOL or {}
 TOOL.Category   = "Rareload"
 TOOL.Name       = "Rareload Config Tool"
@@ -18,32 +16,7 @@ if CLIENT then
     surface.CreateFont("CTNV2", fontParams2)
 end
 
-
--- Function to load addon state from file
-local function loadAddonState()
-    local addonStateFilePath = "rareload/addon_state.txt"
-    RARELOAD.settings = {}
-
-    if file.Exists(addonStateFilePath, "DATA") then
-        local addonStateData = file.Read(addonStateFilePath, "DATA")
-        local addonStateLines = string.Explode("\n", addonStateData)
-
-        RARELOAD.settings.addonEnabled = addonStateLines[1] and addonStateLines[1]:lower() == "true"
-        RARELOAD.settings.spawnModeEnabled = addonStateLines[2] and addonStateLines[2]:lower() == "true"
-        RARELOAD.settings.autoSaveEnabled = addonStateLines[3] and addonStateLines[3]:lower() == "true"
-        RARELOAD.settings.printMessageEnabled = addonStateLines[4] and addonStateLines[4]:lower() == "true"
-        RARELOAD.settings.retainInventory = addonStateLines[5] and addonStateLines[5]:lower() == "true"
-    else
-        local addonStateData = "true\ntrue\nfalse\ntrue\nfalse"
-        file.Write(addonStateFilePath, addonStateData)
-
-        RARELOAD.settings.addonEnabled = true
-        RARELOAD.settings.spawnModeEnabled = true
-        RARELOAD.settings.autoSaveEnabled = false
-        RARELOAD.settings.printMessageEnabled = true
-        RARELOAD.settings.retainInventory = false
-    end
-end
+LoadAddonState()
 
 local COLOR_ENABLED = Color(50, 150, 255)
 local COLOR_DISABLED = Color(255, 50, 50)
@@ -75,7 +48,7 @@ local function createButton(parent, text, command, tooltip, isEnabled)
 end
 
 function TOOL.BuildCPanel(panel)
-    local success, err = pcall(loadAddonState)
+    local success, err = pcall(LoadAddonState)
     if not success then
         ErrorNoHalt("Failed to load addon state: " .. err)
         return
@@ -96,6 +69,10 @@ function TOOL.BuildCPanel(panel)
     createButton(panel, "Toggle Keep Inventory", "toggle_retain_inventory",
         "Enable or disable retaining inventory", RARELOAD.settings.retainInventory)
 
+    createButton(panel, "Toggle disableCustomSpawnAtDeath", "toggle_disable_custom_spawn_at_death",
+        "Enable or disable custom spawn at death", RARELOAD.settings.disableCustomSpawnAtDeath)
+
+    ---@class DButton
     local savePositionButton = vgui.Create("DButton", panel)
     savePositionButton:SetText("Save Position")
     savePositionButton:SetTextColor(Color(0, 0, 0))
@@ -108,8 +85,7 @@ function TOOL.BuildCPanel(panel)
 end
 
 function TOOL:DrawToolScreen(width, height)
-    -- Load addon state
-    local success, err = pcall(loadAddonState)
+    local success, err = pcall(LoadAddonState)
     if not success then
         ErrorNoHalt("Failed to load addon state: " .. err)
         return
@@ -118,42 +94,38 @@ function TOOL:DrawToolScreen(width, height)
     local backgroundColor
     local autoSaveStatusColor
 
-    -- Determine background color and auto-save status color
     if RARELOAD.settings.autoSaveEnabled then
-        backgroundColor = Color(0, 255, 0)         -- Green for enabled
-        autoSaveStatusColor = Color(0, 0, 0)       -- Black text color
+        backgroundColor = Color(0, 255, 0)
+        autoSaveStatusColor = Color(0, 0, 0)
     else
-        backgroundColor = Color(255, 100, 100)     -- Lighter shade of red for disabled
-        autoSaveStatusColor = Color(255, 255, 255) -- White text color
+        backgroundColor = Color(255, 100, 100)
+        autoSaveStatusColor = Color(255, 255, 255)
     end
 
-    -- Set background color
     surface.SetDrawColor(backgroundColor)
     surface.DrawRect(0, 0, width, height)
 
-    -- Draw text for each setting
     surface.SetFont("CTNV")
     local textWidth, textHeight = surface.GetTextSize("Rareload")
     draw.SimpleText("Rareload", "CTNV2", width / 2, 40, autoSaveStatusColor, TEXT_ALIGN_CENTER,
         TEXT_ALIGN_CENTER)
 
-    -- Calculate Y-coordinate for settings text
-    local startY = 90  -- Adjusted startY value
-    local spacing = 30 -- Adjusted spacing value
+    local startY = 90
+    local spacing = 30
 
-    -- Draw each setting text
     local settings = {
-        { name = "Rareload",       enabled = RARELOAD.settings.addonEnabled },
-        { name = "Move Type",      enabled = RARELOAD.settings.spawnModeEnabled },
-        { name = "Auto Save",      enabled = RARELOAD.settings.autoSaveEnabled },
-        { name = "Print Messages", enabled = RARELOAD.settings.printMessageEnabled },
-        { name = "Keep Inventory", enabled = RARELOAD.settings.retainInventory }
+        { name = "Rareload",                  enabled = RARELOAD.settings.addonEnabled },
+        { name = "Move Type",                 enabled = RARELOAD.settings.spawnModeEnabled },
+        { name = "Auto Save",                 enabled = RARELOAD.settings.autoSaveEnabled },
+        { name = "Print Messages",            enabled = RARELOAD.settings.printMessageEnabled },
+        { name = "Keep Inventory",            enabled = RARELOAD.settings.retainInventory },
+        { name = "disableCustomSpawnAtDeath", enabled = RARELOAD.settings.disableCustomSpawnAtDeath }
     }
 
     for i, setting in ipairs(settings) do
         local statusText = setting.enabled and "Toggled" or "Toggle"
         local color = setting.enabled and autoSaveStatusColor or
-            Color(255, 0, 0) -- Use autoSaveStatusColor if enabled, otherwise red
+            Color(255, 0, 0)
         draw.SimpleText(statusText .. " " .. setting.name, "CTNV", width / 2, startY + (i - 1) * spacing, color,
             TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
