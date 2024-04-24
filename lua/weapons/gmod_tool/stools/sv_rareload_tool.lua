@@ -96,6 +96,7 @@ function TOOL.BuildCPanel(panel)
     createButton(panel, "Toggle Keep Inventory", "toggle_retain_inventory",
         "Enable or disable retaining inventory", RARELOAD.settings.retainInventory)
 
+    ---@class DButton
     local savePositionButton = vgui.Create("DButton", panel)
     savePositionButton:SetText("Save Position")
     savePositionButton:SetTextColor(Color(0, 0, 0))
@@ -108,7 +109,6 @@ function TOOL.BuildCPanel(panel)
 end
 
 function TOOL:DrawToolScreen(width, height)
-    -- Load addon state
     local success, err = pcall(loadAddonState)
     if not success then
         ErrorNoHalt("Failed to load addon state: " .. err)
@@ -122,8 +122,8 @@ function TOOL:DrawToolScreen(width, height)
         backgroundColor = Color(0, 255, 0)
         autoSaveStatusColor = Color(0, 0, 0)
     else
-        backgroundColor = Color(255, 100, 100)     -- Lighter shade of red for disabled
-        autoSaveStatusColor = Color(255, 255, 255) -- White text color
+        backgroundColor = Color(255, 100, 100)
+        autoSaveStatusColor = Color(255, 255, 255)
     end
 
     surface.SetDrawColor(backgroundColor)
@@ -137,7 +137,6 @@ function TOOL:DrawToolScreen(width, height)
     local startY = 90
     local spacing = 30
 
-    -- Draw each setting text
     local settings = {
         { name = "Rareload",       enabled = RARELOAD.settings.addonEnabled },
         { name = "Move Type",      enabled = RARELOAD.settings.spawnModeEnabled },
