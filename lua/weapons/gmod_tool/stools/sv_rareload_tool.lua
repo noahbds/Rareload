@@ -11,7 +11,7 @@ if CLIENT then
     language.Add("tool.sv_rareload_tool.desc", "Configuration Panel For Rareload Addon.")
     language.Add("tool.sv_rareload_tool.0", "By Noahbds")
 
-    local fontParams = { font = "Arial", size = 21, weight = 1000, antialias = true, additive = false }
+    local fontParams = { font = "Arial", size = 20.9, weight = 1000, antialias = true, additive = false }
     local fontParams2 = { font = "Arial", size = 31, weight = 1000, antialias = true, additive = false }
 
     surface.CreateFont("CTNV", fontParams)
@@ -33,8 +33,9 @@ local function loadAddonState()
         RARELOAD.settings.autoSaveEnabled = addonStateLines[3] and addonStateLines[3]:lower() == "true"
         RARELOAD.settings.printMessageEnabled = addonStateLines[4] and addonStateLines[4]:lower() == "true"
         RARELOAD.settings.retainInventory = addonStateLines[5] and addonStateLines[5]:lower() == "true"
+        RARELOAD.settings.nocustomrespawnatdeath = addonStateLines[6] and addonStateLines[6]:lower() == "true"
     else
-        local addonStateData = "true\ntrue\nfalse\ntrue\nfalse"
+        local addonStateData = "true\ntrue\nfalse\ntrue\nfalse\nfalse"
         file.Write(addonStateFilePath, addonStateData)
 
         RARELOAD.settings.addonEnabled = true
@@ -42,6 +43,7 @@ local function loadAddonState()
         RARELOAD.settings.autoSaveEnabled = false
         RARELOAD.settings.printMessageEnabled = true
         RARELOAD.settings.retainInventory = false
+        RARELOAD.settings.nocustomrespawnatdeath = false
     end
 end
 
@@ -96,6 +98,9 @@ function TOOL.BuildCPanel(panel)
     createButton(panel, "Toggle Keep Inventory", "toggle_retain_inventory",
         "Enable or disable retaining inventory", RARELOAD.settings.retainInventory)
 
+    createButton(panel, "Toggle No Custom Respawn At Death", "toggle_nocustomrespawnatdeath",
+        "Enable or disable No Custom Respawn At Death", RARELOAD.settings.nocustomrespawnatdeath)
+
     ---@class DButton
     local savePositionButton = vgui.Create("DButton", panel)
     savePositionButton:SetText("Save Position")
@@ -134,15 +139,16 @@ function TOOL:DrawToolScreen(width, height)
     draw.SimpleText("Rareload", "CTNV2", width / 2, 40, autoSaveStatusColor, TEXT_ALIGN_CENTER,
         TEXT_ALIGN_CENTER)
 
-    local startY = 90
+    local startY = 85
     local spacing = 30
 
     local settings = {
-        { name = "Rareload",       enabled = RARELOAD.settings.addonEnabled },
-        { name = "Move Type",      enabled = RARELOAD.settings.spawnModeEnabled },
-        { name = "Auto Save",      enabled = RARELOAD.settings.autoSaveEnabled },
-        { name = "Print Messages", enabled = RARELOAD.settings.printMessageEnabled },
-        { name = "Keep Inventory", enabled = RARELOAD.settings.retainInventory }
+        { name = "Rareload",             enabled = RARELOAD.settings.addonEnabled },
+        { name = "Move Type",            enabled = RARELOAD.settings.spawnModeEnabled },
+        { name = "Auto Save",            enabled = RARELOAD.settings.autoSaveEnabled },
+        { name = "Print Messages",       enabled = RARELOAD.settings.printMessageEnabled },
+        { name = "Keep Inventory",       enabled = RARELOAD.settings.retainInventory },
+        { name = "No Rareload At Death", enabled = RARELOAD.settings.nocustomrespawnatdeath }
     }
 
     for i, setting in ipairs(settings) do

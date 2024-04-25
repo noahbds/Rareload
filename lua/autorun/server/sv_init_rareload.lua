@@ -9,6 +9,7 @@ RARELOAD.settings = {
     autoSaveEnabled = false,
     printMessageEnabled = true,
     retainInventory = false,
+    nocustomrespawnatdeath = false,
 }
 RARELOAD.lastSavedTime = 0
 
@@ -33,8 +34,9 @@ local function loadAddonState()
         RARELOAD.settings.autoSaveEnabled = addonStateLines[3] and addonStateLines[3]:lower() == "true"
         RARELOAD.settings.printMessageEnabled = addonStateLines[4] and addonStateLines[4]:lower() == "true"
         RARELOAD.settings.retainInventory = addonStateLines[5] and addonStateLines[5]:lower() == "true"
+        RARELOAD.settings.nocustomrespawnatdeath = addonStateLines[6] and addonStateLines[6]:lower() == "true"
     else
-        local addonStateData = "true\ntrue\nfalse\ntrue\nfalse"
+        local addonStateData = "true\ntrue\nfalse\ntrue\nfalse\nfalse"
         file.Write(addonStateFilePath, addonStateData)
 
         RARELOAD.settings.addonEnabled = true
@@ -42,6 +44,7 @@ local function loadAddonState()
         RARELOAD.settings.autoSaveEnabled = false
         RARELOAD.settings.printMessageEnabled = true
         RARELOAD.settings.retainInventory = false
+        RARELOAD.settings.nocustomrespawnatdeath = false
     end
 end
 
@@ -60,7 +63,9 @@ local function saveAddonState()
         "\n" ..
         tostring(RARELOAD.settings.printMessageEnabled) ..
         "\n" ..
-        tostring(RARELOAD.settings.retainInventory)
+        tostring(RARELOAD.settings.retainInventory) ..
+        "\n" ..
+        tostring(RARELOAD.settings.nocustomrespawnatdeath)
     )
 end
 
@@ -133,6 +138,20 @@ concommand.Add("toggle_retain_inventory", function(ply)
 
     local status = RARELOAD.settings.retainInventory and "enabled" or "disabled"
     ply:PrintMessage(HUD_PRINTCONSOLE, "Retain inventory is now " .. status)
+
+    saveAddonState()
+end)
+
+concommand.Add("toggle_nocustomrespawnatdeath", function(ply)
+    if not ply:IsSuperAdmin() then
+        ply:PrintMessage(HUD_PRINTCONSOLE, "You do not have permission to use this command.")
+        return
+    end
+
+    RARELOAD.settings.nocustomrespawnatdeath = not RARELOAD.settings.nocustomrespawnatdeath
+
+    local status = RARELOAD.settings.nocustomrespawnatdeath and "enabled" or "disabled"
+    ply:PrintMessage(HUD_PRINTCONSOLE, "No Custom Respawn at Death is now " .. status)
 
     saveAddonState()
 end)
@@ -270,10 +289,19 @@ hook.Add("PlayerDisconnect", "SavePlayerPositionDisconnect", function(ply)
     }
 end)
 
--- Respawn the player at their saved position
+-- Add a flag to the player when they die
+hook.Add("PlayerDeath", "SetWasKilledFlag", function(ply)
+    ply.wasKilled = true
+end)
+
+-- Check the flag in the PlayerSpawn hook
 hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
     if not RARELOAD.settings.addonEnabled then
         return false
+    end
+    if RARELOAD.settings.nocustomrespawnatdeath and ply.wasKilled then
+        ply.wasKilled = false -- Clear the flag
+        return
     end
 
     local mapName = game.GetMap()
