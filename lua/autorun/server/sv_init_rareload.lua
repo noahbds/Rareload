@@ -222,7 +222,7 @@ hook.Add("PlayerDeath", "SetWasKilledFlag", function(ply)
     ply.wasKilled = true
 end)
 
--- Function to trace a line
+-- Function to trace a line (duh)
 local function TraceLine(start, endpos, filter, mask)
     return util.TraceLine({
         start = start,
@@ -232,7 +232,7 @@ local function TraceLine(start, endpos, filter, mask)
     })
 end
 
--- Check if the position is walkable and not in the void/under the map
+-- Check if the position is walkable (used by FindWalkableGround)
 local function IsWalkable(pos, ply)
     local checkTrace = TraceLine(pos, pos - Vector(0, 0, 100), ply, MASK_SOLID_BRUSHONLY)
 
@@ -240,19 +240,19 @@ local function IsWalkable(pos, ply)
         return false
     end
 
-    local voidTrace = TraceLine(pos, pos - Vector(0, 0, 10000), ply, MASK_SOLID_BRUSHONLY)
-    if not voidTrace.Hit then
-        return false
-    end
-
     local checkWaterTrace = TraceLine(checkTrace.HitPos, checkTrace.HitPos - Vector(0, 0, 100), ply, MASK_WATER)
     local checkWaterAboveGround = TraceLine(checkTrace.HitPos + Vector(0, 0, 10), checkTrace.HitPos + Vector(0, 0, 110),
         ply, MASK_WATER)
 
-    return not (checkWaterTrace.Hit or checkWaterAboveGround.Hit), checkTrace.HitPos + Vector(0, 0, 10)
+    if checkWaterTrace.Hit or checkWaterAboveGround.Hit then
+        return false
+    end
+
+    return true, checkTrace.HitPos + Vector(0, 0, 10)
 end
 
--- Find walkable ground for the player to spawn on
+
+-- Find walkable ground for the player to spawn on (if togglemovetype is off)
 local function FindWalkableGround(startPos, ply)
     local radius = 2000
     local stepSize = 50
@@ -260,19 +260,27 @@ local function FindWalkableGround(startPos, ply)
     local angleStep = math.pi / 16
 
     for i = 1, 10 do
-        local angle, r, z = 0, stepSize, 0
+        local angle = 0
+        local r = stepSize
+        local z = 0
         while r < radius do
-            local checkPos = startPos + Vector(r * math.cos(angle), r * math.sin(angle), z)
+            local x = r * math.cos(angle)
+            local y = r * math.sin(angle)
+
+            local checkPos = startPos + Vector(x, y, z)
             local isWalkable, walkablePos = IsWalkable(checkPos, ply)
             if isWalkable then
                 return walkablePos
             end
 
-            angle = (angle + angleStep) % (2 * math.pi)
-            if angle == 0 then
-                r, z = r + stepSize, z + zStepSize
+            angle = angle + angleStep
+            if angle >= 2 * math.pi then
+                angle = angle - 2 * math.pi
+                r = r + stepSize
+                z = z + zStepSize
             end
         end
+
         stepSize = stepSize + 50
     end
 
@@ -289,50 +297,52 @@ local function SetPlayerPositionAndEyeAngles(ply, savedInfo)
     if type(angTable) == "table" and #angTable == 3 then
         ply:SetEyeAngles(Angle(angTable[1], angTable[2], angTable[3]))
     else
-        print("Error: Invalid angle data.")
+        print("[RARELOAD] Error: Invalid angle data.")
     end
 end
 
 
-
 hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
-    local settings = RARELOAD.settings
-    local playerPositions = RARELOAD.playerPositions
-    local defaultWeapons = {
-        "weapon_crowbar", "weapon_physgun", "weapon_physcannon", "weapon_pistol", "weapon_357",
-        "weapon_smg1", "weapon_ar2", "weapon_shotgun", "weapon_crossbow", "weapon_frag", "weapon_rpg",
-        "gmod_tool", "gmod_camera", "gmod_toolgun"
-    }
+    if not RARELOAD.settings.addonEnabled then
+        local defaultWeapons = {
+            "weapon_crowbar", "weapon_physgun", "weapon_physcannon", "weapon_pistol", "weapon_357",
+            "weapon_smg1", "weapon_ar2", "weapon_shotgun", "weapon_crossbow", "weapon_frag", "weapon_rpg",
+            "gmod_tool", "gmod_camera", "gmod_toolgun"
+        }
 
-    if not settings.addonEnabled then
         for _, weaponClass in ipairs(defaultWeapons) do
-            if not ply:HasWeapon(weaponClass) then
-                ply:Give(weaponClass)
-            end
+            ply:Give(weaponClass)
         end
+
         return
     end
 
-    if settings.nocustomrespawnatdeath and ply.wasKilled then
+    if RARELOAD.settings.nocustomrespawnatdeath and ply.wasKilled then
         ply.wasKilled = false
         return
     end
 
     local mapName = game.GetMap()
-    local savedInfo = playerPositions[mapName] and playerPositions[mapName][ply:SteamID()]
+    local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][ply:SteamID()]
 
-    if not savedInfo or not isnumber(savedInfo.moveType) then
-        print("[RARELOAD] Error: Invalid saved move type.")
+    if not savedInfo then
         return
     end
 
     local wasInNoclip = savedInfo.moveType == MOVETYPE_NOCLIP
     local wasFlying = savedInfo.moveType == MOVETYPE_FLY or savedInfo.moveType == MOVETYPE_FLYGRAVITY
     local wasOnLadder = savedInfo.moveType == MOVETYPE_LADDER
+    local wasSwimming = savedInfo.moveType == MOVETYPE_WALK or MOVETYPE_NONE
+
+    if not savedInfo.moveType or not isnumber(savedInfo.moveType) then
+        print("[RARELOAD] Error: Invalid saved move type.")
+        return
+    end
+
     local savedMoveType = tonumber(savedInfo.moveType) or MOVETYPE_WALK
 
-    if not settings.spawnModeEnabled then
-        if wasInNoclip or wasFlying or wasOnLadder then
+    if not RARELOAD.settings.spawnModeEnabled then
+        if wasInNoclip or wasFlying or wasOnLadder or wasSwimming then
             local traceResult = TraceLine(savedInfo.pos, savedInfo.pos - Vector(0, 0, 10000), ply, MASK_SOLID_BRUSHONLY)
 
             if not traceResult.Hit or not traceResult.HitPos then
@@ -367,7 +377,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         SetPlayerPositionAndEyeAngles(ply, savedInfo)
     end
 
-    if settings.retainInventory and savedInfo.inventory then
+    if RARELOAD.settings.retainInventory and savedInfo.inventory then
         ply:StripWeapons()
 
         for _, weaponClass in ipairs(savedInfo.inventory) do
@@ -375,7 +385,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         end
 
         if savedInfo.activeWeapon then
-            timer.Simple(0, function()
+            timer.Simple(0., function()
                 if IsValid(ply) and ply:HasWeapon(savedInfo.activeWeapon) then
                     ply:SelectWeapon(savedInfo.activeWeapon)
                 end
