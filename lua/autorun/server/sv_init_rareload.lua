@@ -385,7 +385,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         end
 
         if savedInfo.activeWeapon then
-            timer.Simple(0., function()
+            timer.Simple(0.6, function()
                 if IsValid(ply) and ply:HasWeapon(savedInfo.activeWeapon) then
                     ply:SelectWeapon(savedInfo.activeWeapon)
                 end
