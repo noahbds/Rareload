@@ -163,50 +163,42 @@ concommand.Add("save_position", function(ply, _, _)
     end
 
     ensureFolderExists()
-
     local mapName = game.GetMap()
     RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
 
     local newPos = ply:GetPos()
-    local oldPos = RARELOAD.playerPositions[mapName][ply:SteamID()] and
-        RARELOAD.playerPositions[mapName][ply:SteamID()].pos
+    local newActiveWeapon = ply:GetActiveWeapon() and ply:GetActiveWeapon():GetClass()
+    local newInventory = {}
+    for _, weapon in pairs(ply:GetWeapons()) do
+        table.insert(newInventory, weapon:GetClass())
+    end
 
-    if oldPos and oldPos == newPos then
-        return
-    elseif oldPos then
-        if not RARELOAD.settings.autoSaveEnabled then
+    local oldPosData = RARELOAD.playerPositions[mapName][ply:SteamID()]
+    if oldPosData and not RARELOAD.settings.autoSaveEnabled then
+        local oldPos = oldPosData.pos
+        local oldActiveWeapon = oldPosData.activeWeapon
+        local oldInventory = oldPosData.inventory
+        if oldPos == newPos and oldActiveWeapon == newActiveWeapon and table.concat(oldInventory) == table.concat(newInventory) then
+            return
+        else
             ply:PrintMessage(HUD_PRINTCONSOLE,
                 "Overwriting your previously saved position, camera orientation, and inventory.")
         end
     else
-        if not RARELOAD.settings.autoSaveEnabled then
-            ply:PrintMessage(HUD_PRINTCONSOLE, "Saved your current position, camera orientation, and inventory.")
-        end
+        ply:PrintMessage(HUD_PRINTCONSOLE, "Saved your current position, camera orientation, and inventory.")
     end
 
     local playerData = {
         pos = newPos,
         moveType = ply:GetMoveType(),
-        ang = ply:EyeAngles()
+        ang = ply:EyeAngles(),
+        activeWeapon = newActiveWeapon,
+        inventory = newInventory
     }
 
     if RARELOAD.settings.retainInventory then
-        local activeWeapon = ply:GetActiveWeapon()
-        if IsValid(activeWeapon) then
-            playerData.activeWeapon = activeWeapon:GetClass()
-        end
-
-        RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
-    end
-
-    if RARELOAD.settings.retainInventory then
-        local inventory = {}
-        for _, weapon in pairs(ply:GetWeapons()) do
-            if weapon.GetClass then
-                table.insert(inventory, weapon:GetClass())
-            end
-        end
-        playerData.inventory = inventory
+        playerData.inventory = newInventory
+        playerData.activeWeapon = newActiveWeapon
     end
 
     RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
@@ -294,13 +286,107 @@ hook.Add("PlayerDeath", "SetWasKilledFlag", function(ply)
     ply.wasKilled = true
 end)
 
+-- Function to trace a line (duh)
+local function TraceLine(start, endpos, filter, mask)
+    return util.TraceLine({
+        start = start,
+        endpos = endpos,
+        filter = filter,
+        mask = mask
+    })
+end
+
+-- Check if the position is walkable (used by FindWalkableGround)
+local function IsWalkable(pos, ply)
+    local checkTrace = TraceLine(pos, pos - Vector(0, 0, 100), ply, MASK_SOLID_BRUSHONLY)
+
+    if checkTrace.StartSolid or not checkTrace.Hit then
+        return false
+    end
+
+    local checkWaterTrace = TraceLine(checkTrace.HitPos, checkTrace.HitPos - Vector(0, 0, 100), ply, MASK_WATER)
+    local checkWaterAboveGround = TraceLine(checkTrace.HitPos + Vector(0, 0, 10), checkTrace.HitPos + Vector(0, 0, 110),
+        ply, MASK_WATER)
+
+    if checkWaterTrace.Hit or checkWaterAboveGround.Hit then
+        return false
+    end
+
+    return true, checkTrace.HitPos + Vector(0, 0, 10)
+end
+
+
+-- Find walkable ground for the player to spawn on (if togglemovetype is off)
+local function FindWalkableGround(startPos, ply)
+    local radius = 2000
+    local stepSize = 50
+    local zStepSize = 50
+    local angleStep = math.pi / 16
+
+    for i = 1, 10 do
+        local angle = 0
+        local r = stepSize
+        local z = 0
+        while r < radius do
+            local x = r * math.cos(angle)
+            local y = r * math.sin(angle)
+
+            local checkPos = startPos + Vector(x, y, z)
+            local isWalkable, walkablePos = IsWalkable(checkPos, ply)
+            if isWalkable then
+                return walkablePos
+            end
+
+            angle = angle + angleStep
+            if angle >= 2 * math.pi then
+                angle = angle - 2 * math.pi
+                r = r + stepSize
+                z = z + zStepSize
+            end
+        end
+
+        stepSize = stepSize + 50
+    end
+
+    return startPos
+end
+
+-- Set the player's position and eye angles (I dunno what this do but it's important (I think))
+local function SetPlayerPositionAndEyeAngles(ply, savedInfo)
+    ply:SetPos(savedInfo.pos)
+    local ang = Angle(savedInfo.ang[1], savedInfo.ang[2], savedInfo.ang[3])
+    ply:SetEyeAngles(ang)
+end
+
 -- Check the flag in the PlayerSpawn hook
 hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
     if not RARELOAD.settings.addonEnabled then
-        return false
+        local defaultWeapons = {
+            "weapon_crowbar",
+            "weapon_physgun",
+            "weapon_physcannon",
+            "weapon_pistol",
+            "weapon_357",
+            "weapon_smg1",
+            "weapon_ar2",
+            "weapon_shotgun",
+            "weapon_crossbow",
+            "weapon_frag",
+            "weapon_rpg",
+            "gmod_tool",
+            "gmod_camera",
+            "gmod_toolgun",
+        }
+
+        for _, weaponClass in ipairs(defaultWeapons) do
+            ply:Give(weaponClass)
+        end
+
+        return
     end
+
     if RARELOAD.settings.nocustomrespawnatdeath and ply.wasKilled then
-        ply.wasKilled = false -- Clear the flag
+        ply.wasKilled = false
         return
     end
 
@@ -366,7 +452,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         end
 
         if savedInfo.activeWeapon then
-            timer.Simple(1, function()
+            timer.Simple(0., function()
                 if IsValid(ply) and ply:HasWeapon(savedInfo.activeWeapon) then
                     ply:SelectWeapon(savedInfo.activeWeapon)
                 end
@@ -374,73 +460,6 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         end
     end
 end)
-
--- Function to trace a line
-function TraceLine(start, endpos, filter, mask)
-    return util.TraceLine({
-        start = start,
-        endpos = endpos,
-        filter = filter,
-        mask = mask
-    })
-end
-
--- Helper function to check if a position is walkable
-function IsWalkable(pos, ply)
-    local checkTrace = util.TraceLine({
-        start = pos,
-        endpos = pos - Vector(0, 0, 100),
-        filter = ply,
-        mask =
-            MASK_SOLID_BRUSHONLY
-    })
-    if checkTrace.Hit and not checkTrace.StartSolid then
-        local checkWaterTrace = util.TraceLine({
-            start = checkTrace.HitPos,
-            endpos = checkTrace.HitPos -
-                Vector(0, 0, 100),
-            filter = ply,
-            mask = MASK_WATER
-        })
-        if not checkWaterTrace.Hit then
-            if util.PointContents(checkTrace.HitPos) == CONTENTS_EMPTY then
-                return true, checkTrace.HitPos + Vector(0, 0, 10)
-            end
-        end
-    end
-    return false
-end
-
--- Find walkable ground for the player to spawn on
-function FindWalkableGround(startPos, ply)
-    local radius = 2000
-    local stepSize = 50
-
-    for r = stepSize, radius, stepSize do
-        for theta = 0, 2 * math.pi, math.pi / 16 do
-            for phi = 0, math.pi, math.pi / 16 do
-                local x = r * math.sin(phi) * math.cos(theta)
-                local y = r * math.sin(phi) * math.sin(theta)
-                local z = r * math.cos(phi)
-
-                local checkPos = startPos + Vector(x, y, z)
-                local isWalkable, walkablePos = IsWalkable(checkPos, ply)
-                if isWalkable then
-                    return walkablePos
-                end
-            end
-        end
-    end
-
-    error("Could not find walkable ground")
-end
-
--- Set the player's position and eye angles
-function SetPlayerPositionAndEyeAngles(ply, savedInfo)
-    ply:SetPos(savedInfo.pos)
-    local ang = Angle(savedInfo.ang[1], savedInfo.ang[2], savedInfo.ang[3])
-    ply:SetEyeAngles(ang)
-end
 
 function Save_position(ply)
     RunConsoleCommand("save_position")
