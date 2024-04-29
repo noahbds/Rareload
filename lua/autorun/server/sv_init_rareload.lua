@@ -31,10 +31,10 @@ end
 
 -- When this function is called, it will save the new addon settings to the addon state file
 local function saveAddonState()
-    local json = util.TableToJSON(RARELOAD.settings)
+    local json = util.TableToJSON(RARELOAD.settings, true)
     local success, err = pcall(file.Write, ADDON_STATE_FILE_PATH, json)
     if not success then
-        print("\27[31m[RARELOAD]\27[0m Failed to save addon state: " .. err)
+        print("[RARELOAD] Failed to save addon state: " .. err)
     end
 end
 
@@ -46,15 +46,18 @@ local function loadAddonState()
         if success then
             RARELOAD.settings = settings
         else
-            print("\27[31m[RARELOAD]\27[0m Failed to save addon state: " .. settings)
+            print("[RARELOAD] Failed to save addon state: " .. settings)
             RARELOAD.settings = getDefaultSettings()
             saveAddonState()
         end
     else
         RARELOAD.settings = getDefaultSettings()
+        ensureFolderExists()
         saveAddonState()
     end
 end
+
+loadAddonState()
 
 -- For the commands
 local function toggleSetting(ply, settingKey, message)
@@ -121,16 +124,16 @@ concommand.Add("save_position", function(ply, _, _)
             return
         else
             print(
-                "\27[31m[RARELOAD]\27[0m Overwriting your previously saved position, camera orientation, and inventory.")
+                "[RARELOAD] Overwriting your previously saved position, camera orientation, and inventory.")
         end
     else
-        print("\27[31m[RARELOAD]\27[0m Saved your current position, camera orientation, and inventory.")
+        print("[RARELOAD] Saved your current position, camera orientation, and inventory.")
     end
 
     local playerData = {
         pos = newPos,
         moveType = ply:GetMoveType(),
-        ang = ply:EyeAngles(),
+        ang = { ply:EyeAngles().p, ply:EyeAngles().y, ply:EyeAngles().r },
         activeWeapon = newActiveWeapon,
         inventory = newInventory
     }
@@ -160,18 +163,19 @@ hook.Add("InitPostEntity", "LoadPlayerPosition", function()
 
     if RARELOAD.settings.printMessageEnabled then
         local settings = {
-            { name = "addonEnabled",        message = "Respawn at Reload addon" },
-            { name = "spawnModeEnabled",    message = "Spawn with saved move type" },
-            { name = "autoSaveEnabled",     message = "Auto-save position" },
-            { name = "printMessageEnabled", message = "Print message" },
-            { name = "retainInventory",     message = "Retain inventory" }
+            { name = "addonEnabled",           message = "Respawn at Reload addon" },
+            { name = "spawnModeEnabled",       message = "Spawn with saved move type" },
+            { name = "autoSaveEnabled",        message = "Auto-save position" },
+            { name = "printMessageEnabled",    message = "Print message" },
+            { name = "retainInventory",        message = "Retain inventory" },
+            { name = "nocustomrespawnatdeath", message = "No Custom Respawn at Death" }
         }
 
         for i, setting in ipairs(settings) do
             if RARELOAD.settings[setting.name] then
-                print("\27[31m[RARELOAD]\27[0m " .. setting.message .. " is enabled.")
+                print("[RARELOAD] " .. setting.message .. " is enabled.")
             else
-                print("\27[31m[RARELOAD]\27[0m " .. setting.message .. " is disabled.")
+                print("[RARELOAD] " .. setting.message .. " is disabled.")
             end
         end
     end
@@ -189,13 +193,13 @@ hook.Add("InitPostEntity", "LoadPlayerPosition", function()
             if status then
                 RARELOAD.playerPositions = result
             else
-                print("\27[31m[RARELOAD]\27[0m Error parsing JSON: " .. result)
+                print("[RARELOAD] Error parsing JSON: " .. result)
             end
         else
-            print("\27[31m[RARELOAD]\27[0m File is empty: " .. filePath)
+            print("[RARELOAD] File is empty: " .. filePath)
         end
     else
-        print("\27[31m[RARELOAD]\27[0m File does not exist: " .. filePath)
+        print("[RARELOAD] File does not exist: " .. filePath)
     end
 end)
 
@@ -209,7 +213,7 @@ hook.Add("PlayerDisconnect", "SavePlayerPositionDisconnect", function(ply)
     RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
     RARELOAD.playerPositions[mapName][ply:SteamID()] = {
         pos = ply:GetPos(),
-        moveType = ply:GetMoveType()
+        moveType = ply:GetMoveType(),
     }
 end)
 
@@ -278,8 +282,18 @@ end
 -- Set the player's position and eye angles
 local function SetPlayerPositionAndEyeAngles(ply, savedInfo)
     ply:SetPos(savedInfo.pos)
-    ply:SetEyeAngles(Angle(unpack(savedInfo.ang)))
+
+    -- Check if 'ang' is a string or a table
+    local angTable = type(savedInfo.ang) == "string" and util.JSONToTable(savedInfo.ang) or savedInfo.ang
+
+    if type(angTable) == "table" and #angTable == 3 then
+        ply:SetEyeAngles(Angle(angTable[1], angTable[2], angTable[3]))
+    else
+        print("Error: Invalid angle data.")
+    end
 end
+
+
 
 hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
     local settings = RARELOAD.settings
@@ -308,7 +322,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
     local savedInfo = playerPositions[mapName] and playerPositions[mapName][ply:SteamID()]
 
     if not savedInfo or not isnumber(savedInfo.moveType) then
-        print("\27[31m[RARELOAD]\27[0m Error: Invalid saved move type.")
+        print("[RARELOAD] Error: Invalid saved move type.")
         return
     end
 
@@ -322,7 +336,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
             local traceResult = TraceLine(savedInfo.pos, savedInfo.pos - Vector(0, 0, 10000), ply, MASK_SOLID_BRUSHONLY)
 
             if not traceResult.Hit or not traceResult.HitPos then
-                print("\27[31m[RARELOAD]\27[0m No walkable ground found. Custom spawn prevented.")
+                print("[RARELOAD] No walkable ground found. Custom spawn prevented.")
                 return
             end
 
@@ -332,13 +346,13 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
                 local foundPos = FindWalkableGround(traceResult.HitPos, ply)
 
                 if not foundPos then
-                    print("\27[31m[RARELOAD]\27[0m No walkable ground found. Custom spawn prevented.")
+                    print("[RARELOAD] No walkable ground found. Custom spawn prevented.")
                     return
                 end
 
                 ply:SetPos(foundPos)
                 ply:SetMoveType(MOVETYPE_NONE)
-                print("\27[31m[RARELOAD]\27[0m Found walkable ground for player spawn.")
+                print("[RARELOAD] Found walkable ground for player spawn.")
                 return
             end
 
@@ -348,7 +362,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
             SetPlayerPositionAndEyeAngles(ply, savedInfo)
         end
     else
-        print("\27[31m[RARELOAD]\27[0m Setting move type to: " .. tostring(savedMoveType))
+        print("[RARELOAD] Setting move type to: " .. tostring(savedMoveType))
         timer.Simple(0, function() ply:SetMoveType(savedMoveType) end)
         SetPlayerPositionAndEyeAngles(ply, savedInfo)
     end
@@ -391,6 +405,6 @@ hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
     ply.lastSavedPosition = currentPos
     ply.lastSavedWeapons = currentWeapons
     if RARELOAD.settings.printMessageEnabled then
-        print("\27[31m[RARELOAD]\27[0m Auto Save: Saved your current position, camera orientation and weapon inventory.")
+        print("[RARELOAD] Auto Save: Saved your current position, camera orientation and weapon inventory.")
     end
 end)
