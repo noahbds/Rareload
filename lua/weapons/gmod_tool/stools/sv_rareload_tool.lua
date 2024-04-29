@@ -1,3 +1,5 @@
+-- lua/weapons/gmod_tool/stools/sv_rareload_tool.lua
+
 local RARELOAD  = {}
 
 TOOL            = TOOL or {}
@@ -11,39 +13,20 @@ if CLIENT then
     language.Add("tool.sv_rareload_tool.desc", "Configuration Panel For Rareload Addon.")
     language.Add("tool.sv_rareload_tool.0", "By Noahbds")
 
-    local fontParams = { font = "Arial", size = 20.9, weight = 1000, antialias = true, additive = false }
-    local fontParams2 = { font = "Arial", size = 31, weight = 1000, antialias = true, additive = false }
+    local fontParams = { font = "Arial", size = 20.9, weight = 2000, antialias = true, additive = false }
+    local fontParams2 = { font = "Arial", size = 31, weight = 2000, antialias = true, additive = false }
 
     surface.CreateFont("CTNV", fontParams)
     surface.CreateFont("CTNV2", fontParams2)
 end
 
 
--- Function to load addon state from file
-local function loadAddonState()
-    local addonStateFilePath = "rareload/addon_state.txt"
-    RARELOAD.settings = {}
-
+-- Used here beacuse of the way the toolgun works (The button color use addon_state). Wanted to do a shared, didn't worked (I'm bad at lua)
+local function loadAddonStatefortool()
+    local addonStateFilePath = "rareload/addon_state.json"
     if file.Exists(addonStateFilePath, "DATA") then
-        local addonStateData = file.Read(addonStateFilePath, "DATA")
-        local addonStateLines = string.Explode("\n", addonStateData)
-
-        RARELOAD.settings.addonEnabled = addonStateLines[1] and addonStateLines[1]:lower() == "true"
-        RARELOAD.settings.spawnModeEnabled = addonStateLines[2] and addonStateLines[2]:lower() == "true"
-        RARELOAD.settings.autoSaveEnabled = addonStateLines[3] and addonStateLines[3]:lower() == "true"
-        RARELOAD.settings.printMessageEnabled = addonStateLines[4] and addonStateLines[4]:lower() == "true"
-        RARELOAD.settings.retainInventory = addonStateLines[5] and addonStateLines[5]:lower() == "true"
-        RARELOAD.settings.nocustomrespawnatdeath = addonStateLines[6] and addonStateLines[6]:lower() == "true"
-    else
-        local addonStateData = "true\ntrue\nfalse\ntrue\nfalse\nfalse"
-        file.Write(addonStateFilePath, addonStateData)
-
-        RARELOAD.settings.addonEnabled = true
-        RARELOAD.settings.spawnModeEnabled = true
-        RARELOAD.settings.autoSaveEnabled = false
-        RARELOAD.settings.printMessageEnabled = true
-        RARELOAD.settings.retainInventory = false
-        RARELOAD.settings.nocustomrespawnatdeath = false
+        local json = file.Read(addonStateFilePath, "DATA")
+        RARELOAD.settings = util.JSONToTable(json)
     end
 end
 
@@ -77,7 +60,7 @@ local function createButton(parent, text, command, tooltip, isEnabled)
 end
 
 function TOOL.BuildCPanel(panel)
-    local success, err = pcall(loadAddonState)
+    local success, err = pcall(loadAddonStatefortool)
     if not success then
         ErrorNoHalt("Failed to load addon state: " .. err)
         return
@@ -114,7 +97,7 @@ function TOOL.BuildCPanel(panel)
 end
 
 function TOOL:DrawToolScreen(width, height)
-    local success, err = pcall(loadAddonState)
+    local success, err = pcall(loadAddonStatefortool)
     if not success then
         ErrorNoHalt("Failed to load addon state: " .. err)
         return
