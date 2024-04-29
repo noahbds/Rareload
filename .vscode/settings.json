@@ -1,10 +1,10 @@
 {
   "Lua.diagnostics.globals": [],
   "Lua.workspace.library": [
-    "C:/Users/eblen/AppData/Roaming/Code/User/globalStorage/sumneko.lua/addonManager/addons/garrysmod/module/library"
+    "/Users/noah/Library/Application Support/Code/User/globalStorage/sumneko.lua/addonManager/addons/garrysmod/module/library"
   ],
   "Lua.runtime.version": "Lua 5.1",
-  "Lua.runtime.nonstandardSymbol": ["continue"],
+  "Lua.runtime.nonstandardSymbol": ["continue", "/**/"],
   "Lua.diagnostics.disable": ["duplicate-set-field"],
   "Lua.workspace.checkThirdParty": false,
   "Lua.runtime.special": {
