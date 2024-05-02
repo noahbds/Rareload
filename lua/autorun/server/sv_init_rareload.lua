@@ -71,14 +71,14 @@ loadAddonState()
 -- For the commands
 local function toggleSetting(ply, settingKey, message)
     if not ply:IsSuperAdmin() then
-        ply:ChatPrint("[RARELOAD] You do not have permission to use this command.")
+        print("[RARELOAD] You do not have permission to use this command.")
         return
     end
 
     RARELOAD.settings[settingKey] = not RARELOAD.settings[settingKey]
 
     local status = RARELOAD.settings[settingKey] and "enabled" or "disabled"
-    ply:ChatPrint("[RARELOAD]" .. message .. " is now " .. status)
+    print("[RARELOAD]" .. message .. " is now " .. status)
 
     saveAddonState()
 end
@@ -236,10 +236,10 @@ hook.Add("PlayerDisconnect", "SavePlayerPositionDisconnect", function(ply)
     }
 
     if RARELOAD.settings.debugEnabled then
-        print("Player " ..
+        print("[RARELOAD DEBUG] Player " ..
             ply:SteamID() ..
             " disconnected. Saved position: " .. tostring(RARELOAD.playerPositions[mapName][ply:SteamID()].pos))
-        print("Player " ..
+        print("[RARELOAD DEBUG] Player " ..
             ply:SteamID() ..
             " disconnected. Saved move type: " .. tostring(RARELOAD.playerPositions[mapName][ply:SteamID()].moveType))
     end
@@ -264,7 +264,7 @@ end
 local function IsWalkable(pos, ply)
     if not util.IsInWorld(pos) then
         if RARELOAD.settings.debugEnabled then
-            print("Position not in world: ", pos, " - RED")
+            print("[RARELOAD DEBUG] Position not in world: ", pos, " - RED")
         end
         return false
     end
@@ -273,7 +273,7 @@ local function IsWalkable(pos, ply)
 
     if checkTrace.StartSolid or not checkTrace.Hit then
         if RARELOAD.settings.debugEnabled then
-            print("Position start solid or not hit: ", pos, " - RED")
+            print("[RARELOAD DEBUG] Position start solid or not hit: ", pos, " - RED")
         end
         return false
     end
@@ -284,13 +284,13 @@ local function IsWalkable(pos, ply)
 
     if checkWaterTrace.Hit or checkWaterAboveGround.Hit then
         if RARELOAD.settings.debugEnabled then
-            print("Position hit water: ", pos, " - RED")
+            print("[RARELOAD DEBUG] Position hit water: ", pos, " - RED")
         end
         return false
     end
 
     if RARELOAD.settings.debugEnabled then
-        print("Position is walkable: ", pos, " - BLUE")
+        print("[RARELOAD DEBUG] Position is walkable: ", pos, " - BLUE")
     end
 
     return true, checkTrace.HitPos + Vector(0, 0, 10)
@@ -347,7 +347,7 @@ end
 
 
 hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
-    if RARELOAD.settings.debugEnabled then print("[DEBUG] PlayerSpawn hook triggered") end
+    if RARELOAD.settings.debugEnabled then print("[RARELOAD DEBUG] PlayerSpawn hook triggered") end
 
     if not RARELOAD.settings.addonEnabled then
         local defaultWeapons = {
