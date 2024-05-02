@@ -1,4 +1,4 @@
-# RareLoad - Gmod Addon [Keep Position and Weapons when reloading]
+# RareLoad - Gmod Addon [Keep Position and Weapons after reloading or dying]
 
 Features:
 
