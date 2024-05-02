@@ -16,6 +16,7 @@ local function getDefaultSettings()
         printMessageEnabled = true,
         retainInventory = false,
         nocustomrespawnatdeath = false,
+        debugEnabled = false,
     }
 end
 
@@ -36,6 +37,11 @@ local function saveAddonState()
     if not success then
         print("[RARELOAD] Failed to save addon state: " .. err)
     end
+
+    -- If debug is enabled, print the JSON string to the console
+    if RARELOAD.settings.debugEnabled then
+        print("[RARELOAD DEBUG] Debug: " .. json)
+    end
 end
 
 -- Function to load addon state from file
@@ -45,6 +51,9 @@ local function loadAddonState()
         local success, settings = pcall(util.JSONToTable, json)
         if success then
             RARELOAD.settings = settings
+            if RARELOAD.settings.debugEnabled then
+                print("[RARELOAD DEBUG] JSON data: " .. json)
+            end
         else
             print("[RARELOAD] Failed to save addon state: " .. settings)
             RARELOAD.settings = getDefaultSettings()
@@ -100,7 +109,7 @@ end)
 
 concommand.Add("save_position", function(ply, _, _)
     if not RARELOAD.settings.addonEnabled then
-        ply:ChatPrint("[RARELOAD] The Respawn at Reload addon is disabled.")
+        print("[RARELOAD] The Respawn at Reload addon is disabled.")
         return
     end
 
@@ -144,6 +153,15 @@ concommand.Add("save_position", function(ply, _, _)
     end
 
     RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
+
+    if RARELOAD.settings.debugEnabled then
+        print("[RARELOAD DEBUG] Debug Information:")
+        print("Map Name: ", mapName)
+        print("New Position: ", newPos)
+        print("New Active Weapon: ", newActiveWeapon)
+        print("New Inventory: ", table.concat(newInventory, ', '))
+        print("Player Data: ", playerData)
+    end
 end)
 
 
@@ -168,7 +186,8 @@ hook.Add("InitPostEntity", "LoadPlayerPosition", function()
             { name = "autoSaveEnabled",        message = "Auto-save position" },
             { name = "printMessageEnabled",    message = "Print message" },
             { name = "retainInventory",        message = "Retain inventory" },
-            { name = "nocustomrespawnatdeath", message = "No Custom Respawn at Death" }
+            { name = "nocustomrespawnatdeath", message = "No Custom Respawn at Death" },
+            { name = "debugEnabled",           message = "Debug mode" }
         }
 
         for i, setting in ipairs(settings) do
@@ -215,6 +234,15 @@ hook.Add("PlayerDisconnect", "SavePlayerPositionDisconnect", function(ply)
         pos = ply:GetPos(),
         moveType = ply:GetMoveType(),
     }
+
+    if RARELOAD.settings.debugEnabled then
+        print("Player " ..
+            ply:SteamID() ..
+            " disconnected. Saved position: " .. tostring(RARELOAD.playerPositions[mapName][ply:SteamID()].pos))
+        print("Player " ..
+            ply:SteamID() ..
+            " disconnected. Saved move type: " .. tostring(RARELOAD.playerPositions[mapName][ply:SteamID()].moveType))
+    end
 end)
 
 -- Add a flag to the player when they die
@@ -234,9 +262,19 @@ end
 
 -- Check if the position is walkable (used by FindWalkableGround)
 local function IsWalkable(pos, ply)
+    if not util.IsInWorld(pos) then
+        if RARELOAD.settings.debugEnabled then
+            print("Position not in world: ", pos, " - RED")
+        end
+        return false
+    end
+
     local checkTrace = TraceLine(pos, pos - Vector(0, 0, 100), ply, MASK_SOLID_BRUSHONLY)
 
     if checkTrace.StartSolid or not checkTrace.Hit then
+        if RARELOAD.settings.debugEnabled then
+            print("Position start solid or not hit: ", pos, " - RED")
+        end
         return false
     end
 
@@ -245,7 +283,14 @@ local function IsWalkable(pos, ply)
         ply, MASK_WATER)
 
     if checkWaterTrace.Hit or checkWaterAboveGround.Hit then
+        if RARELOAD.settings.debugEnabled then
+            print("Position hit water: ", pos, " - RED")
+        end
         return false
+    end
+
+    if RARELOAD.settings.debugEnabled then
+        print("Position is walkable: ", pos, " - BLUE")
     end
 
     return true, checkTrace.HitPos + Vector(0, 0, 10)
@@ -291,7 +336,6 @@ end
 local function SetPlayerPositionAndEyeAngles(ply, savedInfo)
     ply:SetPos(savedInfo.pos)
 
-    -- Check if 'ang' is a string or a table
     local angTable = type(savedInfo.ang) == "string" and util.JSONToTable(savedInfo.ang) or savedInfo.ang
 
     if type(angTable) == "table" and #angTable == 3 then
@@ -303,6 +347,8 @@ end
 
 
 hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
+    if RARELOAD.settings.debugEnabled then print("[DEBUG] PlayerSpawn hook triggered") end
+
     if not RARELOAD.settings.addonEnabled then
         local defaultWeapons = {
             "weapon_crowbar", "weapon_physgun", "weapon_physcannon", "weapon_pistol", "weapon_357",
@@ -314,11 +360,13 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
             ply:Give(weaponClass)
         end
 
+        if RARELOAD.settings.debugEnabled then print("[RARELOAD DEBUG] Addon disabled, gave default weapons") end
         return
     end
 
     if RARELOAD.settings.nocustomrespawnatdeath and ply.wasKilled then
         ply.wasKilled = false
+        if RARELOAD.settings.debugEnabled then print("[RARELOAD DEBUG] Player was killed, resetting wasKilled flag") end
         return
     end
 
@@ -326,6 +374,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
     local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][ply:SteamID()]
 
     if not savedInfo then
+        if RARELOAD.settings.debugEnabled then print("[RARELOAD DEBUG] No saved player info found") end
         return
     end
 
@@ -340,6 +389,8 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
     end
 
     local savedMoveType = tonumber(savedInfo.moveType) or MOVETYPE_WALK
+
+    if RARELOAD.settings.debugEnabled then print("[RARELOAD DEBUG] Saved move type: " .. tostring(savedMoveType)) end
 
     if not RARELOAD.settings.spawnModeEnabled then
         if wasInNoclip or wasFlying or wasOnLadder or wasSwimming then

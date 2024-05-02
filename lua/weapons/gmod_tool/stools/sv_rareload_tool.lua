@@ -84,6 +84,9 @@ function TOOL.BuildCPanel(panel)
     createButton(panel, "Toggle No Custom Respawn At Death", "toggle_nocustomrespawnatdeath",
         "Enable or disable No Custom Respawn At Death", RARELOAD.settings.nocustomrespawnatdeath)
 
+    createButton(panel, "Toggle Debug", "toggle_debug",
+        "Enable or disable Debug", RARELOAD.settings.debugEnabled)
+
     ---@class DButton
     local savePositionButton = vgui.Create("DButton", panel)
     savePositionButton:SetText("Save Position")
@@ -131,7 +134,8 @@ function TOOL:DrawToolScreen(width, height)
         { name = "Auto Save",            enabled = RARELOAD.settings.autoSaveEnabled },
         { name = "Print Messages",       enabled = RARELOAD.settings.printMessageEnabled },
         { name = "Keep Inventory",       enabled = RARELOAD.settings.retainInventory },
-        { name = "No Rareload At Death", enabled = RARELOAD.settings.nocustomrespawnatdeath }
+        { name = "No Rareload At Death", enabled = RARELOAD.settings.nocustomrespawnatdeath },
+        { name = "Debug",                enabled = RARELOAD.settings.debugEnabled }
     }
 
     for i, setting in ipairs(settings) do
