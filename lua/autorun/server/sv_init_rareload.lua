@@ -1,5 +1,7 @@
 -- lua/autorun/server/init.lua
 
+-- This Where the functions and variables are stored
+
 -- Rareload is a Garry's Mod addon that allows players to respawn at their last saved position, camera orientation, and inventory.
 RARELOAD = {}
 
@@ -67,6 +69,15 @@ end
 
 -- Check if the position is walkable (used by FindWalkableGround)
 function IsWalkable(pos, ply)
+    local minHeight = -10000
+
+    if pos.z < minHeight then
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Position below map: ", pos, " - RED")
+        end
+        return false
+    end
+
     if not util.IsInWorld(pos) then
         if RARELOAD.settings.debugEnabled then
             print("[RARELOAD DEBUG] Position not in world: ", pos, " - RED")
@@ -74,22 +85,44 @@ function IsWalkable(pos, ply)
         return false
     end
 
-    local checkTrace = TraceLine(pos, pos - Vector(0, 0, 100), ply, MASK_SOLID_BRUSHONLY)
+    local hullTrace = util.TraceHull({
+        start = pos,
+        endpos = pos,
+        mins = ply:OBBMins(),
+        maxs = ply:OBBMaxs(),
+        filter = ply,
+        mask = MASK_PLAYERSOLID
+    })
 
-    if checkTrace.StartSolid or not checkTrace.Hit then
+    if hullTrace.Hit or hullTrace.StartSolid then
         if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD DEBUG] Position start solid or not hit: ", pos, " - RED")
+            print("[RARELOAD DEBUG] Position blocked by solid object: ", pos, " - RED")
         end
         return false
     end
 
-    local checkWaterTrace = TraceLine(checkTrace.HitPos, checkTrace.HitPos - Vector(0, 0, 100), ply, MASK_WATER)
-    local checkWaterAboveGround = TraceLine(checkTrace.HitPos + Vector(0, 0, 10), checkTrace.HitPos + Vector(0, 0, 110),
-        ply, MASK_WATER)
+    local waterTrace = util.TraceLine({
+        start = pos,
+        endpos = pos - Vector(0, 0, 1),
+        mask = MASK_WATER
+    })
 
-    if checkWaterTrace.Hit or checkWaterAboveGround.Hit then
+    if waterTrace.Hit then
         if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD DEBUG] Position hit water: ", pos, " - RED")
+            print("[RARELOAD DEBUG] Position in water: ", pos, " - RED")
+        end
+        return false
+    end
+
+    local groundTrace = util.TraceLine({
+        start = pos,
+        endpos = pos - Vector(0, 0, 50),
+        mask = MASK_SOLID_BRUSHONLY
+    })
+
+    if not groundTrace.Hit then
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] No ground found below position: ", pos, " - RED")
         end
         return false
     end
@@ -98,7 +131,7 @@ function IsWalkable(pos, ply)
         print("[RARELOAD DEBUG] Position is walkable: ", pos, " - BLUE")
     end
 
-    return true, checkTrace.HitPos + Vector(0, 0, 10)
+    return true, pos
 end
 
 -- Function to trace a line (duh)
