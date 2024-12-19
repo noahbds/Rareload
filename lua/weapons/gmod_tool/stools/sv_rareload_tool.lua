@@ -20,7 +20,6 @@ if CLIENT then
     surface.CreateFont("CTNV2", fontParams2)
 end
 
-
 -- Used here beacuse of the way the toolgun works (The button color use addon_state). Wanted to do a shared, didn't worked (I'm bad at lua)
 local function loadAddonStatefortool()
     local addonStateFilePath = "rareload/addon_state.json"
@@ -74,9 +73,6 @@ function TOOL.BuildCPanel(panel)
 
     createButton(panel, "Toggle Auto Save", "toggle_auto_save",
         "Enable or Disable Auto Saving Position", RARELOAD.settings.autoSaveEnabled)
-
-    createButton(panel, "Toggle Print Messages", "toggle_print_message",
-        "Enable or Disable Monitoring Messages in Console", RARELOAD.settings.printMessageEnabled)
 
     createButton(panel, "Toggle Keep Inventory", "toggle_retain_inventory",
         "Enable or disable retaining inventory", RARELOAD.settings.retainInventory)
@@ -132,7 +128,6 @@ function TOOL:DrawToolScreen(width, height)
         { name = "Rareload",             enabled = RARELOAD.settings.addonEnabled },
         { name = "Move Type",            enabled = RARELOAD.settings.spawnModeEnabled },
         { name = "Auto Save",            enabled = RARELOAD.settings.autoSaveEnabled },
-        { name = "Print Messages",       enabled = RARELOAD.settings.printMessageEnabled },
         { name = "Keep Inventory",       enabled = RARELOAD.settings.retainInventory },
         { name = "No Rareload At Death", enabled = RARELOAD.settings.nocustomrespawnatdeath },
         { name = "Debug",                enabled = RARELOAD.settings.debugEnabled }
