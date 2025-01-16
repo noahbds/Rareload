@@ -18,6 +18,7 @@ function GetDefaultSettings()
         retainInventory = false,
         nocustomrespawnatdeath = false,
         debugEnabled = false,
+        useSpawnPointEntity = true,
     }
 end
 
@@ -190,6 +191,105 @@ function SetPlayerPositionAndEyeAngles(ply, savedInfo)
     else
         print("[RARELOAD] Error: Invalid angle data.")
     end
+end
+
+-- Function to create a spawn point entity
+function CreateSpawnPoint(ply, savedInfo)
+    if not RARELOAD.settings.useSpawnPointEntity then
+        return nil -- Do not create the entity if the setting is disabled
+    end
+
+    local spawnPoint = ents.Create("ent_rareload_spawnpoint")
+    if not IsValid(spawnPoint) then return end
+
+    spawnPoint:SetPos(savedInfo.pos)
+    spawnPoint:Spawn()
+
+    local function isValidSpawnPoint(ent)
+        local pos = ent:GetPos()
+        if pos.z < -10000 or not util.IsInWorld(pos) then
+            return false
+        end
+
+        local hullTrace = util.TraceHull({
+            start = pos,
+            endpos = pos,
+            mins = ply:OBBMins(),
+            maxs = ply:OBBMaxs(),
+            filter = ply,
+            mask = MASK_PLAYERSOLID
+        })
+
+        if hullTrace.Hit or hullTrace.StartSolid then
+            return false
+        end
+
+        local waterTrace = util.TraceLine({
+            start = pos,
+            endpos = pos - Vector(0, 0, 1),
+            mask = MASK_WATER
+        })
+
+        if waterTrace.Hit then
+            return false
+        end
+
+        local groundTrace = util.TraceLine({
+            start = pos,
+            endpos = pos - Vector(0, 0, 50),
+            mask = MASK_SOLID_BRUSHONLY
+        })
+
+        if not groundTrace.Hit then
+            return false
+        end
+
+        return true
+    end
+
+    local function adjustSpawnPoint(ent)
+        local pos = ent:GetPos()
+        local radius = 2000
+        local stepSize = 50
+        local zStepSize = 50
+        local angleStep = math.pi / 16
+
+        for i = 1, 10 do
+            local angle = 0
+            local r = stepSize
+            local z = 0
+            while r < radius do
+                local x = r * math.cos(angle)
+                local y = r * math.sin(angle)
+
+                local checkPos = pos + Vector(x, y, z)
+                ent:SetPos(checkPos)
+                if isValidSpawnPoint(ent) then
+                    return true
+                end
+
+                angle = angle + angleStep
+                if angle >= 2 * math.pi then
+                    angle = angle - 2 * math.pi
+                    r = r + stepSize
+                    z = z + zStepSize
+                end
+            end
+
+            stepSize = stepSize + 50
+        end
+
+        return false
+    end
+
+    if not isValidSpawnPoint(spawnPoint) then
+        if not adjustSpawnPoint(spawnPoint) then
+            spawnPoint:Remove()
+            return nil
+        end
+    end
+
+    return spawnPoint
 end
 
 LoadAddonState()

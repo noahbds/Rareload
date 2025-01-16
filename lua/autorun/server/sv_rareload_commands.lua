@@ -36,6 +36,10 @@ concommand.Add("toggle_debug", function(ply)
     toggleSetting(ply, 'debugEnabled', 'Debug mode')
 end)
 
+concommand.Add("toggle_use_spawn_point_entity", function(ply)
+    toggleSetting(ply, 'useSpawnPointEntity', 'Use Entity Spawn Point')
+end)
+
 concommand.Add("save_position", function(ply, _, _)
     if not RARELOAD.settings.addonEnabled then
         print("[RARELOAD DEBUG] The Respawn at Reload addon is disabled.")
