@@ -114,28 +114,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         return
     end
 
-    local spawnPoint = CreateSpawnPoint(ply, savedInfo)
-    if spawnPoint then
-        if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD] Movetype not toggled, spawned entity to saved position to prevent incorrect respawn")
-        end
-
-        local validPos = spawnPoint:GetPos()
-        ply:SetPos(validPos)
-        savedInfo.pos = validPos
-
-        RARELOAD.playerPositions[mapName][ply:SteamID()].pos = validPos
-        SaveAddonState()
-
-        if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD] Position from entity saved")
-        end
-
-        spawnPoint:Remove()
-    else
-        ply:SetPos(savedInfo.pos)
-    end
-
+    ply:SetPos(savedInfo.pos)
 
     if not RARELOAD.settings.spawnModeEnabled then
         HandleSpawnModeDisabled(ply, savedInfo)
@@ -189,8 +168,6 @@ hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
     ply.lastSavedWeapons = currentWeapons
 end)
 
-
--- lua/autorun/server/sv_rareload_hooks.lua
 
 hook.Add("PostDrawOpaqueRenderables", "DrawSpawnPointFrame", function()
     if not RARELOAD.settings.debugEnabled then return end

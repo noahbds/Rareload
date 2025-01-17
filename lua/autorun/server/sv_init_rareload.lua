@@ -268,6 +268,20 @@ function CreateSpawnPoint(ply, savedInfo)
                     return true
                 end
 
+                -- Check further above
+                checkPos = pos + Vector(x, y, z + zStepSize)
+                ent:SetPos(checkPos)
+                if isValidSpawnPoint(ent) then
+                    return true
+                end
+
+                -- Check further down
+                checkPos = pos + Vector(x, y, z - zStepSize)
+                ent:SetPos(checkPos)
+                if isValidSpawnPoint(ent) then
+                    return true
+                end
+
                 angle = angle + angleStep
                 if angle >= 2 * math.pi then
                     angle = angle - 2 * math.pi
@@ -286,6 +300,22 @@ function CreateSpawnPoint(ply, savedInfo)
         if not adjustSpawnPoint(spawnPoint) then
             spawnPoint:Remove()
             return nil
+        end
+    end
+
+    -- Debug visualization for the radius
+    if RARELOAD.settings.debugEnabled then
+        local debugRadius = 2000
+        local debugStepSize = 50
+        local debugAngleStep = math.pi / 16
+
+        for angle = 0, 2 * math.pi, debugAngleStep do
+            for r = debugStepSize, debugRadius, debugStepSize do
+                local x = r * math.cos(angle)
+                local y = r * math.sin(angle)
+                local debugPos = spawnPoint:GetPos() + Vector(x, y, 0)
+                debugoverlay.Cross(debugPos, 10, 5, Color(255, 0, 0), true)
+            end
         end
     end
 
