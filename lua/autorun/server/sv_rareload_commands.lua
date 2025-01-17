@@ -36,10 +36,6 @@ concommand.Add("toggle_debug", function(ply)
     toggleSetting(ply, 'debugEnabled', 'Debug mode')
 end)
 
-concommand.Add("toggle_use_spawn_point_entity", function(ply)
-    toggleSetting(ply, 'useSpawnPointEntity', 'Use Entity Spawn Point')
-end)
-
 concommand.Add("save_position", function(ply, _, _)
     if not RARELOAD.settings.addonEnabled then
         print("[RARELOAD DEBUG] The Respawn at Reload addon is disabled.")
@@ -50,9 +46,7 @@ concommand.Add("save_position", function(ply, _, _)
     local mapName = game.GetMap()
     RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
 
-    if not RARELOAD.settings.useSpawnPointEntity then
-        NewPos = ply:GetPos()
-    end
+    local newPos = ply:GetPos()
     local newActiveWeapon = ply:GetActiveWeapon() and ply:GetActiveWeapon():GetClass()
     local newInventory = {}
     for _, weapon in pairs(ply:GetWeapons()) do
@@ -64,17 +58,18 @@ concommand.Add("save_position", function(ply, _, _)
         local oldPos = oldPosData.pos
         local oldActiveWeapon = oldPosData.activeWeapon
         local oldInventory = oldPosData.inventory
-        if oldPos == NewPos and oldActiveWeapon == newActiveWeapon and table.concat(oldInventory) == table.concat(newInventory) then
+        if oldPos == newPos and oldActiveWeapon == newActiveWeapon and table.concat(oldInventory) == table.concat(newInventory) then
             return
         else
-            print("[RARELOAD] Overwriting your previously saved position, camera orientation, and inventory.")
+            print(
+                "[RARELOAD] Overwriting your previously saved position, camera orientation, and inventory.")
         end
     else
         print("[RARELOAD DEBUG] Saved your current position, camera orientation, and inventory.")
     end
 
     local playerData = {
-        pos = NewPos,
+        pos = newPos,
         moveType = ply:GetMoveType(),
         ang = { ply:EyeAngles().p, ply:EyeAngles().y, ply:EyeAngles().r },
         activeWeapon = newActiveWeapon,
@@ -86,22 +81,7 @@ concommand.Add("save_position", function(ply, _, _)
         playerData.activeWeapon = newActiveWeapon
     end
 
-    if RARELOAD.settings.useSpawnPointEntity then
-        local spawnPoint = CreateSpawnPoint(ply, playerData)
-        if spawnPoint then
-            local validPos = spawnPoint:GetPos()
-            NewPos = validPos
-            RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
-            SaveAddonState()
-            spawnPoint:Remove()
-        else
-            RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
-            SaveAddonState()
-        end
-    else
-        RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
-        SaveAddonState()
-    end
+    RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
 
     if RARELOAD.settings.debugEnabled then
         print("\n" .. "[=====================================================================]")

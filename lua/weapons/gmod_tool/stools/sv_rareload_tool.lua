@@ -83,9 +83,6 @@ function TOOL.BuildCPanel(panel)
     createButton(panel, "Toggle Debug", "toggle_debug",
         "Enable or disable Debug", RARELOAD.settings.debugEnabled)
 
-    createButton(panel, "Toggle Use Entity Spawn Point", "toggle_use_spawn_point_entity",
-        "Enable or disable Use Entity Spawn Point", RARELOAD.settings.useSpawnPointEntity)
-
     ---@class DButton
     local savePositionButton = vgui.Create("DButton", panel)
     savePositionButton:SetText("Save Position")
@@ -128,13 +125,12 @@ function TOOL:DrawToolScreen(width, height)
     local spacing = 30
 
     local settings = {
-        { name = "Rareload",               enabled = RARELOAD.settings.addonEnabled },
-        { name = "Move Type",              enabled = RARELOAD.settings.spawnModeEnabled },
-        { name = "Auto Save",              enabled = RARELOAD.settings.autoSaveEnabled },
-        { name = "Keep Inventory",         enabled = RARELOAD.settings.retainInventory },
-        { name = "No Rareload At Death",   enabled = RARELOAD.settings.nocustomrespawnatdeath },
-        { name = "Debug",                  enabled = RARELOAD.settings.debugEnabled },
-        { name = "Use Entity Spawn Point", enabled = RARELOAD.settings.useSpawnPointEntity }
+        { name = "Rareload",             enabled = RARELOAD.settings.addonEnabled },
+        { name = "Move Type",            enabled = RARELOAD.settings.spawnModeEnabled },
+        { name = "Auto Save",            enabled = RARELOAD.settings.autoSaveEnabled },
+        { name = "Keep Inventory",       enabled = RARELOAD.settings.retainInventory },
+        { name = "No Rareload At Death", enabled = RARELOAD.settings.nocustomrespawnatdeath },
+        { name = "Debug",                enabled = RARELOAD.settings.debugEnabled }
     }
 
     for i, setting in ipairs(settings) do
