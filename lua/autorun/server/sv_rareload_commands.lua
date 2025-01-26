@@ -36,6 +36,13 @@ concommand.Add("toggle_debug", function(ply)
     toggleSetting(ply, 'debugEnabled', 'Debug mode')
 end)
 
+local function SyncPlayerPositions(ply)
+    local mapName = game.GetMap()
+    net.Start("SyncPlayerPositions")
+    net.WriteTable(RARELOAD.playerPositions[mapName] or {})
+    net.Send(ply)
+end
+
 concommand.Add("save_position", function(ply, _, _)
     if not RARELOAD.settings.addonEnabled then
         print("[RARELOAD DEBUG] The Respawn at Reload addon is disabled.")
@@ -61,8 +68,7 @@ concommand.Add("save_position", function(ply, _, _)
         if oldPos == newPos and oldActiveWeapon == newActiveWeapon and table.concat(oldInventory) == table.concat(newInventory) then
             return
         else
-            print(
-                "[RARELOAD] Overwriting your previously saved position, camera orientation, and inventory.")
+            print("[RARELOAD] Overwriting your previously saved position, camera orientation, and inventory.")
         end
     else
         print("[RARELOAD DEBUG] Saved your current position, camera orientation, and inventory.")
@@ -82,6 +88,12 @@ concommand.Add("save_position", function(ply, _, _)
     end
 
     RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
+
+    -- Create the phantom
+    CreatePlayerPhantom(ply)
+
+    -- Sync player positions with the client
+    SyncPlayerPositions(ply)
 
     if RARELOAD.settings.debugEnabled then
         print("\n" .. "[=====================================================================]")

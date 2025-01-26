@@ -7,6 +7,7 @@ AddCSLuaFile("autorun/server/sv_rareload_hooks.lua")
 AddCSLuaFile("weapons/gmod_tool/stools/sh_rareload_tool.lua")
 AddCSLuaFile("weapons/gmod_tool/stools/cl_rareload_tool.lua")
 AddCSLuaFile("weapons/gmod_tool/stools/sv_rareload_tool.lua")
+AddCSLuaFile("entities/cl_rareload_hooks.lua")
 
 -- Include server-side files
 include("autorun/server/sv_init_rareload.lua")
@@ -15,6 +16,7 @@ include("autorun/server/sv_rareload_hooks.lua")
 include("weapons/gmod_tool/stools/sh_rareload_tool.lua")
 include("weapons/gmod_tool/stools/cl_rareload_tool.lua")
 include("weapons/gmod_tool/stools/sv_rareload_tool.lua")
+include("cl_rareload_hooks.lua")
 
 -- Print a message to the server console indicating that the addon is loading
 print("Rareload: Loading shared files")
@@ -33,7 +35,8 @@ local filesToCheck = {
     "autorun/server/sv_rareload_hooks.lua",
     "weapons/gmod_tool/stools/sh_rareload_tool.lua",
     "weapons/gmod_tool/stools/cl_rareload_tool.lua",
-    "weapons/gmod_tool/stools/sv_rareload_tool.lua"
+    "weapons/gmod_tool/stools/sv_rareload_tool.lua",
+    "entities/rareload_marker.lua"
 }
 
 -- Check each file

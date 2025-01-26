@@ -1,3 +1,26 @@
+util.AddNetworkString("CreatePlayerPhantom")
+util.AddNetworkString("RemovePlayerPhantom")
+util.AddNetworkString("SyncData")
+util.AddNetworkString("SyncPlayerPositions")
+
+-- Créer un phantom pour chaque joueur connecté
+RARELOAD.Phanthom = RARELOAD.Phanthom or {}
+
+local function SyncData(ply)
+    local mapName = game.GetMap()
+    net.Start("SyncData")
+    net.WriteTable({
+        playerPositions = RARELOAD.playerPositions[mapName] or {},
+        settings = RARELOAD.settings,
+        Phanthom = RARELOAD.Phanthom
+    })
+    net.Send(ply)
+end
+
+hook.Add("PlayerInitialSpawn", "SyncDataOnJoin", function(ply)
+    SyncData(ply)
+end)
+
 hook.Add("ShutDown", "SavePlayerPosition", function()
     if not RARELOAD.settings.addonEnabled then return end
 
@@ -305,7 +328,50 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
             end)
         end
     end
+
+    -- Create the phantom at the saved position
+    CreatePlayerPhantom(ply)
 end)
+
+function CreatePlayerPhantom(ply)
+    -- Supprimer le phantom existant pour ce joueur
+    if RARELOAD.Phanthom[ply:SteamID()] then
+        local existingPhantom = RARELOAD.Phanthom[ply:SteamID()].phantom
+        if IsValid(existingPhantom) then
+            existingPhantom:Remove()
+        end
+        RARELOAD.Phanthom[ply:SteamID()] = nil
+
+        net.Start("RemovePlayerPhantom")
+        net.WriteEntity(ply)
+        net.Broadcast()
+    end
+
+    -- Ajouter un délai pour s'assurer que le joueur est complètement chargé
+    timer.Simple(1, function()
+        if not IsValid(ply) then return end
+
+        -- Créer un nouveau phantom
+        local phantom = ents.Create("prop_physics")
+        phantom:SetModel(ply:GetModel())
+        phantom:SetPos(ply:GetPos())
+        phantom:SetAngles(ply:GetAngles())
+        phantom:SetRenderMode(RENDERMODE_TRANSALPHA)
+        phantom:SetColor(Color(255, 255, 255, 100))
+        phantom:Spawn()
+
+        phantom:SetMoveType(MOVETYPE_NONE)
+        phantom:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
+
+        RARELOAD.Phanthom[ply:SteamID()] = { phantom = phantom, ply = ply }
+
+        net.Start("CreatePlayerPhantom")
+        net.WriteEntity(ply)
+        net.WriteVector(ply:GetPos())
+        net.WriteAngle(ply:GetAngles())
+        net.Broadcast()
+    end)
+end
 
 function Save_position(ply)
     RunConsoleCommand("save_position")

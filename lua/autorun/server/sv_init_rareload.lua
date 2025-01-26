@@ -1,7 +1,5 @@
 -- lua/autorun/server/init.lua
 
--- This Where the functions and variables are stored
-
 -- Rareload is a Garry's Mod addon that allows players to respawn at their last saved position, camera orientation, and inventory.
 RARELOAD = {}
 
