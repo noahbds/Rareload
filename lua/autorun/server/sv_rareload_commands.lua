@@ -43,6 +43,11 @@ local function SyncPlayerPositions(ply)
     net.Send(ply)
 end
 
+local function AngleToString(angle)
+    return string.format("[%.2f, %.2f, %.2f]", angle[1], angle[2], angle[3])
+end
+
+
 concommand.Add("save_position", function(ply, _, _)
     if not RARELOAD.settings.addonEnabled then
         print("[RARELOAD DEBUG] The Respawn at Reload addon is disabled.")
@@ -89,10 +94,18 @@ concommand.Add("save_position", function(ply, _, _)
 
     RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
 
-    -- Create the phantom
+    local success, err = pcall(function()
+        file.Write("rareload/player_positions_" .. mapName .. ".json", util.TableToJSON(RARELOAD.playerPositions, true))
+    end)
+
+    if not success then
+        print("[RARELOAD] Failed to save position data: " .. err)
+    else
+        print("[RARELOAD] Player position successfully saved to file.")
+    end
+
     CreatePlayerPhantom(ply)
 
-    -- Sync player positions with the client
     SyncPlayerPositions(ply)
 
     if RARELOAD.settings.debugEnabled then
@@ -101,28 +114,31 @@ concommand.Add("save_position", function(ply, _, _)
         print("Map Name: ", mapName)
         print("Player SteamID: ", ply:SteamID())
         print("Auto Save Enabled: " .. tostring(RARELOAD.settings.autoSaveEnabled))
-        print("Player Data: ", playerData)
+        print("Player Data: ")
+        PrintTable(playerData)
 
         local oldInventoryStr = oldPosData and table.concat(oldPosData.inventory, ', ')
         local newInventoryStr = table.concat(newInventory, ', ')
         if oldInventoryStr ~= newInventoryStr then
-            print("Old Inventory: ", oldInventoryStr)
+            print("\nOld Inventory: ", oldInventoryStr)
             print("New Inventory: ", newInventoryStr)
         end
         if oldPosData and oldPosData.moveType ~= playerData.moveType then
-            print("Old Move Type: ", oldPosData.moveType)
+            print("\nOld Move Type: ", oldPosData.moveType)
             print("New Move Type: ", playerData.moveType)
         end
         if oldPosData and oldPosData.pos ~= playerData.pos then
-            print("Old Position: ", oldPosData.pos)
+            print("\nOld Position: ", oldPosData.pos)
             print("New Position: ", playerData.pos)
         end
         if oldPosData and oldPosData.ang ~= playerData.ang then
-            print("Old Angles: ", oldPosData.ang)
-            print("New Angles: ", playerData.ang)
+            print("\nOld Angles: ")
+            PrintTable(oldPosData.ang)
+            print("New Angles: ")
+            PrintTable(playerData.ang)
         end
         if oldPosData and oldPosData.activeWeapon ~= playerData.activeWeapon then
-            print("Old Active Weapon: ", oldPosData.activeWeapon)
+            print("\nOld Active Weapon: ", oldPosData.activeWeapon)
             print("New Active Weapon: ", playerData.activeWeapon)
         end
 
