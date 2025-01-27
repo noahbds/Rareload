@@ -136,47 +136,47 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
 
     RARELOAD.Debug.LogAfterRespawnInfo()
 
-    if not RARELOAD.settings.spawnModeEnabled then
-        local function handleCustomSpawn()
-            local traceResult = TraceLine(SavedInfo.pos, SavedInfo.pos - Vector(0, 0, 10000), ply, MASK_SOLID_BRUSHONLY)
+    --[[ Beta [NOT TESTED] ]] --
+    --[[ This code  handle the spawn when custom move type is disabled]]
 
-            if not traceResult.Hit or not traceResult.HitPos then
+    if not RARELOAD.settings.spawnModeEnabled then
+        local function handleCustomSpawn(ply, savedInfo)
+            -- Use the anti-stuck system to find a safe spawn position
+            local safePos = FindWalkableGround(savedInfo.pos, ply)
+
+            if not safePos then
                 print("[RARELOAD DEBUG] No walkable ground found. Custom spawn prevented.")
                 return
             end
 
-            local waterTrace = TraceLine(traceResult.HitPos, traceResult.HitPos - Vector(0, 0, 100), ply, MASK_WATER)
+            -- Set the player's position and move type
+            ply:SetPos(safePos)
+            ply:SetMoveType(MOVETYPE_NONE)
 
-            if waterTrace.Hit then
-                local foundPos = FindWalkableGround(traceResult.HitPos, ply)
-
-                if not foundPos then
-                    print("[RARELOAD DEBUG] No walkable ground found. Custom spawn prevented.")
-                    return
-                end
-
-                ply:SetPos(foundPos)
-                ply:SetMoveType(MoveTypes.none)
-                print("[RARELOAD DEBUG] Found walkable ground for player spawn.")
-                return
+            if RARELOAD.settings.debugEnabled then
+                print("[RARELOAD DEBUG] Found walkable ground for player spawn: ", safePos)
+                debugoverlay.Sphere(safePos, 10, 5, Color(0, 255, 0), true) -- Visualize safe position in green
             end
-
-            ply:SetPos(traceResult.HitPos)
-            ply:SetMoveType(MoveTypes.none)
         end
 
-        if SavedInfo.moveType == MoveTypes.noclip or SavedInfo.moveType == MoveTypes.fly or SavedInfo.moveType == MoveTypes.flyGravity or SavedInfo.moveType == MoveTypes.ladder or SavedInfo.moveType == MoveTypes.walk or SavedInfo.moveType == MoveTypes.none then
-            handleCustomSpawn()
+        -- Check if the player's move type requires custom spawn handling
+        if SavedInfo.moveType == MOVETYPE_NOCLIP or SavedInfo.moveType == MOVETYPE_FLY or SavedInfo.moveType == MOVETYPE_FLYGRAVITY or SavedInfo.moveType == MOVETYPE_LADDER or SavedInfo.moveType == MOVETYPE_WALK or SavedInfo.moveType == MOVETYPE_NONE then
+            handleCustomSpawn(ply, SavedInfo)
         else
+            -- Use the default spawn logic
             SetPlayerPositionAndEyeAngles(ply, SavedInfo)
         end
     else
+        -- Spawn mode is enabled, use the saved move type and position
         if RARELOAD.settings.debugEnabled then
             print("[RARELOAD DEBUG] Setting move type to: " .. tostring(tonumber(SavedInfo.moveType)))
         end
         timer.Simple(0, function() ply:SetMoveType(tonumber(SavedInfo.moveType)) end)
         SetPlayerPositionAndEyeAngles(ply, SavedInfo)
     end
+
+    --[[ End Of Beta [NOT TESTED] ]] --
+
 
     if RARELOAD.settings.retainInventory and SavedInfo.inventory then
         ply:StripWeapons()

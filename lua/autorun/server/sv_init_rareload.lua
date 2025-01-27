@@ -75,122 +75,102 @@ function LoadAddonState()
     end
 end
 
--- Check if the position is walkable (used by FindWalkableGround)
+-- Cache for walkable positions to avoid redundant checks
+local walkableCache = {}
+
+-- Check if the position is walkable
 function IsWalkable(pos, ply)
+    local cacheKey = tostring(pos)
+    if walkableCache[cacheKey] ~= nil then
+        return walkableCache[cacheKey]
+    end
+
     local minHeight = -10000
 
+    -- Check if the position is below the minimum height
     if pos.z < minHeight then
         if RARELOAD.settings.debugEnabled then
             print("[RARELOAD DEBUG] Position below map: ", pos, " - RED")
+            debugoverlay.Sphere(pos, 10, 5, Color(255, 0, 0), true) -- Visualize in red
         end
+        walkableCache[cacheKey] = false
         return false
     end
 
+    -- Check if the position is within the world boundaries
     if not util.IsInWorld(pos) then
         if RARELOAD.settings.debugEnabled then
             print("[RARELOAD DEBUG] Position not in world: ", pos, " - RED")
+            debugoverlay.Sphere(pos, 10, 5, Color(255, 0, 0), true) -- Visualize in red
         end
+        walkableCache[cacheKey] = false
         return false
     end
 
-    local hullTrace = util.TraceHull({
+    -- Combined trace for hull and ground
+    local traceResult = util.TraceEntity({
         start = pos,
-        endpos = pos,
-        mins = ply:OBBMins(),
-        maxs = ply:OBBMaxs(),
+        endpos = pos - Vector(0, 0, 50),     -- Check for ground below
         filter = ply,
-        mask = MASK_PLAYERSOLID
-    })
+        mask = MASK_PLAYERSOLID + MASK_WATER -- Combine masks
+    }, ply)
 
-    if hullTrace.Hit or hullTrace.StartSolid then
+    -- Check if the position is blocked by a solid object or water
+    if traceResult.Hit or traceResult.StartSolid or traceResult.HitWorld then
         if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD DEBUG] Position blocked by solid object: ", pos, " - RED")
+            print("[RARELOAD DEBUG] Position blocked or in water: ", pos, " - RED")
+            debugoverlay.Line(pos, traceResult.HitPos, 5, Color(255, 0, 0), true) -- Visualize in red
         end
+        walkableCache[cacheKey] = false
         return false
     end
 
-    local waterTrace = util.TraceLine({
-        start = pos,
-        endpos = pos - Vector(0, 0, 1),
-        mask = MASK_WATER
-    })
-
-    if waterTrace.Hit then
-        if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD DEBUG] Position in water: ", pos, " - RED")
-        end
-        return false
-    end
-
-    local groundTrace = util.TraceLine({
-        start = pos,
-        endpos = pos - Vector(0, 0, 50),
-        mask = MASK_SOLID_BRUSHONLY
-    })
-
-    if not groundTrace.Hit then
-        if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD DEBUG] No ground found below position: ", pos, " - RED")
-        end
-        return false
-    end
-
+    -- If all checks pass, the position is walkable
     if RARELOAD.settings.debugEnabled then
         print("[RARELOAD DEBUG] Position is walkable: ", pos, " - BLUE")
+        debugoverlay.Sphere(pos, 10, 5, Color(0, 0, 255), true) -- Visualize in blue
     end
 
+    walkableCache[cacheKey] = true
     return true, pos
 end
 
--- Function purpose is in the name
-function TraceLine(start, endpos, filter, mask)
-    return util.TraceLine({
-        start = start,
-        endpos = endpos,
-        filter = filter,
-        mask = mask
-    })
-end
-
--- Find walkable ground for the player to spawn on (if togglemovetype is off)
+-- Find walkable ground for the player to spawn on
 function FindWalkableGround(startPos, ply)
     local radius = 2000
     local stepSize = 50
     local zStepSize = 50
-    local angleStep = math.pi / 16
+    local maxAttempts = 1000
+    local attempts = 0
 
-    for i = 1, 10 do
-        local angle = 0
-        local r = stepSize
-        local z = 0
-        while r < radius do
-            local x = r * math.cos(angle)
-            local y = r * math.sin(angle)
-
-            local checkPos = startPos + Vector(x, y, z)
-            local isWalkable, walkablePos = IsWalkable(checkPos, ply)
-            if isWalkable then
-                return walkablePos
-            end
-
-            angle = angle + angleStep
-            if angle >= 2 * math.pi then
-                angle = angle - 2 * math.pi
-                r = r + stepSize
-                z = z + zStepSize
+    -- Grid-based search around the start position
+    for z = 0, radius, zStepSize do
+        for x = -radius, radius, stepSize do
+            for y = -radius, radius, stepSize do
+                local checkPos = startPos + Vector(x, y, z)
+                local isWalkable, walkablePos = IsWalkable(checkPos, ply)
+                if isWalkable then
+                    return walkablePos
+                end
+                attempts = attempts + 1
+                if attempts >= maxAttempts then
+                    if RARELOAD.settings.debugEnabled then
+                        print("[RARELOAD DEBUG] Max attempts reached, returning startPos")
+                    end
+                    return startPos -- Fallback to the original position
+                end
             end
         end
-
-        stepSize = stepSize + 50
     end
 
-    return startPos
+    return startPos -- Fallback to the original position
 end
 
 -- Set the player's position and eye angles
 function SetPlayerPositionAndEyeAngles(ply, savedInfo)
     ply:SetPos(savedInfo.pos)
 
+    -- Parse the angle data
     local angTable = type(savedInfo.ang) == "string" and util.JSONToTable(savedInfo.ang) or savedInfo.ang
 
     if type(angTable) == "table" and #angTable == 3 then
@@ -198,6 +178,16 @@ function SetPlayerPositionAndEyeAngles(ply, savedInfo)
     else
         print("[RARELOAD] Error: Invalid angle data.")
     end
+end
+
+-- Utility function to trace a line
+function TraceLine(start, endpos, filter, mask)
+    return util.TraceLine({
+        start = start,
+        endpos = endpos,
+        filter = filter,
+        mask = mask
+    })
 end
 
 -- Create the player's phantom when debug mode is enabled, this allow to see the player's last saved position
