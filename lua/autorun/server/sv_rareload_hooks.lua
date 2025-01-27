@@ -5,48 +5,33 @@ util.AddNetworkString("SyncPlayerPositions")
 
 RARELOAD.Phanthom = RARELOAD.Phanthom or {}
 
-local function SyncData(ply)
-    local mapName = game.GetMap()
-    net.Start("SyncData")
-    net.WriteTable({
-        playerPositions = RARELOAD.playerPositions[mapName] or {},
-        settings = RARELOAD.settings,
-        Phanthom = RARELOAD.Phanthom
-    })
-    net.Send(ply)
-end
+local lastSavedTimes = {}
 
 hook.Add("PlayerInitialSpawn", "SyncDataOnJoin", function(ply)
     SyncData(ply)
 end)
 
-local function AngleToString(angle)
-    return string.format("[%.2f, %.2f, %.2f]", angle[1], angle[2], angle[3])
-end
-
 hook.Add("InitPostEntity", "LoadPlayerPosition", function()
     LoadAddonState()
 
-    if RARELOAD.settings.debugEnabled then
-        local settings = {
-            { name = "addonEnabled",           message = "Respawn at Reload addon" },
-            { name = "spawnModeEnabled",       message = "Spawn with saved move type" },
-            { name = "autoSaveEnabled",        message = "Auto-save position" },
-            { name = "retainInventory",        message = "Retain inventory" },
-            { name = "nocustomrespawnatdeath", message = "No Custom Respawn at Death" },
-            { name = "debugEnabled",           message = "Debug mode" }
+    local settings = RARELOAD.settings
+    if settings.debugEnabled then
+        local debugMessages = {
+            addonEnabled = "Respawn at Reload addon",
+            spawnModeEnabled = "Spawn with saved move type",
+            autoSaveEnabled = "Auto-save position",
+            retainInventory = "Retain inventory",
+            nocustomrespawnatdeath = "No Custom Respawn at Death",
+            debugEnabled = "Debug mode"
         }
 
-        for i, setting in ipairs(settings) do
-            if RARELOAD.settings[setting.name] then
-                print("[RARELOAD DEBUG] " .. setting.message .. " is enabled.")
-            else
-                print("[RARELOAD DEBUG] " .. setting.message .. " is disabled.")
-            end
+        for name, message in pairs(debugMessages) do
+            local status = settings[name] and "enabled" or "disabled"
+            print(string.format("[RARELOAD DEBUG] %s is %s.", message, status))
         end
     end
 
-    if not RARELOAD.settings.addonEnabled then return end
+    if not settings.addonEnabled then return end
 
     EnsureFolderExists()
 
@@ -96,35 +81,8 @@ hook.Add("PlayerDeath", "SetWasKilledFlag", function(ply)
 end)
 
 hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
-    if RARELOAD.settings.debugEnabled then
-        timer.Simple(0.5, function()
-            if not IsValid(ply) then return end
-            print("\n" .. "[=====================================================================]")
-            print("[RARELOAD DEBUG] Debug Information:")
-            print("PlayerSpawn hook triggered")
-            print("Player Position: " .. tostring(ply:GetPos()))
-            print("Player Eye Angles: " .. tostring(ply:LocalEyeAngles()))
-            print("Addon Enabled: " .. tostring(RARELOAD.settings.addonEnabled))
-            print("Spawn Mode Enabled: " .. tostring(RARELOAD.settings.spawnModeEnabled))
-            print("Auto Save Enabled: " .. tostring(RARELOAD.settings.autoSaveEnabled))
-            print("Retain Inventory: " .. tostring(RARELOAD.settings.retainInventory))
-            print("No Custom Respawn at Death: " .. tostring(RARELOAD.settings.nocustomrespawnatdeath))
-            print("Debug Enabled: " .. tostring(RARELOAD.settings.debugEnabled))
-            print("[=====================================================================]" .. "\n")
-            if ply.wasKilled then
-                print("[RARELOAD DEBUG] Player killed themselves")
-            else
-                print("[RARELOAD DEBUG] Player reloaded the game")
-            end
-            local currentInventory = {}
-            for _, weapon in pairs(ply:GetWeapons()) do
-                table.insert(currentInventory, weapon:GetClass())
-            end
-            print("\n" .. "[=====================================================================]")
-            print("[RARELOAD DEBUG] Current Inventory: " .. table.concat(currentInventory, ", "))
-            print("[=====================================================================]" .. "\n")
-        end)
-    end
+    RARELOAD.Debug.LogSpawnInfo(ply)
+    RARELOAD.Debug.LogInventory(ply)
 
     if not RARELOAD.settings.addonEnabled then
         local defaultWeapons = {
@@ -137,56 +95,50 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
             ply:Give(weaponClass)
         end
 
-        if RARELOAD.settings.debugEnabled then print("[RARELOAD DEBUG] Addon disabled, gave default weapons") end
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Addon disabled, gave default weapons")
+        end
         return
     end
 
     if RARELOAD.settings.nocustomrespawnatdeath and ply.wasKilled then
         ply.wasKilled = false
-        if RARELOAD.settings.debugEnabled then print("[RARELOAD DEBUG] Player was killed, resetting wasKilled flag") end
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Player was killed, resetting wasKilled flag")
+        end
         return
     end
 
     local mapName = game.GetMap()
-    local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][ply:SteamID()]
+    SavedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][ply:SteamID()]
 
-    if not savedInfo then
-        if RARELOAD.settings.debugEnabled then print("[RARELOAD DEBUG] No saved player info found") end
+    if not SavedInfo then
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] No saved player info found")
+        end
         return
     end
 
-    local wasInNoclip = savedInfo.moveType == MOVETYPE_NOCLIP
-    local wasFlying = savedInfo.moveType == MOVETYPE_FLY or savedInfo.moveType == MOVETYPE_FLYGRAVITY
-    local wasOnLadder = savedInfo.moveType == MOVETYPE_LADDER
-    local wasSwimming = savedInfo.moveType == MOVETYPE_WALK or MOVETYPE_NONE
+    MoveTypes = {
+        none = MOVETYPE_NONE,             -- 0 (no movement)
+        isometric = MOVETYPE_ISOMETRIC,   -- 1 (deprecated)
+        walk = MOVETYPE_WALK,             -- 2 (normal walking)
+        step = MOVETYPE_STEP,             -- 3 (for players)
+        fly = MOVETYPE_FLY,               -- 4 (when flying)
+        flyGravity = MOVETYPE_FLYGRAVITY, -- 5 (when flying with gravity)
+        vphysics = MOVETYPE_VPHYSICS,     -- 6 (prop movement)
+        push = MOVETYPE_PUSH,             -- 7 (player is pushed by other entities)
+        noclip = MOVETYPE_NOCLIP,         -- 8 (player is in noclip mode)
+        ladder = MOVETYPE_LADDER,         -- 9 (player is on a ladder)
+        observer = MOVETYPE_OBSERVER,     -- 10 (player is in observer mode)
+        custom = MOVETYPE_CUSTOM,         -- 11 (custom movement)
+    }
 
-    if not savedInfo.moveType or not isnumber(savedInfo.moveType) then
-        print("[RARELOAD DEBUG] Error: Invalid saved move type.")
-        return
-    end
-
-    local savedMoveType = tonumber(savedInfo.moveType) or MOVETYPE_WALK
-
-    if RARELOAD.settings.debugEnabled then
-        timer.Simple(0.6, function()
-            print("\n" .. "[=====================================================================]")
-            print("[RARELOAD DEBUG] After Respawn Debug Information:")
-            print("Saved move type: " .. tostring(savedMoveType))
-            print("Saved Position: " .. tostring(savedInfo.pos))
-            print("Saved Eye Angles: " .. AngleToString(savedInfo.ang))
-            print("Saved Active Weapon: " .. tostring(savedInfo.activeWeapon))
-            print("Saved Inventory: " .. table.concat(savedInfo.inventory, ", "))
-            print("Was in noclip: " .. tostring(wasInNoclip))
-            print("Was flying: " .. tostring(wasFlying))
-            print("Was on ladder: " .. tostring(wasOnLadder))
-            print("Was swimming / walking: " .. tostring(wasSwimming))
-            print("[=====================================================================]" .. "\n")
-        end)
-    end
+    RARELOAD.Debug.LogAfterRespawnInfo()
 
     if not RARELOAD.settings.spawnModeEnabled then
-        if wasInNoclip or wasFlying or wasOnLadder or wasSwimming then
-            local traceResult = TraceLine(savedInfo.pos, savedInfo.pos - Vector(0, 0, 10000), ply, MASK_SOLID_BRUSHONLY)
+        local function handleCustomSpawn()
+            local traceResult = TraceLine(SavedInfo.pos, SavedInfo.pos - Vector(0, 0, 10000), ply, MASK_SOLID_BRUSHONLY)
 
             if not traceResult.Hit or not traceResult.HitPos then
                 print("[RARELOAD DEBUG] No walkable ground found. Custom spawn prevented.")
@@ -204,25 +156,29 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
                 end
 
                 ply:SetPos(foundPos)
-                ply:SetMoveType(MOVETYPE_NONE)
+                ply:SetMoveType(MoveTypes.none)
                 print("[RARELOAD DEBUG] Found walkable ground for player spawn.")
                 return
             end
 
             ply:SetPos(traceResult.HitPos)
-            ply:SetMoveType(MOVETYPE_NONE)
+            ply:SetMoveType(MoveTypes.none)
+        end
+
+        if SavedInfo.moveType == MoveTypes.noclip or SavedInfo.moveType == MoveTypes.fly or SavedInfo.moveType == MoveTypes.flyGravity or SavedInfo.moveType == MoveTypes.ladder or SavedInfo.moveType == MoveTypes.walk or SavedInfo.moveType == MoveTypes.none then
+            handleCustomSpawn()
         else
-            SetPlayerPositionAndEyeAngles(ply, savedInfo)
+            SetPlayerPositionAndEyeAngles(ply, SavedInfo)
         end
     else
         if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD DEBUG] Setting move type to: " .. tostring(savedMoveType))
+            print("[RARELOAD DEBUG] Setting move type to: " .. tostring(tonumber(SavedInfo.moveType)))
         end
-        timer.Simple(0, function() ply:SetMoveType(savedMoveType) end)
-        SetPlayerPositionAndEyeAngles(ply, savedInfo)
+        timer.Simple(0, function() ply:SetMoveType(tonumber(SavedInfo.moveType)) end)
+        SetPlayerPositionAndEyeAngles(ply, SavedInfo)
     end
 
-    if RARELOAD.settings.retainInventory and savedInfo.inventory then
+    if RARELOAD.settings.retainInventory and SavedInfo.inventory then
         ply:StripWeapons()
 
         local debugMessages = {
@@ -236,7 +192,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
             givenWeapons = false
         }
 
-        for _, weaponClass in ipairs(savedInfo.inventory) do
+        for _, weaponClass in ipairs(SavedInfo.inventory) do
             local canGiveWeapon = true
             local weaponInfo = weapons.Get(weaponClass)
 
@@ -291,39 +247,12 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
             end
         end
 
-        if RARELOAD.settings.debugEnabled then
-            timer.Simple(0.7, function()
-                if debugInfo.adminOnly then
-                    print("\n" .. "[=====================================================================]")
-                    print("[RARELOAD DEBUG] Admin Only Weapons Debug Information:")
-                    for _, message in ipairs(debugMessages.adminOnly) do
-                        print(message)
-                    end
-                    print("[=====================================================================]\n")
-                end
-                if debugInfo.notRegistered then
-                    print("\n" .. "[=====================================================================]")
-                    print("[RARELOAD DEBUG] Weapons Debug Information:")
-                    for _, message in ipairs(debugMessages.notRegistered) do
-                        print(message)
-                    end
-                    print("[=====================================================================]\n")
-                end
-                if debugInfo.givenWeapons then
-                    print("\n" .. "[=====================================================================]")
-                    print("[RARELOAD DEBUG] Given Weapons Debug Information:")
-                    for _, message in ipairs(debugMessages.givenWeapons) do
-                        print(message)
-                    end
-                    print("[=====================================================================]\n")
-                end
-            end)
-        end
+        RARELOAD.Debug.LogWeaponMessages(debugMessages, debugInfo)
 
-        if savedInfo.activeWeapon then
+        if SavedInfo.activeWeapon then
             timer.Simple(0.6, function()
-                if IsValid(ply) and ply:HasWeapon(savedInfo.activeWeapon) then
-                    ply:SelectWeapon(savedInfo.activeWeapon)
+                if IsValid(ply) and ply:HasWeapon(SavedInfo.activeWeapon) then
+                    ply:SelectWeapon(SavedInfo.activeWeapon)
                 end
             end)
         end
@@ -334,78 +263,10 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
     end
 end)
 
-function CreatePlayerPhantom(ply)
-    if RARELOAD.Phanthom[ply:SteamID()] then
-        local existingPhantom = RARELOAD.Phanthom[ply:SteamID()].phantom
-        if IsValid(existingPhantom) then
-            existingPhantom:Remove()
-        end
-        RARELOAD.Phanthom[ply:SteamID()] = nil
-
-        net.Start("RemovePlayerPhantom")
-        net.WriteEntity(ply)
-        net.Broadcast()
-    end
-
-    timer.Simple(1, function()
-        if not IsValid(ply) or not RARELOAD.settings.debugEnabled then return end
-
-        local pos = ply:GetPos()
-        if pos:WithinAABox(Vector(-16384, -16384, -16384), Vector(16384, 16384, 16384)) then
-            if pos.z > -15000 then
-                local phantom = ents.Create("prop_physics")
-                phantom:SetModel(ply:GetModel())
-                phantom:SetPos(pos)
-                phantom:SetAngles(ply:GetAngles())
-                phantom:SetRenderMode(RENDERMODE_TRANSALPHA)
-                phantom:SetColor(Color(255, 255, 255, 100))
-                phantom:Spawn()
-
-                phantom:SetMoveType(MOVETYPE_NONE)
-                phantom:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
-
-                RARELOAD.Phanthom[ply:SteamID()] = { phantom = phantom, ply = ply }
-
-                net.Start("CreatePlayerPhantom")
-                net.WriteEntity(ply)
-                net.WriteVector(pos)
-                net.WriteAngle(ply:GetAngles())
-                net.Broadcast()
-            else
-                print("[RARELOAD DEBUG] Invalid Z position for phantom creation: ", pos)
-            end
-        else
-            print("[RARELOAD DEBUG] Invalid position for phantom creation: ", pos)
-        end
-    end)
-end
-
-function Save_position(ply)
-    RunConsoleCommand("save_position")
-end
-
-local function loadSettings()
-    local settingsFilePath = "rareload/addon_state.json"
-    if file.Exists(settingsFilePath, "DATA") then
-        local json = file.Read(settingsFilePath, "DATA")
-        RARELOAD.settings = util.JSONToTable(json)
-    end
-end
-
-loadSettings()
-
--- Ensure settings are loaded before proceeding
-if not RARELOAD.settings then
-    return
-end
-
-local lastSavedTimes = {}
-
 hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
     if not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() then
         return
     end
-
     if not RARELOAD.settings.autoSaveEnabled then
         return
     end
@@ -413,17 +274,14 @@ hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
     local lastSaveTime = lastSavedTimes[ply:UserID()] or 0
     local currentTime = CurTime()
 
-    -- Checking if enough time has passed since last save
     if currentTime - lastSaveTime < RARELOAD.settings.autoSaveInterval then
         return
     end
 
-    -- Position and angles check for saving
     local currentPos = ply:GetPos()
     local currentEyeAngles = ply:EyeAngles()
     local currentActiveWeapon = ply:GetActiveWeapon()
 
-    -- Determine if conditions are met for auto-save
     local movedEnough = ply.lastSavedPosition and
         currentPos:DistToSqr(ply.lastSavedPosition) > (RARELOAD.settings.maxDistance * RARELOAD.settings.maxDistance)
     local anglesChanged = ply.lastSavedEyeAngles and (
@@ -434,7 +292,6 @@ hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
     local weaponChanged = ply.lastSavedActiveWeapon and IsValid(currentActiveWeapon) and
         currentActiveWeapon ~= ply.lastSavedActiveWeapon
 
-    -- Check if any of the conditions are met for auto-save
     if (not ply.lastSavedPosition or movedEnough or anglesChanged or weaponChanged) then
         if ply:IsOnGround() and not ply:InVehicle() and not ply:KeyDown(IN_ATTACK) and not ply:KeyDown(IN_ATTACK2) then
             Save_position(ply)
