@@ -1,5 +1,3 @@
--- lua/weapons/gmod_tool/stools/sv_rareload_tool.lua
-
 local RARELOAD  = {}
 
 TOOL            = TOOL or {}
@@ -93,7 +91,55 @@ function TOOL.BuildCPanel(panel)
     savePositionButton.DoClick = function()
         RunConsoleCommand("save_position")
     end
+
+    ------------------------------------------------------------------------]
+    ---------------------------------------------Auto Save Slider Options---]
+    ------------------------------------------------------------------------]
+
+    local autoSaveSlider = vgui.Create("DNumSlider", panel)
+    autoSaveSlider:SetText("Auto Save Interval")
+    autoSaveSlider.Label:SetTextColor(Color(255, 255, 255)) -- Set text color to white
+    autoSaveSlider:SetMin(1)
+    autoSaveSlider:SetMax(60)
+    autoSaveSlider:SetDecimals(0)
+    autoSaveSlider:SetValue(RARELOAD.settings.autoSaveInterval or 2)
+    autoSaveSlider:Dock(TOP)
+    autoSaveSlider:DockMargin(30, 10, 30, 0)
+    autoSaveSlider.OnValueChanged = function(self, value)
+        RunConsoleCommand("set_auto_save_interval", value)
+    end
+
+    local maxDistanceSlider = vgui.Create("DNumSlider", panel)
+    maxDistanceSlider:SetText("Max Distance")
+    maxDistanceSlider.Label:SetTextColor(Color(255, 255, 255)) -- Set text color to white
+    maxDistanceSlider:SetMin(1)
+    maxDistanceSlider:SetMax(1000)
+    maxDistanceSlider:SetDecimals(0)
+    maxDistanceSlider:SetValue(RARELOAD.settings.maxDistance or 50)
+    maxDistanceSlider:Dock(TOP)
+    maxDistanceSlider:DockMargin(30, 10, 30, 0)
+    maxDistanceSlider.OnValueChanged = function(self, value)
+        RunConsoleCommand("set_max_distance", value)
+    end
+
+    local angleToleranceSlider = vgui.Create("DNumSlider", panel)
+    angleToleranceSlider:SetText("Angle Tolerance")
+    angleToleranceSlider.Label:SetTextColor(Color(255, 255, 255)) -- Set text color to white
+    angleToleranceSlider:SetMin(1)
+    angleToleranceSlider:SetMax(360)
+    angleToleranceSlider:SetDecimals(1)
+    angleToleranceSlider:SetValue(RARELOAD.settings.angleTolerance or 100.0)
+    angleToleranceSlider:Dock(TOP)
+    angleToleranceSlider:DockMargin(30, 10, 30, 0)
+    angleToleranceSlider.OnValueChanged = function(self, value)
+        RunConsoleCommand("set_angle_tolerance", value)
+    end
 end
+
+------------------------------------------------------------------------]
+--------------------------------------End of Auto Save Slider Options---]
+------------------------------------------------------------------------]
+
 
 function TOOL:DrawToolScreen(width, height)
     local success, err = pcall(loadAddonStatefortool)

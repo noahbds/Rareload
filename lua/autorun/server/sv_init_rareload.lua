@@ -7,7 +7,6 @@ RARELOAD.playerPositions = {}
 RARELOAD.lastSavedTime = 0
 ADDON_STATE_FILE_PATH = "rareload/addon_state.json"
 
--- The default settings for the addon (if the file does not exist, this will be the settings used)
 function GetDefaultSettings()
     return {
         addonEnabled = true,
@@ -16,12 +15,14 @@ function GetDefaultSettings()
         retainInventory = false,
         nocustomrespawnatdeath = false,
         debugEnabled = false,
+        autoSaveInterval = 5,
+        angleTolerance = 100,
+        maxDistance = 50
     }
 end
 
 RARELOAD.settings = GetDefaultSettings()
 
--- This makes sure the folder where the data (data tied to a map and addon settings data) is stored exists
 function EnsureFolderExists()
     local folderPath = "rareload"
     if not file.Exists(folderPath, "DATA") then
@@ -29,7 +30,9 @@ function EnsureFolderExists()
     end
 end
 
--- When this function is called, it will save the new addon settings to the addon state file
+local lastDebugMessage = ""
+local lastDebugTime = 0
+
 function SaveAddonState()
     local json = util.TableToJSON(RARELOAD.settings, true)
     local success, err = pcall(file.Write, ADDON_STATE_FILE_PATH, json)
@@ -37,9 +40,12 @@ function SaveAddonState()
         print("[RARELOAD] Failed to save addon state: " .. err)
     end
 
-    -- If debug is enabled, print the JSON string to the console
     if RARELOAD.settings.debugEnabled then
-        print("[RARELOAD DEBUG] Debug: " .. json)
+        local currentTime = SysTime()
+        if currentTime - lastDebugTime >= 5 then
+            print("[RARELOAD DEBUG] Debug: " .. json)
+            lastDebugTime = currentTime
+        end
     end
 end
 

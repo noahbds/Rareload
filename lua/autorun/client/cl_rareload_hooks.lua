@@ -16,16 +16,18 @@ local function createPhantom(ply, pos, ang)
 end
 
 local function removePhantom(steamID)
-    if RARELOAD.Phanthom[steamID] then
-        local existingPhantom = RARELOAD.Phanthom[steamID].phantom
-        if IsValid(existingPhantom) then
-            existingPhantom:Remove()
-        end
-        RARELOAD.Phanthom[steamID] = nil
+    local existingPhantom = RARELOAD.Phanthom[steamID] and RARELOAD.Phanthom[steamID].phantom
+    if IsValid(existingPhantom) then
+        existingPhantom:Remove()
     end
+    RARELOAD.Phanthom[steamID] = nil
 end
 
-net.Receive("SyncData", function()
+local function handleNetReceive(event, callback)
+    net.Receive(event, callback)
+end
+
+handleNetReceive("SyncData", function()
     local data = net.ReadTable()
     local mapName = game.GetMap()
     RARELOAD.playerPositions[mapName] = data.playerPositions
@@ -33,7 +35,7 @@ net.Receive("SyncData", function()
     RARELOAD.Phanthom = data.Phanthom or {}
 end)
 
-net.Receive("CreatePlayerPhantom", function()
+handleNetReceive("CreatePlayerPhantom", function()
     local ply = net.ReadEntity()
     local pos = net.ReadVector()
     local ang = net.ReadAngle()
@@ -55,17 +57,18 @@ function RARELOAD.RefreshPhantoms()
     for steamID, savedData in pairs(RARELOAD.playerPositions[game.GetMap()] or {}) do
         if not RARELOAD.Phanthom[steamID] then
             RARELOAD.Phanthom[steamID] = {
-                phantom = createPhantom(savedData.model or "models/player.mdl", savedData.pos,
-                    savedData.ang)
+                phantom = createPhantom(savedData.model or "models/player.mdl", savedData.pos, savedData.ang)
             }
         end
     end
 end
 
-net.Receive("RemovePlayerPhantom", function()
+handleNetReceive("RemovePlayerPhantom", function()
     local ply = net.ReadEntity()
     removePhantom(ply:SteamID())
 end)
+
+local fileNotExistPrinted = false
 
 local function reloadSavedData()
     local mapName = game.GetMap()
@@ -82,8 +85,9 @@ local function reloadSavedData()
         else
             print("[RARELOAD DEBUG] File is empty: " .. filePath)
         end
-    else
+    elseif not fileNotExistPrinted then
         print("[RARELOAD DEBUG] File does not exist: " .. filePath)
+        fileNotExistPrinted = true
     end
 end
 
@@ -101,6 +105,32 @@ local function drawTextLine(label, value, panelWidth, panelHeight, textSpacing)
     end
     return false, nil, 0, panelWidth, panelHeight
 end
+
+local function addTextLine(linesToDraw, label, value, panelWidth, panelHeight, textSpacing, yPos)
+    local shouldDraw, text, textHeight
+    shouldDraw, text, textHeight, panelWidth, panelHeight = drawTextLine(label, value, panelWidth, panelHeight,
+        textSpacing)
+    if shouldDraw then
+        table.insert(linesToDraw, { text, yPos })
+        yPos = yPos + textHeight + textSpacing
+    end
+    return panelWidth, panelHeight, yPos
+end
+
+local moveTypeNames = {
+    [0] = "MOVETYPE_NONE",
+    [1] = "MOVETYPE_ISOMETRIC",
+    [2] = "MOVETYPE_WALK",
+    [3] = "MOVETYPE_STEP",
+    [4] = "MOVETYPE_FLY",
+    [5] = "MOVETYPE_FLYGRAVITY",
+    [6] = "MOVETYPE_VPHYSICS",
+    [7] = "MOVETYPE_PUSH",
+    [8] = "MOVETYPE_NOCLIP",
+    [9] = "MOVETYPE_LADDER",
+    [10] = "MOVETYPE_OBSERVER",
+    [11] = "MOVETYPE_CUSTOM",
+}
 
 hook.Add("PostDrawOpaqueRenderables", "DrawPlayerPhantomInfo", function()
     reloadSavedData()
@@ -129,56 +159,21 @@ hook.Add("PostDrawOpaqueRenderables", "DrawPlayerPhantomInfo", function()
                 local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][ply:SteamID()]
 
                 if savedInfo then
-                    local shouldDraw, text, textHeight
-                    shouldDraw, text, textHeight, panelWidth, panelHeight = drawTextLine("Info",
-                        "Phantom of " .. ply:Nick(), panelWidth, panelHeight, textSpacing)
-                    if shouldDraw then
-                        table.insert(linesToDraw, { text, yPos })
-                        yPos = yPos + textHeight + textSpacing
-                    end
-
-                    shouldDraw, text, textHeight, panelWidth, panelHeight = drawTextLine("Saved Position",
-                        tostring(savedInfo.pos), panelWidth, panelHeight, textSpacing)
-                    if shouldDraw then
-                        table.insert(linesToDraw, { text, yPos })
-                        yPos = yPos + textHeight + textSpacing
-                    end
-
-                    shouldDraw, text, textHeight, panelWidth, panelHeight = drawTextLine("Eye Angles",
-                        AngleToString(savedInfo.ang), panelWidth, panelHeight, textSpacing)
-                    if shouldDraw then
-                        table.insert(linesToDraw, { text, yPos })
-                        yPos = yPos + textHeight + textSpacing
-                    end
-
-                    shouldDraw, text, textHeight, panelWidth, panelHeight = drawTextLine("Move Type",
-                        tostring(savedInfo.moveType), panelWidth, panelHeight, textSpacing)
-                    if shouldDraw then
-                        table.insert(linesToDraw, { text, yPos })
-                        yPos = yPos + textHeight + textSpacing
-                    end
-
-                    shouldDraw, text, textHeight, panelWidth, panelHeight = drawTextLine("Active Weapon",
-                        tostring(savedInfo.activeWeapon), panelWidth, panelHeight, textSpacing)
-                    if shouldDraw then
-                        table.insert(linesToDraw, { text, yPos })
-                        yPos = yPos + textHeight + textSpacing
-                    end
-
-                    shouldDraw, text, textHeight, panelWidth, panelHeight = drawTextLine("Inventory",
-                        table.concat(savedInfo.inventory, ", "), panelWidth, panelHeight, textSpacing)
-                    if shouldDraw then
-                        table.insert(linesToDraw, { text, yPos })
-                        yPos = yPos + textHeight + textSpacing
-                    end
+                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Info", "Phantom of " .. ply:Nick(),
+                        panelWidth, panelHeight, textSpacing, yPos)
+                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Saved Position", tostring(savedInfo.pos),
+                        panelWidth, panelHeight, textSpacing, yPos)
+                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Eye Angles", AngleToString(savedInfo.ang),
+                        panelWidth, panelHeight, textSpacing, yPos)
+                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Move Type",
+                        moveTypeNames[savedInfo.moveType], panelWidth, panelHeight, textSpacing, yPos)
+                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Active Weapon",
+                        tostring(savedInfo.activeWeapon), panelWidth, panelHeight, textSpacing, yPos)
+                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Inventory",
+                        table.concat(savedInfo.inventory, ", "), panelWidth, panelHeight, textSpacing, yPos)
                 else
-                    local shouldDraw, text, textHeight
-                    shouldDraw, text, textHeight, panelWidth, panelHeight = drawTextLine("Spawn Point", "No Data",
-                        panelWidth, panelHeight, textSpacing)
-                    if shouldDraw then
-                        table.insert(linesToDraw, { text, yPos })
-                        yPos = yPos + textHeight + textSpacing
-                    end
+                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Spawn Point", "No Data", panelWidth,
+                        panelHeight, textSpacing, yPos)
                 end
 
                 local offsetX = -panelWidth / 2

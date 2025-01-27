@@ -352,7 +352,6 @@ function CreatePlayerPhantom(ply)
 
         local pos = ply:GetPos()
         if pos:WithinAABox(Vector(-16384, -16384, -16384), Vector(16384, 16384, 16384)) then
-            -- Ajustement de la vérification de la position Z
             if pos.z > -15000 then
                 local phantom = ents.Create("prop_physics")
                 phantom:SetModel(ply:GetModel())
@@ -385,20 +384,64 @@ function Save_position(ply)
     RunConsoleCommand("save_position")
 end
 
-hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
-    if not RARELOAD.settings.autoSaveEnabled then return end
-    if not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() then return end
-    local vel = ply:GetVelocity():Length()
-    if vel >= 5 or CurTime() - RARELOAD.lastSavedTime <= 1 then return end
-    local currentPos = ply:GetPos()
-    local currentWeaponCount = #ply:GetWeapons()
-    local currentWeapons = {}
-    for _, weapon in pairs(ply:GetWeapons()) do
-        table.insert(currentWeapons, weapon:GetClass())
+local function loadSettings()
+    local settingsFilePath = "rareload/addon_state.json"
+    if file.Exists(settingsFilePath, "DATA") then
+        local json = file.Read(settingsFilePath, "DATA")
+        RARELOAD.settings = util.JSONToTable(json)
     end
-    if ply.lastSavedPosition and currentPos == ply.lastSavedPosition and ply.lastSavedWeapons and table.concat(currentWeapons) == table.concat(ply.lastSavedWeapons) then return end
-    Save_position(ply)
-    RARELOAD.lastSavedTime = CurTime()
-    ply.lastSavedPosition = currentPos
-    ply.lastSavedWeapons = currentWeapons
+end
+
+loadSettings()
+
+-- Ensure settings are loaded before proceeding
+if not RARELOAD.settings then
+    return
+end
+
+local lastSavedTimes = {}
+
+hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
+    if not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() then
+        return
+    end
+
+    if not RARELOAD.settings.autoSaveEnabled then
+        return
+    end
+
+    local lastSaveTime = lastSavedTimes[ply:UserID()] or 0
+    local currentTime = CurTime()
+
+    -- Checking if enough time has passed since last save
+    if currentTime - lastSaveTime < RARELOAD.settings.autoSaveInterval then
+        return
+    end
+
+    -- Position and angles check for saving
+    local currentPos = ply:GetPos()
+    local currentEyeAngles = ply:EyeAngles()
+    local currentActiveWeapon = ply:GetActiveWeapon()
+
+    -- Determine if conditions are met for auto-save
+    local movedEnough = ply.lastSavedPosition and
+        currentPos:DistToSqr(ply.lastSavedPosition) > (RARELOAD.settings.maxDistance * RARELOAD.settings.maxDistance)
+    local anglesChanged = ply.lastSavedEyeAngles and (
+        math.abs(currentEyeAngles.p - ply.lastSavedEyeAngles.p) > RARELOAD.settings.angleTolerance or
+        math.abs(currentEyeAngles.y - ply.lastSavedEyeAngles.y) > RARELOAD.settings.angleTolerance or
+        math.abs(currentEyeAngles.r - ply.lastSavedEyeAngles.r) > RARELOAD.settings.angleTolerance
+    )
+    local weaponChanged = ply.lastSavedActiveWeapon and IsValid(currentActiveWeapon) and
+        currentActiveWeapon ~= ply.lastSavedActiveWeapon
+
+    -- Check if any of the conditions are met for auto-save
+    if (not ply.lastSavedPosition or movedEnough or anglesChanged or weaponChanged) then
+        if ply:IsOnGround() and not ply:InVehicle() and not ply:KeyDown(IN_ATTACK) and not ply:KeyDown(IN_ATTACK2) then
+            Save_position(ply)
+            lastSavedTimes[ply:UserID()] = currentTime
+            ply.lastSavedPosition = currentPos
+            ply.lastSavedEyeAngles = currentEyeAngles
+            ply.lastSavedActiveWeapon = currentActiveWeapon
+        end
+    end
 end)
