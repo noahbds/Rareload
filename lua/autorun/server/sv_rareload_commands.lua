@@ -22,6 +22,30 @@ concommand.Add("toggle_debug", function(ply)
     ToggleSetting(ply, 'debugEnabled', 'Debug mode')
 end)
 
+---[[ Beta [NOT TESTED] ]]---
+
+concommand.Add("toggle_retain_health_armor", function(ply)
+    ToggleSetting(ply, 'retainHealthArmor', 'Retain health and armor')
+end)
+
+concommand.Add("toggle_retain_ammo", function(ply)
+    ToggleSetting(ply, 'retainAmmo', 'Retain ammo')
+end)
+
+concommand.Add("toggle_retain_carried_entities", function(ply)
+    ToggleSetting(ply, 'retainCarriedEntities', 'Retain carried entities')
+end)
+
+concommand.Add("toggle_retain_vehicle_state", function(ply)
+    ToggleSetting(ply, 'retainVehicleState', 'Retain vehicle state')
+end)
+
+concommand.Add("toggle_retain_map_npcs", function(ply)
+    ToggleSetting(ply, 'retainMapNPCs', 'Retain map NPCs')
+end)
+
+---[[ End Of Beta [NOT TESTED] ]]---
+
 -------------------------------------------------------------------------------------------------------------------------]
 ---------------------------------------------------------slider commands-------------------------------------------------]
 -------------------------------------------------------------------------------------------------------------------------]
@@ -75,7 +99,7 @@ concommand.Add("save_position", function(ply, _, _)
     MapName = game.GetMap()
     RARELOAD.playerPositions[MapName] = RARELOAD.playerPositions[MapName] or {}
 
-    local newPos = ply:GetPos() -- This is the core of the addon in a sense
+    local newPos = ply:GetPos()
     local newActiveWeapon = ply:GetActiveWeapon() and ply:GetActiveWeapon():GetClass()
     local newInventory = {}
     for _, weapon in pairs(ply:GetWeapons()) do
@@ -104,10 +128,65 @@ concommand.Add("save_position", function(ply, _, _)
         inventory = newInventory
     }
 
-    if RARELOAD.settings.retainInventory then
-        playerData.inventory = newInventory
-        playerData.activeWeapon = newActiveWeapon
+    ---[[ Beta [NOT TESTED] ]]---
+
+    if RARELOAD.settings.retainHealthArmor then
+        playerData.health = ply:Health()
+        playerData.armor = ply:Armor()
     end
+
+    if RARELOAD.settings.retainAmmo then
+        playerData.ammo = {}
+        for _, weapon in pairs(playerData.inventory) do
+            playerData.ammo[weapon:GetClass()] = {
+                primary = ply:GetAmmoCount(weapon:GetPrimaryAmmoType()),
+                secondary = ply:GetAmmoCount(weapon:GetSecondaryAmmoType())
+            }
+        end
+    end
+
+    if RARELOAD.settings.retainVehicleState and ply:InVehicle() then
+        local vehicle = ply:GetVehicle()
+        playerData.vehicle = {
+            class = vehicle:GetClass(),
+            pos = vehicle:GetPos(),
+            ang = vehicle:GetAngles(),
+            health = vehicle:Health(),
+        }
+    end
+
+    if RARELOAD.settings.retainMapEntities then
+        playerData.entities = {}
+        for _, ent in pairs(ents.GetAll()) do
+            if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() then
+                table.insert(playerData.entities, {
+                    class = ent:GetClass(),
+                    pos = ent:GetPos(),
+                    model = ent:GetModel(),
+                    ang = ent:GetAngles(),
+                    health = ent:Health(),
+                    frozen = ent:GetPhysicsObject():IsMotionEnabled()
+                })
+            end
+        end
+    end
+
+    if RARELOAD.settings.retainMapNPCs then
+        playerData.npcs = {}
+        for _, npc in pairs(ents.FindByClass("npc_*")) do
+            if IsValid(npc) then
+                table.insert(playerData.npcs, {
+                    class = npc:GetClass(),
+                    pos = npc:GetPos(),
+                    model = npc:GetModel(),
+                    ang = npc:GetAngles(),
+                    health = npc:Health()
+                })
+            end
+        end
+    end
+
+    ---[[ End of Beta [NOT TESTED] ]]---
 
     RARELOAD.playerPositions[MapName][ply:SteamID()] = playerData
 
@@ -122,6 +201,5 @@ concommand.Add("save_position", function(ply, _, _)
     end
 
     CreatePlayerPhantom(ply)
-
     SyncPlayerPositions(ply)
 end)

@@ -1,3 +1,5 @@
+---@diagnostic disable: undefined-field, param-type-mismatch
+
 local RARELOAD  = {}
 
 TOOL            = TOOL or {}
@@ -75,6 +77,29 @@ function TOOL.BuildCPanel(panel)
     createButton(panel, "Toggle Keep Inventory", "toggle_retain_inventory",
         "Enable or disable retaining inventory", RARELOAD.settings.retainInventory)
 
+    ---[[ Beta [NOT TESTED] ]]---
+
+    createButton(panel, "Toggle Keep Health and Armor", "toggle_retain_health_armor",
+        "Enable or disable retaining health and armor", RARELOAD.settings.retainHealthArmor)
+
+    createButton(panel, "Toggle Keep Ammo", "toggle_retain_ammo",
+        "Enable or disable retaining ammo", RARELOAD.settings.retainAmmo)
+
+    createButton(panel, "Toggle Keep Carried Entities", "toggle_retain_carried_entities",
+        "Enable or disable retaining carried entities", RARELOAD.settings.retainCarriedEntities)
+
+    createButton(panel, "Toggle Keep Vehicle State", "toggle_retain_vehicle_state",
+        "Enable or disable retaining vehicle state", RARELOAD.settings.retainVehicleState)
+
+    createButton(panel, "Toggle Keep Map Entities", "toggle_retain_map_entities",
+        "Enable or disable retaining map entities", RARELOAD.settings.retainMapEntities)
+
+    createButton(panel, "Toggle Keep Map NPCs", "toggle_retain_map_npcs",
+        "Enable or disable retaining map NPCs", RARELOAD.settings.retainMapNPCs)
+
+
+    ---[[End of Beta [NOT TESTED] ]]---
+
     createButton(panel, "Toggle No Custom Respawn At Death", "toggle_nocustomrespawnatdeath",
         "Enable or disable No Custom Respawn At Death", RARELOAD.settings.nocustomrespawnatdeath)
 
@@ -96,6 +121,7 @@ function TOOL.BuildCPanel(panel)
     ---------------------------------------------Auto Save Slider Options---]
     ------------------------------------------------------------------------]
 
+    ---@class DNumSlider
     local autoSaveSlider = vgui.Create("DNumSlider", panel)
     autoSaveSlider:SetText("Auto Save Interval")
     autoSaveSlider.Label:SetTextColor(Color(255, 255, 255)) -- Set text color to white

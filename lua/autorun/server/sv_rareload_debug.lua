@@ -18,6 +18,16 @@ function RARELOAD.Debug.LogSpawnInfo(ply)
         print("Retain Inventory: " .. tostring(RARELOAD.settings.retainInventory))
         print("No Custom Respawn at Death: " .. tostring(RARELOAD.settings.nocustomrespawnatdeath))
         print("Debug Enabled: " .. tostring(RARELOAD.settings.debugEnabled))
+        ---[[ Beta
+        print("Auto Save Interval: " .. tostring(RARELOAD.settings.autoSaveInterval))
+        print("Max Distance: " .. tostring(RARELOAD.settings.maxDistance))
+        print("Angle Tolerance: " .. tostring(RARELOAD.settings.angleTolerance))
+        print("Retain Health and Armor: " .. tostring(RARELOAD.settings.retainHealthArmor))
+        print("Retain Ammo: " .. tostring(RARELOAD.settings.retainAmmo))
+        print("Retain Vehicule: " .. tostring(RARELOAD.settings.retainVehicleState))
+        print("Retain Entities: " .. tostring(RARELOAD.settings.retainMapEntities))
+        print("Retain Npcs: " .. tostring(RARELOAD.settings.retainNpc))
+        ---[[ End Of beta
         print("[=====================================================================]" .. "\n")
 
         RARELOAD.Debug.LogInventory(ply)
@@ -46,6 +56,12 @@ function RARELOAD.Debug.LogAfterRespawnInfo()
             print("Saved Eye Angles: " .. AngleToString(SavedInfo.ang))
             print("Saved Active Weapon: " .. tostring(SavedInfo.activeWeapon))
             print("Saved Inventory: " .. table.concat(SavedInfo.inventory, ", "))
+            print("Saved Health: " .. tostring(SavedInfo.health))
+            print("Saved Armor: " .. tostring(SavedInfo.armor))
+            print("Saved Ammo: " .. table.concat(SavedInfo.ammo, ", "))
+            print("Saved Vehicle: " .. tostring(SavedInfo.vehicle))
+            print("Saved Entities: " .. table.concat(SavedInfo.entities, ", "))
+            print("Saved NPCs: " .. table.concat(SavedInfo.npcs, ", "))
             print("Was in noclip: " .. tostring(MoveTypes.noclip))
             print("Was in vphysics: " .. tostring(MoveTypes.vphysics)) -- Will probably never happen
             print("Was in observer: " .. tostring(MoveTypes.observer)) -- Will probably never happen too
@@ -134,7 +150,7 @@ function RARELOAD.Debug.SavePosDataInfo(ply, oldPosData, playerData, mapNam)
             print("\nOld Position: ", oldPosData.pos)
             print("New Position: ", playerData.pos)
         end
-        if oldPosData and oldPosData.ang[1] ~= playerData.ang[1] or oldPosData.ang[2] ~= playerData.ang[2] or oldPosData.ang[3] ~= playerData.ang[3] then
+        if oldPosData and (oldPosData.ang[1] ~= playerData.ang[1] or oldPosData.ang[2] ~= playerData.ang[2] or oldPosData.ang[3] ~= playerData.ang[3]) then
             print("\nOld Angles: ")
             PrintTable(oldPosData.ang)
             print("New Angles: ")
@@ -144,7 +160,48 @@ function RARELOAD.Debug.SavePosDataInfo(ply, oldPosData, playerData, mapNam)
             print("\nOld Active Weapon: ", oldPosData.activeWeapon)
             print("New Active Weapon: ", playerData.activeWeapon)
         end
-
+        if oldPosData and oldPosData.maxDistance ~= playerData.maxDistance then
+            print("\nOld Max Distance: ", oldPosData.maxDistance)
+            print("New Max Distance: ", playerData.maxDistance)
+        end
+        if oldPosData and oldPosData.autoSaveInterval ~= playerData.autoSaveInterval then
+            print("\nOld Auto Save Interval: ", oldPosData.autoSaveInterval)
+            print("New Auto Save Interval: ", playerData.autoSaveInterval)
+        end
+        if oldPosData and oldPosData.angleTolerance ~= playerData.angleTolerance then
+            print("\nOld Angle Tolerance: ", oldPosData.angleTolerance)
+            print("New Angle Tolerance: ", playerData.angleTolerance)
+        end
+        if oldPosData and (oldPosData.health ~= playerData.health or oldPosData.armor ~= playerData.armor) then
+            print("\nOld Health: ", oldPosData.health)
+            print("New Health: ", playerData.health)
+            print("Old Armor: ", oldPosData.armor)
+            print("New Armor: ", playerData.armor)
+        end
+        if oldPosData and oldPosData.ammo ~= playerData.ammo then
+            print("\nOld Ammo: ")
+            PrintTable(oldPosData.ammo)
+            print("New Ammo: ")
+            PrintTable(playerData.ammo)
+        end
+        if oldPosData and oldPosData.vehicle ~= playerData.vehicle then
+            print("\nOld Vehicle: ")
+            PrintTable(oldPosData.vehicle)
+            print("New Vehicle: ")
+            PrintTable(playerData.vehicle)
+        end
+        if oldPosData and oldPosData.entities ~= playerData.entities then
+            print("\nOld Entities: ")
+            PrintTable(oldPosData.entities)
+            print("New Entities: ")
+            PrintTable(playerData.entities)
+        end
+        if oldPosData and oldPosData.npcs ~= playerData.npcs then
+            print("\nOld NPCs: ")
+            PrintTable(oldPosData.npcs)
+            print("New NPCs: ")
+            PrintTable(playerData.npcs)
+        end
         print("[=====================================================================]" .. "\n")
     end)
 end

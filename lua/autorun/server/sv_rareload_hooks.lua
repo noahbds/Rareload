@@ -248,15 +248,95 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         end
 
         RARELOAD.Debug.LogWeaponMessages(debugMessages, debugInfo)
+    end
 
-        if SavedInfo.activeWeapon then
-            timer.Simple(0.6, function()
-                if IsValid(ply) and ply:HasWeapon(SavedInfo.activeWeapon) then
-                    ply:SelectWeapon(SavedInfo.activeWeapon)
-                end
-            end)
+    ---[[ Beta [NOT TESTED] ]]---
+    if RARELOAD.settings.retainHealthArmor then
+        ply:SetHealth(SavedInfo.health or ply:GetMaxHealth())
+        ply:SetArmor(SavedInfo.armor or 0)
+    end
+
+    if RARELOAD.settings.retainAmmo and SavedInfo.ammo then
+        for weaponClass, ammoData in pairs(SavedInfo.ammo) do
+            ply:SetAmmo(ammoData.primary, weaponClass)
+            ply:SetAmmo(ammoData.secondary, weaponClass)
         end
     end
+
+    if RARELOAD.settings.retainVehicleState and SavedInfo.vehicle then
+        local existingVehicles = ents.FindInSphere(SavedInfo.vehicle.pos, 10)
+        local vehicleExists = false
+
+        for _, ent in ipairs(existingVehicles) do
+            if ent:GetClass() == SavedInfo.vehicle.class then
+                vehicleExists = true
+                ply:EnterVehicle(ent)
+                break
+            end
+        end
+
+        if not vehicleExists then
+            local vehicle = ents.Create(SavedInfo.vehicle.class)
+            vehicle:SetPos(SavedInfo.vehicle.pos)
+            vehicle:SetAngles(SavedInfo.vehicle.ang)
+            vehicle:Spawn()
+            vehicle:SetHealth(SavedInfo.vehicle.health)
+            ply:EnterVehicle(vehicle)
+        end
+    end
+
+    if RARELOAD.settings.retainMapEntities and SavedInfo.entities then
+        timer.Simple(1, function()
+            for _, entData in ipairs(SavedInfo.entities) do
+                local existingEntities = ents.FindInSphere(entData.pos, 1)
+                local entityExists = false
+
+                for _, ent in ipairs(existingEntities) do
+                    if ent:GetClass() == entData.class and ent:IsVehicle() then
+                        entityExists = true
+                        break
+                    end
+                end
+
+                if not entityExists then
+                    local ent = ents.Create(entData.class)
+                    ent:SetPos(entData.pos)
+                    ent:SetModel(entData.model)
+                    ent:SetAngles(entData.ang)
+                    ent:Spawn()
+                    ent:SetHealth(entData.health)
+                    if entData.frozen then
+                        ent:GetPhysicsObject():EnableMotion(false)
+                    end
+                end
+            end
+        end)
+    end
+
+    if RARELOAD.settings.retainMapNPCs and SavedInfo.npcs then
+        for _, npcData in ipairs(SavedInfo.npcs) do
+            local existingNPCs = ents.FindInSphere(npcData.pos, 1)
+            local npcExists = false
+
+            for _, npc in ipairs(existingNPCs) do
+                if npc:GetClass() == npcData.class then
+                    npcExists = true
+                    break
+                end
+            end
+
+            if not npcExists then
+                local npc = ents.Create(npcData.class)
+                npc:SetPos(npcData.pos)
+                npc:SetModel(npcData.model)
+                npc:SetAngles(npcData.ang)
+                npc:Spawn()
+                npc:SetHealth(npcData.health)
+            end
+        end
+    end
+
+    --[[ End Of Beta [NOT TESTED] ]] --
 
     if RARELOAD.settings.debugEnabled then
         CreatePlayerPhantom(ply)
@@ -264,10 +344,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
 end)
 
 hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
-    if not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() then
-        return
-    end
-    if not RARELOAD.settings.autoSaveEnabled then
+    if not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() or not RARELOAD.settings.autoSaveEnabled then
         return
     end
 
@@ -281,24 +358,37 @@ hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
     local currentPos = ply:GetPos()
     local currentEyeAngles = ply:EyeAngles()
     local currentActiveWeapon = ply:GetActiveWeapon()
+    local currentHealth = ply:Health()
+    local currentArmor = ply:Armor()
 
     local movedEnough = ply.lastSavedPosition and
         currentPos:DistToSqr(ply.lastSavedPosition) > (RARELOAD.settings.maxDistance * RARELOAD.settings.maxDistance)
+
     local anglesChanged = ply.lastSavedEyeAngles and (
         math.abs(currentEyeAngles.p - ply.lastSavedEyeAngles.p) > RARELOAD.settings.angleTolerance or
         math.abs(currentEyeAngles.y - ply.lastSavedEyeAngles.y) > RARELOAD.settings.angleTolerance or
         math.abs(currentEyeAngles.r - ply.lastSavedEyeAngles.r) > RARELOAD.settings.angleTolerance
     )
-    local weaponChanged = ply.lastSavedActiveWeapon and IsValid(currentActiveWeapon) and
+
+    local weaponChanged = RARELOAD.settings.retainInventory and ply.lastSavedActiveWeapon and
+        IsValid(currentActiveWeapon) and
         currentActiveWeapon ~= ply.lastSavedActiveWeapon
 
-    if (not ply.lastSavedPosition or movedEnough or anglesChanged or weaponChanged) then
+    local healthChanged = RARELOAD.settings.retainHealthArmor and ply.lastSavedHealth and IsValid(currentHealth) and
+        currentHealth ~= ply.lastSavedHealth
+
+    local armorChanged = RARELOAD.settings.retainHealthArmor and ply.lastSavedArmor and IsValid(currentArmor) and
+        currentArmor ~= ply.lastSavedArmor
+
+    if (not ply.lastSavedPosition or movedEnough or anglesChanged or weaponChanged or healthChanged or armorChanged) then
         if ply:IsOnGround() and not ply:InVehicle() and not ply:KeyDown(IN_ATTACK) and not ply:KeyDown(IN_ATTACK2) then
             Save_position(ply)
             lastSavedTimes[ply:UserID()] = currentTime
             ply.lastSavedPosition = currentPos
             ply.lastSavedEyeAngles = currentEyeAngles
             ply.lastSavedActiveWeapon = currentActiveWeapon
+            ply.lastSavedHealth = currentHealth
+            ply.lastSavedArmor = currentArmor
         end
     end
 end)

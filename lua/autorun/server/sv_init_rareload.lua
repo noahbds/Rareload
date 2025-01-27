@@ -15,6 +15,11 @@ function GetDefaultSettings()
         spawnModeEnabled = true,
         autoSaveEnabled = false,
         retainInventory = false,
+        retainHealthArmor = false,  -- Beta [NOT TESTED]
+        retainAmmo = false,         -- Beta [NOT TESTED]
+        retainVehicleState = false, -- Beta [NOT TESTED]
+        retainMapEntities = false,  -- Beta [NOT TESTED]
+        retainMapNPCs = false,      -- Beta [NOT TESTED]
         nocustomrespawnatdeath = false,
         debugEnabled = false,
         autoSaveInterval = 5,
