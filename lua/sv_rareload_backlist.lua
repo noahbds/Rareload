@@ -248,10 +248,19 @@ local hardcodedBlacklist = {
     ["instanced_scripted_scene"] = true,
 }
 
--- Merge hardcoded blacklist with settings
+-- Add a special flag to mark hardcoded entries
 for class, enabled in pairs(hardcodedBlacklist) do
     if RARELOAD.settings.excludeClasses[class] == nil then
-        RARELOAD.settings.excludeClasses[class] = enabled
+        RARELOAD.settings.excludeClasses[class] = {
+            enabled = enabled,
+            hardcoded = true,
+        }
+    elseif type(RARELOAD.settings.excludeClasses[class]) ~= "table" then
+        -- Convert legacy entries to the new format
+        RARELOAD.settings.excludeClasses[class] = {
+            enabled = RARELOAD.settings.excludeClasses[class],
+            hardcoded = false,
+        }
     end
 end
 

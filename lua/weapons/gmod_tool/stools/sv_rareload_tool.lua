@@ -362,8 +362,8 @@ function TOOL.BuildCPanel(panel)
 
         -- Sort classes alphabetically
         local sortedClasses = {}
-        for class, enabled in pairs(RARELOAD.settings.excludeClasses) do
-            table.insert(sortedClasses, { class = class, enabled = enabled })
+        for class, data in pairs(RARELOAD.settings.excludeClasses) do
+            table.insert(sortedClasses, { class = class, enabled = data.enabled, hardcoded = data.hardcoded })
         end
         table.sort(sortedClasses, function(a, b) return a.class < b.class end)
 
@@ -375,7 +375,7 @@ function TOOL.BuildCPanel(panel)
             classPanel:SetTall(20)
 
             local classLabel = vgui.Create("DLabel", classPanel)
-            classLabel:SetText(data.class)
+            classLabel:SetText(data.class .. (data.hardcoded and " (Hardcoded)" or ""))
             classLabel:Dock(LEFT)
             classLabel:SetWide(200)
             classLabel:SetTextColor(Color(255, 255, 255))
@@ -386,18 +386,20 @@ function TOOL.BuildCPanel(panel)
             enableCheckbox:Dock(LEFT)
             enableCheckbox:DockMargin(10, 0, 0, 0)
             enableCheckbox.OnChange = function(self, value)
-                RARELOAD.settings.excludeClasses[data.class] = value == 1
+                RARELOAD.settings.excludeClasses[data.class].enabled = value == 1
             end
 
             local removeButton = vgui.Create("DButton", classPanel)
             removeButton:SetText("Remove")
             removeButton:Dock(RIGHT)
+            removeButton:SetEnabled(not data.hardcoded) -- Disable removal for hardcoded entries
             removeButton.DoClick = function()
                 RARELOAD.settings.excludeClasses[data.class] = nil
                 updateBlacklistDisplay()
             end
         end
     end
+
 
     hook.Add("InitPostEntity", "RARELOAD_InitBlacklist", function()
         timer.Simple(1, function()
