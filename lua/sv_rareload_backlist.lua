@@ -1,6 +1,9 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 
+RARELOAD.settings.excludeClasses = RARELOAD.settings.excludeClasses or {}
+
+
 -- Load hardcoded blacklist into settings if not already present
 local hardcodedBlacklist = {
     -- AI Entities

@@ -163,6 +163,9 @@ concommand.Add("save_position", function(ply, _, _)
 
     if RARELOAD.settings.retainMapEntities then
         playerData.entities = {}
+        if not RARELOAD.settings.excludeClasses then
+            RARELOAD.settings.excludeClasses = {}
+        end
 
         local excludeClasses = RARELOAD.settings.excludeClasses
         local excludePatterns = RARELOAD.settings.excludePatterns
