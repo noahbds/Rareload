@@ -345,6 +345,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
                 npc:SetAngles(npcData.ang)
                 if npcData.weapons then
                     for _, weapon in ipairs(npcData.weapons) do
+                        ---@diagnostic disable-next-line: undefined-field
                         npc:Give(weapon)
                         print("[RARELOAD DEBUG] NPC " .. npcData.class .. " given weapon: " .. weapon)
                     end

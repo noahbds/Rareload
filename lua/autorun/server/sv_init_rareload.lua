@@ -10,8 +10,8 @@ function GetDefaultSettings()
         retainHealthArmor = false,  -- Beta [NOT TESTED]
         retainAmmo = false,         -- Beta [NOT TESTED]
         retainVehicleState = false, -- Beta [NOT TESTED]
-        retainMapEntities = false,  -- Beta [NOT TESTED]
-        retainMapNPCs = false,      -- Beta [NOT TESTED]
+        retainMapEntities = false,
+        retainMapNPCs = false,
         nocustomrespawnatdeath = false,
         debugEnabled = false,
         autoSaveInterval = 5,
@@ -217,6 +217,7 @@ function CreatePlayerPhantom(ply)
         if pos:WithinAABox(Vector(-16384, -16384, -16384), Vector(16384, 16384, 16384)) then
             if pos.z > -15000 then
                 ---@type phantom
+                ---@diagnostic disable-next-line: assign-type-mismatch
                 local phantom = ents.Create("prop_physics")
                 phantom:SetModel(ply:GetModel())
                 phantom:SetPos(pos)

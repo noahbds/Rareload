@@ -1,5 +1,6 @@
 ---@diagnostic disable: undefined-field, param-type-mismatch
 
+
 local RARELOAD  = {}
 
 TOOL            = TOOL or {}
@@ -157,12 +158,156 @@ function TOOL.BuildCPanel(panel)
     angleToleranceSlider.OnValueChanged = function(self, value)
         RunConsoleCommand("set_angle_tolerance", value)
     end
+
+
+    ------------------------------------------------------------------------]
+    --------------------------------------End of Auto Save Slider Options---]
+    ------------------------------------------------------------------------]
+
+    -------------------------------------------------------------------------------------------]
+    ---------------------------------------------Toolgun Saved Npcs And Entities Information---]
+    -------------------------------------------------------------------------------------------]
+
+
+    -- Display saved entities, NPCs, and vehicles
+    local function addListSection(title, items)
+        local label = vgui.Create("DLabel", panel)
+        label:SetText(title)
+        label:SetFont("DermaDefaultBold")
+        label:Dock(TOP)
+        label:DockMargin(30, 10, 30, 0)
+        label:SetTextColor(Color(255, 255, 255))
+
+        for _, item in ipairs(items) do
+            local itemLabel = vgui.Create("DLabel", panel)
+            itemLabel:SetText(item)
+            itemLabel:Dock(TOP)
+            itemLabel:DockMargin(40, 5, 30, 0)
+            itemLabel:SetTextColor(Color(255, 255, 255))
+        end
+    end
+
+    local mapName = game.GetMap()
+    local savedData = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][LocalPlayer():SteamID()]
+
+    if savedData then
+        if savedData.entities then
+            local entityList = {}
+            for _, entity in ipairs(savedData.entities) do
+                table.insert(entityList, entity.class .. " at " .. tostring(entity.pos))
+            end
+            addListSection("Saved Entities:", entityList)
+        end
+
+        if savedData.npcs then
+            local npcList = {}
+            for _, npc in ipairs(savedData.npcs) do
+                table.insert(npcList, npc.class .. " at " .. tostring(npc.pos))
+            end
+            addListSection("Saved NPCs:", npcList)
+        end
+
+        if savedData.vehicle then
+            local vehicleList = { savedData.vehicle.class .. " at " .. tostring(savedData.vehicle.pos) }
+            addListSection("Saved Vehicle:", vehicleList)
+        end
+    else
+        local noDataLabel = vgui.Create("DLabel", panel)
+        noDataLabel:SetText("No saved data available.")
+        noDataLabel:Dock(TOP)
+        noDataLabel:DockMargin(30, 10, 30, 0)
+        noDataLabel:SetTextColor(Color(255, 255, 255))
+    end
+
+
+    -------------------------------------------------------------------------------------------]
+    --------------------------------------End of Toolgun Saved Npcs And Entities Information---]
+    -------------------------------------------------------------------------------------------]
+
+    ------------------------------------------------------------------------]
+    --------------------------------------Blacklist Modification Section----]
+    ------------------------------------------------------------------------]
+
+    local function updateBlacklistDisplay()
+        if BlacklistPanel then
+            BlacklistPanel:Remove()
+        end
+
+        BlacklistPanel = vgui.Create("DPanel", panel)
+        BlacklistPanel:Dock(TOP)
+        BlacklistPanel:DockMargin(30, 10, 30, 0)
+
+        local blacklistLabel = vgui.Create("DLabel", BlacklistPanel)
+        blacklistLabel:SetText("Blacklist Classes:")
+        blacklistLabel:SetFont("DermaDefaultBold")
+        blacklistLabel:Dock(TOP)
+        blacklistLabel:DockMargin(0, 0, 0, 5)
+        blacklistLabel:SetTextColor(Color(255, 255, 255))
+
+        for class, enabled in pairs(RARELOAD.settings.excludeClasses) do
+            local classPanel = vgui.Create("DPanel", BlacklistPanel)
+            classPanel:Dock(TOP)
+            classPanel:DockMargin(0, 0, 0, 5)
+            classPanel:SetTall(20)
+
+            local classLabel = vgui.Create("DLabel", classPanel)
+            classLabel:SetText(class)
+            classLabel:Dock(LEFT)
+            classLabel:SetWide(200)
+            classLabel:SetTextColor(Color(255, 255, 255))
+
+            ---@class DCheckBoxLabel
+            local enableCheckbox = vgui.Create("DCheckBoxLabel", classPanel)
+            enableCheckbox:SetText("Enabled")
+            enableCheckbox:SetValue(enabled and 1 or 0)
+            enableCheckbox:Dock(LEFT)
+            enableCheckbox:DockMargin(10, 0, 0, 0)
+            enableCheckbox.OnChange = function(self, value)
+                RARELOAD.settings.excludeClasses[class] = value == 1
+            end
+
+            local removeButton = vgui.Create("DButton", classPanel)
+            removeButton:SetText("Remove")
+            removeButton:Dock(RIGHT)
+            removeButton.DoClick = function()
+                RARELOAD.settings.excludeClasses[class] = nil
+                updateBlacklistDisplay()
+            end
+        end
+    end
+
+    local addClassPanel = vgui.Create("DPanel", panel)
+    addClassPanel:Dock(TOP)
+    addClassPanel:DockMargin(30, 10, 30, 0)
+    addClassPanel:SetTall(30)
+
+    local addClassTextEntry = vgui.Create("DTextEntry", addClassPanel)
+    addClassTextEntry:Dock(LEFT)
+    addClassTextEntry:SetWide(200)
+    addClassTextEntry:SetPlaceholderText("Enter class to blacklist")
+
+    local addClassButton = vgui.Create("DButton", addClassPanel)
+    addClassButton:SetText("Add")
+    addClassButton:Dock(RIGHT)
+    addClassButton.DoClick = function()
+        local class = addClassTextEntry:GetValue()
+        if class ~= "" then
+            RARELOAD.settings.excludeClasses[class] = true
+            addClassTextEntry:SetValue("")
+            updateBlacklistDisplay()
+        end
+    end
+
+    updateBlacklistDisplay()
 end
 
 ------------------------------------------------------------------------]
---------------------------------------End of Auto Save Slider Options---]
+--------------------------------End of Blacklist Modification Section---]
 ------------------------------------------------------------------------]
 
+------------------------------------------------------------------------]
+---------------------------------------------Toolgun Screen Options-----]
+------------------------------------------------------------------------]
 
 function TOOL:DrawToolScreen(width, height)
     local success, err = pcall(loadAddonStatefortool)

@@ -41,9 +41,11 @@ handleNetReceive("CreatePlayerPhantom", function()
     local ang = net.ReadAngle()
 
     if not pos:IsZero() then
+        ---@diagnostic disable-next-line: undefined-field
         removePhantom(ply:SteamID())
 
         if RARELOAD.settings.debugEnabled then
+            ---@diagnostic disable-next-line: undefined-field
             RARELOAD.Phanthom[ply:SteamID()] = { phantom = createPhantom(ply, pos, ang), ply = ply }
         end
     else
@@ -65,6 +67,7 @@ end
 
 handleNetReceive("RemovePlayerPhantom", function()
     local ply = net.ReadEntity()
+    ---@diagnostic disable-next-line: undefined-field
     removePhantom(ply:SteamID())
 end)
 

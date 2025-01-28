@@ -10,6 +10,8 @@ include("autorun/server/sv_rareload_commands.lua")
 include("autorun/server/sv_rareload_hooks.lua")
 include("autorun/server/sv_rareload_debug.lua")
 include("weapons/gmod_tool/stools/sv_rareload_tool.lua")
+include("autorun/server/sv_rareload_blacklist.lua")
+
 
 -- Print a message to the server console indicating that the addon is loading
 print("Rareload: Loading shared files")
