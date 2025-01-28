@@ -240,13 +240,33 @@ HardcodedBlacklist = {
     ["RARELOAD.Phanthom"] = true,
     ["ally_speech_manager"] = true,
     ["instanced_scripted_scene"] = true,
-
 }
 
-ExcludePatterns = {
-    "^env_",       -- Environment entities
-    "^physgun_",   -- Physgun-related entities
-    "^predicted_", -- Predicted viewmodels
-    "^weapon_",    -- All weapon entities
-    "^item_",      -- All item entities
-}
+function LoadBlacklist()
+    local mapName = game.GetMap()
+    local filePath = "rareload/blacklist_" .. mapName .. ".json"
+    if file.Exists(filePath, "DATA") then
+        local data = file.Read(filePath, "DATA")
+        local success, result = pcall(util.JSONToTable, data)
+        if success then
+            HardcodedBlacklist = result
+        else
+            print("[RARELOAD DEBUG] Error parsing JSON: " .. result)
+        end
+    else
+        SaveBlacklist() -- Save default blacklist if file doesn't exist
+    end
+end
+
+function SaveBlacklist()
+    local mapName = game.GetMap()
+    local filePath = "rareload/blacklist_" .. mapName .. ".json"
+    local success, err = pcall(function()
+        file.Write(filePath, util.TableToJSON(HardcodedBlacklist, true))
+    end)
+    if not success then
+        print("[RARELOAD] Failed to save blacklist: " .. err)
+    end
+end
+
+LoadBlacklist()

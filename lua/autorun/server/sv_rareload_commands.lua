@@ -44,6 +44,24 @@ concommand.Add("toggle_retain_map_entities", function(ply)
     ToggleSetting(ply, 'retainMapEntities', 'Retain map entities')
 end)
 
+concommand.Add("reload_blacklist", function(ply)
+    if not ply:IsSuperAdmin() then
+        print("[RARELOAD] You do not have permission to use this command.")
+        return
+    end
+    LoadBlacklist()
+    print("[RARELOAD] Blacklist reloaded.")
+end)
+
+concommand.Add("save_blacklist", function(ply)
+    if not ply:IsSuperAdmin() then
+        print("[RARELOAD] You do not have permission to use this command.")
+        return
+    end
+    SaveBlacklist()
+    print("[RARELOAD] Blacklist saved.")
+end)
+
 ---[[ End Of Beta [NOT TESTED] ]]---
 
 -------------------------------------------------------------------------------------------------------------------------]
@@ -163,88 +181,85 @@ concommand.Add("save_position", function(ply, _, _)
 
     if RARELOAD.settings.retainMapEntities then
         playerData.entities = {}
-        if not RARELOAD.settings.excludeClasses then
-            RARELOAD.settings.excludeClasses = {}
-        end
 
-        local excludeClasses = RARELOAD.settings.excludeClasses
-        local excludePatterns = RARELOAD.settings.excludePatterns
+        -- Load the blacklist from the data file
+        local mapName = game.GetMap()
+        local blacklistFilePath = "rareload/blacklist_" .. mapName .. ".json"
+        local blacklist = {}
+        if file.Exists(blacklistFilePath, "DATA") then
+            local data = file.Read(blacklistFilePath, "DATA")
+            local success, result = pcall(util.JSONToTable, data)
+            if success then
+                blacklist = result
+            else
+                print("[RARELOAD DEBUG] Error parsing JSON: " .. result)
+            end
+        else
+            blacklist = HardcodedBlacklist
+        end
 
         for _, ent in pairs(ents.GetAll()) do
             if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() and not ent.isPhantom then
                 local class = ent:GetClass()
+
+                if blacklist[class] then
+                    print("[RARELOAD DEBUG] Skipping blacklisted entity: " .. class)
+                    continue
+                end
 
                 if ent.IsPhantom then
                     print("[RARELOAD DEBUG] Skipping phantom entity: " .. class)
                     continue
                 end
 
-                -- Skip explicitly excluded classes
-                if not excludeClasses[class] then
-                    -- Skip entities matching excluded patterns
-                    local skip = false
-                    for _, pattern in ipairs(excludePatterns) do
-                        if string.find(class, pattern) then
-                            skip = true
-                            break
-                        end
-                    end
-
-                    if not skip then
-                        -- Removed CPPIGetOwner() to allow saving all entities
-                        local phys = ent:GetPhysicsObject()
-                        table.insert(playerData.entities, {
-                            class = class,
-                            pos = ent:GetPos(),
-                            model = ent:GetModel(),
-                            ang = ent:GetAngles(),
-                            health = ent:Health(),
-                            frozen = IsValid(phys) and not phys:IsMotionEnabled() or false
-                        })
-                        print("[RARELOAD DEBUG] Saved entity: " .. class .. " at position " .. tostring(ent:GetPos()))
-                    else
-                        print("[RARELOAD DEBUG] Skipping entity matching pattern: " .. class)
-                    end
-                else
-                    print("[RARELOAD DEBUG] Skipping excluded entity class: " .. class)
-                end
+                local phys = ent:GetPhysicsObject()
+                table.insert(playerData.entities, {
+                    class = class,
+                    pos = ent:GetPos(),
+                    model = ent:GetModel(),
+                    ang = ent:GetAngles(),
+                    health = ent:Health(),
+                    frozen = IsValid(phys) and not phys:IsMotionEnabled() or false
+                })
+                print("[RARELOAD DEBUG] Saved entity: " .. class .. " at position " .. tostring(ent:GetPos()))
             end
         end
-
-        if RARELOAD.settings.retainMapNPCs then
-            playerData.npcs = {}
-            for _, npc in pairs(ents.FindByClass("npc_*")) do
-                if IsValid(npc) then
-                    local weapons = {}
-                    for _, weapon in ipairs(npc:GetWeapons()) do
-                        table.insert(weapons, weapon:GetClass())
-                    end
-                    table.insert(playerData.npcs, {
-                        class = npc:GetClass(),
-                        pos = npc:GetPos(),
-                        weapons = weapons,
-                        model = npc:GetModel(),
-                        ang = npc:GetAngles(),
-                        health = npc:Health()
-                    })
-                end
-            end
-        end
-
-        RARELOAD.playerPositions[MapName][ply:SteamID()] = playerData
-
-        local success, err = pcall(function()
-            file.Write("rareload/player_positions_" .. MapName .. ".json",
-                util.TableToJSON(RARELOAD.playerPositions, true))
-        end)
-
-        if not success then
-            print("[RARELOAD] Failed to save position data: " .. err)
-        else
-            print("[RARELOAD] Player position successfully saved to file.")
-        end
-
-        CreatePlayerPhantom(ply)
-        SyncPlayerPositions(ply)
     end
+
+    if RARELOAD.settings.retainMapNPCs then
+        playerData.npcs = {}
+        for _, npc in pairs(ents.FindByClass("npc_*")) do
+            if IsValid(npc) then
+                local weapons = {}
+                for _, weapon in ipairs(npc:GetWeapons()) do
+                    table.insert(weapons, weapon:GetClass())
+                end
+                table.insert(playerData.npcs, {
+                    class = npc:GetClass(),
+                    pos = npc:GetPos(),
+                    weapons = weapons,
+                    model = npc:GetModel(),
+                    ang = npc:GetAngles(),
+                    health = npc:Health()
+                })
+            end
+        end
+    end
+
+    RARELOAD.playerPositions[MapName][ply:SteamID()] = playerData
+
+    local success, err = pcall(function()
+        file.Write("rareload/player_positions_" .. MapName .. ".json",
+            util.TableToJSON(RARELOAD.playerPositions, true))
+    end)
+
+    if not success then
+        print("[RARELOAD] Failed to save position data: " .. err)
+    else
+        print("[RARELOAD] Player position successfully saved to file.")
+    end
+
+    CreatePlayerPhantom(ply)
+    SyncPlayerPositions(ply)
+    SaveBlacklist()
 end)

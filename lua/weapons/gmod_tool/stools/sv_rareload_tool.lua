@@ -1,6 +1,7 @@
 ---@diagnostic disable: undefined-field, param-type-mismatch
 
 -- Include the blacklist file
+include("autorun/server/sv_rareload_backlist.lua")
 
 
 local RARELOAD  = {}
@@ -30,6 +31,7 @@ local function loadAddonStatefortool()
         local json = file.Read(addonStateFilePath, "DATA")
         RARELOAD.settings = util.JSONToTable(json)
     end
+    SaveBlacklist()
 end
 
 local COLOR_ENABLED = Color(50, 150, 255)
@@ -63,111 +65,182 @@ end
 
 function TOOL.BuildCPanel(panel)
     local success, err = pcall(loadAddonStatefortool)
+
     if not success then
         ErrorNoHalt("Failed to load addon state: " .. err)
+
         return
     end
 
+
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
 
+
     createButton(panel, "Toggle Rareload", "toggle_rareload",
+
         "Enable or disable Rareload", RARELOAD.settings.addonEnabled)
 
+
     createButton(panel, "Toggle Move Type", "toggle_spawn_mode",
+
         "Switch between different spawn modes", RARELOAD.settings.spawnModeEnabled)
 
+
     createButton(panel, "Toggle Auto Save", "toggle_auto_save",
+
         "Enable or Disable Auto Saving Position", RARELOAD.settings.autoSaveEnabled)
 
+
     createButton(panel, "Toggle Keep Inventory", "toggle_retain_inventory",
+
         "Enable or disable retaining inventory", RARELOAD.settings.retainInventory)
 
+
     ---[[ Beta [NOT TESTED] ]]---
+
 
     createButton(panel, "Toggle Keep Health and Armor", "toggle_retain_health_armor",
         "Enable or disable retaining health and armor", RARELOAD.settings.retainHealthArmor)
 
+
     createButton(panel, "Toggle Keep Ammo", "toggle_retain_ammo",
+
         "Enable or disable retaining ammo", RARELOAD.settings.retainAmmo)
+
 
     createButton(panel, "Toggle Keep Vehicle State", "toggle_retain_vehicle_state",
         "Enable or disable retaining vehicle state", RARELOAD.settings.retainVehicleState)
 
+
     createButton(panel, "Toggle Keep Map Entities", "toggle_retain_map_entities",
         "Enable or disable retaining map entities", RARELOAD.settings.retainMapEntities)
 
+
     createButton(panel, "Toggle Keep Map NPCs", "toggle_retain_map_npcs",
+
         "Enable or disable retaining map NPCs", RARELOAD.settings.retainMapNPCs)
 
+
     ---[[End of Beta [NOT TESTED] ]]---
+
 
     createButton(panel, "Toggle No Custom Respawn At Death", "toggle_nocustomrespawnatdeath",
         "Enable or disable No Custom Respawn At Death", RARELOAD.settings.nocustomrespawnatdeath)
 
+
     createButton(panel, "Toggle Debug", "toggle_debug",
+
         "Enable or disable Debug", RARELOAD.settings.debugEnabled)
 
+
     ---@class DButton
+
     local savePositionButton = vgui.Create("DButton", panel)
+
     savePositionButton:SetText("Save Position")
+
     savePositionButton:SetTextColor(Color(0, 0, 0))
+
     savePositionButton:Dock(TOP)
+
     savePositionButton:DockMargin(30, 10, 30, 0)
+
     savePositionButton:SetSize(250, 30)
+
     savePositionButton.DoClick = function()
         RunConsoleCommand("save_position")
     end
 
-    ------------------------------------------------------------------------]
-    ---------------------------------------------Auto Save Slider Options---]
+
     ------------------------------------------------------------------------]
 
+    ---------------------------------------------Auto Save Slider Options---]
+
+    ------------------------------------------------------------------------]
+
+
     ---@class DNumSlider
+
     local autoSaveSlider = vgui.Create("DNumSlider", panel)
+
     autoSaveSlider:SetText("Auto Save Interval")
+
     autoSaveSlider.Label:SetTextColor(Color(255, 255, 255)) -- Set text color to white
+
     autoSaveSlider:SetMin(1)
+
     autoSaveSlider:SetMax(60)
+
     autoSaveSlider:SetDecimals(0)
+
     autoSaveSlider:SetValue(RARELOAD.settings.autoSaveInterval or 2)
+
     autoSaveSlider:Dock(TOP)
+
     autoSaveSlider:DockMargin(30, 10, 30, 0)
+
     autoSaveSlider.OnValueChanged = function(self, value)
         RunConsoleCommand("set_auto_save_interval", value)
     end
 
+
     local maxDistanceSlider = vgui.Create("DNumSlider", panel)
+
     maxDistanceSlider:SetText("Max Distance")
+
     maxDistanceSlider.Label:SetTextColor(Color(255, 255, 255)) -- Set text color to white
+
     maxDistanceSlider:SetMin(1)
+
     maxDistanceSlider:SetMax(1000)
+
     maxDistanceSlider:SetDecimals(0)
+
     maxDistanceSlider:SetValue(RARELOAD.settings.maxDistance or 50)
+
     maxDistanceSlider:Dock(TOP)
+
     maxDistanceSlider:DockMargin(30, 10, 30, 0)
+
     maxDistanceSlider.OnValueChanged = function(self, value)
         RunConsoleCommand("set_max_distance", value)
     end
 
+
     local angleToleranceSlider = vgui.Create("DNumSlider", panel)
+
     angleToleranceSlider:SetText("Angle Tolerance")
+
     angleToleranceSlider.Label:SetTextColor(Color(255, 255, 255)) -- Set text color to white
+
     angleToleranceSlider:SetMin(1)
+
     angleToleranceSlider:SetMax(360)
+
     angleToleranceSlider:SetDecimals(1)
+
     angleToleranceSlider:SetValue(RARELOAD.settings.angleTolerance or 100.0)
+
     angleToleranceSlider:Dock(TOP)
+
     angleToleranceSlider:DockMargin(30, 10, 30, 0)
+
     angleToleranceSlider.OnValueChanged = function(self, value)
         RunConsoleCommand("set_angle_tolerance", value)
     end
 
-    ------------------------------------------------------------------------]
-    --------------------------------------End of Auto Save Slider Options---]
+
     ------------------------------------------------------------------------]
 
+    --------------------------------------End of Auto Save Slider Options---]
+
+    ------------------------------------------------------------------------]
+
+
     -------------------------------------------------------------------------------------------]
+
     ---------------------------------------------Toolgun Saved Npcs And Entities Information---]
+
     -------------------------------------------------------------------------------------------]
 
     local function createProgressBar(parent, value, maxValue, x, y, w, h)
@@ -175,10 +248,15 @@ function TOOL.BuildCPanel(panel)
         bar:SetPos(x, y)
         bar:SetSize(w, h)
 
+        -- Stylish modern with rounded corners and softer colors
         bar.Paint = function(self, w, h)
-            draw.RoundedBox(4, 0, 0, w, h, Color(40, 40, 40))
+            -- Background of the bar
+            draw.RoundedBox(4, 0, 0, w, h, Color(30, 30, 30, 200))
+
+            -- Progress bar
             local progress = math.Clamp(value / maxValue, 0, 1)
-            draw.RoundedBox(4, 2, 2, (w - 4) * progress, h - 4, Color(0, 255, 0))
+            local barColor = Color(70, 180, 70, 255) -- Softer green color
+            draw.RoundedBox(4, 1, 1, (w - 2) * progress, h - 2, barColor)
         end
 
         return bar
@@ -187,18 +265,27 @@ function TOOL.BuildCPanel(panel)
     local function createEntityPanel(parent, entityData, bgColor)
         local itemPanel = vgui.Create("DPanel", parent)
         itemPanel:Dock(TOP)
-        itemPanel:SetTall(60)
+        itemPanel:SetTall(80) -- Increased height for better readability
         itemPanel:DockMargin(5, 5, 5, 5)
 
-        local gradient = Material("gui/gradient")
+        -- Stylish background with a subtle border
         itemPanel.Paint = function(self, w, h)
-            surface.SetDrawColor(bgColor or Color(60, 60, 60, 200))
-            surface.DrawRect(0, 0, w, h)
-            surface.SetMaterial(gradient)
-            surface.SetDrawColor(Color(255, 255, 255, 10))
-            surface.DrawTexturedRect(0, 0, w, h)
+            -- Main background
+            draw.RoundedBox(8, 0, 0, w, h, Color(40, 40, 45, 250))
+            -- Subtle border
+            surface.SetDrawColor(Color(70, 70, 75, 100))
+            surface.DrawOutlinedRect(0, 0, w, h, 1)
         end
 
+        -- Icon background
+        local iconBg = vgui.Create("DPanel", itemPanel)
+        iconBg:SetPos(10, 10)
+        iconBg:SetSize(48, 48)
+        iconBg.Paint = function(self, w, h)
+            draw.RoundedBox(6, 0, 0, w, h, Color(60, 60, 65, 255))
+        end
+
+        -- Icon Type (based on entity type)
         local iconType = "icon16/brick.png"
         if entityData.class:find("npc") then
             iconType = "icon16/user.png"
@@ -206,38 +293,62 @@ function TOOL.BuildCPanel(panel)
             iconType = "icon16/bomb.png"
         end
 
-        local icon = vgui.Create("DImage", itemPanel)
+        local icon = vgui.Create("DImage", iconBg)
         icon:SetSize(32, 32)
-        icon:SetPos(5, 14)
+        icon:SetPos(8, 8)
         icon:SetImage(iconType)
 
+        -- Entity name
         local nameLabel = vgui.Create("DLabel", itemPanel)
-        nameLabel:SetPos(45, 5)
+        nameLabel:SetPos(68, 10)
         nameLabel:SetText(entityData.class)
-        nameLabel:SetFont("DermaDefaultBold")
-        nameLabel:SetTextColor(Color(255, 255, 255))
-        nameLabel:SizeToContents()
+        nameLabel:SetFont("Trebuchet18")
+        nameLabel:SetTextColor(Color(220, 220, 220))
+        nameLabel:SetWide(300)
+        nameLabel:SetWrap(true) -- Allow text to wrap
 
+        -- Position label
         local posLabel = vgui.Create("DLabel", itemPanel)
-        posLabel:SetPos(45, 25)
-        posLabel:SetText(string.format("Pos: %.0f, %.0f, %.0f",
+        posLabel:SetPos(68, 30)
+        posLabel:SetText(string.format("Position: %.0f, %.0f, %.0f",
             entityData.pos.x or 0,
             entityData.pos.y or 0,
             entityData.pos.z or 0))
-        posLabel:SetTextColor(Color(200, 200, 200))
-        posLabel:SizeToContents()
+        posLabel:SetTextColor(Color(180, 180, 180))
+        posLabel:SetWide(300)
+        posLabel:SetWrap(true) -- Allow text to wrap
 
+        -- Health bar (if available)
         if entityData.health then
             local healthLabel = vgui.Create("DLabel", itemPanel)
-            healthLabel:SetPos(45, 42)
-            healthLabel:SetText("Santé:")
-            healthLabel:SetTextColor(Color(200, 200, 200))
+            healthLabel:SetPos(68, 50)
+            healthLabel:SetText("Health:")
+            healthLabel:SetTextColor(Color(180, 180, 180))
             healthLabel:SizeToContents()
 
-            createProgressBar(itemPanel, entityData.health, 100, 85, 45, 100, 12)
+            createProgressBar(itemPanel, entityData.health, 100, 100, 50, 200, 14)
         end
 
         return itemPanel
+    end
+
+    local function createEntityCategory(parent, categoryTitle, entityList, color)
+        local categoryPanel = vgui.Create("DPanel", parent)
+        categoryPanel:Dock(TOP)
+        categoryPanel:DockMargin(10, 10, 10, 0)
+
+        -- Category header
+        local headerLabel = vgui.Create("DLabel", categoryPanel)
+        headerLabel:SetText(categoryTitle)
+        headerLabel:SetFont("DermaLarge")
+        headerLabel:SetTextColor(Color(255, 200, 0))
+        headerLabel:Dock(TOP)
+        headerLabel:DockMargin(5, 5, 5, 5)
+
+        -- Loop through the entities or NPCs
+        for _, entity in ipairs(entityList) do
+            createEntityPanel(categoryPanel, entity, color)
+        end
     end
 
     local mapName = game.GetMap()
@@ -247,6 +358,7 @@ function TOOL.BuildCPanel(panel)
         local data = file.Read(filePath, "DATA")
 
         local success, savedData = pcall(util.JSONToTable, data)
+
         if not success or not savedData then
             print("JSON decode error:", savedData)
             local errorLabel = vgui.Create("DLabel", panel)
@@ -254,49 +366,32 @@ function TOOL.BuildCPanel(panel)
             errorLabel:Dock(TOP)
             errorLabel:DockMargin(30, 10, 30, 0)
             errorLabel:SetTextColor(Color(255, 100, 100))
+
             return
         end
 
         local plyID = LocalPlayer():SteamID()
-
-        -- Correction: Chercher dans la sous-table du mapName
         local mapData = savedData[mapName]
+
         if mapData and mapData[plyID] then
             local playerData = mapData[plyID]
+
+            -- Create a scrollable panel for large data
+            local scrollPanel = vgui.Create("DScrollPanel", panel)
+            scrollPanel:Dock(FILL)
+            local categoryList = vgui.Create("DPanelList", scrollPanel)
+            categoryList:Dock(FILL)
+            categoryList:SetSpacing(5)
+            categoryList:SetPadding(5)
+
+            -- Display saved entities
             if type(playerData.entities) == "table" then
-                local categoryPanel = vgui.Create("DPanel", panel)
-                categoryPanel:Dock(TOP)
-                categoryPanel:DockMargin(10, 10, 10, 0)
-                categoryPanel:SetTall(#playerData.entities * 60 + 30)
-
-                local headerLabel = vgui.Create("DLabel", categoryPanel)
-                headerLabel:SetText("Entités Sauvegardées")
-                headerLabel:SetFont("DermaLarge")
-                headerLabel:SetTextColor(Color(255, 200, 0))
-                headerLabel:Dock(TOP)
-                headerLabel:DockMargin(5, 5, 5, 5)
-
-                for _, entity in ipairs(playerData.entities) do
-                    createEntityPanel(categoryPanel, entity, Color(70, 90, 120, 200))
-                end
+                createEntityCategory(categoryList, "Saved Entities", playerData.entities, Color(70, 90, 120, 200))
             end
 
+            -- Display saved NPCs
             if type(playerData.npcs) == "table" then
-                local categoryPanel = vgui.Create("DPanel", panel)
-                categoryPanel:Dock(TOP)
-                categoryPanel:DockMargin(10, 10, 10, 0)
-                categoryPanel:SetTall(#playerData.npcs * 60 + 30)
-
-                local headerLabel = vgui.Create("DLabel", categoryPanel)
-                headerLabel:SetText("NPCs Sauvegardés")
-                headerLabel:SetFont("DermaLarge")
-                headerLabel:SetTextColor(Color(255, 200, 0))
-                headerLabel:Dock(TOP)
-                headerLabel:DockMargin(5, 5, 5, 5)
-
-                for _, npc in ipairs(playerData.npcs) do
-                    createEntityPanel(categoryPanel, npc, Color(120, 70, 70, 200))
-                end
+                createEntityCategory(categoryList, "Saved NPCs", playerData.npcs, Color(120, 70, 70, 200))
             end
         else
             print("No data found for map:", mapName, "and SteamID:", plyID)
@@ -315,116 +410,194 @@ function TOOL.BuildCPanel(panel)
         noFileLabel:SetTextColor(Color(255, 255, 255))
     end
 
+
     -------------------------------------------------------------------------------------------]
+
     --------------------------------------End of Toolgun Saved Npcs And Entities Information---]
+
     -------------------------------------------------------------------------------------------]
 
+
     ------------------------------------------------------------------------]
+
     --------------------------------------Blacklist Modification Section----]
+
     ------------------------------------------------------------------------]
 
-    local function updateBlacklistDisplay()
-        -- Debug
-        print("Updating blacklist display")
-        PrintTable(RARELOAD.settings.excludeClasses)
 
-        -- Ensure settings exist
-        RARELOAD.settings = RARELOAD.settings or {}
-        RARELOAD.settings.excludeClasses = RARELOAD.settings.excludeClasses or {}
+    local mapName = game.GetMap()
 
-        if BlacklistPanel then
-            BlacklistPanel:Remove()
+    local blacklistFilePath = "rareload/blacklist_" .. mapName .. ".json"
+
+
+    local blacklist = {}
+
+
+    -- Load the blacklist file
+
+    if file.Exists(blacklistFilePath, "DATA") then
+        local json = file.Read(blacklistFilePath, "DATA")
+
+        local success, data = pcall(util.JSONToTable, json)
+
+        if success and type(data) == "table" then
+            blacklist = data
         end
+    end
 
-        -- Create scrollable panel for blacklist
-        BlacklistPanel = vgui.Create("DScrollPanel", panel)
-        BlacklistPanel:Dock(TOP)
-        BlacklistPanel:DockMargin(30, 10, 30, 0)
-        BlacklistPanel:SetTall(300)
 
-        -- Debug button
-        local debugButton = vgui.Create("DButton", BlacklistPanel)
-        debugButton:SetText("Debug: Print Blacklist")
-        debugButton:Dock(TOP)
-        debugButton.DoClick = function()
-            PrintTable(RARELOAD.settings.excludeClasses)
-        end
+    -- Save the blacklist file
 
-        local blacklistLabel = vgui.Create("DLabel", BlacklistPanel)
-        blacklistLabel:SetText("Blacklist Classes: " .. table.Count(RARELOAD.settings.excludeClasses) .. " items")
-        blacklistLabel:SetFont("DermaDefaultBold")
-        blacklistLabel:Dock(TOP)
-        blacklistLabel:SetTextColor(Color(255, 255, 255))
+    local function saveBlacklist()
+        file.Write(blacklistFilePath, util.TableToJSON(blacklist, true))
+    end
 
-        local contentPanel = vgui.Create("DPanel", BlacklistPanel)
-        contentPanel:Dock(FILL)
-        contentPanel:DockMargin(0, 5, 0, 0)
 
-        -- Sort classes alphabetically
-        local sortedClasses = {}
-        for class, data in pairs(RARELOAD.settings.excludeClasses) do
-            table.insert(sortedClasses, { class = class, enabled = data.enabled, hardcoded = data.hardcoded })
-        end
-        table.sort(sortedClasses, function(a, b) return a.class < b.class end)
+    -- Create the blacklist section UI
 
-        -- Create entries for each class
-        for _, data in ipairs(sortedClasses) do
-            local classPanel = vgui.Create("DPanel", contentPanel)
-            classPanel:Dock(TOP)
-            classPanel:DockMargin(0, 0, 0, 5)
-            classPanel:SetTall(20)
+    local blacklistPanel = vgui.Create("DPanel", panel)
 
-            local classLabel = vgui.Create("DLabel", classPanel)
-            classLabel:SetText(data.class .. (data.hardcoded and " (Hardcoded)" or ""))
+    blacklistPanel:Dock(TOP)
+
+    blacklistPanel:DockMargin(10, 10, 10, 0)
+
+    blacklistPanel:SetTall(300)
+
+
+    local headerLabel = vgui.Create("DLabel", blacklistPanel)
+
+    headerLabel:SetText("Blacklist Configuration")
+
+    headerLabel:SetFont("DermaLarge")
+
+    headerLabel:SetTextColor(Color(255, 200, 0))
+
+    headerLabel:Dock(TOP)
+
+    headerLabel:DockMargin(5, 5, 5, 5)
+
+
+    local scrollPanel = vgui.Create("DScrollPanel", blacklistPanel)
+
+    scrollPanel:Dock(FILL)
+
+    scrollPanel:DockMargin(5, 5, 5, 5)
+
+
+    -- Function to refresh the blacklist items
+
+    local function refreshBlacklist()
+        scrollPanel:Clear()
+
+        for class, isEnabled in pairs(blacklist) do
+            local itemPanel = vgui.Create("DPanel", scrollPanel)
+
+            itemPanel:Dock(TOP)
+
+            itemPanel:DockMargin(5, 5, 5, 5)
+
+            itemPanel:SetTall(30)
+
+
+            local classLabel = vgui.Create("DLabel", itemPanel)
+
+            classLabel:SetText(class)
+
             classLabel:Dock(LEFT)
-            classLabel:SetWide(200)
+
+            classLabel:DockMargin(5, 5, 5, 5)
+
             classLabel:SetTextColor(Color(255, 255, 255))
 
-            local enableCheckbox = vgui.Create("DCheckBoxLabel", classPanel)
-            enableCheckbox:SetText("Enabled")
-            enableCheckbox:SetValue(data.enabled and 1 or 0)
-            enableCheckbox:Dock(LEFT)
-            enableCheckbox:DockMargin(10, 0, 0, 0)
-            enableCheckbox.OnChange = function(self, value)
-                RARELOAD.settings.excludeClasses[data.class].enabled = value == 1
+            classLabel:SizeToContents()
+
+
+            ---@class DCheckBox
+
+            local enableCheckbox = vgui.Create("DCheckBox", itemPanel)
+
+            enableCheckbox:Dock(RIGHT)
+
+            enableCheckbox:SetValue(isEnabled and 1 or 0)
+
+            enableCheckbox.OnChange = function(_, value)
+                blacklist[class] = value == true
+
+                saveBlacklist()
             end
 
-            local removeButton = vgui.Create("DButton", classPanel)
-            removeButton:SetText("Remove")
+
+            local removeButton = vgui.Create("DButton", itemPanel)
+
             removeButton:Dock(RIGHT)
-            removeButton:SetEnabled(not data.hardcoded) -- Disable removal for hardcoded entries
+
+            removeButton:DockMargin(5, 0, 5, 0)
+
+            removeButton:SetText("Remove")
+
             removeButton.DoClick = function()
-                RARELOAD.settings.excludeClasses[data.class] = nil
-                updateBlacklistDisplay()
+                blacklist[class] = nil
+
+                saveBlacklist()
+
+                refreshBlacklist()
             end
         end
     end
 
 
-    hook.Add("InitPostEntity", "RARELOAD_InitBlacklist", function()
-        timer.Simple(1, function()
-            if panel and panel:IsValid() then
-                updateBlacklistDisplay()
-            end
-        end)
-    end)
+    refreshBlacklist()
+
+
+    -- Add a text entry and button to add new classes
+
+    local addClassPanel = vgui.Create("DPanel", blacklistPanel)
+
+    addClassPanel:Dock(BOTTOM)
+
+    addClassPanel:DockMargin(5, 5, 5, 5)
+
+    addClassPanel:SetTall(40)
+
+
+    local classEntry = vgui.Create("DTextEntry", addClassPanel)
+
+    classEntry:Dock(LEFT)
+
+    classEntry:DockMargin(5, 5, 5, 5)
+
+    classEntry:SetPlaceholderText("Enter class name...")
+
+
+    local addButton = vgui.Create("DButton", addClassPanel)
+
+    addButton:Dock(RIGHT)
+
+    addButton:DockMargin(5, 5, 5, 5)
+
+    addButton:SetText("Add")
+
+    addButton.DoClick = function()
+        local className = classEntry:GetValue()
+
+        if className ~= "" and not blacklist[className] then
+            blacklist[className] = true
+
+            saveBlacklist()
+
+            refreshBlacklist()
+        end
+
+        classEntry:SetText("")
+    end
+
+
+    ------------------------------------------------------------------------]
+
+    --------------------------------End of Blacklist Modification Section---]
+
+    ------------------------------------------------------------------------]
 end
-
-if CLIENT then return end
-
-RARELOAD = RARELOAD or {}
-RARELOAD.settings = RARELOAD.settings or {}
-RARELOAD.settings.excludeClasses = RARELOAD.settings.excludeClasses or {}
-
--- Add debug print
-print("Loading RARELOAD blacklist")
-
--- Add debug print after loading
-print("Loaded " .. table.Count(RARELOAD.settings.excludeClasses) .. " blacklisted classes")
-
-------------------------------------------------------------------------]
---------------------------------End of Blacklist Modification Section---]
-------------------------------------------------------------------------]
 
 ------------------------------------------------------------------------]
 ---------------------------------------------Toolgun Screen Options-----]
