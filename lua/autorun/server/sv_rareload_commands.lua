@@ -44,24 +44,6 @@ concommand.Add("toggle_retain_map_entities", function(ply)
     ToggleSetting(ply, 'retainMapEntities', 'Retain map entities')
 end)
 
-concommand.Add("reload_blacklist", function(ply)
-    if not ply:IsSuperAdmin() then
-        print("[RARELOAD] You do not have permission to use this command.")
-        return
-    end
-    LoadBlacklist()
-    print("[RARELOAD] Blacklist reloaded.")
-end)
-
-concommand.Add("save_blacklist", function(ply)
-    if not ply:IsSuperAdmin() then
-        print("[RARELOAD] You do not have permission to use this command.")
-        return
-    end
-    SaveBlacklist()
-    print("[RARELOAD] Blacklist saved.")
-end)
-
 ---[[ End Of Beta [NOT TESTED] ]]---
 
 -------------------------------------------------------------------------------------------------------------------------]
@@ -181,47 +163,20 @@ concommand.Add("save_position", function(ply, _, _)
 
     if RARELOAD.settings.retainMapEntities then
         playerData.entities = {}
-
-        -- Load the blacklist from the data file
-        local mapName = game.GetMap()
-        local blacklistFilePath = "rareload/blacklist_" .. mapName .. ".json"
-        local blacklist = {}
-        if file.Exists(blacklistFilePath, "DATA") then
-            local data = file.Read(blacklistFilePath, "DATA")
-            local success, result = pcall(util.JSONToTable, data)
-            if success then
-                blacklist = result
-            else
-                print("[RARELOAD DEBUG] Error parsing JSON: " .. result)
-            end
-        else
-            blacklist = HardcodedBlacklist
-        end
-
         for _, ent in pairs(ents.GetAll()) do
-            if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() and not ent.isPhantom then
-                local class = ent:GetClass()
-
-                if blacklist[class] then
-                    print("[RARELOAD DEBUG] Skipping blacklisted entity: " .. class)
-                    continue
+            if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() then
+                local owner = ent:CPPIGetOwner()
+                if IsValid(owner) and owner:IsPlayer() then
+                    local phys = ent:GetPhysicsObject()
+                    table.insert(playerData.entities, {
+                        class = ent:GetClass(),
+                        pos = ent:GetPos(),
+                        model = ent:GetModel(),
+                        ang = ent:GetAngles(),
+                        health = ent:Health(),
+                        frozen = IsValid(phys) and phys:IsMotionEnabled() or false
+                    })
                 end
-
-                if ent.IsPhantom then
-                    print("[RARELOAD DEBUG] Skipping phantom entity: " .. class)
-                    continue
-                end
-
-                local phys = ent:GetPhysicsObject()
-                table.insert(playerData.entities, {
-                    class = class,
-                    pos = ent:GetPos(),
-                    model = ent:GetModel(),
-                    ang = ent:GetAngles(),
-                    health = ent:Health(),
-                    frozen = IsValid(phys) and not phys:IsMotionEnabled() or false
-                })
-                print("[RARELOAD DEBUG] Saved entity: " .. class .. " at position " .. tostring(ent:GetPos()))
             end
         end
     end
@@ -261,5 +216,4 @@ concommand.Add("save_position", function(ply, _, _)
 
     CreatePlayerPhantom(ply)
     SyncPlayerPositions(ply)
-    SaveBlacklist()
 end)

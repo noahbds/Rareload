@@ -6,7 +6,6 @@ AddCSLuaFile("weapons/gmod_tool/stools/sv_rareload_tool.lua")
 
 -- Include server-side files
 include("autorun/server/sv_init_rareload.lua")
-include("autorun/server/sv_rareload_backlist.lua")
 include("autorun/server/sv_rareload_commands.lua")
 include("autorun/server/sv_rareload_hooks.lua")
 include("autorun/server/sv_rareload_debug.lua")
