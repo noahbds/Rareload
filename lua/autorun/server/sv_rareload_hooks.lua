@@ -1,9 +1,14 @@
+LoadAddonState()
+
 util.AddNetworkString("CreatePlayerPhantom")
 util.AddNetworkString("RemovePlayerPhantom")
 util.AddNetworkString("SyncData")
 util.AddNetworkString("SyncPlayerPositions")
 
 RARELOAD.Phanthom = RARELOAD.Phanthom or {}
+
+RARELOAD.Debug = RARELOAD.Debug or {}
+
 
 local lastSavedTimes = {}
 
@@ -292,7 +297,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
                 local entityExists = false
 
                 for _, ent in ipairs(existingEntities) do
-                    if ent:GetClass() == entData.class and ent:IsVehicle() then
+                    if ent:GetClass() == entData.class and ent:GetModel() == entData.model then
                         entityExists = true
                         break
                     end
@@ -300,13 +305,20 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
 
                 if not entityExists then
                     local ent = ents.Create(entData.class)
-                    ent:SetPos(entData.pos)
-                    ent:SetModel(entData.model)
-                    ent:SetAngles(entData.ang)
-                    ent:Spawn()
-                    ent:SetHealth(entData.health)
-                    if entData.frozen then
-                        ent:GetPhysicsObject():EnableMotion(false)
+                    if IsValid(ent) then
+                        ent:SetPos(entData.pos)
+                        if entData.model then
+                            ent:SetModel(entData.model)
+                        end
+                        ent:SetAngles(entData.ang)
+                        ent:Spawn()
+                        ent:SetHealth(entData.health)
+                        local phys = ent:GetPhysicsObject()
+                        if IsValid(phys) and entData.frozen then
+                            phys:EnableMotion(false)
+                        end
+                    else
+                        print("[RARELOAD DEBUG] Failed to create entity: " .. tostring(entData.class))
                     end
                 end
             end
@@ -317,6 +329,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         for _, npcData in ipairs(SavedInfo.npcs) do
             local existingNPCs = ents.FindInSphere(npcData.pos, 1)
             local npcExists = false
+            local npcHealth = npcData.health
 
             for _, npc in ipairs(existingNPCs) do
                 if npc:GetClass() == npcData.class then
@@ -325,11 +338,17 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
                 end
             end
 
-            if not npcExists then
+            if not npcExists and npcHealth >= 0 then
                 local npc = ents.Create(npcData.class)
                 npc:SetPos(npcData.pos)
                 npc:SetModel(npcData.model)
                 npc:SetAngles(npcData.ang)
+                if npcData.weapons then
+                    for _, weapon in ipairs(npcData.weapons) do
+                        npc:Give(weapon)
+                        print("[RARELOAD DEBUG] NPC " .. npcData.class .. " given weapon: " .. weapon)
+                    end
+                end
                 npc:Spawn()
                 npc:SetHealth(npcData.health)
             end
@@ -342,6 +361,22 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         CreatePlayerPhantom(ply)
     end
 end)
+
+local function loadSettings()
+    local settingsFilePath = "rareload/addon_state.json"
+    if file.Exists(settingsFilePath, "DATA") then
+        local json = file.Read(settingsFilePath, "DATA")
+        RARELOAD.settings = util.JSONToTable(json)
+    end
+end
+
+loadSettings()
+
+-- Ensure settings are loaded before proceeding
+if not RARELOAD.settings then
+    return
+end
+
 
 hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
     if not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() or not RARELOAD.settings.autoSaveEnabled then

@@ -85,9 +85,6 @@ function TOOL.BuildCPanel(panel)
     createButton(panel, "Toggle Keep Ammo", "toggle_retain_ammo",
         "Enable or disable retaining ammo", RARELOAD.settings.retainAmmo)
 
-    createButton(panel, "Toggle Keep Carried Entities", "toggle_retain_carried_entities",
-        "Enable or disable retaining carried entities", RARELOAD.settings.retainCarriedEntities)
-
     createButton(panel, "Toggle Keep Vehicle State", "toggle_retain_vehicle_state",
         "Enable or disable retaining vehicle state", RARELOAD.settings.retainVehicleState)
 

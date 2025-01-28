@@ -46,6 +46,15 @@ function RARELOAD.Debug.LogInventory(ply)
     print("[=====================================================================]" .. "\n")
 end
 
+-- Helper function to map through the table
+local function map(t, func)
+    local newTable = {}
+    for i, v in ipairs(t) do
+        table.insert(newTable, func(v))
+    end
+    return newTable
+end
+
 function RARELOAD.Debug.LogAfterRespawnInfo()
     if RARELOAD.settings.debugEnabled then
         timer.Simple(0.6, function()
@@ -55,18 +64,34 @@ function RARELOAD.Debug.LogAfterRespawnInfo()
             print("Saved Position: " .. tostring(SavedInfo.pos))
             print("Saved Eye Angles: " .. AngleToString(SavedInfo.ang))
             print("Saved Active Weapon: " .. tostring(SavedInfo.activeWeapon))
-            print("Saved Inventory: " .. table.concat(SavedInfo.inventory, ", "))
+            -- Convert inventory to a string list
+            local inventoryStr = type(SavedInfo.inventory) == "table" and table.concat(SavedInfo.inventory, ", ") or
+                "nil"
+            print("Saved Inventory: " .. inventoryStr)
             print("Saved Health: " .. tostring(SavedInfo.health))
             print("Saved Armor: " .. tostring(SavedInfo.armor))
-            print("Saved Ammo: " .. table.concat(SavedInfo.ammo, ", "))
-            print("Saved Vehicle: " .. tostring(SavedInfo.vehicle))
-            print("Saved Entities: " .. table.concat(SavedInfo.entities, ", "))
-            print("Saved NPCs: " .. table.concat(SavedInfo.npcs, ", "))
+            -- Convert ammo to a string list
+            local ammoStr = type(SavedInfo.ammo) == "table" and table.concat(SavedInfo.ammo, ", ") or "nil"
+            print("Saved Ammo: " .. ammoStr)
+            -- Convert entities to a string list (just printing their models for now)
+            local entitiesStr = type(SavedInfo.entities) == "table" and table.concat(
+            -- Convert each entity to a string (model name)
+                map(SavedInfo.entities, function(entity)
+                    return tostring(entity.model)
+                end), ", ") or "nil"
+            print("Saved Entities: " .. entitiesStr)
+            -- Convert npcs to a string list (just printing their models for now)
+            local npcsStr = type(SavedInfo.npcs) == "table" and table.concat(
+            -- Convert each NPC to a string (model name)
+                map(SavedInfo.npcs, function(npc)
+                    return tostring(npc.model)
+                end), ", ") or "nil"
+            print("Saved NPCs: " .. npcsStr)
             print("Was in noclip: " .. tostring(MoveTypes.noclip))
-            print("Was in vphysics: " .. tostring(MoveTypes.vphysics)) -- Will probably never happen
-            print("Was in observer: " .. tostring(MoveTypes.observer)) -- Will probably never happen too
-            print("Was in none: " .. tostring(MoveTypes.none))         -- Will probably never happen too again
-            print("Was flying: " .. tostring(MoveTypes.fly))           -- idk the difference of flying with noclip
+            print("Was in vphysics: " .. tostring(MoveTypes.vphysics))
+            print("Was in observer: " .. tostring(MoveTypes.observer))
+            print("Was in none: " .. tostring(MoveTypes.none))
+            print("Was flying: " .. tostring(MoveTypes.fly))
             print("Was on ladder: " .. tostring(MoveTypes.ladder))
             print("Was swimming / walking: " .. tostring(MoveTypes.walk))
             print("[=====================================================================]" .. "\n")

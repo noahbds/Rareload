@@ -1,13 +1,5 @@
 -- lua/autorun/server/init.lua
 
--- Rareload is a Garry's Mod addon that allows players to respawn at their last saved position, camera orientation, and inventory.
-RARELOAD = {}
-RARELOAD.settings = GetDefaultSettings()
-RARELOAD.playerPositions = {}
-RARELOAD.lastSavedTime = 0
-ADDON_STATE_FILE_PATH = "rareload/addon_state.json"
-local lastDebugTime = 0
-
 -- Default settings for the addon if they don't exist
 function GetDefaultSettings()
     return {
@@ -27,6 +19,14 @@ function GetDefaultSettings()
         maxDistance = 50
     }
 end
+
+-- Rareload is a Garry's Mod addon that allows players to respawn at their last saved position, camera orientation, and inventory.
+RARELOAD = {}
+RARELOAD.settings = GetDefaultSettings()
+RARELOAD.playerPositions = RARELOAD.playerPositions or {}
+RARELOAD.lastSavedTime = 0
+ADDON_STATE_FILE_PATH = "rareload/addon_state.json"
+local lastDebugTime = 0
 
 -- Function to ensure the rareload folder exists, if not create it
 function EnsureFolderExists()
@@ -190,9 +190,15 @@ function TraceLine(start, endpos, filter, mask)
     })
 end
 
+RARELOAD = RARELOAD or {}
+RARELOAD.Phanthom = RARELOAD.Phanthom or {}
+
 -- Create the player's phantom when debug mode is enabled, this allow to see the player's last saved position
+---@class phantom : Entity
+---@field isPhantom boolean
+
 function CreatePlayerPhantom(ply)
-    if RARELOAD.Phanthom[ply:SteamID()] then
+    if RARELOAD.Phanthom and RARELOAD.Phanthom[ply:SteamID()] then
         local existingPhantom = RARELOAD.Phanthom[ply:SteamID()].phantom
         if IsValid(existingPhantom) then
             existingPhantom:Remove()
@@ -210,10 +216,12 @@ function CreatePlayerPhantom(ply)
         local pos = ply:GetPos()
         if pos:WithinAABox(Vector(-16384, -16384, -16384), Vector(16384, 16384, 16384)) then
             if pos.z > -15000 then
+                ---@type phantom
                 local phantom = ents.Create("prop_physics")
                 phantom:SetModel(ply:GetModel())
                 phantom:SetPos(pos)
                 phantom:SetAngles(ply:GetAngles())
+                phantom.isPhantom = true
                 phantom:SetRenderMode(RENDERMODE_TRANSALPHA)
                 phantom:SetColor(Color(255, 255, 255, 100))
                 phantom:Spawn()
