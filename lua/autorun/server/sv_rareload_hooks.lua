@@ -144,40 +144,62 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
     --[[ Beta [NOT TESTED] ]] --
     --[[ This code  handle the spawn when custom move type is disabled]]
 
-    if not RARELOAD.settings.spawnModeEnabled then
-        local function handleCustomSpawn(ply, savedInfo)
-            -- Use the anti-stuck system to find a safe spawn position
-            local safePos = FindWalkableGround(savedInfo.pos, ply)
 
-            if not safePos then
+    local mapName = game.GetMap()
+    local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][ply:SteamID()]
+    local savedMoveType = tonumber(savedInfo.moveType) or MOVETYPE_WALK
+
+    if not savedInfo then
+        if RARELOAD.settings.debugEnabled then print("[RARELOAD DEBUG] No saved player info found") end
+        return
+    end
+
+    local wasInNoclip = savedInfo.moveType == MOVETYPE_NOCLIP
+    local wasFlying = savedInfo.moveType == MOVETYPE_FLY or savedInfo.moveType == MOVETYPE_FLYGRAVITY
+    local wasOnLadder = savedInfo.moveType == MOVETYPE_LADDER
+    local wasSwimming = savedInfo.moveType == MOVETYPE_WALK or MOVETYPE_NONE
+
+    if not savedInfo.moveType or not isnumber(savedInfo.moveType) then
+        print("[RARELOAD DEBUG] Error: Invalid saved move type.")
+        return
+    end
+
+    if not RARELOAD.settings.spawnModeEnabled then
+        if wasInNoclip or wasFlying or wasOnLadder or wasSwimming then
+            local traceResult = TraceLine(savedInfo.pos, savedInfo.pos - Vector(0, 0, 10000), ply, MASK_SOLID_BRUSHONLY)
+
+            if not traceResult.Hit or not traceResult.HitPos then
                 print("[RARELOAD DEBUG] No walkable ground found. Custom spawn prevented.")
                 return
             end
 
-            -- Set the player's position and move type
-            ply:SetPos(safePos)
-            ply:SetMoveType(MOVETYPE_NONE)
+            local waterTrace = TraceLine(traceResult.HitPos, traceResult.HitPos - Vector(0, 0, 100), ply, MASK_WATER)
 
-            if RARELOAD.settings.debugEnabled then
-                print("[RARELOAD DEBUG] Found walkable ground for player spawn: ", safePos)
-                debugoverlay.Sphere(safePos, 10, 5, Color(0, 255, 0), true) -- Visualize safe position in green
+            if waterTrace.Hit then
+                local foundPos = FindWalkableGround(traceResult.HitPos, ply)
+
+                if not foundPos then
+                    print("[RARELOAD DEBUG] No walkable ground found. Custom spawn prevented.")
+                    return
+                end
+
+                ply:SetPos(foundPos)
+                ply:SetMoveType(MOVETYPE_NONE)
+                print("[RARELOAD DEBUG] Found walkable ground for player spawn.")
+                return
             end
-        end
 
-        -- Check if the player's move type requires custom spawn handling
-        if SavedInfo.moveType == MOVETYPE_NOCLIP or SavedInfo.moveType == MOVETYPE_FLY or SavedInfo.moveType == MOVETYPE_FLYGRAVITY or SavedInfo.moveType == MOVETYPE_LADDER or SavedInfo.moveType == MOVETYPE_WALK or SavedInfo.moveType == MOVETYPE_NONE then
-            handleCustomSpawn(ply, SavedInfo)
+            ply:SetPos(traceResult.HitPos)
+            ply:SetMoveType(MOVETYPE_NONE)
         else
-            -- Use the default spawn logic
-            SetPlayerPositionAndEyeAngles(ply, SavedInfo)
+            SetPlayerPositionAndEyeAngles(ply, savedInfo)
         end
     else
-        -- Spawn mode is enabled, use the saved move type and position
         if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD DEBUG] Setting move type to: " .. tostring(tonumber(SavedInfo.moveType)))
+            print("[RARELOAD DEBUG] Setting move type to: " .. tostring(savedMoveType))
         end
-        timer.Simple(0, function() ply:SetMoveType(tonumber(SavedInfo.moveType)) end)
-        SetPlayerPositionAndEyeAngles(ply, SavedInfo)
+        timer.Simple(0, function() ply:SetMoveType(savedMoveType) end)
+        SetPlayerPositionAndEyeAngles(ply, savedInfo)
     end
 
     --[[ End Of Beta [NOT TESTED] ]] --
@@ -313,9 +335,22 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
                         ent:SetAngles(entData.ang)
                         ent:Spawn()
                         ent:SetHealth(entData.health)
+
+                        -- Marquer l'entité comme créée par RARELOAD
+                        ent.SpawnedByRareload = true
+
+                        -- Gérer le gel de l'entité
                         local phys = ent:GetPhysicsObject()
                         if IsValid(phys) and entData.frozen then
                             phys:EnableMotion(false)
+                        end
+
+                        -- Définir le propriétaire si spécifié
+                        if entData.owner and entData.owner ~= "" then
+                            local owner = player.GetBySteamID(entData.owner)
+                            if IsValid(owner) then
+                                ent:CPPISetOwner(owner)
+                            end
                         end
                     else
                         print("[RARELOAD DEBUG] Failed to create entity: " .. tostring(entData.class))
@@ -360,6 +395,14 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
 
     if RARELOAD.settings.debugEnabled then
         CreatePlayerPhantom(ply)
+    end
+
+    if savedInfo.activeWeapon then
+        timer.Simple(0.6, function()
+            if IsValid(ply) and ply:HasWeapon(savedInfo.activeWeapon) then
+                ply:SelectWeapon(savedInfo.activeWeapon)
+            end
+        end)
     end
 end)
 

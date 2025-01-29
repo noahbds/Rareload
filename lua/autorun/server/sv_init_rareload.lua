@@ -193,6 +193,9 @@ end
 RARELOAD = RARELOAD or {}
 RARELOAD.Phanthom = RARELOAD.Phanthom or {}
 
+
+
+
 -- Create the player's phantom when debug mode is enabled, this allow to see the player's last saved position
 ---@class phantom : Entity
 ---@field isPhantom boolean

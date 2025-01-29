@@ -166,7 +166,8 @@ concommand.Add("save_position", function(ply, _, _)
         for _, ent in pairs(ents.GetAll()) do
             if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() then
                 local owner = ent:CPPIGetOwner()
-                if IsValid(owner) and owner:IsPlayer() then
+                -- Vérifie si l'entité appartient à un joueur OU a été créée par RARELOAD
+                if (IsValid(owner) and owner:IsPlayer()) or ent.SpawnedByRareload then
                     local phys = ent:GetPhysicsObject()
                     table.insert(playerData.entities, {
                         class = ent:GetClass(),
@@ -174,7 +175,8 @@ concommand.Add("save_position", function(ply, _, _)
                         model = ent:GetModel(),
                         ang = ent:GetAngles(),
                         health = ent:Health(),
-                        frozen = IsValid(phys) and phys:IsMotionEnabled() or false
+                        frozen = IsValid(phys) and phys:IsMotionEnabled() or false,
+                        SpawnedByRareload = true -- Marque l'entité pour les prochains spawns
                     })
                 end
             end
