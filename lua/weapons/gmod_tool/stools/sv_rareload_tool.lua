@@ -61,7 +61,6 @@ function TOOL.BuildCPanel(panel)
     local success, err = pcall(loadAddonStatefortool)
     if not success then
         ErrorNoHalt("Failed to load addon state: " .. err)
-
         return
     end
 
@@ -109,14 +108,17 @@ function TOOL.BuildCPanel(panel)
     ---@class DButton
     local savePositionButton = vgui.Create("DButton", panel)
     savePositionButton:SetText("Save Position")
-    savePositionButton:SetTextColor(Color(0, 0, 0))
+    savePositionButton:SetTextColor(Color(255, 255, 255))
+    savePositionButton:SetFont("DermaLarge")
     savePositionButton:Dock(TOP)
     savePositionButton:DockMargin(30, 10, 30, 0)
-    savePositionButton:SetSize(250, 30)
+    savePositionButton:SetSize(250, 40)
+    savePositionButton.Paint = function(self, w, h)
+        draw.RoundedBox(8, 0, 0, w, h, Color(0, 122, 204))
+    end
     savePositionButton.DoClick = function()
         RunConsoleCommand("save_position")
     end
-
     ------------------------------------------------------------------------]
     ---------------------------------------------Auto Save Slider Options---]
     ------------------------------------------------------------------------]
@@ -176,13 +178,117 @@ function TOOL.BuildCPanel(panel)
     panel:Button("Open Entity Viewer", "entity_viewer_open")
 
     if CLIENT then
+        local function ShowErrorMessage(parent, message)
+            local errorLabel = vgui.Create("DLabel", parent)
+            errorLabel:SetText(message)
+            errorLabel:SetTextColor(Color(255, 100, 100))
+            errorLabel:SetFont("DermaLarge")
+            errorLabel:SetContentAlignment(5)
+            errorLabel:Dock(TOP)
+            errorLabel:DockMargin(10, 10, 10, 10)
+        end
+
+        local function CreateInfoPanel(parent, data, isNPC)
+            ---@class DPanel
+            local panel = vgui.Create("DPanel", parent)
+            panel:Dock(TOP)
+            panel:SetTall(120)
+            panel:DockMargin(5, 5, 5, 5)
+
+            panel.Paint = function(self, w, h)
+                draw.RoundedBox(6, 0, 0, w, h, Color(45, 45, 48))
+                draw.RoundedBox(6, 1, 1, w - 2, h - 2, Color(60, 60, 65))
+            end
+
+            local icon = vgui.Create("DModelPanel", panel)
+            icon:SetSize(100, 100)
+            icon:Dock(LEFT)
+            icon:DockMargin(10, 10, 10, 10)
+            if data.model and util.IsValidModel(data.model) then
+                icon:SetModel(data.model)
+                local min, max = icon.Entity:GetRenderBounds()
+                local center = (min + max) * 0.5
+                icon:SetLookAt(center)
+                icon:SetCamPos(center + Vector(50, 0, 0))
+            end
+
+            local info = vgui.Create("DLabel", panel)
+            info:Dock(FILL)
+            info:DockMargin(10, 10, 10, 10)
+            info:SetTextColor(Color(255, 255, 255))
+            info:SetFont("DermaDefaultBold")
+            info:SetWrap(true)
+            info:SetContentAlignment(7)
+
+            local function formatInfoText(data, isNPC)
+                local infoText = string.format("Class: %s\n", data.class or "Unknown")
+
+                if data.health then
+                    infoText = infoText .. string.format("Health: %d\n", data.health)
+                end
+
+                if isNPC and data.weapons then
+                    infoText = infoText .. "Weapons: " .. table.concat(data.weapons, ", ") .. "\n"
+                end
+
+                if not isNPC then
+                    infoText = infoText .. string.format("Frozen: %s\n", data.frozen and "Yes" or "No")
+                end
+
+                if data.pos and data.pos.x and data.pos.y and data.pos.z then
+                    infoText = infoText ..
+                        string.format("Position: Vector(%.2f, %.2f, %.2f)", data.pos.x, data.pos.y, data.pos.z)
+                else
+                    infoText = infoText .. "Position: Unknown\n"
+                end
+
+                return infoText
+            end
+
+            local infoText = formatInfoText(data, isNPC)
+            info:SetText(infoText)
+
+            local copyBtn = vgui.Create("DButton", panel)
+            copyBtn:Dock(BOTTOM)
+            copyBtn:SetText("Copy Position")
+            copyBtn:SetTall(30)
+            copyBtn:DockMargin(10, 5, 10, 10)
+            copyBtn.DoClick = function()
+                SetClipboardText(string.format("Vector(%s, %s, %s)", data.pos.x, data.pos.y, data.pos.z))
+                notification.AddLegacy("Position copied to clipboard!", NOTIFY_GENERIC, 3)
+                surface.PlaySound("buttons/button15.wav")
+            end
+
+            return panel
+        end
+
+        local function CreateCategory(parent, title, dataList, isNPC)
+            if not dataList or #dataList == 0 then return end
+
+            local category = vgui.Create("DCollapsibleCategory", parent)
+            category:SetLabel(title)
+            category:Dock(TOP)
+            category:DockMargin(10, 10, 10, 0)
+
+            local listPanel = vgui.Create("DPanel", category)
+            listPanel:Dock(TOP)
+            listPanel:DockMargin(10, 10, 10, 10)
+            listPanel:SetTall(500)
+
+            for _, data in ipairs(dataList) do
+                CreateInfoPanel(listPanel, data, isNPC)
+            end
+        end
+
         local function OpenEntityViewer()
+            ---@class DFrame
             local frame = vgui.Create("DFrame")
             frame:SetSize(900, 600)
             frame:SetTitle("Entity & NPC Viewer - " .. game.GetMap())
             frame:Center()
             frame:MakePopup()
             frame:SetBackgroundBlur(true)
+            frame:SetSizable(true) -- Allow resizing
 
             local search = vgui.Create("DTextEntry", frame)
             search:Dock(TOP)
@@ -199,16 +305,11 @@ function TOOL.BuildCPanel(panel)
             tabs:AddSheet("Entities", entityScroll, "icon16/bricks.png")
             tabs:AddSheet("NPCs", npcScroll, "icon16/user.png")
 
-            -- Load Data
             local mapName = game.GetMap()
             local filePath = "rareload/player_positions_" .. mapName .. ".json"
 
             if not file.Exists(filePath, "DATA") then
-                local errorLabel = vgui.Create("DLabel", frame)
-                errorLabel:SetText("No data found for the map: " .. mapName)
-                errorLabel:SetTextColor(Color(255, 100, 100))
-                errorLabel:Dock(TOP)
-                errorLabel:DockMargin(10, 10, 10, 10)
+                ShowErrorMessage(frame, "No data found for the map: " .. mapName)
                 return
             end
 
@@ -216,106 +317,27 @@ function TOOL.BuildCPanel(panel)
             local success, rawData = pcall(util.JSONToTable, jsonData)
 
             if not success or not rawData or not rawData[mapName] then
-                local errorLabel = vgui.Create("DLabel", frame)
-                errorLabel:SetText("Invalid data format.")
-                errorLabel:SetTextColor(Color(255, 100, 100))
-                errorLabel:Dock(TOP)
+                ShowErrorMessage(frame, "Invalid data format.")
                 return
             end
 
-            -- Function to create a detailed information panel
-            local function CreateInfoPanel(parent, data, isNPC)
-                local panel = vgui.Create("DPanel", parent)
-                panel:Dock(TOP)
-                panel:SetTall(120)
-                panel:DockMargin(5, 5, 5, 5)
-
-                panel.Paint = function(self, w, h)
-                    draw.RoundedBox(6, 0, 0, w, h, Color(45, 45, 48))
-                    draw.RoundedBox(6, 1, 1, w - 2, h - 2, Color(60, 60, 65))
-                end
-
-                local icon = vgui.Create("DModelPanel", panel)
-                icon:SetSize(100, 100)
-                icon:SetPos(5, 10)
-                if data.model then
-                    icon:SetModel(data.model)
-                    local min, max = icon.Entity:GetRenderBounds()
-                    local center = (min + max) * 0.5
-                    icon:SetLookAt(center)
-                    icon:SetCamPos(center + Vector(50, 0, 0))
-                end
-
-                local info = vgui.Create("DLabel", panel)
-                info:SetPos(120, 10)
-                info:SetSize(panel:GetWide() - 130, 100)
-                info:SetTextColor(Color(255, 255, 255))
-                info:SetWrap(true)
-
-                -- Display all available data
-                local infoText = "Class: " .. (data.class or "Unknown") .. "\n"
-                if data.health then
-                    infoText = infoText .. "Health: " .. data.health .. "\n"
-                end
-                if isNPC and data.weapons then
-                    infoText = infoText .. "Weapons: " .. table.concat(data.weapons, ", ") .. "\n"
-                end
-                if not isNPC then
-                    infoText = infoText .. "Frozen: " .. (data.frozen and "Yes" or "No") .. "\n"
-                end
-                infoText = infoText ..
-                    string.format("Position: Vector(%.2f, %.2f, %.2f)", data.pos.x, data.pos.y, data.pos.z)
-                info:SetText(infoText)
-
-                -- Force the panel to update its size
-                info:SizeToContents()
-                panel:InvalidateLayout(true)
-
-                -- Copy Position Button
-                local copyBtn = vgui.Create("DButton", panel)
-                copyBtn:SetSize(80, 25)
-                copyBtn:SetPos(panel:GetWide() - 90, panel:GetTall() - 35)
-                copyBtn:SetText("Copy Pos")
-                copyBtn.DoClick = function()
-                    local pos = string.format("%s, %s, %s", data.pos.x, data.pos.y, data.pos.z)
-                    SetClipboardText(string.format("Vector(%s)", pos))
-                    notification.AddLegacy("Position copied to clipboard!", NOTIFY_GENERIC, 3)
-                    surface.PlaySound("buttons/button15.wav")
-                end
-
-                return panel
+            for steamID, playerData in pairs(rawData[mapName]) do
+                CreateCategory(entityScroll, "Player: " .. steamID, playerData.entities, false)
+                CreateCategory(npcScroll, "Player: " .. steamID, playerData.npcs, true)
             end
 
-            for steamID, playerData in pairs(rawData[mapName]) do
-                if playerData.entities then
-                    local catEnt = vgui.Create("DCollapsibleCategory", entityScroll)
-                    catEnt:SetLabel("Player: " .. steamID)
-                    catEnt:Dock(TOP)
-                    catEnt:DockMargin(10, 10, 10, 0)
-
-                    local entList = vgui.Create("DPanel", catEnt)
-                    entList:Dock(TOP)
-                    entList:DockMargin(10, 10, 10, 10)
-                    entList:SetTall(500) -- Ajustez la hauteur selon vos besoins
-
-                    for _, ent in ipairs(playerData.entities) do
-                        CreateInfoPanel(entList, ent, false)
-                    end
+            -- **Make UI elements responsive to resizing**
+            frame.OnSizeChanged = function(self, w, h)
+                if IsValid(search) then
+                    search:SetTall(h * 0.05)
                 end
 
-                if playerData.npcs then
-                    local catNPC = vgui.Create("DCollapsibleCategory", npcScroll)
-                    catNPC:SetLabel("Player: " .. steamID)
-                    catNPC:Dock(TOP)
-                    catNPC:DockMargin(10, 10, 10, 0)
-
-                    local npcList = vgui.Create("DPanel", catNPC)
-                    npcList:Dock(TOP)
-                    npcList:DockMargin(10, 10, 10, 10)
-                    npcList:SetTall(500) -- Ajustez la hauteur selon vos besoins
-
-                    for _, npc in ipairs(playerData.npcs) do
-                        CreateInfoPanel(npcList, npc, true)
+                if tabs and tabs.Items then
+                    for _, tab in pairs(tabs.Items) do
+                        local panel = tab.Panel
+                        if IsValid(panel) then
+                            panel:SetTall(h - 100)
+                        end
                     end
                 end
             end

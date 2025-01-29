@@ -27,7 +27,12 @@ hook.Add("InitPostEntity", "LoadPlayerPosition", function()
             autoSaveEnabled = "Auto-save position",
             retainInventory = "Retain inventory",
             nocustomrespawnatdeath = "No Custom Respawn at Death",
-            debugEnabled = "Debug mode"
+            debugEnabled = "Debug mode",
+            retainAmmo = "Retain ammo",
+            retainHealthArmor = "Retain health and armor",
+            retainVehicleState = "Retain vehicle state",
+            retainMapEntities = "Retain map entities",
+            retainMapNPCs = "Retain map NPCs"
         }
 
         for name, message in pairs(debugMessages) do
@@ -70,15 +75,6 @@ hook.Add("PlayerDisconnect", "SavePlayerPositionDisconnect", function(ply)
         pos = ply:GetPos(),
         moveType = ply:GetMoveType(),
     }
-
-    if RARELOAD.settings.debugEnabled then
-        print("[RARELOAD DEBUG] Player " ..
-            ply:SteamID() ..
-            " disconnected. Saved position: " .. tostring(RARELOAD.playerPositions[mapName][ply:SteamID()].pos))
-        print("[RARELOAD DEBUG] Player " ..
-            ply:SteamID() ..
-            " disconnected. Saved move type: " .. tostring(RARELOAD.playerPositions[mapName][ply:SteamID()].moveType))
-    end
 end)
 
 hook.Add("PlayerDeath", "SetWasKilledFlag", function(ply)
@@ -141,25 +137,34 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
 
     RARELOAD.Debug.LogAfterRespawnInfo()
 
-    --[[ Beta [NOT TESTED] ]] --
-    --[[ This code  handle the spawn when custom move type is disabled]]
+    ------------------------------------------------------------------------------------------------
+    --[[ This code handles player spawning when custom move type is disabled ]]
+    ------------------------------------------------------------------------------------------------
 
-
+    local maxAllowedDistance = 1000 -- Maximum allowed distance for a valid spawn
     local mapName = game.GetMap()
     local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][ply:SteamID()]
-    local savedMoveType = tonumber(savedInfo.moveType) or MOVETYPE_WALK
 
     if not savedInfo then
         if RARELOAD.settings.debugEnabled then print("[RARELOAD DEBUG] No saved player info found") end
         return
     end
 
+    local savedMoveType = tonumber(savedInfo.moveType) or MOVETYPE_WALK
+
+    -- Validate saved position
+    if not IsWalkable(savedInfo.pos, ply) then
+        print("[RARELOAD DEBUG] Saved position is invalid, falling back to default spawn.")
+        ply:Spawn()
+        return
+    end
+
     local wasInNoclip = savedInfo.moveType == MOVETYPE_NOCLIP
     local wasFlying = savedInfo.moveType == MOVETYPE_FLY or savedInfo.moveType == MOVETYPE_FLYGRAVITY
     local wasOnLadder = savedInfo.moveType == MOVETYPE_LADDER
-    local wasSwimming = savedInfo.moveType == MOVETYPE_WALK or MOVETYPE_NONE
+    local wasSwimming = savedInfo.moveType == MOVETYPE_WALK or savedInfo.moveType == MOVETYPE_NONE
 
-    if not savedInfo.moveType or not isnumber(savedInfo.moveType) then
+    if not isnumber(savedInfo.moveType) then
         print("[RARELOAD DEBUG] Error: Invalid saved move type.")
         return
     end
@@ -173,24 +178,16 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
                 return
             end
 
-            local waterTrace = TraceLine(traceResult.HitPos, traceResult.HitPos - Vector(0, 0, 100), ply, MASK_WATER)
-
-            if waterTrace.Hit then
-                local foundPos = FindWalkableGround(traceResult.HitPos, ply)
-
-                if not foundPos then
-                    print("[RARELOAD DEBUG] No walkable ground found. Custom spawn prevented.")
-                    return
-                end
-
-                ply:SetPos(foundPos)
-                ply:SetMoveType(MOVETYPE_NONE)
-                print("[RARELOAD DEBUG] Found walkable ground for player spawn.")
+            local foundPos = FindBestSpawn(traceResult.HitPos, ply)
+            if not foundPos or foundPos:DistToSqr(savedInfo.pos) > maxAllowedDistance * maxAllowedDistance then
+                print("[RARELOAD DEBUG] No valid spawn found. Using fallback spawn.")
+                ply:Spawn()
                 return
             end
 
-            ply:SetPos(traceResult.HitPos)
+            ply:SetPos(foundPos)
             ply:SetMoveType(MOVETYPE_NONE)
+            print("[RARELOAD DEBUG] Successfully found a valid spawn position.")
         else
             SetPlayerPositionAndEyeAngles(ply, savedInfo)
         end
@@ -202,8 +199,9 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         SetPlayerPositionAndEyeAngles(ply, savedInfo)
     end
 
-    --[[ End Of Beta [NOT TESTED] ]] --
-
+    ------------------------------------------------------------------------------------------------
+    ------------------------------------------------------------------------------------------------
+    ------------------------------------------------------------------------------------------------
 
     if RARELOAD.settings.retainInventory and SavedInfo.inventory then
         ply:StripWeapons()
@@ -337,6 +335,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
                         ent:SetHealth(entData.health)
 
                         -- Marquer l'entité comme créée par RARELOAD
+                        ---@diagnostic disable-next-line: inject-field
                         ent.SpawnedByRareload = true
 
                         -- Gérer le gel de l'entité
@@ -349,6 +348,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
                         if entData.owner and entData.owner ~= "" then
                             local owner = player.GetBySteamID(entData.owner)
                             if IsValid(owner) then
+                                ---@diagnostic disable-next-line: undefined-field
                                 ent:CPPISetOwner(owner)
                             end
                         end
@@ -420,7 +420,6 @@ loadSettings()
 if not RARELOAD.settings then
     return
 end
-
 
 hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
     if not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() or not RARELOAD.settings.autoSaveEnabled then

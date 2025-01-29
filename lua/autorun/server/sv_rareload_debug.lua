@@ -18,7 +18,6 @@ function RARELOAD.Debug.LogSpawnInfo(ply)
         print("Retain Inventory: " .. tostring(RARELOAD.settings.retainInventory))
         print("No Custom Respawn at Death: " .. tostring(RARELOAD.settings.nocustomrespawnatdeath))
         print("Debug Enabled: " .. tostring(RARELOAD.settings.debugEnabled))
-        ---[[ Beta
         print("Auto Save Interval: " .. tostring(RARELOAD.settings.autoSaveInterval))
         print("Max Distance: " .. tostring(RARELOAD.settings.maxDistance))
         print("Angle Tolerance: " .. tostring(RARELOAD.settings.angleTolerance))
@@ -27,7 +26,6 @@ function RARELOAD.Debug.LogSpawnInfo(ply)
         print("Retain Vehicule: " .. tostring(RARELOAD.settings.retainVehicleState))
         print("Retain Entities: " .. tostring(RARELOAD.settings.retainMapEntities))
         print("Retain Npcs: " .. tostring(RARELOAD.settings.retainNpc))
-        ---[[ End Of beta
         print("[=====================================================================]" .. "\n")
 
         RARELOAD.Debug.LogInventory(ply)
@@ -46,7 +44,6 @@ function RARELOAD.Debug.LogInventory(ply)
     print("[=====================================================================]" .. "\n")
 end
 
--- Helper function to map through the table
 local function map(t, func)
     local newTable = {}
     for i, v in ipairs(t) do
@@ -64,36 +61,24 @@ function RARELOAD.Debug.LogAfterRespawnInfo()
             print("Saved Position: " .. tostring(SavedInfo.pos))
             print("Saved Eye Angles: " .. AngleToString(SavedInfo.ang))
             print("Saved Active Weapon: " .. tostring(SavedInfo.activeWeapon))
-            -- Convert inventory to a string list
             local inventoryStr = type(SavedInfo.inventory) == "table" and table.concat(SavedInfo.inventory, ", ") or
                 "nil"
             print("Saved Inventory: " .. inventoryStr)
             print("Saved Health: " .. tostring(SavedInfo.health))
             print("Saved Armor: " .. tostring(SavedInfo.armor))
-            -- Convert ammo to a string list
             local ammoStr = type(SavedInfo.ammo) == "table" and table.concat(SavedInfo.ammo, ", ") or "nil"
             print("Saved Ammo: " .. ammoStr)
-            -- Convert entities to a string list (just printing their models for now)
             local entitiesStr = type(SavedInfo.entities) == "table" and table.concat(
-            -- Convert each entity to a string (model name)
                 map(SavedInfo.entities, function(entity)
                     return tostring(entity.model)
                 end), ", ") or "nil"
             print("Saved Entities: " .. entitiesStr)
-            -- Convert npcs to a string list (just printing their models for now)
             local npcsStr = type(SavedInfo.npcs) == "table" and table.concat(
-            -- Convert each NPC to a string (model name)
                 map(SavedInfo.npcs, function(npc)
                     return tostring(npc.model)
                 end), ", ") or "nil"
             print("Saved NPCs: " .. npcsStr)
-            print("Was in noclip: " .. tostring(MoveTypes.noclip))
-            print("Was in vphysics: " .. tostring(MoveTypes.vphysics))
-            print("Was in observer: " .. tostring(MoveTypes.observer))
-            print("Was in none: " .. tostring(MoveTypes.none))
-            print("Was flying: " .. tostring(MoveTypes.fly))
-            print("Was on ladder: " .. tostring(MoveTypes.ladder))
-            print("Was swimming / walking: " .. tostring(MoveTypes.walk))
+            print("Saved MoveType:" .. SavedInfo.moveType)
             print("[=====================================================================]" .. "\n")
         end)
     end
@@ -146,7 +131,7 @@ MoveTypeNames = {
     [11] = "MOVETYPE_CUSTOM",
 }
 
-function RARELOAD.Debug.SavePosDataInfo(ply, oldPosData, playerData, mapNam)
+function RARELOAD.Debug.SavePosDataInfo(ply, oldPosData, playerData)
     if not RARELOAD.settings.debugEnabled then return end
 
     timer.Simple(0.8, function()

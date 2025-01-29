@@ -174,6 +174,20 @@ hook.Add("PostDrawOpaqueRenderables", "DrawPlayerPhantomInfo", function()
                         tostring(savedInfo.activeWeapon), panelWidth, panelHeight, textSpacing, yPos)
                     panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Inventory",
                         table.concat(savedInfo.inventory, ", "), panelWidth, panelHeight, textSpacing, yPos)
+                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Model", savedInfo.model, panelWidth,
+                        panelHeight, textSpacing, yPos)
+                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Saved Entities",
+                        table.concat(savedInfo.entities, ", "), panelWidth, panelHeight, textSpacing, yPos)
+                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Saved Npcs",
+                        table.concat(savedInfo.npcs, ", "), panelWidth, panelHeight, textSpacing, yPos)
+                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Saved Vehicles",
+                        table.concat(savedInfo.vehicles, ", "), panelWidth, panelHeight, textSpacing, yPos)
+                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Saved Ammo",
+                        table.concat(savedInfo.ammo, ", "), panelWidth, panelHeight, textSpacing, yPos)
+                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Saved Heath",
+                        table.concat(savedInfo.heath, ", "), panelWidth, panelHeight, textSpacing, yPos)
+                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Saved Armor",
+                        table.concat(savedInfo.armor, ", "), panelWidth, panelHeight, textSpacing, yPos)
                 else
                     panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Spawn Point", "No Data", panelWidth,
                         panelHeight, textSpacing, yPos)

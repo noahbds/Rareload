@@ -1,10 +1,10 @@
 {
-  "title": "Respawn at reload [Map Position Persistence]",
-  "type": "tool",
-  "author": "Noahbds",
-  "tags": [
-    "roleplay",
-    "realism"
-  ],
-  "ignore": []
+    "title": "RareLoad [Keep Position and Keep inventory after reloding or dying]",
+    "type": "tool",
+    "author": "Noahbds",
+    "tags": [
+        "roleplay",
+        "realism"
+    ],
+    "ignore": []
 }
