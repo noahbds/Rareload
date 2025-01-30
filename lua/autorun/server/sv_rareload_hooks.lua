@@ -8,6 +8,8 @@ util.AddNetworkString("SyncPlayerPositions")
 RARELOAD.Phanthom = RARELOAD.Phanthom or {}
 
 RARELOAD.Debug = RARELOAD.Debug or {}
+MapName = game.GetMap()
+
 
 
 local lastSavedTimes = {}
@@ -45,8 +47,7 @@ hook.Add("InitPostEntity", "LoadPlayerPosition", function()
 
     EnsureFolderExists()
 
-    local mapName = game.GetMap()
-    local filePath = "rareload/player_positions_" .. mapName .. ".json"
+    local filePath = "rareload/player_positions_" .. MapName .. ".json"
     if file.Exists(filePath, "DATA") then
         local data = file.Read(filePath, "DATA")
         if data then
@@ -69,9 +70,8 @@ hook.Add("PlayerDisconnect", "SavePlayerPositionDisconnect", function(ply)
 
     EnsureFolderExists()
 
-    local mapName = game.GetMap()
-    RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
-    RARELOAD.playerPositions[mapName][ply:SteamID()] = {
+    RARELOAD.playerPositions[MapName] = RARELOAD.playerPositions[MapName] or {}
+    RARELOAD.playerPositions[MapName][ply:SteamID()] = {
         pos = ply:GetPos(),
         moveType = ply:GetMoveType(),
     }
@@ -110,8 +110,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         return
     end
 
-    local mapName = game.GetMap()
-    SavedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][ply:SteamID()]
+    SavedInfo = RARELOAD.playerPositions[MapName] and RARELOAD.playerPositions[MapName][ply:SteamID()]
 
     if not SavedInfo then
         if RARELOAD.settings.debugEnabled then
@@ -137,37 +136,27 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
 
     RARELOAD.Debug.LogAfterRespawnInfo()
 
-    ------------------------------------------------------------------------------------------------
-    --[[ This code handles player spawning when custom move type is disabled ]]
-    ------------------------------------------------------------------------------------------------
+    --[[ This code  handle the spawn when custom move type is disabled]]
 
-    local maxAllowedDistance = 1000 -- Maximum allowed distance for a valid spawn
-    local mapName = game.GetMap()
-    local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][ply:SteamID()]
+    local savedInfo = RARELOAD.playerPositions[MapName] and RARELOAD.playerPositions[MapName][ply:SteamID()]
 
     if not savedInfo then
         if RARELOAD.settings.debugEnabled then print("[RARELOAD DEBUG] No saved player info found") end
         return
     end
 
-    local savedMoveType = tonumber(savedInfo.moveType) or MOVETYPE_WALK
-
-    -- Validate saved position
-    if not IsWalkable(savedInfo.pos, ply) then
-        print("[RARELOAD DEBUG] Saved position is invalid, falling back to default spawn.")
-        ply:Spawn()
-        return
-    end
-
     local wasInNoclip = savedInfo.moveType == MOVETYPE_NOCLIP
     local wasFlying = savedInfo.moveType == MOVETYPE_FLY or savedInfo.moveType == MOVETYPE_FLYGRAVITY
     local wasOnLadder = savedInfo.moveType == MOVETYPE_LADDER
-    local wasSwimming = savedInfo.moveType == MOVETYPE_WALK or savedInfo.moveType == MOVETYPE_NONE
+    local wasSwimming = savedInfo.moveType == MOVETYPE_WALK or MOVETYPE_NONE
 
-    if not isnumber(savedInfo.moveType) then
+    if not savedInfo.moveType or not isnumber(savedInfo.moveType) then
         print("[RARELOAD DEBUG] Error: Invalid saved move type.")
         return
     end
+
+    local savedMoveType = tonumber(savedInfo.moveType) or MOVETYPE_WALK
+
 
     if not RARELOAD.settings.spawnModeEnabled then
         if wasInNoclip or wasFlying or wasOnLadder or wasSwimming then
@@ -178,16 +167,24 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
                 return
             end
 
-            local foundPos = FindBestSpawn(traceResult.HitPos, ply)
-            if not foundPos or foundPos:DistToSqr(savedInfo.pos) > maxAllowedDistance * maxAllowedDistance then
-                print("[RARELOAD DEBUG] No valid spawn found. Using fallback spawn.")
-                ply:Spawn()
+            local waterTrace = TraceLine(traceResult.HitPos, traceResult.HitPos - Vector(0, 0, 100), ply, MASK_WATER)
+
+            if waterTrace.Hit then
+                local foundPos = FindWalkableGround(traceResult.HitPos, ply)
+
+                if not foundPos then
+                    print("[RARELOAD DEBUG] No walkable ground found. Custom spawn prevented.")
+                    return
+                end
+
+                ply:SetPos(foundPos)
+                ply:SetMoveType(MOVETYPE_NONE)
+                print("[RARELOAD DEBUG] Found walkable ground for player spawn.")
                 return
             end
 
-            ply:SetPos(foundPos)
+            ply:SetPos(traceResult.HitPos)
             ply:SetMoveType(MOVETYPE_NONE)
-            print("[RARELOAD DEBUG] Successfully found a valid spawn position.")
         else
             SetPlayerPositionAndEyeAngles(ply, savedInfo)
         end
@@ -199,9 +196,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         SetPlayerPositionAndEyeAngles(ply, savedInfo)
     end
 
-    ------------------------------------------------------------------------------------------------
-    ------------------------------------------------------------------------------------------------
-    ------------------------------------------------------------------------------------------------
+    --[[ End Of custom move type disable ]] --
 
     if RARELOAD.settings.retainInventory and SavedInfo.inventory then
         ply:StripWeapons()

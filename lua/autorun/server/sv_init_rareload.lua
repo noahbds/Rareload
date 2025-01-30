@@ -84,194 +84,74 @@ end
 --[[ Optimized Anti-Stuck System for Player Spawning ]]
 ------------------------------------------------------------------------------------------------
 
-local walkableCache = {}
-local stuckPositions = {}
-local lastKnownPositions = {}
-
-local mapName = game.GetMap()
-local cacheFilePath = "rareload/cached_position_" .. mapName .. ".json"
-local MAX_CACHE_SIZE = 5000
-local SAVE_INTERVAL = 300
-
--- Cleanup cache if it exceeds limit
-local function PruneCache()
-    if table.Count(walkableCache) <= MAX_CACHE_SIZE then return end
-
-    print("[RARELOAD] Pruning cache...")
-
-    local keys = {}
-    for k in pairs(walkableCache) do table.insert(keys, k) end
-    table.sort(keys)
-
-    for i = 1, #keys - MAX_CACHE_SIZE do
-        walkableCache[keys[i]] = nil
-    end
-end
-
--- Save cache to file
-local function SaveWalkableCache()
-    PruneCache()
-
-    local cacheData = {
-        map = mapName,
-        positions = walkableCache,
-        lastKnownPositions = lastKnownPositions
-    }
-
-    file.CreateDir("rareload")
-    file.Write(cacheFilePath, util.TableToJSON(cacheData, true))
-    print("[RARELOAD] Cached data saved.")
-end
-
--- Load cache from file
-local function LoadWalkableCache()
-    if not file.Exists(cacheFilePath, "DATA") then
-        print("[RARELOAD] No cache found. Starting fresh.")
-        return
-    end
-
-    local jsonData = file.Read(cacheFilePath, "DATA")
-    local decodedData = util.JSONToTable(jsonData)
-
-    if decodedData and decodedData.map == mapName then
-        walkableCache = decodedData.positions or {}
-        lastKnownPositions = decodedData.lastKnownPositions or {}
-        print("[RARELOAD] Loaded walkable position cache for map: " .. mapName)
-    else
-        print("[RARELOAD] Cache is outdated or corrupted. Resetting...")
-        walkableCache, lastKnownPositions = {}, {}
-        SaveWalkableCache()
-    end
-end
-
--- Check if position is walkable, using cache when possible
+-- Check if the position is walkable (used by FindWalkableGround)
 function IsWalkable(pos, ply)
-    local cacheKey = string.format("%.2f,%.2f,%.2f", pos.x, pos.y, pos.z)
+    local minHeight = -10000
 
-    if walkableCache[cacheKey] ~= nil then
-        return walkableCache[cacheKey]
-    end
-
-    if stuckPositions[cacheKey] then
+    if pos.z < minHeight then
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Position below map: ", pos, " - RED")
+        end
         return false
     end
 
-    if pos.z < -10000 or not util.IsInWorld(pos) then
-        stuckPositions[cacheKey] = true
+    if not util.IsInWorld(pos) then
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Position not in world: ", pos, " - RED")
+        end
         return false
     end
 
-    local groundTrace = util.TraceHull({
+    local hullTrace = util.TraceHull({
         start = pos,
-        endpos = pos - Vector(0, 0, 50),
-        mins = ply:GetHullMins(),
-        maxs = ply:GetHullMaxs(),
+        endpos = pos,
+        mins = ply:OBBMins(),
+        maxs = ply:OBBMaxs(),
         filter = ply,
         mask = MASK_PLAYERSOLID
     })
 
+    if hullTrace.Hit or hullTrace.StartSolid then
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Position blocked by solid object: ", pos, " - RED")
+        end
+        return false
+    end
+
     local waterTrace = util.TraceLine({
         start = pos,
-        endpos = pos - Vector(0, 0, 50),
-        filter = ply,
+        endpos = pos - Vector(0, 0, 1),
         mask = MASK_WATER
     })
 
-    local isValid = not groundTrace.Hit and not groundTrace.StartSolid and not waterTrace.Hit
-    walkableCache[cacheKey] = isValid
-
-    if isValid then
-        lastKnownPositions[ply:SteamID()] = pos
-    else
-        stuckPositions[cacheKey] = true
-    end
-
-    return isValid
-end
-
--- Get the closest valid position from the cache
-local function GetClosestValidCachedPos(targetPos)
-    local closestPos = nil
-    local closestDist = math.huge
-
-    for _, pos in pairs(walkableCache) do
-        local dist = targetPos:DistToSqr(pos)
-        if dist < closestDist then
-            closestDist = dist
-            closestPos = pos
+    if waterTrace.Hit then
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Position in water: ", pos, " - RED")
         end
+        return false
     end
 
-    return closestPos
-end
+    local groundTrace = util.TraceLine({
+        start = pos,
+        endpos = pos - Vector(0, 0, 50),
+        mask = MASK_SOLID_BRUSHONLY
+    })
 
--- Find the best spawn position
-function FindBestSpawn(startPos, ply)
-    -- Step 1: Only try closest valid cached if Step 1 failed
-    local closestValidPos = GetClosestValidCachedPos(startPos)
-    if closestValidPos and IsWalkable(closestValidPos, ply) then
-        print("[RARELOAD] Using closest valid cached position.")
-        return closestValidPos
-    end
-
-    -- Step 2: Limited area scan only if Steps 1 failed
-    local bestPosition = nil
-    local maxSearchRadius = 2000
-    local stepSize = 100
-    local zStepSize = 50
-    local maxAttempts = 500
-    local attempts = 0
-    local angleStep = 30
-    local currentRadius = 0
-    local currentAngle = 0
-
-    while currentRadius <= maxSearchRadius and attempts < maxAttempts do
-        local x = math.cos(math.rad(currentAngle)) * currentRadius
-        local y = math.sin(math.rad(currentAngle)) * currentRadius
-        local checkPos = startPos + Vector(x, y, 0)
-
-        for z = -50, 100, zStepSize do
-            local finalPos = checkPos + Vector(0, 0, z)
-            if IsWalkable(finalPos, ply) then
-                print("[RARELOAD] Found valid position via scanning.")
-                return finalPos
-            end
-            attempts = attempts + 1
+    if not groundTrace.Hit then
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] No ground found below position: ", pos, " - RED")
         end
-
-        currentAngle = currentAngle + angleStep
-        if currentAngle >= 360 then
-            currentAngle = 0
-            currentRadius = currentRadius + stepSize
-            stepSize = math.max(stepSize * 0.8, 10)
-        end
+        return false
     end
 
-    -- Step 3: Try last known good position
-    local lastGoodPos = lastKnownPositions[ply:SteamID()]
-    if lastGoodPos and IsWalkable(lastGoodPos, ply) then
-        print("[RARELOAD] Using last known good position.")
-        return lastGoodPos
+    if RARELOAD.settings.debugEnabled then
+        print("[RARELOAD DEBUG] Position is walkable: ", pos, " - BLUE")
     end
 
-    -- Step 4: Fallback only if all previous steps failed
-    print("[RARELOAD] No valid position found, using original position as last resort.")
-    return startPos
+    return true, pos
 end
 
--- Set player's position and eye angles
-function SetPlayerPositionAndEyeAngles(ply, savedInfo)
-    ply:SetPos(savedInfo.pos)
-
-    local angTable = type(savedInfo.ang) == "string" and util.JSONToTable(savedInfo.ang) or savedInfo.ang
-    if type(angTable) == "table" and #angTable == 3 then
-        ply:SetEyeAngles(Angle(angTable[1], angTable[2], angTable[3]))
-    else
-        print("[RARELOAD] Error: Invalid angle data.")
-    end
-end
-
--- Utility function for tracing lines
+-- Function purpose is in the name
 function TraceLine(start, endpos, filter, mask)
     return util.TraceLine({
         start = start,
@@ -281,10 +161,53 @@ function TraceLine(start, endpos, filter, mask)
     })
 end
 
--- Hooks and auto-save timer
-hook.Add("ShutDown", "RARELOAD_SaveCache", SaveWalkableCache)
-hook.Add("Initialize", "RARELOAD_LoadCache", LoadWalkableCache)
-timer.Create("RARELOAD_AutoSaveCache", SAVE_INTERVAL, 0, SaveWalkableCache)
+-- Find walkable ground for the player to spawn on (if togglemovetype is off)
+function FindWalkableGround(startPos, ply)
+    local radius = 2000
+    local stepSize = 50
+    local zStepSize = 50
+    local angleStep = math.pi / 16
+
+    for i = 1, 10 do
+        local angle = 0
+        local r = stepSize
+        local z = 0
+        while r < radius do
+            local x = r * math.cos(angle)
+            local y = r * math.sin(angle)
+
+            local checkPos = startPos + Vector(x, y, z)
+            local isWalkable, walkablePos = IsWalkable(checkPos, ply)
+            if isWalkable then
+                return walkablePos
+            end
+
+            angle = angle + angleStep
+            if angle >= 2 * math.pi then
+                angle = angle - 2 * math.pi
+                r = r + stepSize
+                z = z + zStepSize
+            end
+        end
+
+        stepSize = stepSize + 50
+    end
+
+    return startPos
+end
+
+-- Set the player's position and eye angles
+function SetPlayerPositionAndEyeAngles(ply, savedInfo)
+    ply:SetPos(savedInfo.pos)
+
+    local angTable = type(savedInfo.ang) == "string" and util.JSONToTable(savedInfo.ang) or savedInfo.ang
+
+    if type(angTable) == "table" and #angTable == 3 then
+        ply:SetEyeAngles(Angle(angTable[1], angTable[2], angTable[3]))
+    else
+        print("[RARELOAD] Error: Invalid angle data.")
+    end
+end
 
 ------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------
