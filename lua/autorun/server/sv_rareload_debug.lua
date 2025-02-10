@@ -1,121 +1,108 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.Debug = {}
 
--- Function to log debug information about the player's when he spawn
+-- Helper function for structured debug printing
+local function DebugPrint(header, messages)
+    print("\n[=====================================================================]")
+    print("[RARELOAD DEBUG] " .. header)
+    for _, message in ipairs(messages) do
+        print(message)
+    end
+    print("[=====================================================================]\n")
+end
+
+-- Function to log debug information when the player spawns
 function RARELOAD.Debug.LogSpawnInfo(ply)
     if not RARELOAD.settings.debugEnabled then return end
 
     timer.Simple(0.5, function()
         if not IsValid(ply) then return end
-        print("\n" .. "[=====================================================================]")
-        print("[RARELOAD DEBUG] Debug Information:")
-        print("PlayerSpawn hook triggered")
-        print("Player Position: " .. tostring(ply:GetPos()))
-        print("Player Eye Angles: " .. tostring(ply:LocalEyeAngles()))
-        print("Addon Enabled: " .. tostring(RARELOAD.settings.addonEnabled))
-        print("Spawn Mode Enabled: " .. tostring(RARELOAD.settings.spawnModeEnabled))
-        print("Auto Save Enabled: " .. tostring(RARELOAD.settings.autoSaveEnabled))
-        print("Retain Inventory: " .. tostring(RARELOAD.settings.retainInventory))
-        print("No Custom Respawn at Death: " .. tostring(RARELOAD.settings.nocustomrespawnatdeath))
-        print("Debug Enabled: " .. tostring(RARELOAD.settings.debugEnabled))
-        print("Auto Save Interval: " .. tostring(RARELOAD.settings.autoSaveInterval))
-        print("Max Distance: " .. tostring(RARELOAD.settings.maxDistance))
-        print("Angle Tolerance: " .. tostring(RARELOAD.settings.angleTolerance))
-        print("Retain Health and Armor: " .. tostring(RARELOAD.settings.retainHealthArmor))
-        print("Retain Ammo: " .. tostring(RARELOAD.settings.retainAmmo))
-        print("Retain Vehicule: " .. tostring(RARELOAD.settings.retainVehicleState))
-        print("Retain Entities: " .. tostring(RARELOAD.settings.retainMapEntities))
-        print("Retain Npcs: " .. tostring(RARELOAD.settings.retainNpc))
-        print("[=====================================================================]" .. "\n")
+
+        DebugPrint("Spawn Debug Information", {
+            "PlayerSpawn hook triggered",
+            "Player Position: " .. tostring(ply:GetPos()),
+            "Player Eye Angles: " .. tostring(ply:LocalEyeAngles()),
+            "Addon Enabled: " .. tostring(RARELOAD.settings.addonEnabled),
+            "Spawn Mode Enabled: " .. tostring(RARELOAD.settings.spawnModeEnabled),
+            "Auto Save Enabled: " .. tostring(RARELOAD.settings.autoSaveEnabled),
+            "Retain Inventory: " .. tostring(RARELOAD.settings.retainInventory),
+            "No Custom Respawn at Death: " .. tostring(RARELOAD.settings.nocustomrespawnatdeath),
+            "Debug Enabled: " .. tostring(RARELOAD.settings.debugEnabled),
+            "Auto Save Interval: " .. tostring(RARELOAD.settings.autoSaveInterval),
+            "Max Distance: " .. tostring(RARELOAD.settings.maxDistance),
+            "Angle Tolerance: " .. tostring(RARELOAD.settings.angleTolerance),
+            "Retain Health and Armor: " .. tostring(RARELOAD.settings.retainHealthArmor),
+            "Retain Ammo: " .. tostring(RARELOAD.settings.retainAmmo),
+            "Retain Vehicle: " .. tostring(RARELOAD.settings.retainVehicleState),
+            "Retain Entities: " .. tostring(RARELOAD.settings.retainMapEntities),
+            "Retain NPCs: " .. tostring(RARELOAD.settings.retainNpc)
+        })
 
         RARELOAD.Debug.LogInventory(ply)
     end)
 end
 
+-- Logs player's current inventory
 function RARELOAD.Debug.LogInventory(ply)
     if not RARELOAD.settings.debugEnabled then return end
 
-    local currentInventory = {}
-    for _, weapon in pairs(ply:GetWeapons()) do
-        table.insert(currentInventory, weapon:GetClass())
+    local inventory = {}
+    for _, weapon in ipairs(ply:GetWeapons()) do
+        table.insert(inventory, weapon:GetClass())
     end
-    print("\n" .. "[=====================================================================]")
-    print("[RARELOAD DEBUG] Current Inventory: " .. table.concat(currentInventory, ", "))
-    print("[=====================================================================]" .. "\n")
+
+    print("Current Inventory", { "Weapons: " .. (next(inventory) and table.concat(inventory, ", ") or "None") })
 end
 
+-- Helper function to map table values
 local function map(t, func)
     local newTable = {}
-    for i, v in ipairs(t) do
+    for _, v in ipairs(t) do
         table.insert(newTable, func(v))
     end
     return newTable
 end
 
+-- Logs information after respawn
 function RARELOAD.Debug.LogAfterRespawnInfo()
-    if RARELOAD.settings.debugEnabled then
-        timer.Simple(0.6, function()
-            print("\n" .. "[=====================================================================]")
-            print("[RARELOAD DEBUG] After Respawn Debug Information:")
-            print("Saved move type: " .. tostring(SavedInfo.moveType))
-            print("Saved Position: " .. tostring(SavedInfo.pos))
-            print("Saved Eye Angles: " .. AngleToString(SavedInfo.ang))
-            print("Saved Active Weapon: " .. tostring(SavedInfo.activeWeapon))
-            local inventoryStr = type(SavedInfo.inventory) == "table" and table.concat(SavedInfo.inventory, ", ") or
-                "nil"
-            print("Saved Inventory: " .. inventoryStr)
-            print("Saved Health: " .. tostring(SavedInfo.health))
-            print("Saved Armor: " .. tostring(SavedInfo.armor))
-            local ammoStr = type(SavedInfo.ammo) == "table" and table.concat(SavedInfo.ammo, ", ") or "nil"
-            print("Saved Ammo: " .. ammoStr)
-            local entitiesStr = type(SavedInfo.entities) == "table" and table.concat(
-                map(SavedInfo.entities, function(entity)
-                    return tostring(entity.model)
-                end), ", ") or "nil"
-            print("Saved Entities: " .. entitiesStr)
-            local npcsStr = type(SavedInfo.npcs) == "table" and table.concat(
-                map(SavedInfo.npcs, function(npc)
-                    return tostring(npc.model)
-                end), ", ") or "nil"
-            print("Saved NPCs: " .. npcsStr)
-            print("Saved MoveType:" .. SavedInfo.moveType)
-            print("[=====================================================================]" .. "\n")
-        end)
-    end
+    if not RARELOAD.settings.debugEnabled then return end
+
+    timer.Simple(0.6, function()
+        DebugPrint("After Respawn Debug Information", {
+            "Saved Move Type: " .. tostring(SavedInfo.moveType),
+            "Saved Position: " .. tostring(SavedInfo.pos),
+            "Saved Eye Angles: " .. AngleToString(SavedInfo.ang),
+            "Saved Active Weapon: " .. tostring(SavedInfo.activeWeapon),
+            "Saved Inventory: " .. (SavedInfo.inventory and table.concat(SavedInfo.inventory, ", ") or "None"),
+            "Saved Health: " .. tostring(SavedInfo.health),
+            "Saved Armor: " .. tostring(SavedInfo.armor),
+            "Saved Ammo: " .. (SavedInfo.ammo and table.concat(SavedInfo.ammo, ", ") or "None"),
+            "Saved Entities: " ..
+            (SavedInfo.entities and table.concat(map(SavedInfo.entities, function(e) return tostring(e.model) end), ", ") or "None"),
+            "Saved NPCs: " ..
+            (SavedInfo.npcs and table.concat(map(SavedInfo.npcs, function(n) return tostring(n.model) end), ", ") or "None")
+        })
+    end)
 end
 
+-- Logs debug messages related to weapon issues
 function RARELOAD.Debug.LogWeaponMessages(debugMessages, debugInfo)
     if not RARELOAD.settings.debugEnabled then return end
 
     timer.Simple(0.7, function()
         if debugInfo.adminOnly then
-            print("\n" .. "[=====================================================================]")
-            print("[RARELOAD DEBUG] Admin Only Weapons Debug Information:")
-            for _, message in ipairs(debugMessages.adminOnly) do
-                print(message)
-            end
-            print("[=====================================================================]\n")
+            DebugPrint("Admin Only Weapons Debug", debugMessages.adminOnly)
         end
         if debugInfo.notRegistered then
-            print("\n" .. "[=====================================================================]")
-            print("[RARELOAD DEBUG] Weapons Debug Information:")
-            for _, message in ipairs(debugMessages.notRegistered) do
-                print(message)
-            end
-            print("[=====================================================================]\n")
+            DebugPrint("Unregistered Weapons Debug", debugMessages.notRegistered)
         end
         if debugInfo.givenWeapons then
-            print("\n" .. "[=====================================================================]")
-            print("[RARELOAD DEBUG] Given Weapons Debug Information:")
-            for _, message in ipairs(debugMessages.givenWeapons) do
-                print(message)
-            end
-            print("[=====================================================================]\n")
+            DebugPrint("Given Weapons Debug", debugMessages.givenWeapons)
         end
     end)
 end
 
--- https://wiki.facepunch.com/gmod/Enums/MOVETYPE - Order From This Website, I put them all but I only use the one that are actually mostly used
+-- Move type names mapping
 MoveTypeNames = {
     [0] = "MOVETYPE_NONE",
     [1] = "MOVETYPE_ISOMETRIC",
@@ -131,87 +118,45 @@ MoveTypeNames = {
     [11] = "MOVETYPE_CUSTOM",
 }
 
+-- Saves and logs position data info
 function RARELOAD.Debug.SavePosDataInfo(ply, oldPosData, playerData)
     if not RARELOAD.settings.debugEnabled then return end
 
     timer.Simple(0.8, function()
-        print("\n" .. "[=====================================================================]")
-        print("[RARELOAD DEBUG] Save Position Debug Information:")
-        print("Map Name: ", MapName)
-        print("Player SteamID: ", ply:SteamID())
-        print("Auto Save Enabled: " .. tostring(RARELOAD.settings.autoSaveEnabled))
-        print("Player Data: ")
-        PrintTable(playerData)
-        print("[=====================================================================]" .. "\n")
+        DebugPrint("Save Position Debug Information", {
+            "Map Name: " .. tostring(MapName),
+            "Player SteamID: " .. ply:SteamID(),
+            "Auto Save Enabled: " .. tostring(RARELOAD.settings.autoSaveEnabled),
+            "Player Data:",
+            (playerData and PrintTable(playerData) or "No Data")
+        })
 
-        local oldInventoryStr = oldPosData and table.concat(oldPosData.inventory, ', ')
-        local newInventoryStr = table.concat(playerData.inventory, ', ')
-        print("\n" .. "[=====================================================================]")
-        print("[RARELOAD DEBUG] Old Info vs New Info:")
-        if oldInventoryStr ~= newInventoryStr then
-            print("\nOld Inventory: ", oldInventoryStr)
-            print("New Inventory: ", newInventoryStr)
+        local changes = {}
+
+        local function CompareAndAdd(old, new, label)
+            if old ~= new then
+                table.insert(changes, label .. ": " .. tostring(old) .. " → " .. tostring(new))
+            end
         end
-        if oldPosData and oldPosData.moveType ~= playerData.moveType then
-            print("\nOld Move Type: ", MoveTypeNames[oldPosData.moveType])
-            print("New Move Type: ", MoveTypeNames[playerData.moveType])
+
+        if oldPosData then
+            CompareAndAdd(oldPosData.inventory and table.concat(oldPosData.inventory, ", "),
+                table.concat(playerData.inventory, ", "), "Inventory")
+            CompareAndAdd(MoveTypeNames[oldPosData.moveType], MoveTypeNames[playerData.moveType], "Move Type")
+            CompareAndAdd(oldPosData.pos, playerData.pos, "Position")
+            CompareAndAdd(AngleToString(oldPosData.ang), AngleToString(playerData.ang), "Angles")
+            CompareAndAdd(oldPosData.activeWeapon, playerData.activeWeapon, "Active Weapon")
+            CompareAndAdd(oldPosData.maxDistance, playerData.maxDistance, "Max Distance")
+            CompareAndAdd(oldPosData.autoSaveInterval, playerData.autoSaveInterval, "Auto Save Interval")
+            CompareAndAdd(oldPosData.angleTolerance, playerData.angleTolerance, "Angle Tolerance")
+            CompareAndAdd(oldPosData.health, playerData.health, "Health")
+            CompareAndAdd(oldPosData.armor, playerData.armor, "Armor")
+            CompareAndAdd(oldPosData.ammo and table.concat(oldPosData.ammo, ", "), table.concat(playerData.ammo, ", "),
+                "Ammo")
         end
-        if oldPosData and oldPosData.pos ~= playerData.pos then
-            print("\nOld Position: ", oldPosData.pos)
-            print("New Position: ", playerData.pos)
+
+        if next(changes) then
+            DebugPrint("Old vs New Data Changes", changes)
         end
-        if oldPosData and (oldPosData.ang[1] ~= playerData.ang[1] or oldPosData.ang[2] ~= playerData.ang[2] or oldPosData.ang[3] ~= playerData.ang[3]) then
-            print("\nOld Angles: ")
-            PrintTable(oldPosData.ang)
-            print("New Angles: ")
-            PrintTable(playerData.ang)
-        end
-        if oldPosData and oldPosData.activeWeapon ~= playerData.activeWeapon then
-            print("\nOld Active Weapon: ", oldPosData.activeWeapon)
-            print("New Active Weapon: ", playerData.activeWeapon)
-        end
-        if oldPosData and oldPosData.maxDistance ~= playerData.maxDistance then
-            print("\nOld Max Distance: ", oldPosData.maxDistance)
-            print("New Max Distance: ", playerData.maxDistance)
-        end
-        if oldPosData and oldPosData.autoSaveInterval ~= playerData.autoSaveInterval then
-            print("\nOld Auto Save Interval: ", oldPosData.autoSaveInterval)
-            print("New Auto Save Interval: ", playerData.autoSaveInterval)
-        end
-        if oldPosData and oldPosData.angleTolerance ~= playerData.angleTolerance then
-            print("\nOld Angle Tolerance: ", oldPosData.angleTolerance)
-            print("New Angle Tolerance: ", playerData.angleTolerance)
-        end
-        if oldPosData and (oldPosData.health ~= playerData.health or oldPosData.armor ~= playerData.armor) then
-            print("\nOld Health: ", oldPosData.health)
-            print("New Health: ", playerData.health)
-            print("Old Armor: ", oldPosData.armor)
-            print("New Armor: ", playerData.armor)
-        end
-        if oldPosData and oldPosData.ammo ~= playerData.ammo then
-            print("\nOld Ammo: ")
-            PrintTable(oldPosData.ammo)
-            print("New Ammo: ")
-            PrintTable(playerData.ammo)
-        end
-        if oldPosData and oldPosData.vehicle ~= playerData.vehicle then
-            print("\nOld Vehicle: ")
-            PrintTable(oldPosData.vehicle)
-            print("New Vehicle: ")
-            PrintTable(playerData.vehicle)
-        end
-        if oldPosData and oldPosData.entities ~= playerData.entities then
-            print("\nOld Entities: ")
-            PrintTable(oldPosData.entities)
-            print("New Entities: ")
-            PrintTable(playerData.entities)
-        end
-        if oldPosData and oldPosData.npcs ~= playerData.npcs then
-            print("\nOld NPCs: ")
-            PrintTable(oldPosData.npcs)
-            print("New NPCs: ")
-            PrintTable(playerData.npcs)
-        end
-        print("[=====================================================================]" .. "\n")
     end)
 end

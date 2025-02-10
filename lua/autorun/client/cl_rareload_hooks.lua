@@ -43,7 +43,6 @@ handleNetReceive("CreatePlayerPhantom", function()
     if not pos:IsZero() then
         ---@diagnostic disable-next-line: undefined-field
         removePhantom(ply:SteamID())
-
         if RARELOAD.settings.debugEnabled then
             ---@diagnostic disable-next-line: undefined-field
             RARELOAD.Phanthom[ply:SteamID()] = { phantom = createPhantom(ply, pos, ang), ply = ply }
@@ -56,10 +55,14 @@ end)
 function RARELOAD.RefreshPhantoms()
     if not RARELOAD.settings.debugEnabled then return end
 
-    for steamID, savedData in pairs(RARELOAD.playerPositions[game.GetMap()] or {}) do
+    local currentMap = game.GetMap()
+    for steamID, savedData in pairs(RARELOAD.playerPositions[currentMap] or {}) do
         if not RARELOAD.Phanthom[steamID] then
             RARELOAD.Phanthom[steamID] = {
-                phantom = createPhantom(savedData.model or "models/player.mdl", savedData.pos, savedData.ang)
+                phantom = createPhantom(
+                    { GetModel = function() return savedData.model or "models/player.mdl" end },
+                    savedData.pos, savedData.ang
+                )
             }
         end
     end
@@ -72,7 +75,6 @@ handleNetReceive("RemovePlayerPhantom", function()
 end)
 
 local fileNotExistPrinted = false
-
 local function reloadSavedData()
     local mapName = game.GetMap()
     local filePath = "rareload/player_positions_" .. mapName .. ".json"
@@ -98,28 +100,6 @@ local function AngleToString(angle)
     return string.format("[%.2f, %.2f, %.2f]", angle[1], angle[2], angle[3])
 end
 
-local function drawTextLine(label, value, panelWidth, panelHeight, textSpacing)
-    if value and value ~= "" then
-        local text = label .. ": " .. value
-        local textWidth, textHeight = surface.GetTextSize(text)
-        panelWidth = math.max(panelWidth, textWidth + 20)
-        panelHeight = panelHeight + textHeight + textSpacing
-        return true, text, textHeight, panelWidth, panelHeight
-    end
-    return false, nil, 0, panelWidth, panelHeight
-end
-
-local function addTextLine(linesToDraw, label, value, panelWidth, panelHeight, textSpacing, yPos)
-    local shouldDraw, text, textHeight
-    shouldDraw, text, textHeight, panelWidth, panelHeight = drawTextLine(label, value, panelWidth, panelHeight,
-        textSpacing)
-    if shouldDraw then
-        table.insert(linesToDraw, { text, yPos })
-        yPos = yPos + textHeight + textSpacing
-    end
-    return panelWidth, panelHeight, yPos
-end
-
 local moveTypeNames = {
     [0] = "MOVETYPE_NONE",
     [1] = "MOVETYPE_ISOMETRIC",
@@ -135,79 +115,72 @@ local moveTypeNames = {
     [11] = "MOVETYPE_CUSTOM",
 }
 
+local function drawPhantomInfo(phantomData, playerPos, mapName)
+    local phantom, ply = phantomData.phantom, phantomData.ply
+    if not (IsValid(phantom) and IsValid(ply)) then return end
+
+    local phantomPos = phantom:GetPos()
+    if playerPos:Distance(phantomPos) > 500 then return end
+
+    local pos = phantomPos + Vector(0, 0, 80)
+    local ang = Angle(0, LocalPlayer():EyeAngles().yaw - 90, 90)
+
+    surface.SetFont("DermaDefaultBold")
+    local textPadding, textSpacing, lineHeight = 10, 4, 15
+    local panelWidth = 0
+    local panelHeight = textPadding * 2
+    local linesToDraw = {}
+
+    local function addLine(title, value)
+        local text = title .. ": " .. tostring(value)
+        local textWidth = surface.GetTextSize(text)
+        panelWidth = math.max(panelWidth, textWidth + textPadding * 2)
+        panelHeight = panelHeight + lineHeight + textSpacing
+        table.insert(linesToDraw, text)
+    end
+
+    SavedInfo = (RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][ply:SteamID()])
+    if SavedInfo then
+        addLine("Info", "Phantom de " .. ply:Nick())
+        addLine("Saved Position", SavedInfo.pos)
+        addLine("Eye Angles", AngleToString(SavedInfo.ang))
+        addLine("Move Type", moveTypeNames[SavedInfo.moveType])
+        addLine("Active Weapon", SavedInfo.activeWeapon)
+        addLine("Inventory", table.concat(SavedInfo.inventory, ", "))
+        addLine("Model", SavedInfo.model)
+        addLine("Saved Entities", table.concat(SavedInfo.entities, ", "))
+        addLine("Saved NPCs", table.concat(SavedInfo.npcs, ", "))
+        addLine("Saved Vehicles", table.concat(SavedInfo.vehicles, ", "))
+        addLine("Saved Ammo", table.concat(SavedInfo.ammo, ", "))
+        addLine("Saved Health", table.concat(SavedInfo.health, ", "))
+        addLine("Saved Armor", table.concat(SavedInfo.armor, ", "))
+    else
+        addLine("Spawn Point", "No Data")
+    end
+
+    local offsetX = -panelWidth / 2
+    local offsetY = -panelHeight / 2
+
+    cam.Start3D2D(pos, ang, 0.1)
+    draw.RoundedBox(8, offsetX, offsetY, panelWidth, panelHeight, Color(30, 30, 30, 220))
+    surface.SetDrawColor(80, 80, 80, 255)
+    surface.DrawOutlinedRect(offsetX, offsetY, panelWidth, panelHeight)
+
+    local y = offsetY + textPadding
+    for _, text in ipairs(linesToDraw) do
+        draw.SimpleText(text, "DermaDefaultBold", offsetX + textPadding, y, Color(255, 255, 255), TEXT_ALIGN_LEFT,
+            TEXT_ALIGN_TOP)
+        y = y + lineHeight + textSpacing
+    end
+    cam.End3D2D()
+end
+
 hook.Add("PostDrawOpaqueRenderables", "DrawPlayerPhantomInfo", function()
     reloadSavedData()
+    local playerPos = LocalPlayer():GetPos()
+    local mapName = game.GetMap()
+
     for _, data in pairs(RARELOAD.Phanthom) do
-        local phantom = data.phantom
-        local ply = data.ply
-
-        if IsValid(phantom) and IsValid(ply) then
-            local playerPos = LocalPlayer():GetPos()
-            local phantomPos = phantom:GetPos()
-            local distance = playerPos:Distance(phantomPos)
-
-            if distance <= 500 then
-                local pos = phantomPos + Vector(0, 0, 80)
-                local ang = Angle(0, LocalPlayer():EyeAngles().yaw - 90, 90)
-
-                surface.SetFont("DermaDefaultBold")
-                local panelWidth = 0
-                local panelHeight = 10
-                local textSpacing = 2
-
-                local linesToDraw = {}
-                local yPos = 5
-
-                local mapName = game.GetMap()
-                local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][ply:SteamID()]
-
-                if savedInfo then
-                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Info", "Phantom of " .. ply:Nick(),
-                        panelWidth, panelHeight, textSpacing, yPos)
-                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Saved Position", tostring(savedInfo.pos),
-                        panelWidth, panelHeight, textSpacing, yPos)
-                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Eye Angles", AngleToString(savedInfo.ang),
-                        panelWidth, panelHeight, textSpacing, yPos)
-                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Move Type",
-                        moveTypeNames[savedInfo.moveType], panelWidth, panelHeight, textSpacing, yPos)
-                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Active Weapon",
-                        tostring(savedInfo.activeWeapon), panelWidth, panelHeight, textSpacing, yPos)
-                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Inventory",
-                        table.concat(savedInfo.inventory, ", "), panelWidth, panelHeight, textSpacing, yPos)
-                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Model", savedInfo.model, panelWidth,
-                        panelHeight, textSpacing, yPos)
-                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Saved Entities",
-                        table.concat(savedInfo.entities, ", "), panelWidth, panelHeight, textSpacing, yPos)
-                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Saved Npcs",
-                        table.concat(savedInfo.npcs, ", "), panelWidth, panelHeight, textSpacing, yPos)
-                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Saved Vehicles",
-                        table.concat(savedInfo.vehicles, ", "), panelWidth, panelHeight, textSpacing, yPos)
-                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Saved Ammo",
-                        table.concat(savedInfo.ammo, ", "), panelWidth, panelHeight, textSpacing, yPos)
-                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Saved Heath",
-                        table.concat(savedInfo.heath, ", "), panelWidth, panelHeight, textSpacing, yPos)
-                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Saved Armor",
-                        table.concat(savedInfo.armor, ", "), panelWidth, panelHeight, textSpacing, yPos)
-                else
-                    panelWidth, panelHeight, yPos = addTextLine(linesToDraw, "Spawn Point", "No Data", panelWidth,
-                        panelHeight, textSpacing, yPos)
-                end
-
-                local offsetX = -panelWidth / 2
-                local offsetY = -panelHeight / 2
-
-                cam.Start3D2D(pos, ang, 0.1)
-                surface.SetDrawColor(50, 50, 50, 200)
-                surface.DrawRect(offsetX, offsetY, panelWidth, panelHeight)
-
-                for _, lineData in ipairs(linesToDraw) do
-                    local line, yPos = unpack(lineData)
-                    draw.SimpleText(line, "DermaDefaultBold", offsetX + 10, offsetY + yPos, Color(255, 255, 255),
-                        TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-                end
-
-                cam.End3D2D()
-            end
-        end
+        drawPhantomInfo(data, playerPos, mapName)
     end
 end)

@@ -81,7 +81,7 @@ function LoadAddonState()
 end
 
 ------------------------------------------------------------------------------------------------
---[[ Optimized Anti-Stuck System for Player Spawning ]]
+--[[ Anti-Stuck System for Player Spawning ]] --------------------------------------------------
 ------------------------------------------------------------------------------------------------
 
 -- Check if the position is walkable (used by FindWalkableGround)
@@ -210,7 +210,7 @@ function SetPlayerPositionAndEyeAngles(ply, savedInfo)
 end
 
 ------------------------------------------------------------------------------------------------
-------------------------------------------------------------------------------------------------
+--[[ End Of Anti-Stuck System for Player Spawning ]] -------------------------------------------
 ------------------------------------------------------------------------------------------------
 
 -- Create the player's phantom when debug mode is enabled, this allow to see the player's last saved position

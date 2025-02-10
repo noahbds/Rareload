@@ -96,39 +96,51 @@ concommand.Add("save_position", function(ply, _, _)
     end
 
     EnsureFolderExists()
-    MapName = game.GetMap()
-    RARELOAD.playerPositions[MapName] = RARELOAD.playerPositions[MapName] or {}
+    local mapName = game.GetMap()
+    RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
 
     local newPos = ply:GetPos()
-    local newActiveWeapon = ply:GetActiveWeapon() and ply:GetActiveWeapon():GetClass()
+    local newAng = ply:EyeAngles()
+    local newActiveWeapon = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or "None"
+
     local newInventory = {}
-    for _, weapon in pairs(ply:GetWeapons()) do
+    for _, weapon in ipairs(ply:GetWeapons()) do
         table.insert(newInventory, weapon:GetClass())
     end
 
-    local oldPosData = RARELOAD.playerPositions[MapName][ply:SteamID()]
-    if oldPosData and not RARELOAD.settings.autoSaveEnabled then
-        local oldPos = oldPosData.pos
-        local oldActiveWeapon = oldPosData.activeWeapon
-        local oldInventory = oldPosData.inventory
-        if oldPos == newPos and oldActiveWeapon == newActiveWeapon and table.concat(oldInventory) == table.concat(newInventory) then
+    local function tablesAreEqual(t1, t2)
+        if #t1 ~= #t2 then return false end
+
+        local lookup = {}
+        for _, v in ipairs(t1) do
+            lookup[v] = true
+        end
+
+        for _, v in ipairs(t2) do
+            if not lookup[v] then return false end
+        end
+
+        return true
+    end
+
+    local oldData = RARELOAD.playerPositions[mapName][ply:SteamID()]
+    if oldData and not RARELOAD.settings.autoSaveEnabled then
+        if oldData.pos == newPos and oldData.activeWeapon == newActiveWeapon and tablesAreEqual(oldData.inventory, newInventory) then
             return
         else
-            print("[RARELOAD] Overwriting your previously saved position, camera orientation, and inventory.")
+            print("[RARELOAD] Overwriting previous save: Position, Camera, Inventory updated.")
         end
     else
-        print("[RARELOAD] Saved your current position, camera orientation, and inventory.")
+        print("[RARELOAD] Player position, camera, and inventory saved.")
     end
 
     local playerData = {
         pos = newPos,
+        ang = { newAng.p, newAng.y, newAng.r },
         moveType = ply:GetMoveType(),
-        ang = { ply:EyeAngles().p, ply:EyeAngles().y, ply:EyeAngles().r },
         activeWeapon = newActiveWeapon,
         inventory = newInventory
     }
-
-    ---[[ Beta [NOT TESTED] ]]---
 
     if RARELOAD.settings.retainHealthArmor then
         playerData.health = ply:Health()
@@ -137,46 +149,46 @@ concommand.Add("save_position", function(ply, _, _)
 
     if RARELOAD.settings.retainAmmo then
         playerData.ammo = {}
-        for _, weaponClass in pairs(playerData.inventory) do
+        for _, weaponClass in ipairs(newInventory) do
             local weapon = ply:GetWeapon(weaponClass)
             if IsValid(weapon) then
-                playerData.ammo[weaponClass] = {
-                    primary = ply:GetAmmoCount(weapon:GetPrimaryAmmoType()),
-                    secondary = ply:GetAmmoCount(weapon:GetSecondaryAmmoType())
-                }
+                local primaryAmmo = ply:GetAmmoCount(weapon:GetPrimaryAmmoType())
+                local secondaryAmmo = ply:GetAmmoCount(weapon:GetSecondaryAmmoType())
+                if primaryAmmo > 0 or secondaryAmmo > 0 then
+                    playerData.ammo[weaponClass] = { primary = primaryAmmo, secondary = secondaryAmmo }
+                end
             end
         end
     end
 
     if RARELOAD.settings.retainVehicleState and ply:InVehicle() then
         local vehicle = ply:GetVehicle()
-        playerData.vehicle = {
-            class = vehicle:GetClass(),
-            pos = vehicle:GetPos(),
-            ang = vehicle:GetAngles(),
-            health = vehicle:Health(),
-        }
+        if IsValid(vehicle) then
+            local phys = vehicle:GetPhysicsObject()
+            playerData.vehicle = {
+                class = vehicle:GetClass(),
+                pos = vehicle:GetPos(),
+                ang = vehicle:GetAngles(),
+                health = vehicle:Health(),
+                frozen = IsValid(phys) and not phys:IsMotionEnabled()
+            }
+        end
     end
-
-    ---[[ End of Beta [NOT TESTED] ]]---
-
 
     if RARELOAD.settings.retainMapEntities then
         playerData.entities = {}
-        for _, ent in pairs(ents.GetAll()) do
+        for _, ent in ipairs(ents.GetAll()) do
             if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() then
                 local owner = ent:CPPIGetOwner()
-                -- Vérifie si l'entité appartient à un joueur OU a été créée par RARELOAD
                 if (IsValid(owner) and owner:IsPlayer()) or ent.SpawnedByRareload then
-                    local phys = ent:GetPhysicsObject()
                     table.insert(playerData.entities, {
                         class = ent:GetClass(),
                         pos = ent:GetPos(),
-                        model = ent:GetModel(),
                         ang = ent:GetAngles(),
+                        model = ent:GetModel(),
                         health = ent:Health(),
-                        frozen = IsValid(phys) and phys:IsMotionEnabled() or false,
-                        SpawnedByRareload = true -- Marque l'entité pour les prochains spawns
+                        frozen = IsValid(ent:GetPhysicsObject()) and not ent:GetPhysicsObject():IsMotionEnabled(),
+                        SpawnedByRareload = true
                     })
                 end
             end
@@ -185,35 +197,33 @@ concommand.Add("save_position", function(ply, _, _)
 
     if RARELOAD.settings.retainMapNPCs then
         playerData.npcs = {}
-        for _, npc in pairs(ents.FindByClass("npc_*")) do
+        for _, npc in ipairs(ents.FindByClass("npc_*")) do
             if IsValid(npc) then
-                local weapons = {}
+                local npcWeapons = {}
                 for _, weapon in ipairs(npc:GetWeapons()) do
-                    table.insert(weapons, weapon:GetClass())
+                    table.insert(npcWeapons, weapon:GetClass())
                 end
                 table.insert(playerData.npcs, {
                     class = npc:GetClass(),
                     pos = npc:GetPos(),
-                    weapons = weapons,
-                    model = npc:GetModel(),
                     ang = npc:GetAngles(),
-                    health = npc:Health()
+                    model = npc:GetModel(),
+                    health = npc:Health(),
+                    weapons = npcWeapons
                 })
             end
         end
     end
 
-    RARELOAD.playerPositions[MapName][ply:SteamID()] = playerData
-
+    RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
     local success, err = pcall(function()
-        file.Write("rareload/player_positions_" .. MapName .. ".json",
-            util.TableToJSON(RARELOAD.playerPositions, true))
+        file.Write("rareload/player_positions_" .. mapName .. ".json", util.TableToJSON(RARELOAD.playerPositions, true))
     end)
 
     if not success then
         print("[RARELOAD] Failed to save position data: " .. err)
     else
-        print("[RARELOAD] Player position successfully saved to file.")
+        print("[RARELOAD] Player position successfully saved.")
     end
 
     CreatePlayerPhantom(ply)
