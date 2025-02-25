@@ -1,9 +1,14 @@
--- lua/autorun/server/init.lua
+-- lua/autorun/server/sv_init_rareload.lua
 
-RARELOAD = RARELOAD or {}
+-- Rareload is a Garry's Mod addon that allows players to respawn at their last saved position, camera orientation, and inventory.
+RARELOAD = {}
+RARELOAD.settings = GetDefaultSettings()
 RARELOAD.Phanthom = RARELOAD.Phanthom or {}
+RARELOAD.playerPositions = RARELOAD.playerPositions or {}
+RARELOAD.lastSavedTime = 0
 MapName = game.GetMap()
-
+ADDON_STATE_FILE_PATH = "rareload/addon_state.json"
+local lastDebugTime = 0
 
 -- Default settings for the addon if they don't exist
 function GetDefaultSettings()
@@ -24,14 +29,6 @@ function GetDefaultSettings()
         maxDistance = 50
     }
 end
-
--- Rareload is a Garry's Mod addon that allows players to respawn at their last saved position, camera orientation, and inventory.
-RARELOAD = {}
-RARELOAD.settings = GetDefaultSettings()
-RARELOAD.playerPositions = RARELOAD.playerPositions or {}
-RARELOAD.lastSavedTime = 0
-ADDON_STATE_FILE_PATH = "rareload/addon_state.json"
-local lastDebugTime = 0
 
 -- Function to ensure the rareload folder exists, if not create it
 function EnsureFolderExists()

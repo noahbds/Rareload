@@ -142,6 +142,10 @@ concommand.Add("save_position", function(ply, _, _)
         inventory = newInventory
     }
 
+    -------------------------------------------------------------------------------------------------------------------------]
+    ---------------------------------------------------------Optional Propreties---------------------------------------------]
+    -------------------------------------------------------------------------------------------------------------------------]
+
     if RARELOAD.settings.retainHealthArmor then
         playerData.health = ply:Health()
         playerData.armor = ply:Armor()
@@ -152,10 +156,17 @@ concommand.Add("save_position", function(ply, _, _)
         for _, weaponClass in ipairs(newInventory) do
             local weapon = ply:GetWeapon(weaponClass)
             if IsValid(weapon) then
-                local primaryAmmo = ply:GetAmmoCount(weapon:GetPrimaryAmmoType())
-                local secondaryAmmo = ply:GetAmmoCount(weapon:GetSecondaryAmmoType())
+                local primaryAmmoType = weapon:GetPrimaryAmmoType()
+                local secondaryAmmoType = weapon:GetSecondaryAmmoType()
+                local primaryAmmo = ply:GetAmmoCount(primaryAmmoType)
+                local secondaryAmmo = ply:GetAmmoCount(secondaryAmmoType)
                 if primaryAmmo > 0 or secondaryAmmo > 0 then
-                    playerData.ammo[weaponClass] = { primary = primaryAmmo, secondary = secondaryAmmo }
+                    playerData.ammo[weaponClass] = {
+                        primary = primaryAmmo,
+                        secondary = secondaryAmmo,
+                        primaryAmmoType = primaryAmmoType,
+                        secondaryAmmoType = secondaryAmmoType
+                    }
                 end
             end
         end
@@ -177,43 +188,116 @@ concommand.Add("save_position", function(ply, _, _)
 
     if RARELOAD.settings.retainMapEntities then
         playerData.entities = {}
+        local startTime = SysTime()
+        local count = 0
+
         for _, ent in ipairs(ents.GetAll()) do
             if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() then
                 local owner = ent:CPPIGetOwner()
                 if (IsValid(owner) and owner:IsPlayer()) or ent.SpawnedByRareload then
-                    table.insert(playerData.entities, {
+                    count = count + 1
+                    local entityData = {
                         class = ent:GetClass(),
                         pos = ent:GetPos(),
                         ang = ent:GetAngles(),
                         model = ent:GetModel(),
                         health = ent:Health(),
+                        maxHealth = ent:GetMaxHealth(),
                         frozen = IsValid(ent:GetPhysicsObject()) and not ent:GetPhysicsObject():IsMotionEnabled(),
-                        SpawnedByRareload = true
-                    })
+                        SpawnedByRareload = true,
+                    }
+
+                    table.insert(playerData.entities, entityData)
                 end
             end
         end
+
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Saved " .. count .. " entities in " ..
+                math.Round((SysTime() - startTime) * 1000) .. " ms")
+        end
     end
+
+    ---------------------------------------------------------Save Npc When The option is enbaled-----------------------------]
 
     if RARELOAD.settings.retainMapNPCs then
         playerData.npcs = {}
-        for _, npc in ipairs(ents.FindByClass("npc_*")) do
-            if IsValid(npc) then
-                local npcWeapons = {}
-                for _, weapon in ipairs(npc:GetWeapons()) do
-                    table.insert(npcWeapons, weapon:GetClass())
+        local startTime = SysTime()
+        local count = 0
+
+        local function GetNPCRelations(npc)
+            local relations = {}
+            for _, player in ipairs(player.GetAll()) do
+                local disposition = npc:Disposition(player)
+                if disposition then
+                    relations[player:EntIndex()] = disposition
                 end
-                table.insert(playerData.npcs, {
+            end
+
+            for _, otherNPC in ipairs(ents.FindByClass("npc_*")) do
+                if IsValid(otherNPC) and otherNPC ~= npc then
+                    local disposition = npc:Disposition(otherNPC)
+                    if disposition then
+                        relations[otherNPC:EntIndex()] = disposition
+                    end
+                end
+            end
+
+            return relations
+        end
+
+        for _, npc in ipairs(ents.FindByClass("npc_*")) do
+            if IsValid(npc) and (SysTime() - startTime) < 0.1 then
+                count = count + 1
+                local npcData = {
                     class = npc:GetClass(),
                     pos = npc:GetPos(),
                     ang = npc:GetAngles(),
                     model = npc:GetModel(),
                     health = npc:Health(),
-                    weapons = npcWeapons
-                })
+                    maxHealth = npc:GetMaxHealth(),
+                    weapons = {},
+                    keyValues = {},
+                    target = npc:GetTarget(),
+                    frozen = IsValid(npc:GetPhysicsObject()) and not npc:GetPhysicsObject():IsMotionEnabled(),
+                    relations = GetNPCRelations(npc),
+                    schedule = npc:GetCurrentSchedule(),
+                    SpawnedByRareload = true
+                }
+
+                local success, weapons = pcall(function() return npc:GetWeapons() end)
+                if success and istable(weapons) then
+                    for _, weapon in ipairs(weapons) do
+                        if IsValid(weapon) then
+                            table.insert(npcData.weapons, weapon:GetClass())
+                        end
+                    end
+                end
+
+                npcData.keyValues = {}
+                local keyValues = { "spawnflags", "squadname", "targetname" }
+                for _, keyName in ipairs(keyValues) do
+                    local value = npc:GetKeyValues()[keyName]
+                    if value then
+                        npcData.keyValues[keyName] = value
+                    end
+                end
+
+                table.insert(playerData.npcs, npcData)
             end
         end
+
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Saved " .. count .. " NPCs in " ..
+                math.Round((SysTime() - startTime) * 1000) .. " ms")
+        end
     end
+    ---------------------------------------------------------End of Save Npc-------------------------------------------------]
+
+    -------------------------------------------------------------------------------------------------------------------------]
+    ---------------------------------------------------------End of Optional Propreties--------------------------------------]
+    -------------------------------------------------------------------------------------------------------------------------]
+
 
     RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
     local success, err = pcall(function()

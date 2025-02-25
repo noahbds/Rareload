@@ -266,8 +266,13 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
 
     if settings.retainAmmo and savedInfo.ammo then
         for weaponClass, ammoData in pairs(savedInfo.ammo) do
-            ply:SetAmmo(ammoData.primary, weaponClass)
-            ply:SetAmmo(ammoData.secondary, weaponClass)
+            local weapon = ply:GetWeapon(weaponClass)
+            if IsValid(weapon) then
+                local primaryAmmoType = weapon:GetPrimaryAmmoType()
+                local secondaryAmmoType = weapon:GetSecondaryAmmoType()
+                ply:SetAmmo(ammoData.primary, primaryAmmoType)
+                ply:SetAmmo(ammoData.secondary, secondaryAmmoType)
+            end
         end
     end
 
@@ -326,27 +331,106 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
 
     -- **Restore NPCs**
     if settings.retainMapNPCs and savedInfo.npcs then
-        for _, npcData in ipairs(savedInfo.npcs) do
-            if not ents.FindByClassAndModel(npcData.class, npcData.model, npcData.pos) then
-                local newNPC = ents.Create(npcData.class)
-                if IsValid(newNPC) then
-                    newNPC:SetPos(npcData.pos)
-                    newNPC:SetModel(npcData.model)
-                    newNPC:SetAngles(npcData.ang)
-                    newNPC:Spawn()
-                    newNPC:SetHealth(npcData.health)
+        local npcsToCreate = table.Copy(savedInfo.npcs)
+        local batchSize = settings.npcBatchSize or 5
+        local interval = settings.npcSpawnInterval or 0.2
 
-                    if npcData.weapons then
-                        for _, weapon in ipairs(npcData.weapons) do
-                            ---@diagnostic disable-next-line: undefined-field
-                            newNPC:Give(weapon)
+        local function ProcessNPCBatch()
+            local count = 0
+            local startTime = SysTime()
+
+            while #npcsToCreate > 0 and count < batchSize and (SysTime() - startTime) < 0.05 do
+                local npcData = table.remove(npcsToCreate, 1)
+                count = count + 1
+
+                local exists = false
+                for _, ent in ipairs(ents.FindInSphere(npcData.pos, 10)) do
+                    if ent:GetClass() == npcData.class and ent:GetModel() == npcData.model then
+                        exists = true
+                        break
+                    end
+                end
+
+                if not exists then
+                    local success, newNPC = pcall(function()
+                        local npc = ents.Create(npcData.class)
+                        if not IsValid(npc) then return nil end
+
+                        npc:SetPos(npcData.pos)
+
+                        if util.IsValidModel(npcData.model) then
+                            npc:SetModel(npcData.model)
+                        elseif debugEnabled then
+                            print("[RARELOAD DEBUG] Invalid model for NPC: " .. npcData.model)
+                        end
+
+                        npc:SetAngles(npcData.ang)
+                        npc:Spawn()
+
+                        npc:SetHealth(npcData.health or npc:GetMaxHealth())
+
+                        if npcData.relations then
+                            for targetID, disposition in pairs(npcData.relations) do
+                                local target = Entity(targetID)
+                                if IsValid(target) then
+                                    ---@diagnostic disable-next-line: undefined-field
+                                    npc:AddEntityRelationship(target, disposition, 99)
+                                end
+                            end
+                        end
+
+                        if npcData.weapons then
+                            for _, weapon in ipairs(npcData.weapons) do
+                                if weapons.Get(weapon) then
+                                    ---@diagnostic disable-next-line: undefined-field
+                                    npc:Give(weapon)
+                                elseif debugEnabled then
+                                    print("[RARELOAD DEBUG] Invalid weapon for NPC: " .. weapon)
+                                end
+                            end
+                        end
+
+                        if npcData.schedule then
+                            timer.Simple(0.5, function()
+                                if IsValid(npc) then
+                                    ---@diagnostic disable-next-line: undefined-field
+                                    npc:SetSchedule(npcData.schedule)
+                                end
+                            end)
+                        end
+
+                        if npcData.frozen then
+                            local phys = npc:GetPhysicsObject()
+                            if IsValid(phys) then
+                                phys:EnableMotion(false)
+                            end
+                        end
+
+                        if npcData.target then
+                            local target = Entity(npcData.target)
+                            if IsValid(target) then
+                                ---@diagnostic disable-next-line: undefined-field
+                                npc:SetTarget(target)
+                            end
+                        end
+
+                        return npc
+                    end)
+
+                    if not success or not IsValid(newNPC) then
+                        if debugEnabled then
+                            print("[RARELOAD DEBUG] Failed to create NPC: " .. npcData.class .. " - " .. tostring(newNPC))
                         end
                     end
-                elseif debugEnabled then
-                    print("[RARELOAD DEBUG] Failed to create NPC: " .. npcData.class)
                 end
             end
+            if #npcsToCreate > 0 then
+                timer.Simple(interval, ProcessNPCBatch)
+            elseif debugEnabled then
+                print("[RARELOAD DEBUG] NPC restoration complete. " .. count .. " NPCs restored.")
+            end
         end
+        timer.Simple(settings.initialNPCDelay or 1, ProcessNPCBatch)
     end
 
     -- **Restore Active Weapon**
@@ -358,7 +442,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         end)
     end
 
-    -- **Debugging & Final Sync**
+    -- **Create Player Phanthom if debug is enbaled**
     if debugEnabled then CreatePlayerPhantom(ply) end
 end)
 
