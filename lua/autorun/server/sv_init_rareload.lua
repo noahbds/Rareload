@@ -309,4 +309,25 @@ function SyncPlayerPositions(ply)
     net.Send(ply)
 end
 
+local json = util.JSONToTable
+local cacheFile = "rareload/cached_pos_" .. MapName .. ".json"
+
+function LoadCachedPositions()
+    if not file.Exists(cacheFile, "DATA") then return {} end
+    local data = file.Read(cacheFile, "DATA")
+    return json(data) or {}
+end
+
+function SavePositionToCache(pos)
+    local cachedPositions = LoadCachedPositions()
+
+    for _, savedPos in ipairs(cachedPositions) do
+        if savedPos.x == pos.x and savedPos.y == pos.y and savedPos.z == pos.z then
+            return
+        end
+    end
+    table.insert(cachedPositions, pos)
+    file.Write(cacheFile, util.TableToJSON(cachedPositions, true))
+end
+
 LoadAddonState()
