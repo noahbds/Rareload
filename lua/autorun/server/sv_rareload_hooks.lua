@@ -4,6 +4,7 @@ util.AddNetworkString("CreatePlayerPhantom")
 util.AddNetworkString("RemovePlayerPhantom")
 util.AddNetworkString("SyncData")
 util.AddNetworkString("SyncPlayerPositions")
+util.AddNetworkString("RareloadTeleportTo")
 
 RARELOAD.Phanthom = RARELOAD.Phanthom or {}
 
@@ -22,26 +23,6 @@ hook.Add("InitPostEntity", "LoadPlayerPosition", function()
     LoadAddonState()
 
     local settings = RARELOAD.settings
-    if settings.debugEnabled then
-        local debugMessages = {
-            addonEnabled = "Respawn at Reload addon",
-            spawnModeEnabled = "Spawn with saved move type",
-            autoSaveEnabled = "Auto-save position",
-            retainInventory = "Retain inventory",
-            nocustomrespawnatdeath = "No Custom Respawn at Death",
-            debugEnabled = "Debug mode",
-            retainAmmo = "Retain ammo",
-            retainHealthArmor = "Retain health and armor",
-            retainVehicleState = "Retain vehicle state",
-            retainMapEntities = "Retain map entities",
-            retainMapNPCs = "Retain map NPCs"
-        }
-
-        for name, message in pairs(debugMessages) do
-            local status = settings[name] and "enabled" or "disabled"
-            print(string.format("[RARELOAD DEBUG] %s is %s.", message, status))
-        end
-    end
 
     if not settings.addonEnabled then return end
 
@@ -260,8 +241,10 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
 
     -- **Restore Health & Ammo**
     if settings.retainHealthArmor then
-        ply:SetHealth(savedInfo.health or ply:GetMaxHealth())
-        ply:SetArmor(savedInfo.armor or 0)
+        timer.Simple(0.5, function()
+            ply:SetHealth(savedInfo.health or ply:GetMaxHealth())
+            ply:SetArmor(savedInfo.armor or 0)
+        end)
     end
 
     if settings.retainAmmo and savedInfo.ammo then
@@ -276,53 +259,140 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         end
     end
 
+    -- **Restore Vehicles**
+    if settings.retainVehicles and savedInfo.vehicles then
+        timer.Simple(1, function()
+            local vehicleCount = 0
+            for _, vehicleData in ipairs(savedInfo.vehicles) do
+                local exists = false
+                for _, ent in ipairs(ents.FindInSphere(vehicleData.pos, 50)) do
+                    if ent:GetClass() == vehicleData.class and ent:GetModel() == vehicleData.model then
+                        exists = true
+                        break
+                    end
+                end
+
+                if not exists then
+                    local success, vehicle = pcall(function()
+                        local veh = ents.Create(vehicleData.class)
+                        if not IsValid(veh) then return nil end
+
+                        veh:SetPos(vehicleData.pos)
+                        veh:SetAngles(vehicleData.ang)
+                        veh:SetModel(vehicleData.model)
+                        veh:Spawn()
+                        veh:Activate()
+
+                        veh:SetHealth(vehicleData.health or 100)
+                        veh:SetSkin(vehicleData.skin or 0)
+                        veh:SetColor(vehicleData.color or Color(255, 255, 255, 255))
+
+                        if vehicleData.bodygroups then
+                            for id, value in pairs(vehicleData.bodygroups) do
+                                veh:SetBodygroup(tonumber(id), value)
+                            end
+                        end
+
+                        -- Gestion de l'état figé
+                        local phys = veh:GetPhysicsObject()
+                        if IsValid(phys) and vehicleData.frozen then
+                            phys:EnableMotion(false)
+                        end
+
+                        -- Appliquer les paramètres du véhicule si disponibles
+                        if vehicleData.vehicleParams and veh.SetVehicleParams then
+                            veh:SetVehicleParams(vehicleData.vehicleParams)
+                        end
+
+                        -- Marquer comme créé par l'addon
+                        veh.SpawnedByRareload = true
+
+                        if vehicleData.owner then
+                            for _, p in ipairs(player.GetAll()) do
+                                if p:SteamID() == vehicleData.owner then
+                                    if veh.CPPISetOwner then
+                                        veh:CPPISetOwner(p)
+                                    end
+                                    break
+                                end
+                            end
+                        end
+
+                        return veh
+                    end)
+
+                    if success and IsValid(vehicle) then
+                        vehicleCount = vehicleCount + 1
+                    elseif debugEnabled then
+                        print("[RARELOAD DEBUG] Failed to create vehicle: " .. vehicleData.class)
+                    end
+                end
+            end
+
+            if debugEnabled and vehicleCount > 0 then
+                print("[RARELOAD DEBUG] Restored " .. vehicleCount .. " vehicles")
+            end
+        end)
+    end
+
     -- **Restore Vehicle State**
-    if settings.retainVehicleState and savedInfo.vehicle then
-        local vehicleData = savedInfo.vehicle
-        local foundVehicle = false
+    if settings.retainVehicleState and savedInfo.vehicleState then
+        local vehicleData = savedInfo.vehicleState -- Correction de vehicleData qui utilisait savedInfo.vehicles
 
-        for _, ent in ipairs(ents.FindInSphere(vehicleData.pos, 10)) do
-            if ent:GetClass() == vehicleData.class then
-                ply:EnterVehicle(ent)
-                foundVehicle = true
-                break
-            end
-        end
+        timer.Simple(1.5, function()
+            if not IsValid(ply) then return end
 
-        if not foundVehicle then
-            local newVehicle = ents.Create(vehicleData.class)
-            if IsValid(newVehicle) then
-                newVehicle:SetPos(vehicleData.pos)
-                newVehicle:SetAngles(vehicleData.ang)
-                newVehicle:Spawn()
-                newVehicle:SetHealth(vehicleData.health)
-                ply:EnterVehicle(newVehicle)
-            else
-                if debugEnabled then print("[RARELOAD DEBUG] Failed to create vehicle: " .. vehicleData.class) end
+            for _, ent in ipairs(ents.FindInSphere(vehicleData.pos, 50)) do
+                if ent:GetClass() == vehicleData.class then
+                    timer.Simple(0.2, function()
+                        if IsValid(ply) and IsValid(ent) then
+                            ply:EnterVehicle(ent)
+                        end
+                    end)
+                    break
+                end
             end
-        end
+        end)
     end
 
     -- **Restore Entities**
     if settings.retainMapEntities and savedInfo.entities then
         timer.Simple(1, function()
             for _, entData in ipairs(savedInfo.entities) do
-                if not ents.FindByClassAndModel(entData.class, entData.model, entData.pos) then
-                    ---@class Entity
-                    local newEnt = ents.Create(entData.class)
-                    if IsValid(newEnt) then
-                        newEnt:SetPos(entData.pos)
-                        newEnt:SetAngles(entData.ang)
-                        newEnt:Spawn()
-                        newEnt:SetHealth(entData.health)
-                        newEnt.SpawnedByRareload = true
+                local exists = false
+                for _, ent in ipairs(ents.FindInSphere(util.StringToType(entData.pos, "Vector"), 10)) do
+                    if ent:GetClass() == entData.class and ent:GetModel() == entData.model then
+                        exists = true
+                        break
+                    end
+                end
 
-                        local phys = newEnt:GetPhysicsObject()
+                if not exists then
+                    local success, newEnt = pcall(function()
+                        local ent = ents.Create(entData.class)
+                        if not IsValid(ent) then return nil end
+
+                        ent:SetPos(util.StringToType(entData.pos, "Vector"))
+                        ent:SetAngles(util.StringToType(entData.ang, "Angle"))
+                        ent:SetModel(entData.model)
+                        ent:Spawn()
+                        ent:SetHealth(entData.health)
+                        ---@diagnostic disable-next-line: inject-field
+                        ent.SpawnedByRareload = true
+
+                        local phys = ent:GetPhysicsObject()
                         if IsValid(phys) and entData.frozen then
                             phys:EnableMotion(false)
                         end
-                    elseif debugEnabled then
-                        print("[RARELOAD DEBUG] Failed to create entity: " .. tostring(entData.class))
+
+                        return ent
+                    end)
+
+                    if not success or not IsValid(newEnt) then
+                        if debugEnabled then
+                            print("[RARELOAD DEBUG] Failed to create entity: " ..
+                                entData.class .. " - " .. tostring(newEnt))
+                        end
                     end
                 end
             end
@@ -381,12 +451,12 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
 
                         if npcData.weapons then
                             for _, weapon in ipairs(npcData.weapons) do
-                                if weapons.Get(weapon) then
-                                    ---@diagnostic disable-next-line: undefined-field
-                                    npc:Give(weapon)
-                                elseif debugEnabled then
-                                    print("[RARELOAD DEBUG] Invalid weapon for NPC: " .. weapon)
-                                end
+                                ---@diagnostic disable-next-line: undefined-field
+                                npc:Give(weapon)
+                            end
+                        else
+                            if debugEnabled then
+                                print("[RARELOAD DEBUG] No weapons found for NPC: " .. npcData.class)
                             end
                         end
 
@@ -509,4 +579,30 @@ hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
             ply.lastSavedArmor = currentArmor
         end
     end
+end)
+
+net.Receive("RareloadTeleportTo", function(len, ply)
+    if not IsValid(ply) or not ply:IsPlayer() or not ply:IsAdmin() then return end
+
+    local pos = net.ReadVector()
+
+    if not pos or pos:IsZero() then return end
+
+    local trace = {}
+    trace.start = pos + Vector(0, 0, 50)
+    trace.endpos = pos - Vector(0, 0, 50)
+    trace.filter = ply
+    local tr = util.TraceLine(trace)
+
+    local safePos = tr.HitPos + Vector(0, 0, 10)
+
+    if ply:InVehicle() then
+        ply:ExitVehicle()
+    end
+
+    ply:SetPos(safePos)
+    ply:SetEyeAngles(Angle(0, ply:EyeAngles().yaw, 0))
+    ply:SetVelocity(Vector(0, 0, 0))
+
+    ply:ChatPrint("Téléporté à la position: " .. tostring(safePos))
 end)

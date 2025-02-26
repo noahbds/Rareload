@@ -132,11 +132,13 @@ local function drawPhantomInfo(phantomData, playerPos, mapName)
     local linesToDraw = {}
 
     local function addLine(title, value)
-        local text = title .. ": " .. tostring(value)
-        local textWidth = surface.GetTextSize(text)
-        panelWidth = math.max(panelWidth, textWidth + textPadding * 2)
-        panelHeight = panelHeight + lineHeight + textSpacing
-        table.insert(linesToDraw, text)
+        if value and value ~= "" then
+            local text = title .. ": " .. tostring(value)
+            local textWidth = surface.GetTextSize(text)
+            panelWidth = math.max(panelWidth, textWidth + textPadding * 2)
+            panelHeight = panelHeight + lineHeight + textSpacing
+            table.insert(linesToDraw, text)
+        end
     end
 
     SavedInfo = (RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][ply:SteamID()])
@@ -146,18 +148,27 @@ local function drawPhantomInfo(phantomData, playerPos, mapName)
         addLine("Eye Angles", AngleToString(SavedInfo.ang))
         addLine("Move Type", moveTypeNames[SavedInfo.moveType])
         addLine("Active Weapon", SavedInfo.activeWeapon)
-        addLine("Inventory", table.concat(SavedInfo.inventory, ", "))
-        addLine("Model", SavedInfo.model)
-        addLine("Saved Entities", table.concat(SavedInfo.entities, ", "))
-        addLine("Saved NPCs", table.concat(SavedInfo.npcs, ", "))
-        addLine("Saved Vehicles", table.concat(SavedInfo.vehicles, ", "))
-        addLine("Saved Ammo", table.concat(SavedInfo.ammo, ", "))
-        addLine("Saved Health", table.concat(SavedInfo.health, ", "))
-        addLine("Saved Armor", table.concat(SavedInfo.armor, ", "))
+        addLine("Inventory",
+            SavedInfo.inventory and type(SavedInfo.inventory) == "table" and next(SavedInfo.inventory) and
+            table.concat(SavedInfo.inventory, ", "))
+        addLine("Model", ply:GetModel())
+        addLine("Saved Entities",
+            SavedInfo.entities and type(SavedInfo.entities) == "table" and next(SavedInfo.entities) and
+            table.concat(table.map(SavedInfo.entities, function(entity) return entity.class end), ", "))
+        addLine("Saved NPCs",
+            SavedInfo.npcs and type(SavedInfo.npcs) == "table" and next(SavedInfo.npcs) and
+            table.concat(table.map(SavedInfo.npcs, function(npc) return npc.class end), ", "))
+        addLine("Saved Vehicles",
+            SavedInfo.vehicles and type(SavedInfo.vehicles) == "table" and next(SavedInfo.vehicles) and
+            table.concat(SavedInfo.vehicles, ", "))
+        addLine("Saved Ammo",
+            SavedInfo.ammo and type(SavedInfo.ammo) == "table" and next(SavedInfo.ammo) and
+            table.concat(SavedInfo.ammo, ", "))
+        addLine("Saved Health", SavedInfo.health)
+        addLine("Saved Armor", SavedInfo.armor)
     else
         addLine("Spawn Point", "No Data")
     end
-
     local offsetX = -panelWidth / 2
     local offsetY = -panelHeight / 2
 
@@ -184,3 +195,12 @@ hook.Add("PostDrawOpaqueRenderables", "DrawPlayerPhantomInfo", function()
         drawPhantomInfo(data, playerPos, mapName)
     end
 end)
+
+-- Helper function to map a table
+function table.map(tbl, func)
+    local t = {}
+    for k, v in pairs(tbl) do
+        t[k] = func(v)
+    end
+    return t
+end

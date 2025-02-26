@@ -44,6 +44,10 @@ concommand.Add("toggle_retain_map_entities", function(ply)
     ToggleSetting(ply, 'retainMapEntities', 'Retain map entities')
 end)
 
+concommand.Add("toggle_retain_vehicles", function(ply)
+    ToggleSetting(ply, 'retainVehicles', 'Retain vehicles')
+end)
+
 ---[[ End Of Beta [NOT TESTED] ]]---
 
 -------------------------------------------------------------------------------------------------------------------------]
@@ -172,16 +176,62 @@ concommand.Add("save_position", function(ply, _, _)
         end
     end
 
+    if RARELOAD.settings.retainVehicles then
+        playerData.vehicles = {}
+        local startTime = SysTime()
+        local count = 0
+
+        for _, vehicle in ipairs(ents.FindByClass("prop_vehicle_*")) do
+            if IsValid(vehicle) then
+                local owner = vehicle:CPPIGetOwner()
+                if (IsValid(owner) and owner:IsPlayer()) or vehicle.SpawnedByRareload then
+                    count = count + 1
+                    local vehicleData = {
+                        class = vehicle:GetClass(),
+                        model = vehicle:GetModel(),
+                        pos = vehicle:GetPos(),
+                        ang = vehicle:GetAngles(),
+                        health = vehicle:Health(),
+                        skin = vehicle:GetSkin(),
+                        bodygroups = {},
+                        color = vehicle:GetColor(),
+                        frozen = IsValid(vehicle:GetPhysicsObject()) and not vehicle:GetPhysicsObject():IsMotionEnabled(),
+                        owner = IsValid(owner) and owner:SteamID() or nil
+                    }
+
+                    for i = 0, vehicle:GetNumBodyGroups() - 1 do
+                        vehicleData.bodygroups[i] = vehicle:GetBodygroup(i)
+                    end
+
+                    if vehicle.GetVehicleParams then
+                        local params = vehicle:GetVehicleParams()
+                        if params then
+                            vehicleData.vehicleParams = params
+                        end
+                    end
+
+                    table.insert(playerData.vehicles, vehicleData)
+                end
+            end
+        end
+
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Saved " .. count .. " vehicles in " ..
+                math.Round((SysTime() - startTime) * 1000) .. " ms")
+        end
+    end
+
     if RARELOAD.settings.retainVehicleState and ply:InVehicle() then
         local vehicle = ply:GetVehicle()
         if IsValid(vehicle) then
             local phys = vehicle:GetPhysicsObject()
-            playerData.vehicle = {
+            playerData.vehicleState = {
                 class = vehicle:GetClass(),
                 pos = vehicle:GetPos(),
                 ang = vehicle:GetAngles(),
                 health = vehicle:Health(),
-                frozen = IsValid(phys) and not phys:IsMotionEnabled()
+                frozen = IsValid(phys) and not phys:IsMotionEnabled(),
+                savedinsidevehicle = true
             }
         end
     end
@@ -192,7 +242,7 @@ concommand.Add("save_position", function(ply, _, _)
         local count = 0
 
         for _, ent in ipairs(ents.GetAll()) do
-            if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() then
+            if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() and not ent:IsVehicle() then
                 local owner = ent:CPPIGetOwner()
                 if (IsValid(owner) and owner:IsPlayer()) or ent.SpawnedByRareload then
                     count = count + 1
@@ -204,7 +254,6 @@ concommand.Add("save_position", function(ply, _, _)
                         health = ent:Health(),
                         maxHealth = ent:GetMaxHealth(),
                         frozen = IsValid(ent:GetPhysicsObject()) and not ent:GetPhysicsObject():IsMotionEnabled(),
-                        SpawnedByRareload = true,
                     }
 
                     table.insert(playerData.entities, entityData)
@@ -262,7 +311,6 @@ concommand.Add("save_position", function(ply, _, _)
                     frozen = IsValid(npc:GetPhysicsObject()) and not npc:GetPhysicsObject():IsMotionEnabled(),
                     relations = GetNPCRelations(npc),
                     schedule = npc:GetCurrentSchedule(),
-                    SpawnedByRareload = true
                 }
 
                 local success, weapons = pcall(function() return npc:GetWeapons() end)

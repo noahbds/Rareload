@@ -87,6 +87,9 @@ function TOOL.BuildCPanel(panel)
 
         "Enable or disable retaining ammo", RARELOAD.settings.retainAmmo)
 
+    createButton(panel, "Toggle Keep Vehicles", "toggle_retain_vehicles",
+        "Enable or disable retaining vehicles", RARELOAD.settings.retainVehicle)
+
     createButton(panel, "Toggle Keep Vehicle State", "toggle_retain_vehicle_state",
         "Enable or disable retaining vehicle state", RARELOAD.settings.retainVehicleState)
 
@@ -248,15 +251,133 @@ function TOOL.BuildCPanel(panel)
             local infoText = formatInfoText(data, isNPC)
             info:SetText(infoText)
 
-            local copyBtn = vgui.Create("DButton", panel)
-            copyBtn:Dock(BOTTOM)
+            -- Buttons Container
+            local buttonContainer = vgui.Create("DPanel", panel)
+            buttonContainer:Dock(BOTTOM)
+            buttonContainer:SetTall(30)
+            buttonContainer:DockMargin(10, 5, 10, 10)
+            buttonContainer.Paint = function() end -- Transparent background
+
+            -- Copy Position Button
+            local copyBtn = vgui.Create("DButton", buttonContainer)
+            copyBtn:Dock(LEFT)
             copyBtn:SetText("Copy Position")
-            copyBtn:SetTall(30)
-            copyBtn:DockMargin(10, 5, 10, 10)
+            copyBtn:SetWide(120)
             copyBtn.DoClick = function()
                 SetClipboardText(string.format("Vector(%s, %s, %s)", data.pos.x, data.pos.y, data.pos.z))
                 notification.AddLegacy("Position copied to clipboard!", NOTIFY_GENERIC, 3)
                 surface.PlaySound("buttons/button15.wav")
+            end
+
+            -- Teleport Button
+            local teleportBtn = vgui.Create("DButton", buttonContainer)
+            teleportBtn:Dock(LEFT)
+            teleportBtn:SetText("Teleport")
+            teleportBtn:SetWide(100)
+            teleportBtn:DockMargin(5, 0, 0, 0)
+            teleportBtn.DoClick = function()
+                if data.pos then
+                    RunConsoleCommand("rareload_teleport_to", data.pos.x, data.pos.y, data.pos.z)
+                    notification.AddLegacy("Teleporting to position!", NOTIFY_GENERIC, 3)
+                    surface.PlaySound("buttons/button15.wav")
+                else
+                    notification.AddLegacy("Invalid position data!", NOTIFY_ERROR, 3)
+                end
+            end
+
+            -- Delete Button
+            local deleteBtn = vgui.Create("DButton", buttonContainer)
+            deleteBtn:Dock(RIGHT)
+            deleteBtn:SetText("Delete")
+            deleteBtn:SetWide(80)
+            deleteBtn:DockMargin(5, 0, 0, 0)
+            deleteBtn:SetTextColor(Color(255, 100, 100))
+            deleteBtn.DoClick = function()
+                local confirmPanel = vgui.Create("DPanel", panel)
+                confirmPanel:SetZPos(999)
+                confirmPanel:SetSize(panel:GetWide() - 20, 50)
+                confirmPanel:SetPos(10, panel:GetTall() / 2 - 25)
+                confirmPanel.Paint = function(self, w, h)
+                    draw.RoundedBox(4, 0, 0, w, h, Color(40, 40, 40, 240))
+                    surface.SetDrawColor(255, 100, 100)
+                    surface.DrawOutlinedRect(0, 0, w, h, 2)
+                end
+
+                local confirmLabel = vgui.Create("DLabel", confirmPanel)
+                confirmLabel:SetText("Confirm deletion?")
+                confirmLabel:SetTextColor(Color(255, 255, 255))
+                confirmLabel:SizeToContents()
+                confirmLabel:Center()
+                confirmLabel:SetPos(confirmLabel:GetX(), 10)
+
+                local btnContainer = vgui.Create("DPanel", confirmPanel)
+                btnContainer:SetSize(200, 25)
+                btnContainer:SetPos(confirmPanel:GetWide() / 2 - 100, 30)
+                btnContainer.Paint = function() end
+
+                local yesBtn = vgui.Create("DButton", btnContainer)
+                yesBtn:SetText("Yes")
+                yesBtn:SetTextColor(Color(255, 100, 100))
+                yesBtn:SetWide(95)
+                yesBtn:Dock(LEFT)
+                yesBtn.DoClick = function()
+                    local mapName = game.GetMap()
+                    local filePath = "rareload/player_positions_" .. mapName .. ".json"
+
+                    -- Delete entity/NPC data from the file
+                    if file.Exists(filePath, "DATA") then
+                        local jsonData = file.Read(filePath, "DATA")
+                        local success, rawData = pcall(util.JSONToTable, jsonData)
+
+                        if success and rawData and rawData[mapName] then
+                            local deleted = false
+
+                            -- For each player's data
+                            for steamID, playerData in pairs(rawData[mapName]) do
+                                local entityType = isNPC and "npcs" or "entities"
+
+                                if playerData[entityType] then
+                                    -- Find and remove the entity/NPC
+                                    for i, entity in ipairs(playerData[entityType]) do
+                                        -- Match by position and class
+                                        if entity.class == data.class and
+                                            entity.pos.x == data.pos.x and
+                                            entity.pos.y == data.pos.y and
+                                            entity.pos.z == data.pos.z then
+                                            table.remove(playerData[entityType], i)
+                                            deleted = true
+                                            break
+                                        end
+                                    end
+                                end
+
+                                if deleted then break end
+                            end
+
+                            if deleted then
+                                -- Save updated data
+                                file.Write(filePath, util.TableToJSON(rawData, true))
+                                notification.AddLegacy("Entity deleted successfully!", NOTIFY_GENERIC, 3)
+                                surface.PlaySound("buttons/button15.wav")
+
+                                -- Remove the panel
+                                panel:Remove()
+                            else
+                                notification.AddLegacy("Couldn't find the entity to delete!", NOTIFY_ERROR, 3)
+                            end
+                        end
+                    end
+
+                    confirmPanel:Remove()
+                end
+
+                local noBtn = vgui.Create("DButton", btnContainer)
+                noBtn:SetText("No")
+                noBtn:SetWide(95)
+                noBtn:Dock(RIGHT)
+                noBtn.DoClick = function()
+                    confirmPanel:Remove()
+                end
             end
 
             return panel
@@ -290,10 +411,6 @@ function TOOL.BuildCPanel(panel)
             frame:SetBackgroundBlur(true)
             frame:SetSizable(true) -- Allow resizing
 
-            local search = vgui.Create("DTextEntry", frame)
-            search:Dock(TOP)
-            search:DockMargin(5, 5, 5, 5)
-            search:SetPlaceholderText("Search...")
 
             local tabs = vgui.Create("DPropertySheet", frame)
             tabs:Dock(FILL)
@@ -328,10 +445,6 @@ function TOOL.BuildCPanel(panel)
 
             -- **Make UI elements responsive to resizing**
             frame.OnSizeChanged = function(self, w, h)
-                if IsValid(search) then
-                    search:SetTall(h * 0.05)
-                end
-
                 if tabs and tabs.Items then
                     for _, tab in pairs(tabs.Items) do
                         local panel = tab.Panel
@@ -341,9 +454,27 @@ function TOOL.BuildCPanel(panel)
                     end
                 end
             end
-        end
 
+            if not ConVarExists("rareload_teleport_to") then
+                concommand.Add("rareload_teleport_to", function(ply, cmd, args)
+                    if not IsValid(ply) or not ply:IsPlayer() then return end
+
+                    local x, y, z = tonumber(args[1]), tonumber(args[2]), tonumber(args[3])
+                    if not x or not y or not z then return end
+
+                    local pos = Vector(x, y, z)
+                    net.Start("RareloadTeleportTo")
+                    net.WriteVector(pos)
+                    net.SendToServer()
+                end)
+            end
+        end
         concommand.Add("entity_viewer_open", OpenEntityViewer)
+        if CLIENT then
+            net.Receive("RareloadTeleportTo", function()
+                local pos = net.ReadVector()
+            end)
+        end
     end
 end
 
