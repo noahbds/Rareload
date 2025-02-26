@@ -289,28 +289,33 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
 
                         if vehicleData.bodygroups then
                             for id, value in pairs(vehicleData.bodygroups) do
-                                veh:SetBodygroup(tonumber(id), value)
+                                local bodygroupID = tonumber(id)
+                                if bodygroupID then
+                                    veh:SetBodygroup(bodygroupID, value)
+                                end
                             end
                         end
 
-                        -- Gestion de l'état figé
                         local phys = veh:GetPhysicsObject()
                         if IsValid(phys) and vehicleData.frozen then
                             phys:EnableMotion(false)
                         end
 
-                        -- Appliquer les paramètres du véhicule si disponibles
+                        ---@diagnostic disable-next-line: undefined-field
                         if vehicleData.vehicleParams and veh.SetVehicleParams then
+                            ---@diagnostic disable-next-line: undefined-field
                             veh:SetVehicleParams(vehicleData.vehicleParams)
                         end
 
-                        -- Marquer comme créé par l'addon
+                        ---@diagnostic disable-next-line: inject-field
                         veh.SpawnedByRareload = true
 
                         if vehicleData.owner then
                             for _, p in ipairs(player.GetAll()) do
                                 if p:SteamID() == vehicleData.owner then
+                                    ---@diagnostic disable-next-line: undefined-field
                                     if veh.CPPISetOwner then
+                                        ---@diagnostic disable-next-line: undefined-field
                                         veh:CPPISetOwner(p)
                                     end
                                     break
@@ -337,7 +342,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
 
     -- **Restore Vehicle State**
     if settings.retainVehicleState and savedInfo.vehicleState then
-        local vehicleData = savedInfo.vehicleState -- Correction de vehicleData qui utilisait savedInfo.vehicles
+        local vehicleData = savedInfo.vehicleState
 
         timer.Simple(1.5, function()
             if not IsValid(ply) then return end

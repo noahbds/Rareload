@@ -54,6 +54,39 @@ function RARELOAD.Debug.LogInventory(ply)
     print("Current Inventory", { "Weapons: " .. (next(inventory) and table.concat(inventory, ", ") or "None") })
 end
 
+function RARELOAD.Debug.Count(ply)
+    DebugPrint("Count Debug Information :")
+    if RARELOAD.settings.retainVehicleState then
+        RARELOAD.Debug.CountVehicle(ply)
+    end
+    if RARELOAD.settings.retainMapEntities then
+        RARELOAD.Debug.CountEnt(ply)
+    end
+    if RARELOAD.settings.retainNpc then
+        RARELOAD.Debug.CountNPC(ply)
+    end
+end
+
+function RARELOAD.Debug.CountVehicle(ply)
+    local startTime = SysTime()
+    local count = 0
+    print("[RARELOAD DEBUG] Saved " .. count .. " vehicles in " ..
+        math.Round((SysTime() - startTime) * 1000) .. " ms")
+end
+
+function RARELOAD.Debug.CountEnt(ply)
+    local startTime = SysTime()
+    print("[RARELOAD DEBUG] Saved " .. CountEnt .. " entities in " ..
+        math.Round((SysTime() - startTime) * 1000) .. " ms")
+end
+
+function RARELOAD.Debug.CountNPC(ply)
+    local startTime = SysTime()
+    local count = 0
+    print("[RARELOAD DEBUG] Saved " .. count .. " NPCs in " ..
+        math.Round((SysTime() - startTime) * 1000) .. " ms")
+end
+
 -- Helper function to map table values
 local function map(t, func)
     local newTable = {}

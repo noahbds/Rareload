@@ -22,18 +22,20 @@ concommand.Add("toggle_debug", function(ply)
     ToggleSetting(ply, 'debugEnabled', 'Debug mode')
 end)
 
----[[ Beta [NOT TESTED] ]]---
-
 concommand.Add("toggle_retain_health_armor", function(ply)
     ToggleSetting(ply, 'retainHealthArmor', 'Retain health and armor')
 end)
 
-concommand.Add("toggle_retain_ammo", function(ply)
+concommand.Add("toggle_retain_ammo", function(ply) --UNTESTED
     ToggleSetting(ply, 'retainAmmo', 'Retain ammo')
 end)
 
-concommand.Add("toggle_retain_vehicle_state", function(ply)
+concommand.Add("toggle_retain_vehicle_state", function(ply) --BROKEN
     ToggleSetting(ply, 'retainVehicleState', 'Retain vehicle state')
+end)
+
+concommand.Add("toggle_retain_vehicles", function(ply) --BROKEN
+    ToggleSetting(ply, 'retainVehicles', 'Retain vehicles')
 end)
 
 concommand.Add("toggle_retain_map_npcs", function(ply)
@@ -44,11 +46,6 @@ concommand.Add("toggle_retain_map_entities", function(ply)
     ToggleSetting(ply, 'retainMapEntities', 'Retain map entities')
 end)
 
-concommand.Add("toggle_retain_vehicles", function(ply)
-    ToggleSetting(ply, 'retainVehicles', 'Retain vehicles')
-end)
-
----[[ End Of Beta [NOT TESTED] ]]---
 
 -------------------------------------------------------------------------------------------------------------------------]
 ---------------------------------------------------------slider commands-------------------------------------------------]
@@ -93,6 +90,7 @@ end)
 ---------------------------------------------------------end of slider commands------------------------------------------]
 -------------------------------------------------------------------------------------------------------------------------]
 
+-- very very long concommand thats really really need refactoring
 concommand.Add("save_position", function(ply, _, _)
     if not RARELOAD.settings.addonEnabled then
         print("[RARELOAD DEBUG] The Respawn at Reload addon is disabled.")
@@ -176,6 +174,8 @@ concommand.Add("save_position", function(ply, _, _)
         end
     end
 
+    -------------------------------------------Save Vehicules When the option is enabled------------------------------------------------------]
+
     if RARELOAD.settings.retainVehicles then
         playerData.vehicles = {}
         local startTime = SysTime()
@@ -221,6 +221,39 @@ concommand.Add("save_position", function(ply, _, _)
         end
     end
 
+    ---------------------------------------------------------End of Save Vehicules-------------------------------------------------]
+
+    ---------------------------------------------------------Save Entities When The option is enabled------------------------------]
+
+    if RARELOAD.settings.retainMapEntities then
+        playerData.entities = {}
+        CountEnt = 0
+
+        for _, ent in ipairs(ents.GetAll()) do
+            if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() and not ent:IsVehicle() then
+                local owner = ent:CPPIGetOwner()
+                if (IsValid(owner) and owner:IsPlayer()) or ent.SpawnedByRareload then
+                    CountEnt = CountEnt + 1
+                    local entityData = {
+                        class = ent:GetClass(),
+                        pos = ent:GetPos(),
+                        ang = ent:GetAngles(),
+                        model = ent:GetModel(),
+                        health = ent:Health(),
+                        maxHealth = ent:GetMaxHealth(),
+                        frozen = IsValid(ent:GetPhysicsObject()) and not ent:GetPhysicsObject():IsMotionEnabled(),
+                    }
+
+                    table.insert(playerData.entities, entityData)
+                end
+            end
+        end
+    end
+
+    ---------------------------------------------------------End of Save Entities------------------------------------------]
+
+    ----------Retain Vehicule State----------------------------------------------------------------------------------------]
+
     if RARELOAD.settings.retainVehicleState and ply:InVehicle() then
         local vehicle = ply:GetVehicle()
         if IsValid(vehicle) then
@@ -236,36 +269,7 @@ concommand.Add("save_position", function(ply, _, _)
         end
     end
 
-    if RARELOAD.settings.retainMapEntities then
-        playerData.entities = {}
-        local startTime = SysTime()
-        local count = 0
-
-        for _, ent in ipairs(ents.GetAll()) do
-            if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() and not ent:IsVehicle() then
-                local owner = ent:CPPIGetOwner()
-                if (IsValid(owner) and owner:IsPlayer()) or ent.SpawnedByRareload then
-                    count = count + 1
-                    local entityData = {
-                        class = ent:GetClass(),
-                        pos = ent:GetPos(),
-                        ang = ent:GetAngles(),
-                        model = ent:GetModel(),
-                        health = ent:Health(),
-                        maxHealth = ent:GetMaxHealth(),
-                        frozen = IsValid(ent:GetPhysicsObject()) and not ent:GetPhysicsObject():IsMotionEnabled(),
-                    }
-
-                    table.insert(playerData.entities, entityData)
-                end
-            end
-        end
-
-        if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD DEBUG] Saved " .. count .. " entities in " ..
-                math.Round((SysTime() - startTime) * 1000) .. " ms")
-        end
-    end
+    ---------------------------------------------------------End of Retain Vehicule State-----------------------------------]
 
     ---------------------------------------------------------Save Npc When The option is enbaled-----------------------------]
 
@@ -334,13 +338,13 @@ concommand.Add("save_position", function(ply, _, _)
                 table.insert(playerData.npcs, npcData)
             end
         end
-
-        if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD DEBUG] Saved " .. count .. " NPCs in " ..
-                math.Round((SysTime() - startTime) * 1000) .. " ms")
-        end
     end
     ---------------------------------------------------------End of Save Npc-------------------------------------------------]
+
+
+    if RARELOAD.settings.debugEnabled then
+        RARELOAD.Debug.Count(ply)
+    end
 
     -------------------------------------------------------------------------------------------------------------------------]
     ---------------------------------------------------------End of Optional Propreties--------------------------------------]
