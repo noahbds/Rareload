@@ -69,8 +69,7 @@ end
 
 function RARELOAD.Debug.CountVehicle(ply)
     local startTime = SysTime()
-    local count = 0
-    print("[RARELOAD DEBUG] Saved " .. count .. " vehicles in " ..
+    print("[RARELOAD DEBUG] Saved " .. CountVeh .. " vehicles in " ..
         math.Round((SysTime() - startTime) * 1000) .. " ms")
 end
 
@@ -82,8 +81,7 @@ end
 
 function RARELOAD.Debug.CountNPC(ply)
     local startTime = SysTime()
-    local count = 0
-    print("[RARELOAD DEBUG] Saved " .. count .. " NPCs in " ..
+    print("[RARELOAD DEBUG] Saved " .. CountNpc .. " NPCs in " ..
         math.Round((SysTime() - startTime) * 1000) .. " ms")
 end
 
