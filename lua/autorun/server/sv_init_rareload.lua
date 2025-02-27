@@ -24,7 +24,7 @@ end
 -- Rareload is a Garry's Mod addon that allows players to respawn at their last saved position, camera orientation, and inventory.
 RARELOAD = {}
 RARELOAD.settings = GetDefaultSettings()
-RARELOAD.Phanthom = RARELOAD.Phanthom or {}
+RARELOAD.Phantom = RARELOAD.Phantom or {}
 RARELOAD.playerPositions = RARELOAD.playerPositions or {}
 RARELOAD.lastSavedTime = 0
 MapName = game.GetMap()
@@ -218,12 +218,12 @@ end
 ---@field isPhantom boolean
 
 function CreatePlayerPhantom(ply)
-    if RARELOAD.Phanthom and RARELOAD.Phanthom[ply:SteamID()] then
-        local existingPhantom = RARELOAD.Phanthom[ply:SteamID()].phantom
+    if RARELOAD.Phantom and RARELOAD.Phantom[ply:SteamID()] then
+        local existingPhantom = RARELOAD.Phantom[ply:SteamID()].phantom
         if IsValid(existingPhantom) then
             existingPhantom:Remove()
         end
-        RARELOAD.Phanthom[ply:SteamID()] = nil
+        RARELOAD.Phantom[ply:SteamID()] = nil
 
         net.Start("RemovePlayerPhantom")
         net.WriteEntity(ply)
@@ -250,7 +250,7 @@ function CreatePlayerPhantom(ply)
                 phantom:SetMoveType(MOVETYPE_NONE)
                 phantom:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
 
-                RARELOAD.Phanthom[ply:SteamID()] = { phantom = phantom, ply = ply }
+                RARELOAD.Phantom[ply:SteamID()] = { phantom = phantom, ply = ply }
 
                 net.Start("CreatePlayerPhantom")
                 net.WriteEntity(ply)
@@ -289,7 +289,7 @@ function SyncData(ply)
         net.WriteTable({
             playerPositions = chunk,
             settings = RARELOAD.settings,
-            Phanthom = RARELOAD.Phanthom
+            Phantom = RARELOAD.Phantom
         })
         net.Send(ply)
     end

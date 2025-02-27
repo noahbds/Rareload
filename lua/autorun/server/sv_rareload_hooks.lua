@@ -8,13 +8,11 @@ util.AddNetworkString("RareloadTeleportTo")
 util.AddNetworkString("RareloadReloadData")
 
 
-RARELOAD.Phanthom = RARELOAD.Phanthom or {}
-
+local RARELOAD = RARELOAD or {}
+RARELOAD.settings = RARELOAD.settings or {}
 RARELOAD.Debug = RARELOAD.Debug or {}
+
 MapName = game.GetMap()
-
-
-
 local lastSavedTimes = {}
 
 hook.Add("PlayerInitialSpawn", "SyncDataOnJoin", function(ply)
@@ -24,9 +22,7 @@ end)
 hook.Add("InitPostEntity", "LoadPlayerPosition", function()
     LoadAddonState()
 
-    local settings = RARELOAD.settings
-
-    if not settings.addonEnabled then return end
+    if not RARELOAD.settings.addonEnabled then return end
 
     EnsureFolderExists()
 
@@ -517,7 +513,7 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         end)
     end
 
-    -- **Create Player Phanthom if debug is enbaled**
+    -- **Create Player Phantom if debug is enbaled**
     if debugEnabled then CreatePlayerPhantom(ply) end
 end)
 
