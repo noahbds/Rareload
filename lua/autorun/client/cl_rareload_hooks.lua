@@ -43,7 +43,7 @@ handleNetReceive("CreatePlayerPhantom", function()
     if not pos:IsZero() then
         ---@diagnostic disable-next-line: undefined-field
         removePhantom(ply:SteamID())
-        if RARELOAD.settings.debugEnabled then
+        if RARELOAD.settings and RARELOAD.settings.debugEnabled then
             ---@diagnostic disable-next-line: undefined-field
             RARELOAD.Phanthom[ply:SteamID()] = { phantom = createPhantom(ply, pos, ang), ply = ply }
         end

@@ -54,37 +54,6 @@ function RARELOAD.Debug.LogInventory(ply)
     print("Current Inventory", { "Weapons: " .. (next(inventory) and table.concat(inventory, ", ") or "None") })
 end
 
-function RARELOAD.Debug.Count(ply)
-    DebugPrint("Count Debug Information :")
-    if RARELOAD.settings.retainVehicleState then
-        RARELOAD.Debug.CountVehicle(ply)
-    end
-    if RARELOAD.settings.retainMapEntities then
-        RARELOAD.Debug.CountEnt(ply)
-    end
-    if RARELOAD.settings.retainNpc then
-        RARELOAD.Debug.CountNPC(ply)
-    end
-end
-
-function RARELOAD.Debug.CountVehicle(ply)
-    local startTime = SysTime()
-    print("[RARELOAD DEBUG] Saved " .. CountVeh .. " vehicles in " ..
-        math.Round((SysTime() - startTime) * 1000) .. " ms")
-end
-
-function RARELOAD.Debug.CountEnt(ply)
-    local startTime = SysTime()
-    print("[RARELOAD DEBUG] Saved " .. CountEnt .. " entities in " ..
-        math.Round((SysTime() - startTime) * 1000) .. " ms")
-end
-
-function RARELOAD.Debug.CountNPC(ply)
-    local startTime = SysTime()
-    print("[RARELOAD DEBUG] Saved " .. CountNpc .. " NPCs in " ..
-        math.Round((SysTime() - startTime) * 1000) .. " ms")
-end
-
 -- Helper function to map table values
 local function map(t, func)
     local newTable = {}
@@ -114,65 +83,6 @@ function RARELOAD.Debug.LogAfterRespawnInfo()
             (SavedInfo.npcs and table.concat(map(SavedInfo.npcs, function(n) return tostring(n.model) end), ", ") or "None")
         })
     end)
-end
-
-function RARELOAD.Debug.ProcessWeaponDebug(ply, weapons, savedInfo)
-    if not RARELOAD.settings.debugEnabled then return end
-
-    local debugMessages = {
-        adminOnly = {},
-        notRegistered = {},
-        givenWeapons = {}
-    }
-    local debugFlags = {
-        adminOnly = false,
-        notRegistered = false,
-        givenWeapons = false
-    }
-
-    for _, weaponClass in ipairs(savedInfo.inventory) do
-        local weaponInfo = weapons.Get(weaponClass)
-        local canGiveWeapon = weaponInfo and (weaponInfo.Spawnable or weaponInfo.AdminOnly)
-
-        if not canGiveWeapon then
-            if weaponInfo then
-                debugFlags.adminOnly = true
-                table.insert(debugMessages.adminOnly,
-                    "Weapon " .. weaponClass .. " is not spawnable and not admin-only.")
-            else
-                debugFlags.notRegistered = true
-                table.insert(debugMessages.notRegistered, "Weapon " .. weaponClass .. " is not registered.")
-            end
-        else
-            ply:Give(weaponClass)
-            if ply:HasWeapon(weaponClass) then
-                debugFlags.givenWeapons = true
-                table.insert(debugMessages.givenWeapons, "Successfully gave weapon: " .. weaponClass)
-            else
-                debugFlags.givenWeapons = true
-                table.insert(debugMessages.givenWeapons, "Failed to give weapon: " .. weaponClass)
-
-                local weaponDetails = {
-                    "Weapon Info: " .. tostring(weaponInfo),
-                    "Weapon Base: " .. tostring(weaponInfo.Base),
-                    "PrintName: " .. tostring(weaponInfo.PrintName),
-                    "Spawnable: " .. tostring(weaponInfo.Spawnable),
-                    "AdminOnly: " .. tostring(weaponInfo.AdminOnly),
-                    "Primary Ammo: " .. tostring(weaponInfo.Primary and weaponInfo.Primary.Ammo or "N/A"),
-                    "Secondary Ammo: " .. tostring(weaponInfo.Secondary and weaponInfo.Secondary.Ammo or "N/A"),
-                    "Clip Size: " .. tostring(weaponInfo.Primary and weaponInfo.Primary.ClipSize or "N/A"),
-                    "Default Clip: " .. tostring(weaponInfo.Primary and weaponInfo.Primary.DefaultClip or "N/A"),
-                    "Max Clip: " .. tostring(weaponInfo.Primary and weaponInfo.Primary.MaxClip or "N/A"),
-                    "Max Ammo: " .. tostring(weaponInfo.Primary and weaponInfo.Primary.MaxAmmo or "N/A")
-                }
-                table.Add(debugMessages.givenWeapons, weaponDetails)
-            end
-        end
-    end
-
-    RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
-
-    return debugMessages, debugFlags
 end
 
 -- Logs debug messages related to weapon issues

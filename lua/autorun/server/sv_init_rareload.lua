@@ -276,15 +276,23 @@ function AngleToString(angle)
     return string.format("[%.2f, %.2f, %.2f]", angle[1], angle[2], angle[3])
 end
 
--- This synchronize the data between the server and the client (used for the phantom)
 function SyncData(ply)
-    net.Start("SyncData")
-    net.WriteTable({
-        playerPositions = RARELOAD.playerPositions[MapName] or {},
-        settings = RARELOAD.settings,
-        Phanthom = RARELOAD.Phanthom
-    })
-    net.Send(ply)
+    local playerPositions = RARELOAD.playerPositions[MapName] or {}
+    local chunkSize = 100
+    for i = 1, #playerPositions, chunkSize do
+        local chunk = {}
+        for j = i, math.min(i + chunkSize - 1, #playerPositions) do
+            table.insert(chunk, playerPositions[j])
+        end
+
+        net.Start("SyncData")
+        net.WriteTable({
+            playerPositions = chunk,
+            settings = RARELOAD.settings,
+            Phanthom = RARELOAD.Phanthom
+        })
+        net.Send(ply)
+    end
 end
 
 -- This function only purpose is to print a message in the console when a setting is changed (and change the setting)
@@ -304,30 +312,19 @@ end
 
 -- I don't remember what this function does but it's probably important
 function SyncPlayerPositions(ply)
-    net.Start("SyncPlayerPositions")
-    net.WriteTable(RARELOAD.playerPositions[MapName] or {})
-    net.Send(ply)
-end
+    local playerPositions = RARELOAD.playerPositions[MapName] or {}
+    local chunkSize = 100
 
-local json = util.JSONToTable
-local cacheFile = "rareload/cached_pos_" .. MapName .. ".json"
-
-function LoadCachedPositions()
-    if not file.Exists(cacheFile, "DATA") then return {} end
-    local data = file.Read(cacheFile, "DATA")
-    return json(data) or {}
-end
-
-function SavePositionToCache(pos)
-    local cachedPositions = LoadCachedPositions()
-
-    for _, savedPos in ipairs(cachedPositions) do
-        if savedPos.x == pos.x and savedPos.y == pos.y and savedPos.z == pos.z then
-            return
+    for i = 1, #playerPositions, chunkSize do
+        local chunk = {}
+        for j = i, math.min(i + chunkSize - 1, #playerPositions) do
+            table.insert(chunk, playerPositions[j])
         end
+
+        net.Start("SyncPlayerPositions")
+        net.WriteTable(chunk)
+        net.Send(ply)
     end
-    table.insert(cachedPositions, pos)
-    file.Write(cacheFile, util.TableToJSON(cachedPositions, true))
 end
 
 LoadAddonState()

@@ -324,7 +324,6 @@ function TOOL.BuildCPanel(panel)
                     local mapName = game.GetMap()
                     local filePath = "rareload/player_positions_" .. mapName .. ".json"
 
-                    -- Delete entity/NPC data from the file
                     if file.Exists(filePath, "DATA") then
                         local jsonData = file.Read(filePath, "DATA")
                         local success, rawData = pcall(util.JSONToTable, jsonData)
@@ -332,14 +331,11 @@ function TOOL.BuildCPanel(panel)
                         if success and rawData and rawData[mapName] then
                             local deleted = false
 
-                            -- For each player's data
                             for steamID, playerData in pairs(rawData[mapName]) do
                                 local entityType = isNPC and "npcs" or "entities"
 
                                 if playerData[entityType] then
-                                    -- Find and remove the entity/NPC
                                     for i, entity in ipairs(playerData[entityType]) do
-                                        -- Match by position and class
                                         if entity.class == data.class and
                                             entity.pos.x == data.pos.x and
                                             entity.pos.y == data.pos.y and
@@ -355,12 +351,12 @@ function TOOL.BuildCPanel(panel)
                             end
 
                             if deleted then
-                                -- Save updated data
                                 file.Write(filePath, util.TableToJSON(rawData, true))
+                                net.Start("RareloadReloadData")
+                                net.SendToServer()
                                 notification.AddLegacy("Entity deleted successfully!", NOTIFY_GENERIC, 3)
                                 surface.PlaySound("buttons/button15.wav")
 
-                                -- Remove the panel
                                 panel:Remove()
                             else
                                 notification.AddLegacy("Couldn't find the entity to delete!", NOTIFY_ERROR, 3)
