@@ -1,3 +1,5 @@
+util.AddNetworkString("UpdatePhantomPosition")
+
 concommand.Add("toggle_rareload", function(ply)
     ToggleSetting(ply, 'addonEnabled', 'Respawn at Reload addon')
 end)
@@ -146,10 +148,6 @@ concommand.Add("save_position", function(ply, _, _)
         inventory = newInventory
     }
 
-    -------------------------------------------------------------------------------------------------------------------------]
-    ---------------------------------------------------------Optional Propreties---------------------------------------------]
-    -------------------------------------------------------------------------------------------------------------------------]
-
     if RARELOAD.settings.retainHealthArmor then
         playerData.health = ply:Health()
         playerData.armor = ply:Armor()
@@ -267,8 +265,6 @@ concommand.Add("save_position", function(ply, _, _)
         end
     end
 
-    ---------------------------------------------------------Save Npc When The option is enbaled-----------------------------]
-
     if RARELOAD.settings.retainMapNPCs then
         playerData.npcs = {}
         local startTime = SysTime()
@@ -340,12 +336,6 @@ concommand.Add("save_position", function(ply, _, _)
                 math.Round((SysTime() - startTime) * 1000) .. " ms")
         end
     end
-    ---------------------------------------------------------End of Save Npc-------------------------------------------------]
-
-    -------------------------------------------------------------------------------------------------------------------------]
-    ---------------------------------------------------------End of Optional Propreties--------------------------------------]
-    -------------------------------------------------------------------------------------------------------------------------]
-
 
     RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
     local success, err = pcall(function()
@@ -358,6 +348,20 @@ concommand.Add("save_position", function(ply, _, _)
         print("[RARELOAD] Player position successfully saved.")
     end
 
-    CreatePlayerPhantom(ply)
+    if RARELOAD.settings.debugEnabled then
+        net.Start("CreatePlayerPhantom")
+        net.WriteEntity(ply)
+        net.WriteVector(playerData.pos)
+        local savedAng = Angle(playerData.ang[1], playerData.ang[2], playerData.ang[3])
+        net.WriteAngle(savedAng)
+        net.Broadcast()
+    end
+
+    net.Start("UpdatePhantomPosition")
+    net.WriteString(ply:SteamID())
+    net.WriteVector(playerData.pos)
+    net.WriteAngle(Angle(playerData.ang[1], playerData.ang[2], playerData.ang[3]))
+    net.Send(ply)
+
     SyncPlayerPositions(ply)
 end)

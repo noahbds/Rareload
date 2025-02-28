@@ -3,15 +3,34 @@ RARELOAD.playerPositions = RARELOAD.playerPositions or {}
 RARELOAD.settings = RARELOAD.settings or {}
 RARELOAD.Phantom = RARELOAD.Phantom or {}
 
-local function createPhantom(ply, pos, ang)
+function HandleNetReceive(event, callback)
+    net.Receive(event, function(len, ply)
+        if not IsValid(ply) then return end
+        callback()
+    end)
+end
+
+function CreatePhantom(ply, pos, ang)
     if not IsValid(ply) then return end
 
-    local phantom = ents.CreateClientProp(ply:GetModel())
-    if not IsValid(phantom) then return end
-
+    local phantom = ClientsideModel(ply:GetModel())
     phantom:SetPos(pos)
-    phantom:SetAngles(ang)
+
+    local correctedAng
+    if ang then
+        correctedAng = Angle(0, ang.y, 0)
+    else
+        correctedAng = Angle(0, ply:GetAngles().y, 0)
+    end
+
+    phantom:SetAngles(correctedAng)
+    ---@diagnostic disable-next-line: inject-field
+    phantom.isPhantom = true
     phantom:SetRenderMode(RENDERMODE_TRANSALPHA)
+    phantom:SetColor(Color(255, 255, 255, 100))
+
+    phantom:SetMoveType(MOVETYPE_NONE)
+    phantom:SetSolid(SOLID_NONE)
 
     if RARELOAD.settings.debugEnabled then
         phantom:SetColor(Color(255, 255, 255, 150))
@@ -21,13 +40,10 @@ local function createPhantom(ply, pos, ang)
         phantom:SetNoDraw(true)
     end
 
-    phantom:Spawn()
-    phantom:SetMoveType(MOVETYPE_NONE)
-    phantom:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)
     return phantom
 end
 
-local function updatePhantomVisibility()
+function UpdatePhantomVisibility()
     local isDebugEnabled = RARELOAD.settings.debugEnabled
 
     for steamID, phantomData in pairs(RARELOAD.Phantom) do
@@ -44,24 +60,36 @@ local function updatePhantomVisibility()
     end
 end
 
-local function removePhantom(steamID)
+function RemovePhantom(steamID)
     if not steamID then return end
 
-    local existingPhantom = RARELOAD.Phantom[steamID] and RARELOAD.Phantom[steamID].phantom
-    if IsValid(existingPhantom) then
-        SafeRemoveEntity(existingPhantom)
+    local phantomData = RARELOAD.Phantom[steamID]
+    if phantomData then
+        if IsValid(phantomData.phantom) then
+            print("[RARELOAD DEBUG] Removing phantom for player " .. steamID)
+            phantomData.phantom:Remove()
+            SafeRemoveEntity(phantomData.phantom)
+        end
+        RARELOAD.Phantom[steamID] = nil
     end
-    RARELOAD.Phantom[steamID] = nil
 end
 
-local function handleNetReceive(event, callback)
-    net.Receive(event, function(len, ply)
-        if not IsValid(ply) then return end
-        callback()
-    end)
+function UpdatePhantomPosition(steamID, pos, ang)
+    local phantomData = RARELOAD.Phantom[steamID]
+    if phantomData and IsValid(phantomData.phantom) then
+        phantomData.phantom:SetPos(pos)
+        phantomData.phantom:SetAngles(Angle(0, ang.y, 0))
+    end
 end
 
-handleNetReceive("SyncData", function()
+net.Receive("UpdatePhantomPosition", function()
+    local steamID = net.ReadString()
+    local pos = net.ReadVector()
+    local ang = net.ReadAngle()
+    UpdatePhantomPosition(steamID, pos, ang)
+end)
+
+HandleNetReceive("SyncData", function()
     local data = net.ReadTable()
     if not data or type(data) ~= "table" then return end
 
@@ -73,11 +101,11 @@ handleNetReceive("SyncData", function()
     RARELOAD.Phantom = data.Phantom or {}
 
     if oldDebugEnabled ~= RARELOAD.settings.debugEnabled then
-        updatePhantomVisibility()
+        UpdatePhantomVisibility()
     end
 end)
 
-handleNetReceive("CreatePlayerPhantom", function()
+HandleNetReceive("CreatePlayerPhantom", function()
     local ply = net.ReadEntity()
     if not IsValid(ply) then
         print("[RARELOAD DEBUG] Invalid player entity received.")
@@ -94,19 +122,19 @@ handleNetReceive("CreatePlayerPhantom", function()
     local steamID = ply:SteamID()
     if not steamID then return end
 
-    removePhantom(steamID)
+    RemovePhantom(steamID)
 
     RARELOAD.Phantom[steamID] = {
-        phantom = createPhantom(ply, pos, ang),
+        phantom = CreatePhantom(ply, pos, ang),
         ply = ply
     }
 end)
 
-handleNetReceive("RemovePlayerPhantom", function()
+HandleNetReceive("RemovePlayerPhantom", function()
     local ply = net.ReadEntity()
     if IsValid(ply) then
         ---@diagnostic disable-next-line: undefined-field
-        removePhantom(ply:SteamID())
+        RemovePhantom(ply:SteamID())
     end
 end)
 
@@ -164,6 +192,9 @@ local PHANTOM_CATEGORIES = {
     { "stats",     "Statistics",            Color(147, 112, 219) }
 }
 
+local phantomInteractionMode = false
+local phantomInteractionTarget = nil
+
 function table.map(tbl, func)
     if not tbl or type(tbl) ~= "table" then return {} end
     local t = {}
@@ -178,6 +209,9 @@ local function VectorToString(vec)
 end
 
 local function AngleToString(ang)
+    if not ang or not ang.p or not ang.y or not ang.r then
+        return "N/A"
+    end
     return string.format("%.1f, %.1f, %.1f", ang.p, ang.y, ang.r)
 end
 
@@ -209,7 +243,8 @@ local function buildPhantomInfoData(ply, SavedInfo, mapName)
         table.insert(data.basic, { "Model", ply:GetModel(), Color(200, 200, 200) })
 
         table.insert(data.position, { "Position", VectorToString(SavedInfo.pos), Color(255, 255, 255) })
-        table.insert(data.position, { "Direction", AngleToString(SavedInfo.ang), Color(220, 220, 220) })
+        table.insert(data.position,
+            { "Direction", SavedInfo.ang and AngleToString(SavedInfo.ang) or "N/A", Color(220, 220, 220) })
         table.insert(data.position,
             { "Movement Type", moveTypeNames[SavedInfo.moveType] or "Unknown", Color(220, 220, 220) })
 
@@ -373,8 +408,14 @@ local function drawPhantomInfo(phantomData, playerPos, mapName)
     local phantomPos = phantom:GetPos()
 
     local distanceSqr = playerPos:DistToSqr(phantomPos)
-    if distanceSqr > 250000 then
+    local maxDistance = (phantomInteractionMode and phantomInteractionTarget == steamID) and 500000 or 250000
+
+    if distanceSqr > maxDistance then
         phantomInfoCache[steamID] = nil
+        if phantomInteractionTarget == steamID then
+            phantomInteractionMode = false
+            phantomInteractionTarget = nil
+        end
         return
     end
 
@@ -391,9 +432,22 @@ local function drawPhantomInfo(phantomData, playerPos, mapName)
     local infoData = phantomInfoCache[steamID].data
     local activeCategory = phantomInfoCache[steamID].activeCategory
     local pos = phantomPos + Vector(0, 0, 80)
-    local ang = Angle(0, LocalPlayer():EyeAngles().yaw - 90, 90)
+
+    local ang
+    if phantomInteractionMode and phantomInteractionTarget == steamID then
+        ang = Angle(0, LocalPlayer():EyeAngles().yaw - 90, 90)
+    else
+        local playerToPhantom = phantomPos - playerPos
+        playerToPhantom:Normalize()
+        ang = playerToPhantom:Angle()
+        ang.y = ang.y - 90
+        ang.p = 0
+        ang.r = 90
+    end
 
     local hoverScale = phantomInfoCache[steamID].hoverScale or 1.0
+
+    local interactionBonus = (phantomInteractionMode and phantomInteractionTarget == steamID) and 1.5 or 1.0
 
     local theme = {
         background = Color(20, 20, 30, 220),
@@ -403,20 +457,34 @@ local function drawPhantomInfo(phantomData, playerPos, mapName)
         highlight = Color(100, 180, 255)
     }
 
-    local scale = 0.1 * hoverScale
+    local scale = 0.1 * hoverScale * interactionBonus
     surface.SetFont("Trebuchet24")
     local infoCategoryHeight = 30
     local titleHeight = 35
-    local lineHeight = 20
+    local lineHeight = 22
     local textPadding = 15
-    local panelWidth = 350
+
+    local contentWidth = 350
+    local categoryContent = infoData[activeCategory]
+
+    for _, lineData in ipairs(categoryContent) do
+        local label, value = lineData[1], tostring(lineData[2])
+        local labelWidth = surface.GetTextSize(label .. ":")
+        local valueWidth = surface.GetTextSize(value)
+        local totalWidth = labelWidth + valueWidth + 140
+        contentWidth = math.max(contentWidth, totalWidth)
+    end
+
+    local panelWidth = math.min(contentWidth, 500)
 
     local panelHeight = titleHeight + infoCategoryHeight
-    local categoryContent = infoData[activeCategory]
     panelHeight = panelHeight + (#categoryContent * lineHeight) + 20
 
     local offsetX = -panelWidth / 2
     local offsetY = -panelHeight / 2
+
+    local screenPos = pos:ToScreen()
+    local screenX, screenY = screenPos.x, screenPos.y
 
     cam.Start3D2D(pos, ang, scale)
 
@@ -433,7 +501,7 @@ local function drawPhantomInfo(phantomData, playerPos, mapName)
         surface.DrawOutlinedRect(offsetX - i, offsetY - i, panelWidth + i * 2, panelHeight + i * 2, 1)
     end
 
-    local title = "Phantom of " .. ply:Nick()
+    local title = "Phantom de " .. ply:Nick()
     surface.SetDrawColor(theme.header)
     surface.DrawRect(offsetX, offsetY, panelWidth, titleHeight)
 
@@ -442,8 +510,16 @@ local function drawPhantomInfo(phantomData, playerPos, mapName)
     draw.SimpleText(title, "Trebuchet24", offsetX + (panelWidth / 2), offsetY + (titleHeight / 2),
         theme.text, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
+    if phantomInteractionMode and phantomInteractionTarget == steamID then
+        local interactText = "Mode Interaction [E pour quitter]"
+        draw.SimpleText(interactText, "Trebuchet18", offsetX + (panelWidth / 2), offsetY + titleHeight - 2,
+            Color(255, 255, 100), TEXT_ALIGN_CENTER, TEXT_ALIGN_BOTTOM)
+    end
+
     local tabWidth = panelWidth / #PHANTOM_CATEGORIES
     local tabY = offsetY + titleHeight
+
+    local tabScreenInfo = {}
 
     for i, categoryInfo in ipairs(PHANTOM_CATEGORIES) do
         local catID, catName, catColor = categoryInfo[1], categoryInfo[2], categoryInfo[3]
@@ -482,35 +558,17 @@ local function drawPhantomInfo(phantomData, playerPos, mapName)
         draw.SimpleText(catName, "Trebuchet18", tabX + (tabWidth / 2), tabY + (infoCategoryHeight / 2),
             textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
-        if distanceSqr < 90000 then
-            local mousePosX, mousePosY = input.GetCursorPos()
-            local x, y = cam.WorldToScreen(pos)
-            if mousePosX and mousePosY and x and y then
-                local screenX = x - panelWidth / 2 * scale + (i - 1) * tabWidth * scale
-                local screenY = y - panelHeight / 2 * scale + titleHeight * scale
-                local screenW = tabWidth * scale
-                local screenH = infoCategoryHeight * scale
+        local worldPos = LocalToWorld(Vector(tabX + tabWidth / 2, tabY + infoCategoryHeight / 2, 0), Angle(0, 0, 0), pos,
+            ang)
+        local screenTabPos = worldPos:ToScreen()
 
-                local isHovering = (mousePosX >= screenX and mousePosX <= screenX + screenW and
-                    mousePosY >= screenY and mousePosY <= screenY + screenH)
-
-                phantomInfoCache[steamID].tabHover = phantomInfoCache[steamID].tabHover or {}
-
-                if isHovering then
-                    phantomInfoCache[steamID].tabHover[i] = math.min(
-                        (phantomInfoCache[steamID].tabHover[i] or 0) + FrameTime() * 5, 1)
-                    phantomInfoCache[steamID].hoverScale = Lerp(FrameTime() * 3,
-                        phantomInfoCache[steamID].hoverScale or 1, 1.05)
-
-                    if input.IsMouseDown(MOUSE_LEFT) then
-                        phantomInfoCache[steamID].activeCategory = catID
-                    end
-                else
-                    phantomInfoCache[steamID].tabHover[i] = math.max(
-                        (phantomInfoCache[steamID].tabHover[i] or 0) - FrameTime() * 5, 0)
-                end
-            end
-        end
+        table.insert(tabScreenInfo, {
+            catID = catID,
+            worldX = tabX + tabWidth / 2,
+            worldY = tabY + infoCategoryHeight / 2,
+            worldW = tabWidth,
+            worldH = infoCategoryHeight
+        })
     end
 
     local contentY = tabY + infoCategoryHeight + 10
@@ -535,7 +593,309 @@ local function drawPhantomInfo(phantomData, playerPos, mapName)
         draw.SimpleText(valueText, "Trebuchet18", offsetX + textPadding + 120, contentY + (i - 1) * lineHeight,
             valueColor, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
+
+
+    if phantomInteractionMode and phantomInteractionTarget == steamID then
+        local mousePosX, mousePosY = input.GetCursorPos()
+        local sw, sh = ScrW(), ScrH()
+
+        if mousePosX and mousePosY then
+            phantomInfoCache[steamID].tabHover = phantomInfoCache[steamID].tabHover or {}
+
+            phantomInfoCache[steamID].panelInfo = {
+                scale = scale,
+                pos = pos,
+                ang = ang,
+                tabInfo = tabScreenInfo,
+                offsetX = offsetX,
+                offsetY = offsetY,
+                panelWidth = panelWidth,
+                panelHeight = panelHeight
+            }
+
+            local mouseWorldPos = util.MouseTo3D(mousePosX, mousePosY, sw, sh, 90, pos, ang, scale)
+            local isHoveringAny = false
+
+            if mouseWorldPos then
+                local localX, localY = mouseWorldPos.x, mouseWorldPos.y
+
+                local inPanel = (localX >= offsetX and localX <= offsetX + panelWidth and
+                    localY >= offsetY and localY <= offsetY + panelHeight)
+
+                for i, tabInfo in ipairs(tabScreenInfo) do
+                    local tabLeft = offsetX + (i - 1) * tabWidth
+                    local tabRight = tabLeft + tabWidth
+                    local tabTop = tabY
+                    local tabBottom = tabTop + infoCategoryHeight
+
+                    local isHovering = (localX >= tabLeft and localX <= tabRight and
+                        localY >= tabTop and localY <= tabBottom)
+
+                    if isHovering then
+                        isHoveringAny = true
+                        phantomInfoCache[steamID].tabHover[i] = math.min(
+                            (phantomInfoCache[steamID].tabHover[i] or 0) + FrameTime() * 5, 1)
+
+                        if RARELOAD.settings.debugEnabled then
+                            surface.SetDrawColor(255, 255, 0, 50)
+                            surface.DrawRect(tabLeft, tabTop, tabWidth, infoCategoryHeight)
+                        end
+                    else
+                        phantomInfoCache[steamID].tabHover[i] = math.max(
+                            (phantomInfoCache[steamID].tabHover[i] or 0) - FrameTime() * 5, 0)
+                    end
+                end
+
+                phantomInfoCache[steamID].hoverScale = Lerp(FrameTime() * 3,
+                    phantomInfoCache[steamID].hoverScale or 1, isHoveringAny and 1.05 or 1)
+
+                surface.SetDrawColor(255, 255, 255, 220)
+                local cursorSize = 10
+
+                surface.DrawLine(localX - cursorSize, localY, localX + cursorSize, localY)
+                surface.DrawLine(localX, localY - cursorSize, localX, localY + cursorSize)
+
+                local segments = 12
+                local radius = cursorSize * 0.8
+                local points = {}
+
+                for i = 0, segments do
+                    local angle = math.rad((i / segments) * 360)
+                    points[i + 1] = {
+                        x = localX + math.cos(angle) * radius,
+                        y = localY + math.sin(angle) * radius
+                    }
+                end
+
+                for i = 1, segments do
+                    local p1 = points[i]
+                    local p2 = points[i + 1] or points[1]
+                    surface.DrawLine(p1.x, p1.y, p2.x, p2.y)
+                end
+
+                if isHoveringAny then
+                    surface.SetDrawColor(255, 255, 100, 255)
+                    surface.DrawRect(localX - 2, localY - 2, 4, 4)
+                end
+            end
+        end
+    else
+        if distanceSqr < 90000 then
+            local text = "Press [E] to interact"
+            local _, textY = draw.SimpleText(text, "Trebuchet18", offsetX + (panelWidth / 2), offsetY + panelHeight + 15,
+                Color(255, 255, 200, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+        end
+    end
     cam.End3D2D()
+end
+
+hook.Add("GUIMousePressed", "PhantomPanelInteraction", function(mouseCode)
+    if not phantomInteractionMode or not phantomInteractionTarget then return end
+    if mouseCode ~= MOUSE_LEFT then return end
+
+    local cache = phantomInfoCache[phantomInteractionTarget]
+    if not cache or not cache.panelInfo then return end
+
+    local panelInfo = cache.panelInfo
+    local mousePosX, mousePosY = input.GetCursorPos()
+    local sw, sh = ScrW(), ScrH()
+
+    local mouseWorldPos = util.MouseTo3D(mousePosX, mousePosY, sw, sh, 90, panelInfo.pos, panelInfo.ang, panelInfo.scale)
+    if not mouseWorldPos then return end
+
+    if RARELOAD.settings.debugEnabled then
+        Debugclick = { pos = mouseWorldPos, time = CurTime() + 2 }
+    end
+
+    for i, tabInfo in ipairs(panelInfo.tabInfo) do
+        local tabLeft = panelInfo.offsetX + (i - 1) * (panelInfo.panelWidth / #PHANTOM_CATEGORIES)
+        local tabWidth = panelInfo.panelWidth / #PHANTOM_CATEGORIES
+        local tabRight = tabLeft + tabWidth
+        local tabTop = panelInfo.offsetY + 35
+        local tabBottom = tabTop + 30
+
+        if mouseWorldPos.x >= tabLeft and mouseWorldPos.x <= tabRight and
+            mouseWorldPos.y >= tabTop and mouseWorldPos.y <= tabBottom then
+            local oldCategory = cache.activeCategory
+            cache.activeCategory = PHANTOM_CATEGORIES[i][1]
+            cache.categoryChanged = CurTime()
+
+            if oldCategory ~= cache.activeCategory then
+                surface.PlaySound("ui/buttonclick.wav")
+            end
+
+            return true
+        end
+    end
+end)
+
+function util.MouseTo3D(x, y, sw, sh, fov, pos, ang, scale)
+    local start = EyePos()
+    local dir = util.ScreenToVector(x, y)
+
+    local planeNormal = ang:Up()
+    local planePos = pos
+
+    if not dir or not planeNormal then return nil end
+    local denom = dir:Dot(planeNormal)
+    if math.abs(denom) < 0.001 then return nil end
+
+    local t = (planePos - start):Dot(planeNormal) / denom
+    if t < 0 then return nil end
+
+    local hitPos = start + dir * t
+    local localPos = WorldToLocal(hitPos, Angle(0, 0, 0), pos, ang)
+    return Vector(
+        math.Round(localPos.x / scale, 3),
+        math.Round(localPos.y / scale, 3),
+        0
+    )
+end
+
+local nativeAimVector = util.AimVector
+
+function util.ScreenToVector(x, y)
+    if nativeAimVector then
+        local eyeAngles = EyeAngles()
+        local sw, sh = ScrW(), ScrH()
+        local fov = LocalPlayer():GetFOV()
+        return nativeAimVector(eyeAngles, fov, x, y, sw, sh)
+    end
+
+    local screen_w, screen_h = ScrW(), ScrH()
+    local ang = EyeAngles()
+
+    local normalizedX = (x / screen_w) * 2 - 1
+    local normalizedY = ((y / screen_h) * 2 - 1) * -1
+
+    local forward = ang:Forward()
+    local right = ang:Right()
+    local up = ang:Up()
+
+    local fov = math.rad(LocalPlayer():GetFOV())
+    local tanFov = math.tan(fov / 2)
+    local aspectRatio = screen_w / screen_h
+
+    local dir = forward +
+        right * (normalizedX * tanFov * aspectRatio) +
+        up * (normalizedY * tanFov)
+
+    return dir:GetNormalized()
+end
+
+if not util.IntersectRayWithPlane then
+    function util.IntersectRayWithPlane(rayStart, rayDir, planePos, planeNormal)
+        local denom = rayDir:Dot(planeNormal)
+        if denom == 0 then return nil end
+
+        local t = (planePos - rayStart):Dot(planeNormal) / denom
+        if t < 0 then return nil end
+
+        return rayStart + rayDir * t
+    end
+end
+
+if not util.AimVector then
+    function util.AimVector(eyeAngles, fov, x, y, sw, sh)
+        if not x or not y then return nil end
+
+        local fw = eyeAngles:Forward()
+        local rt = eyeAngles:Right()
+        local up = eyeAngles:Up()
+
+        local xCenter = sw / 2
+        local yCenter = sh / 2
+        local xRatio = (x - xCenter) / xCenter
+        local yRatio = (yCenter - y) / yCenter
+
+        local fovRadians = math.rad(fov or 90)
+        local xTan = math.tan(fovRadians / 2) * (sw / sh)
+        local yTan = math.tan(fovRadians / 2)
+
+        return (fw + rt * (xRatio * xTan) + up * (yRatio * yTan)):GetNormalized()
+    end
+end
+
+hook.Add("KeyPress", "PhantomInteractionToggle", function(ply, key)
+    if not IsValid(ply) or not ply:IsPlayer() or ply ~= LocalPlayer() then return end
+    if key ~= IN_USE then return end
+
+    local playerPos = ply:GetPos()
+    local mapName = game.GetMap()
+
+    if phantomInteractionMode then
+        phantomInteractionMode = false
+        phantomInteractionTarget = nil
+        gui.EnableScreenClicker(false)
+        return
+    end
+
+    local closestPhantom = nil
+    local closestDistance = 10000
+
+    for steamID, data in pairs(RARELOAD.Phantom) do
+        if IsValid(data.phantom) and IsValid(data.ply) then
+            local distance = playerPos:DistToSqr(data.phantom:GetPos())
+            if distance < closestDistance then
+                closestPhantom = steamID
+                closestDistance = distance
+            end
+        end
+    end
+
+    if closestPhantom then
+        phantomInteractionMode = true
+        phantomInteractionTarget = closestPhantom
+        gui.EnableScreenClicker(true)
+    end
+end)
+
+
+function RARELOAD.RefreshPhantoms()
+    local mapName = game.GetMap()
+
+    if not RARELOAD.playerPositions or not RARELOAD.playerPositions[mapName] then
+        return
+    end
+
+    -- Vérification que RARELOAD.Phantom existe
+    if not RARELOAD.Phantom then
+        RARELOAD.Phantom = {}
+    end
+
+    for steamID, playerData in pairs(RARELOAD.playerPositions[mapName]) do
+        if not RARELOAD.Phantom[steamID] or not IsValid(RARELOAD.Phantom[steamID].phantom) then
+            local ply = nil
+            for _, p in ipairs(player.GetAll()) do
+                if p:SteamID() == steamID then
+                    ply = p
+                    break
+                end
+            end
+
+            if IsValid(ply) and playerData.pos then
+                local ang = Angle(0, 0, 0)
+                if playerData.ang then
+                    if type(playerData.ang) == "table" then
+                        ang = Angle(playerData.ang[1], playerData.ang[2], playerData.ang[3])
+                    else
+                        ang = playerData.ang
+                    end
+                end
+
+                RARELOAD.Phantom[steamID] = {
+                    phantom = CreatePhantom(ply, playerData.pos, ang),
+                    ply = ply
+                }
+
+                -- Vérification que RARELOAD.settings existe avant d'accéder à debugEnabled
+                if RARELOAD.settings and RARELOAD.settings.debugEnabled then
+                    ---@diagnostic disable-next-line: need-check-nil, undefined-field
+                    print("[RARELOAD DEBUG] Created phantom for " .. ply:Nick() .. " at " .. tostring(playerData.pos))
+                end
+            end
+        end
+    end
 end
 
 hook.Add("PostDrawOpaqueRenderables", "DrawPlayerPhantomInfo", function()
@@ -570,7 +930,7 @@ hook.Add("Think", "CheckDebugModeChanges", function()
     local currentDebugState = RARELOAD.settings.debugEnabled
 
     if RARELOAD.lastDebugState ~= currentDebugState then
-        updatePhantomVisibility()
+        UpdatePhantomVisibility()
         RARELOAD.lastDebugState = currentDebugState
     end
 
@@ -593,6 +953,6 @@ end)
 
 hook.Add("PlayerDisconnected", "RemovePhantomOnDisconnect", function(ply)
     if IsValid(ply) then
-        removePhantom(ply:SteamID())
+        RemovePhantom(ply:SteamID())
     end
 end)

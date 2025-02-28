@@ -678,47 +678,145 @@ function TOOL.BuildCPanel(panel)
                 return nil
             end
 
-            ---@class DCollapsibleCategory
-            local category = vgui.Create("DCollapsibleCategory", parent)
-            category:SetLabel(title .. " (" .. #dataList .. ")")
-            category:SetLabelColor(THEME.text)
-            category:SetExpanded(true)
-            category:Dock(TOP)
-            category:DockMargin(10, 10, 10, 0)
-            category:SetHeaderHeight(30)
+            -- Utiliser un panneau normal au lieu d'un DCollapsibleCategory pour éviter les problèmes
+            local mainContainer = vgui.Create("DPanel", parent)
+            mainContainer:Dock(TOP)
+            mainContainer:DockMargin(10, 10, 10, 0)
+            mainContainer:SetPaintBackground(false)
 
-            category.Header:SetFont("RareloadText")
-            category.Paint = function(self, w, h)
-                if self:GetExpanded() then
-                    draw.RoundedBoxEx(8, 0, 0, w, 30, THEME.header, true, true, false, false)
-                else
-                    draw.RoundedBox(8, 0, 0, w, 30, THEME.header)
+            -- Calculer la hauteur approximative nécessaire
+            local itemHeight = 140 -- Hauteur d'un panneau d'info
+            local headerHeight = 30
+            local marginHeight = 10
+            local maxVisibleItems = 3
+            local contentHeight = math.min(#dataList, maxVisibleItems) * (itemHeight + marginHeight)
+
+            -- Hauteur initiale pour le header uniquement (état replié)
+            mainContainer:SetTall(headerHeight)
+
+            -- État d'expansion
+            local isExpanded = true
+
+            -- Créer le header qui agit comme un bouton pour replier/déplier
+            local header = vgui.Create("DButton", mainContainer)
+            header:SetText("")
+            header:Dock(TOP)
+            header:SetTall(headerHeight)
+            header:SetCursor("hand")
+
+            -- Mettre à jour l'apparence et le comportement du header
+            header.Paint = function(self, w, h)
+                draw.RoundedBox(8, 0, 0, w, h, THEME.header)
+
+                -- Indicateur d'expansion
+                surface.SetDrawColor(THEME.text)
+                surface.SetMaterial(Material(isExpanded and "icon16/arrow_down.png" or "icon16/arrow_right.png"))
+                surface.DrawTexturedRect(w - 24, h / 2 - 8, 16, 16)
+
+                -- Texte du header
+                draw.SimpleText(title .. " (" .. #dataList .. ")", "RareloadText", 10, h / 2, THEME.text, TEXT_ALIGN_LEFT,
+                    TEXT_ALIGN_CENTER)
+            end
+
+            -- Conteneur pour le contenu
+            local contentContainer = vgui.Create("DPanel", mainContainer)
+            contentContainer:Dock(FILL)
+            contentContainer:SetPaintBackground(false)
+            contentContainer:DockMargin(5, 5, 5, 5)
+            contentContainer:SetVisible(isExpanded)
+
+            -- Panneau de défilement pour le contenu
+            local scrollPanel = vgui.Create("DScrollPanel", contentContainer)
+            scrollPanel:Dock(FILL)
+
+            -- Configurer la barre de défilement
+            local scrollbar = scrollPanel:GetVBar()
+            if IsValid(scrollbar) then
+                scrollbar:SetWide(8)
+                scrollbar.Paint = function(_, w, h)
+                    draw.RoundedBox(4, 0, 0, w, h, THEME.background)
+                end
+                scrollbar.btnUp.Paint = function(_, w, h)
+                    draw.RoundedBox(4, 2, 0, w - 4, h - 2, THEME.accent)
+                end
+                scrollbar.btnDown.Paint = function(_, w, h)
+                    draw.RoundedBox(4, 2, 2, w - 4, h - 2, THEME.accent)
+                end
+                scrollbar.btnGrip.Paint = function(_, w, h)
+                    draw.RoundedBox(4, 2, 0, w - 4, h, THEME.accent)
                 end
             end
 
-            local contentPanel = vgui.Create("DScrollPanel", category)
-            contentPanel:Dock(FILL)
-            contentPanel:SetPaintBackgroundEnabled(false)
-            contentPanel:DockMargin(5, 5, 5, 5)
-
+            -- Trier les données alphabétiquement
             table.sort(dataList, function(a, b)
                 return (a.class or "") < (b.class or "")
             end)
 
+            -- Ajouter les panneaux d'information
             for _, data in ipairs(dataList) do
-                CreateInfoPanel(contentPanel, data, isNPC, function()
-                    category:SetLabel(title .. " (" .. (#dataList - 1) .. ")")
-                    if #dataList <= 1 then
-                        category:Remove()
+                local infoPanel = CreateInfoPanel(scrollPanel, data, isNPC, function()
+                    -- Logique lorsqu'un élément est supprimé
+                    local remainingItems = #dataList - 1
+                    header.Paint = function(self, w, h)
+                        draw.RoundedBox(8, 0, 0, w, h, THEME.header)
+                        surface.SetDrawColor(THEME.text)
+                        surface.SetMaterial(Material(isExpanded and "icon16/arrow_down.png" or "icon16/arrow_right.png"))
+                        surface.DrawTexturedRect(w - 24, h / 2 - 8, 16, 16)
+                        draw.SimpleText(title .. " (" .. remainingItems .. ")", "RareloadText", 10, h / 2, THEME.text,
+                            TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                    end
+
+                    if remainingItems <= 0 then
+                        mainContainer:AlphaTo(0, 0.3, 0, function()
+                            mainContainer:Remove()
+                        end)
                     end
                 end)
             end
 
-            local height = math.min(500, #dataList * 150)
-            category:SetTall(height)
-            category:InvalidateLayout(true)
+            -- Fonction pour basculer l'état d'expansion
+            local function ToggleExpansion()
+                isExpanded = not isExpanded
 
-            return category
+                if isExpanded then
+                    mainContainer:SetTall(headerHeight + contentHeight)
+                    contentContainer:SetVisible(true)
+
+                    -- Animation d'ouverture
+                    contentContainer:SetAlpha(0)
+                    contentContainer:AlphaTo(255, 0.2, 0)
+                else
+                    contentContainer:SetVisible(false)
+                    mainContainer:SetTall(headerHeight)
+                end
+            end
+
+            -- Activer/désactiver l'expansion lorsqu'on clique sur le header
+            header.DoClick = function()
+                surface.PlaySound("ui/buttonclick.wav")
+                ToggleExpansion()
+            end
+
+            -- Définir la hauteur initiale (déplié par défaut)
+            mainContainer:SetTall(headerHeight + contentHeight)
+
+            -- S'assurer que le conteneur reste déplié initialement
+            timer.Simple(0.1, function()
+                if IsValid(mainContainer) then
+                    mainContainer:SetTall(headerHeight + contentHeight)
+                    contentContainer:SetVisible(true)
+                end
+            end)
+
+            -- S'assurer que le conteneur reste déplié quelques instants plus tard
+            timer.Simple(0.5, function()
+                if IsValid(mainContainer) and isExpanded then
+                    mainContainer:SetTall(headerHeight + contentHeight)
+                    contentContainer:SetVisible(true)
+                end
+            end)
+
+            return mainContainer
         end
 
         local function OpenEntityViewer()

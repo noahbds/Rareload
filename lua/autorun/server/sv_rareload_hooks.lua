@@ -514,7 +514,13 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
     end
 
     -- **Create Player Phantom if debug is enbaled**
-    if debugEnabled then CreatePlayerPhantom(ply) end
+    if debugEnabled then
+        net.Start("CreatePlayerPhantom")
+        net.WriteEntity(ply)
+        net.WriteVector(ply:GetPos())
+        net.WriteAngle(ply:GetAngles())
+        net.Broadcast()
+    end
 end)
 
 
