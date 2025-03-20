@@ -1,15 +1,18 @@
 ---@diagnostic disable: undefined-field, param-type-mismatch
 
 
-local RARELOAD           = RARELOAD or {}
-RARELOAD.settings        = RARELOAD.settings or {}
-RARELOAD.playerPositions = RARELOAD.playerPositions or {}
+local RARELOAD              = RARELOAD or {}
+RARELOAD.settings           = RARELOAD.settings or {}
+RARELOAD.playerPositions    = RARELOAD.playerPositions or {}
+RARELOAD.serverLastSaveTime = 0
 
-TOOL                     = TOOL or {}
-TOOL.Category            = "Rareload"
-TOOL.Name                = "Rareload Config Tool"
-TOOL.Command             = nil
-TOOL.ConfigName          = ""
+
+TOOL            = TOOL or {}
+
+TOOL.Category   = "Rareload"
+TOOL.Name       = "Rareload Config Tool"
+TOOL.Command    = nil
+TOOL.ConfigName = ""
 
 if CLIENT then
     language.Add("tool.sv_rareload_tool.name", "Rareload Configuration Panel")
@@ -20,6 +23,11 @@ if CLIENT then
     local fontParams2 = { font = "Arial", size = 31, weight = 2000, antialias = true, additive = false }
 
     surface.CreateFont("CTNV", fontParams)
+
+    net.Receive("RareloadSyncAutoSaveTime", function()
+        RARELOAD.serverLastSaveTime = net.ReadFloat()
+    end)
+
     surface.CreateFont("CTNV2", fontParams2)
 end
 
@@ -124,7 +132,6 @@ function TOOL.BuildCPanel(panel)
     ---------------------------------------------Auto Save Slider Options---]
     ------------------------------------------------------------------------]
 
-    -- Palette de couleurs pour l'UI
     local UI_COLORS = {
         slider_bg = Color(40, 40, 45, 200),
         slider_groove = Color(60, 60, 70),
@@ -136,7 +143,6 @@ function TOOL.BuildCPanel(panel)
         value_display = Color(80, 140, 240, 180)
     }
 
-    -- Fonction de création de slider réutilisable
     local function CreateSettingSlider(panel, title, command, min, max, decimals, defaultValue, tooltip, unit)
         local container = vgui.Create("DPanel", panel)
         container:Dock(TOP)
@@ -151,7 +157,6 @@ function TOOL.BuildCPanel(panel)
         header:Dock(TOP)
         header:DockMargin(0, 0, 0, 2)
 
-        -- Description si tooltip fourni
         if tooltip then
             local desc = vgui.Create("DLabel", container)
             desc:SetText(tooltip)
@@ -171,7 +176,7 @@ function TOOL.BuildCPanel(panel)
         local valueDisplay = vgui.Create("DLabel", sliderContainer)
         valueDisplay:SetSize(50, 20)
         valueDisplay:Dock(RIGHT)
-        valueDisplay:SetContentAlignment(6) -- Aligné à droite
+        valueDisplay:SetContentAlignment(6)
         valueDisplay:SetTextColor(UI_COLORS.slider_grip)
 
         ---@class DNumSlider
@@ -184,11 +189,9 @@ function TOOL.BuildCPanel(panel)
         slider:SetValue(defaultValue)
         slider:SetDark(false)
 
-        -- Personnalisation visuelle du slider
         slider.Slider.Paint = function(self, w, h)
             draw.RoundedBox(4, 0, h / 2 - 2, w, 4, UI_COLORS.slider_groove)
 
-            -- Dessiner les graduations
             local steps = 5
             local stepSize = w / steps
             for i = 0, steps do
@@ -197,20 +200,18 @@ function TOOL.BuildCPanel(panel)
             end
         end
 
-        -- Personnalisation du knob
         slider.Slider.Knob.Paint = function(self, w, h)
             local color = self:IsHovered() and UI_COLORS.slider_grip_hover or UI_COLORS.slider_grip
             draw.RoundedBox(6, 0, 0, w, h, color)
         end
 
-        -- Mettre à jour l'affichage de la valeur
         local function updateDisplay()
             local val = slider:GetValue()
             local displayText = string.format(decimals > 0 and "%." .. decimals .. "f%s" or "%d%s", val, unit or "")
             valueDisplay:SetText(displayText)
         end
 
-        updateDisplay() -- Initialisation
+        updateDisplay()
 
         slider.OnValueChanged = function(self, val)
             updateDisplay()
@@ -230,7 +231,6 @@ function TOOL.BuildCPanel(panel)
         return container, slider
     end
 
-    -- Création des sliders avec la nouvelle fonction
     local autoSaveContainer, autoSaveSlider = CreateSettingSlider(
         panel,
         "Auto Save Interval",
@@ -261,7 +261,6 @@ function TOOL.BuildCPanel(panel)
         "°"
     )
 
-    -- Séparateur visuel
     local separator = vgui.Create("DPanel", panel)
     separator:Dock(TOP)
     separator:SetTall(1)
@@ -324,7 +323,6 @@ function TOOL.BuildCPanel(panel)
             surface.PlaySound(type == NOTIFY_ERROR and "buttons/button10.wav" or "buttons/button15.wav")
         end
 
-        -- Used to create a panel with information about an entity or NPC
         local function CreateInfoPanel(parent, data, isNPC, onDeleted)
             ---@class DPanel
             local panel = vgui.Create("DPanel", parent)
@@ -353,7 +351,6 @@ function TOOL.BuildCPanel(panel)
                 self.IsHovered = function() return true end
             end
 
-            -- Crate a panel for 3D models
             local modelPanel = vgui.Create("DModelPanel", panel)
             modelPanel:SetSize(120, 120)
             modelPanel:Dock(LEFT)
@@ -370,7 +367,6 @@ function TOOL.BuildCPanel(panel)
                 modelPanel:SetCamPos(center + Vector(size * 0.6, size * 0.6, size * 0.4))
 
                 local oldPaint = modelPanel.Paint
-                -- Rotate the model
                 modelPanel.Paint = function(self, w, h)
                     if self.Entity and IsValid(self.Entity) then
                         self.Entity:SetAngles(Angle(0, RealTime() * 30 % 360, 0))
@@ -475,7 +471,6 @@ function TOOL.BuildCPanel(panel)
 
                 AddInfoLine(rightColumn, "Position", posText)
 
-                -- Distance from the player
                 local ply = LocalPlayer()
                 if IsValid(ply) then
                     local distance = ply:GetPos():Distance(Vector(data.pos.x, data.pos.y, data.pos.z))
@@ -678,58 +673,47 @@ function TOOL.BuildCPanel(panel)
                 return nil
             end
 
-            -- Utiliser un panneau normal au lieu d'un DCollapsibleCategory pour éviter les problèmes
             local mainContainer = vgui.Create("DPanel", parent)
             mainContainer:Dock(TOP)
             mainContainer:DockMargin(10, 10, 10, 0)
             mainContainer:SetPaintBackground(false)
 
-            -- Calculer la hauteur approximative nécessaire
-            local itemHeight = 140 -- Hauteur d'un panneau d'info
+            local itemHeight = 140
             local headerHeight = 30
             local marginHeight = 10
             local maxVisibleItems = 3
             local contentHeight = math.min(#dataList, maxVisibleItems) * (itemHeight + marginHeight)
 
-            -- Hauteur initiale pour le header uniquement (état replié)
             mainContainer:SetTall(headerHeight)
 
-            -- État d'expansion
             local isExpanded = true
 
-            -- Créer le header qui agit comme un bouton pour replier/déplier
             local header = vgui.Create("DButton", mainContainer)
             header:SetText("")
             header:Dock(TOP)
             header:SetTall(headerHeight)
             header:SetCursor("hand")
 
-            -- Mettre à jour l'apparence et le comportement du header
             header.Paint = function(self, w, h)
                 draw.RoundedBox(8, 0, 0, w, h, THEME.header)
 
-                -- Indicateur d'expansion
                 surface.SetDrawColor(THEME.text)
                 surface.SetMaterial(Material(isExpanded and "icon16/arrow_down.png" or "icon16/arrow_right.png"))
                 surface.DrawTexturedRect(w - 24, h / 2 - 8, 16, 16)
 
-                -- Texte du header
                 draw.SimpleText(title .. " (" .. #dataList .. ")", "RareloadText", 10, h / 2, THEME.text, TEXT_ALIGN_LEFT,
                     TEXT_ALIGN_CENTER)
             end
 
-            -- Conteneur pour le contenu
             local contentContainer = vgui.Create("DPanel", mainContainer)
             contentContainer:Dock(FILL)
             contentContainer:SetPaintBackground(false)
             contentContainer:DockMargin(5, 5, 5, 5)
             contentContainer:SetVisible(isExpanded)
 
-            -- Panneau de défilement pour le contenu
             local scrollPanel = vgui.Create("DScrollPanel", contentContainer)
             scrollPanel:Dock(FILL)
 
-            -- Configurer la barre de défilement
             local scrollbar = scrollPanel:GetVBar()
             if IsValid(scrollbar) then
                 scrollbar:SetWide(8)
@@ -752,10 +736,8 @@ function TOOL.BuildCPanel(panel)
                 return (a.class or "") < (b.class or "")
             end)
 
-            -- Ajouter les panneaux d'information
             for _, data in ipairs(dataList) do
                 local infoPanel = CreateInfoPanel(scrollPanel, data, isNPC, function()
-                    -- Logique lorsqu'un élément est supprimé
                     local remainingItems = #dataList - 1
                     header.Paint = function(self, w, h)
                         draw.RoundedBox(8, 0, 0, w, h, THEME.header)
@@ -774,7 +756,6 @@ function TOOL.BuildCPanel(panel)
                 end)
             end
 
-            -- Fonction pour basculer l'état d'expansion
             local function ToggleExpansion()
                 isExpanded = not isExpanded
 
@@ -782,7 +763,6 @@ function TOOL.BuildCPanel(panel)
                     mainContainer:SetTall(headerHeight + contentHeight)
                     contentContainer:SetVisible(true)
 
-                    -- Animation d'ouverture
                     contentContainer:SetAlpha(0)
                     contentContainer:AlphaTo(255, 0.2, 0)
                 else
@@ -791,16 +771,13 @@ function TOOL.BuildCPanel(panel)
                 end
             end
 
-            -- Activer/désactiver l'expansion lorsqu'on clique sur le header
             header.DoClick = function()
                 surface.PlaySound("ui/buttonclick.wav")
                 ToggleExpansion()
             end
 
-            -- Définir la hauteur initiale (déplié par défaut)
             mainContainer:SetTall(headerHeight + contentHeight)
 
-            -- S'assurer que le conteneur reste déplié initialement
             timer.Simple(0.1, function()
                 if IsValid(mainContainer) then
                     mainContainer:SetTall(headerHeight + contentHeight)
@@ -808,7 +785,6 @@ function TOOL.BuildCPanel(panel)
                 end
             end)
 
-            -- S'assurer que le conteneur reste déplié quelques instants plus tard
             timer.Simple(0.5, function()
                 if IsValid(mainContainer) and isExpanded then
                     mainContainer:SetTall(headerHeight + contentHeight)
@@ -1150,13 +1126,169 @@ function TOOL:DrawToolScreen(width, height)
     end
 
     if settings.autoSaveEnabled and settings.autoSaveInterval then
-        local infoText = "Save: " .. settings.autoSaveInterval .. "s"
-        draw.SimpleText(infoText, "CTNV", width / 2, height - 15, Color(200, 200, 200), TEXT_ALIGN_CENTER,
-            TEXT_ALIGN_CENTER)
+        local ANIMATION = {
+            SAVE_MESSAGE_DURATION = 5,
+            PULSE_THRESHOLD = 3,
+            BLINK_THRESHOLD = 1
+        }
+
+        local COLORS = {
+            BG_OUTER = Color(30, 30, 35),
+            BG_INNER = Color(40, 40, 45),
+            PROGRESS = {
+                LOW = Color(30, 180, 30),
+                MEDIUM = Color(180, 180, 30),
+                HIGH = Color(180, 60, 30),
+            },
+            TEXT = {
+                NORMAL = Color(220, 220, 220),
+                WARNING = Color(255, 255, 0),
+                URGENT = { Color(255, 100, 0), Color(255, 220, 0) },
+                SAVED = Color(50, 255, 50)
+            }
+        }
+
+        local currentTime = CurTime()
+        local lastSave = RARELOAD.serverLastSaveTime or 0
+        local timeElapsed = currentTime - lastSave
+        local timeRemaining = math.max(0, settings.autoSaveInterval - timeElapsed)
+        local progress = math.Clamp(timeElapsed / settings.autoSaveInterval, 0, 1)
+
+        if not RARELOAD.AnimState then
+            RARELOAD.AnimState = {
+                lastSaveTime = 0,
+                pulsePhase = 0,
+                glowPhase = 0,
+                saveDetected = false,
+                showingMessage = false,
+                messageOpacity = 0
+            }
+        end
+        local state = RARELOAD.AnimState
+
+        if progress >= 0.999 and not state.saveDetected then
+            state.saveDetected = true
+            state.lastSaveTime = currentTime
+            state.showingMessage = true
+            state.messageOpacity = 1
+            RARELOAD.serverLastSaveTime = currentTime
+            lastSave = RARELOAD.serverLastSaveTime
+            timeElapsed = 0
+            timeRemaining = settings.autoSaveInterval
+            progress = 0
+        elseif progress < 0.95 and state.saveDetected then
+            state.saveDetected = false
+        end
+
+        if state.showingMessage then
+            local timeSinceSave = currentTime - state.lastSaveTime
+
+            if timeSinceSave > ANIMATION.SAVE_MESSAGE_DURATION then
+                state.showingMessage = false
+                state.messageOpacity = 0
+            elseif timeSinceSave > ANIMATION.SAVE_MESSAGE_DURATION - 1 then
+                state.messageOpacity = 1 - (timeSinceSave - (ANIMATION.SAVE_MESSAGE_DURATION - 1))
+            end
+        end
+
+        state.pulsePhase = (state.pulsePhase + FrameTime() * 8) % (math.pi * 2)
+        state.glowPhase = (state.glowPhase + FrameTime() * 1.5) % (math.pi * 2)
+
+        local function GetProgressColor()
+            if progress < 0.3 then
+                return COLORS.PROGRESS.LOW
+            elseif progress < 0.7 then
+                return COLORS.PROGRESS.MEDIUM
+            else
+                return COLORS.PROGRESS.HIGH
+            end
+        end
+
+        local barHeight = 20
+        local barY = height - 22
+
+        if state.showingMessage and state.messageOpacity > 0 then
+            local textY = barY + barHeight / 2
+            local messageOpacity = math.Clamp(state.messageOpacity * 255, 0, 255)
+
+            if messageOpacity > 0 then
+                local savedText = "Position sauvegardée!"
+                local textColor = ColorAlpha(COLORS.TEXT.SAVED, messageOpacity)
+                local shadowColor = ColorAlpha(Color(0, 0, 0), messageOpacity * 0.7)
+
+                local timeSinceSave = currentTime - state.lastSaveTime
+                if timeSinceSave < 1 then
+                    local scale = 1 + math.sin(timeSinceSave * math.pi) * 0.1
+                    local matrix = Matrix()
+                    matrix:Translate(Vector(width / 2, textY, 0))
+                    matrix:Scale(Vector(scale, scale, 1))
+                    matrix:Translate(Vector(-width / 2, -textY, 0))
+
+                    cam.PushModelMatrix(matrix)
+                    draw.SimpleText(savedText, "CTNV", width / 2 + 1, textY + 1, shadowColor, TEXT_ALIGN_CENTER,
+                        TEXT_ALIGN_CENTER)
+                    draw.SimpleText(savedText, "CTNV", width / 2, textY, textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                    cam.PopModelMatrix()
+                elseif timeSinceSave < 5 then
+                    draw.SimpleText(savedText, "CTNV", width / 2 + 1, textY + 1, shadowColor, TEXT_ALIGN_CENTER,
+                        TEXT_ALIGN_CENTER)
+                    draw.SimpleText(savedText, "CTNV", width / 2, textY, textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                else
+                    state.showingMessage = false
+                end
+            end
+        else
+            draw.RoundedBox(4, 8, barY, width - 16, barHeight, COLORS.BG_OUTER)
+            draw.RoundedBox(4, 9, barY + 1, width - 18, barHeight - 2, COLORS.BG_INNER)
+
+            local barWidth = (width - 20) * progress
+            local baseColor = GetProgressColor()
+
+            if barWidth > 2 then
+                draw.RoundedBox(3, 10, barY + 2, barWidth, barHeight - 4, baseColor)
+
+                local shineOpacity = math.abs(math.sin(state.glowPhase)) * 40
+                surface.SetDrawColor(255, 255, 255, shineOpacity)
+                surface.DrawRect(10, barY + 2, barWidth, 2)
+
+                if timeRemaining < ANIMATION.PULSE_THRESHOLD then
+                    local pulseIntensity = math.sin(state.pulsePhase) * 0.1 + 0.9
+                    local pulseColor = Color(
+                        baseColor.r * pulseIntensity,
+                        baseColor.g * pulseIntensity,
+                        baseColor.b * pulseIntensity
+                    )
+                    draw.RoundedBox(3, 10, barY + 2, barWidth, barHeight - 4, pulseColor)
+                end
+            end
+
+            local steps = 4
+            for i = 1, steps - 1 do
+                local stepX = 10 + (width - 20) * (i / steps)
+                surface.SetDrawColor(255, 255, 255, 40)
+                surface.DrawRect(stepX - 0.5, barY + 4, 1, barHeight - 8)
+            end
+
+            local textY = barY + barHeight / 2
+            local infoText = "Sauvegarde dans : " .. math.floor(timeRemaining) .. "s"
+            local textColor = COLORS.TEXT.NORMAL
+
+            if timeRemaining < ANIMATION.PULSE_THRESHOLD then
+                textColor = COLORS.TEXT.WARNING
+
+                if timeRemaining < ANIMATION.BLINK_THRESHOLD then
+                    local blink = math.sin(currentTime * 10) > 0
+                    textColor = blink and COLORS.TEXT.URGENT[1] or COLORS.TEXT.URGENT[2]
+                end
+            end
+
+            draw.SimpleText(infoText, "CTNV", width / 2 + 1, textY + 1, Color(0, 0, 0, 180), TEXT_ALIGN_CENTER,
+                TEXT_ALIGN_CENTER)
+            draw.SimpleText(infoText, "CTNV", width / 2, textY, textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        end
     end
 
-    draw.SimpleText("v2", "CTNV", width - 10, height - 10, Color(150, 150, 150, 180), TEXT_ALIGN_RIGHT,
-        TEXT_ALIGN_BOTTOM)
+    draw.SimpleText("v2", "CTNV", width - 10, height - 10, Color(150, 150, 150, 180), TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
 end
 
 if CLIENT then

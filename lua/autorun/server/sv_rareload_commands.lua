@@ -56,39 +56,34 @@ end)
 ---------------------------------------------------------slider commands-------------------------------------------------]
 -------------------------------------------------------------------------------------------------------------------------]
 
-concommand.Add("set_auto_save_interval", function(ply, args)
-    if not ply:IsSuperAdmin() then
-        print("[RARELOAD] You do not have permission to use this command.")
-        return
-    end
+concommand.Add("set_auto_save_interval", function(ply, cmd, args)
+    if not IsValid(ply) or not ply:IsAdmin() then return end
 
-    local interval = tonumber(args[1])
-    if interval then
-        RARELOAD.settings.autoSaveInterval = interval
-        SaveAddonState()
-    else
-        print("[RARELOAD] Invalid interval value.")
-    end
+    local value = tonumber(args[1])
+    if not value then return end
+
+    RARELOAD.settings.autoSaveInterval = value
+    SaveAddonState()
 end)
 
-concommand.Add("set_max_distance", function(args)
-    local distance = tonumber(args[1])
-    if distance then
-        RARELOAD.settings.maxDistance = distance
-        SaveAddonState()
-    else
-        print("[RARELOAD] Invalid distance value.")
-    end
+concommand.Add("set_max_distance", function(ply, cmd, args)
+    if not IsValid(ply) or not ply:IsAdmin() then return end
+
+    local value = tonumber(args[1])
+    if not value then return end
+
+    RARELOAD.settings.maxDistance = value
+    SaveAddonState()
 end)
 
-concommand.Add("set_angle_tolerance", function(args)
-    local tolerance = tonumber(args[1])
-    if tolerance then
-        RARELOAD.settings.angleTolerance = tolerance
-        SaveAddonState()
-    else
-        print("[RARELOAD] Invalid tolerance value.")
-    end
+concommand.Add("set_angle_tolerance", function(ply, cmd, args)
+    if not IsValid(ply) or not ply:IsAdmin() then return end
+
+    local value = tonumber(args[1])
+    if not value then return end
+
+    RARELOAD.settings.angleTolerance = value
+    SaveAddonState()
 end)
 
 -------------------------------------------------------------------------------------------------------------------------]
