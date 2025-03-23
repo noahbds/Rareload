@@ -27,10 +27,6 @@ local phantomInteractionMode = false
 local phantomInteractionTarget = nil
 local phantomInteractionAngle = nil
 local panelSizeMultiplier = 1.0
-local resizeAnimationStart = 0
-local resizeAnimationTarget = 1.0
-local resizeAnimationDuration = 0.3
-local autoResizeTimer = 0
 local scrollOffset = 0
 local maxScrollOffset = 0
 local scrollSpeed = 20
@@ -60,11 +56,6 @@ local function calculateOptimalPanelSize(categoryContent)
     end
 
     return math.Clamp(contentWidth, minWidth, maxWidth)
-end
-
-local function animatePanelResize(targetSize)
-    resizeAnimationStart = CurTime()
-    resizeAnimationTarget = targetSize
 end
 
 function table.map(tbl, func)
@@ -434,24 +425,6 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     local categoryContent = infoData[activeCategory]
     local optimalWidth = calculateOptimalPanelSize(categoryContent)
 
-    if autoResizeTimer < CurTime() and phantomInfoCache[steamID].lastCategory ~= activeCategory then
-        animatePanelResize(optimalWidth / 350)
-        phantomInfoCache[steamID].lastCategory = activeCategory
-        autoResizeTimer = CurTime() + 0.5
-        scrollOffset = 0
-    end
-
-    if resizeAnimationStart > 0 then
-        local progress = math.Clamp((CurTime() - resizeAnimationStart) / resizeAnimationDuration, 0, 1)
-        progress = 1 - (1 - progress) * (1 - progress)
-
-        panelSizeMultiplier = Lerp(progress, panelSizeMultiplier, resizeAnimationTarget)
-
-        if progress >= 1 then
-            resizeAnimationStart = 0
-        end
-    end
-
     local interactionBonus = (phantomInteractionMode and phantomInteractionTarget == steamID) and 1.5 or 1.0
     local hoverScale = phantomInfoCache[steamID].hoverScale or 1.0
 
@@ -467,10 +440,13 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
         scrollbarHandle = Color(160, 180, 200, 200)
     }
 
+    local scrollbarWidth = 5
+    local scrollbarPadding = 5
+
     local scale = 0.1 * hoverScale * interactionBonus
     surface.SetFont("Trebuchet24")
     local infoCategoryHeight = 30
-    local titleHeight = 35
+    local titleHeight = 40
     local lineHeight = 22
     local textPadding = 15
     local contentWidth = optimalWidth * panelSizeMultiplier
@@ -478,6 +454,8 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     local contentHeight = (#categoryContent * lineHeight)
     local maxDisplayHeight = math.min(contentHeight + 20, maxPanelHeight * scale)
     local needsScrolling = contentHeight > (maxPanelHeight * scale - 20)
+
+    local availableContentWidth = panelWidth - (needsScrolling and (scrollbarWidth + scrollbarPadding * 2) or 0)
 
     maxScrollOffset = math.max(0, contentHeight - (maxPanelHeight * scale - 20))
 
@@ -506,7 +484,7 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
 
     cam.Start3D2D(pos, ang, scale)
 
-    draw.RoundedBox(8, offsetX, offsetY, panelWidth, panelHeight, theme.background)
+    draw.RoundedBox(5, offsetX, offsetY, panelWidth, panelHeight, theme.background)
 
     for i = 0, 2 do
         local borderColor = Color(
@@ -525,8 +503,10 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
 
     draw.SimpleText(title, "Trebuchet24", offsetX + (panelWidth / 2) + 1, offsetY + (titleHeight / 2) + 1,
         Color(0, 0, 0, 150), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    draw.SimpleText(title, "Trebuchet24", offsetX + (panelWidth / 2), offsetY + (titleHeight / 2),
-        theme.text, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    draw.SimpleText(title, "Trebuchet24", offsetX + (panelWidth / 2), offsetY + (titleHeight / 2) + 3, theme.text,
+        TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+
+
 
     local minTabWidth = 0
     for _, categoryInfo in ipairs(PHANTOM_CATEGORIES) do
@@ -573,13 +553,19 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
         end
 
         local textColor = isActive and Color(255, 255, 255) or Color(180, 180, 180)
-        draw.SimpleText(catName, "Trebuchet18", tabX + (tabWidth / 2), tabY + (infoCategoryHeight / 2),
+
+        surface.SetFont("Trebuchet18")
+        local textWidth, textHeight = surface.GetTextSize(catName)
+        local textX = tabX + (tabWidth / 2)
+        local textY = tabY + (infoCategoryHeight / 2)
+
+        draw.SimpleText(catName, "Trebuchet18", textX, textY,
             textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
         table.insert(tabScreenInfo, {
             catID = catID,
-            worldX = tabX + tabWidth / 2,
-            worldY = tabY + infoCategoryHeight / 2,
+            worldX = textX,
+            worldY = textY,
             worldW = tabWidth,
             worldH = infoCategoryHeight
         })
@@ -587,7 +573,7 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
 
     -- Scrollbar (if needed, currently goes beyond the frame)
 
-    local contentY = tabY + infoCategoryHeight + 10
+    local contentY = tabY + infoCategoryHeight
     local contentAreaHeight = maxDisplayHeight
 
     render.SetStencilEnable(true)
@@ -600,13 +586,12 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     render.SetStencilZFailOperation(STENCIL_KEEP)
 
     draw.RoundedBox(0, offsetX, contentY, panelWidth, contentAreaHeight, Color(255, 255, 255, 1))
-
     render.SetStencilCompareFunction(STENCIL_EQUAL)
     render.SetStencilPassOperation(STENCIL_KEEP)
 
     for i, lineData in ipairs(categoryContent) do
         local label, value, color = lineData[1], lineData[2], lineData[3]
-        local yPos = contentY + (i - 1) * lineHeight - scrollOffset
+        local yPos = contentY + (i - 1) * lineHeight - scrollOffset + 10
 
         if yPos + lineHeight >= contentY - lineHeight and yPos <= contentY + contentAreaHeight + lineHeight then
             local fadeInTime = i * 0.05
@@ -620,7 +605,9 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
 
             local valueText = tostring(value)
             local valueX = offsetX + textPadding + 120
-            local maxValueWidth = panelWidth - 150 - (needsScrolling and scrollbarWidth + 10 or 0)
+
+            local maxValueWidth = panelWidth - (textPadding * 2) - 130 -
+                (needsScrolling and (scrollbarWidth + scrollbarPadding * 2) or 0)
 
             local valueColor = color or Color(255, 255, 255)
             valueColor = Color(valueColor.r, valueColor.g, valueColor.b, valueColor.a * alpha)
@@ -628,38 +615,45 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
             surface.SetFont("Trebuchet18")
             local textWidth = surface.GetTextSize(valueText)
 
-            if textWidth <= maxValueWidth then
-                draw.SimpleText(valueText, "Trebuchet18", valueX, yPos,
-                    valueColor, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-            else
-                while textWidth > maxValueWidth and #valueText > 10 do
-                    valueText = string.sub(valueText, 1, #valueText - 5) .. "..."
+            if textWidth > maxValueWidth then
+                local low, high = 1, #valueText
+                while low <= high do
+                    local mid = math.floor((low + high) / 2)
+                    local testText = string.sub(valueText, 1, mid) .. "..."
                     surface.SetFont("Trebuchet18")
-                    textWidth = surface.GetTextSize(valueText)
+                    local testWidth = surface.GetTextSize(testText)
+
+                    if testWidth <= maxValueWidth then
+                        low = mid + 1
+                    else
+                        high = mid - 1
+                    end
                 end
 
-                draw.SimpleText(valueText, "Trebuchet18", valueX, yPos,
-                    valueColor, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                if high >= 5 then
+                    valueText = string.sub(valueText, 1, high) .. "..."
+                else
+                    valueText = string.sub(valueText, 1, math.floor(maxValueWidth / 10)) .. "..."
+                end
             end
+
+            draw.SimpleText(valueText, "Trebuchet18", valueX, yPos,
+                valueColor, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         end
     end
 
     render.SetStencilEnable(false)
 
     if needsScrolling then
-        local scrollbarWidth = 6
-        local scrollbarPadding = 5
         local scrollbarX = offsetX + panelWidth - scrollbarWidth - scrollbarPadding
         local scrollbarY = contentY
         local scrollbarHeight = contentAreaHeight
-
         surface.SetDrawColor(40, 40, 50, 120)
         surface.DrawRect(scrollbarX, scrollbarY, scrollbarWidth, scrollbarHeight)
 
         local handleRatio = math.min(1, contentAreaHeight / contentHeight)
         local handleHeight = math.max(30, scrollbarHeight * handleRatio)
         local handleY = scrollbarY + (scrollOffset / maxScrollOffset) * (scrollbarHeight - handleHeight)
-
         surface.SetDrawColor(theme.scrollbarHandle)
         surface.DrawRect(scrollbarX, handleY, scrollbarWidth, handleHeight)
 
@@ -675,12 +669,12 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
         }
 
         if scrollOffset > 0 then
-            draw.SimpleText("▲", "Trebuchet18", scrollbarX + scrollbarWidth / 2, scrollbarY - 10,
+            draw.SimpleText("▲", "Trebuchet18", scrollbarX + scrollbarWidth / 2, scrollbarY + 15,
                 Color(200, 200, 200, 150), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
 
         if scrollOffset < maxScrollOffset then
-            draw.SimpleText("▼", "Trebuchet18", scrollbarX + scrollbarWidth / 2, scrollbarY + scrollbarHeight + 10,
+            draw.SimpleText("▼", "Trebuchet18", scrollbarX + scrollbarWidth / 2, scrollbarY + scrollbarHeight - 15,
                 Color(200, 200, 200, 150), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
     end
@@ -740,7 +734,6 @@ hook.Add("Think", "PhantomKeyboardNavigation", function()
 
             local newContent = cache.data[cache.activeCategory]
             local optimalWidth = calculateOptimalPanelSize(newContent)
-            animatePanelResize(optimalWidth / 350)
         end
 
         cache.keyHeld = true
@@ -758,7 +751,6 @@ hook.Add("Think", "PhantomKeyboardNavigation", function()
 
             local newContent = cache.data[cache.activeCategory]
             local optimalWidth = calculateOptimalPanelSize(newContent)
-            animatePanelResize(optimalWidth / 350)
         end
 
         cache.keyHeld = true

@@ -265,20 +265,49 @@ concommand.Add("save_position", function(ply, _, _)
         local startTime = SysTime()
         local count = 0
 
+        local function GenerateNPCUniqueID(npc)
+            if not IsValid(npc) then return "invalid" end
+
+            local pos = npc:GetPos()
+            local posStr = math.floor(pos.x) .. "_" .. math.floor(pos.y) .. "_" .. math.floor(pos.z)
+            local id = npc:GetClass() .. "_" .. posStr .. "_" .. (npc:GetModel() or "nomodel")
+
+            if npc:GetKeyValues().targetname then
+                id = id .. "_" .. npc:GetKeyValues().targetname
+            end
+            if npc:GetKeyValues().squadname then
+                id = id .. "_" .. npc:GetKeyValues().squadname
+            end
+
+            return id
+        end
+
         local function GetNPCRelations(npc)
-            local relations = {}
+            local relations = {
+                players = {},
+                npcs = {}
+            }
+
+            if not npc.Disposition then
+                return relations
+            end
+
             for _, player in ipairs(player.GetAll()) do
-                local disposition = npc:Disposition(player)
-                if disposition then
-                    relations[player:EntIndex()] = disposition
+                local success, disposition = pcall(function() return npc:Disposition(player) end)
+                if success and disposition then
+                    relations.players[player:SteamID()] = disposition
                 end
             end
 
+            local npcMap = {}
             for _, otherNPC in ipairs(ents.FindByClass("npc_*")) do
                 if IsValid(otherNPC) and otherNPC ~= npc then
-                    local disposition = npc:Disposition(otherNPC)
-                    if disposition then
-                        relations[otherNPC:EntIndex()] = disposition
+                    local npcID = GenerateNPCUniqueID(otherNPC)
+                    npcMap[otherNPC] = npcID
+
+                    local success, disposition = pcall(function() return npc:Disposition(otherNPC) end)
+                    if success and disposition then
+                        relations.npcs[npcID] = disposition
                     end
                 end
             end
@@ -286,41 +315,106 @@ concommand.Add("save_position", function(ply, _, _)
             return relations
         end
 
+        RARELOAD.npcIDMap = {}
+
         for _, npc in ipairs(ents.FindByClass("npc_*")) do
-            if IsValid(npc) and (SysTime() - startTime) < 0.1 then
+            if IsValid(npc) then
                 count = count + 1
+                local npcID = GenerateNPCUniqueID(npc)
+
                 local npcData = {
+                    id = npcID,
                     class = npc:GetClass(),
                     pos = npc:GetPos(),
                     ang = npc:GetAngles(),
-                    model = npc:GetModel(),
+                    model = npc:GetModel() or "models/error.mdl",
                     health = npc:Health(),
                     maxHealth = npc:GetMaxHealth(),
                     weapons = {},
                     keyValues = {},
-                    target = npc:GetTarget(),
+                    skin = npc:GetSkin(),
+                    bodygroups = {},
+                    target = nil,
                     frozen = IsValid(npc:GetPhysicsObject()) and not npc:GetPhysicsObject():IsMotionEnabled(),
                     relations = GetNPCRelations(npc),
-                    schedule = npc:GetCurrentSchedule(),
+                    schedule = nil,
                 }
+
+                for i = 0, npc:GetNumBodyGroups() - 1 do
+                    npcData.bodygroups[i] = npc:GetBodygroup(i)
+                end
+
+                if npc.GetEnemy and IsValid(npc:GetEnemy()) then
+                    local enemy = npc:GetEnemy()
+                    if enemy:IsPlayer() then
+                        npcData.target = {
+                            type = "player",
+                            id = enemy:SteamID()
+                        }
+                    elseif enemy:IsNPC() then
+                        npcData.target = {
+                            type = "npc",
+                            id = GenerateNPCUniqueID(enemy)
+                        }
+                    end
+                end
+
+                if npc.GetCurrentSchedule then
+                    local scheduleID = npc:GetCurrentSchedule()
+                    if scheduleID then
+                        npcData.schedule = {
+                            id = scheduleID
+                        }
+
+                        if npc.GetTarget and IsValid(npc:GetTarget()) then
+                            local target = npc:GetTarget()
+                            if target:IsPlayer() then
+                                npcData.schedule.target = {
+                                    type = "player",
+                                    id = target:SteamID()
+                                }
+                            else
+                                npcData.schedule.target = {
+                                    type = "entity",
+                                    id = GenerateNPCUniqueID(target)
+                                }
+                            end
+                        end
+                    end
+                end
 
                 local success, weapons = pcall(function() return npc:GetWeapons() end)
                 if success and istable(weapons) then
                     for _, weapon in ipairs(weapons) do
                         if IsValid(weapon) then
-                            table.insert(npcData.weapons, weapon:GetClass())
+                            local weaponData = {
+                                class = weapon:GetClass()
+                            }
+
+                            pcall(function()
+                                weaponData.clipAmmo = weapon:Clip1()
+                            end)
+
+                            table.insert(npcData.weapons, weaponData)
                         end
                     end
                 end
 
                 npcData.keyValues = {}
-                local keyValues = { "spawnflags", "squadname", "targetname" }
+                local keyValues = {
+                    "spawnflags", "squadname", "targetname",
+                    "wakeradius", "sleepstate", "health",
+                    "rendercolor", "rendermode", "renderamt"
+                }
+
                 for _, keyName in ipairs(keyValues) do
                     local value = npc:GetKeyValues()[keyName]
                     if value then
                         npcData.keyValues[keyName] = value
                     end
                 end
+
+                RARELOAD.npcIDMap[npcID] = npcData
 
                 table.insert(playerData.npcs, npcData)
             end
@@ -329,6 +423,8 @@ concommand.Add("save_position", function(ply, _, _)
         if RARELOAD.settings.debugEnabled then
             print("[RARELOAD DEBUG] Saved " .. count .. " NPCs in " ..
                 math.Round((SysTime() - startTime) * 1000) .. " ms")
+            print("[RARELOAD DEBUG] NPC data size: " ..
+                string.NiceSize(#util.TableToJSON(playerData.npcs)))
         end
     end
 
