@@ -10,7 +10,7 @@ function RARELOAD.RestoreNPCsFromSave(savedInfo, settings)
     local NPCRestoration = {}
     NPCRestoration.spawnedNPCsByID = {}
     NPCRestoration.pendingRelations = {}
-    NPCRestoration.debugEnabled = DebugEnabled
+    NPCRestoration.debugEnabled = RARELOAD.settings.debugEnabled
 
     function NPCRestoration:NPCExistsAtLocation(npcData)
         for _, ent in ipairs(ents.FindInSphere(npcData.pos, 10)) do
@@ -47,13 +47,28 @@ function RARELOAD.RestoreNPCsFromSave(savedInfo, settings)
                     if util.IsValidModel(npcData.model) then
                         npc:SetModel(npcData.model)
                     elseif self.debugEnabled then
-                        print("[RARELOAD DEBUG] Invalid model for NPC: " .. npcData.model)
+                        RARELOAD.Debug.Log("WARNING", "Invalid Model", {
+                            "NPC Class: " .. npcData.class,
+                            "Model Path: " .. npcData.model
+                        })
                     end
                     npc:SetAngles(npcData.ang)
 
                     if npcData.keyValues then
-                        for key, value in pairs(npcData.keyValues) do
+                        -- Make a copy of keyValues without squadname
+                        local keyValuesCopy = table.Copy(npcData.keyValues)
+                        -- Store the original squad name but don't apply it yet
+                        local originalSquad = keyValuesCopy.squadname
+                        keyValuesCopy.squadname = nil
+
+                        -- Apply all keyValues except squadname
+                        for key, value in pairs(keyValuesCopy) do
                             npc:SetKeyValue(key, value)
+                        end
+
+                        -- Store original squad for later processing
+                        if originalSquad then
+                            npcData.originalSquad = originalSquad
                         end
                     end
 
@@ -107,7 +122,10 @@ function RARELOAD.RestoreNPCsFromSave(savedInfo, settings)
 
                 if not success or not IsValid(newNPC) then
                     if self.debugEnabled then
-                        print("[RARELOAD DEBUG] Failed to create NPC: " .. npcData.class .. " - " .. tostring(newNPC))
+                        RARELOAD.Debug.Log("ERROR", "Failed to Create NPC", {
+                            "Class: " .. npcData.class,
+                            "Error: " .. tostring(newNPC)
+                        })
                     end
                 end
             end
@@ -154,6 +172,7 @@ function RARELOAD.RestoreNPCsFromSave(savedInfo, settings)
             end
         end
 
+        -- Continue with other restoration tasks
         local scheduleCount = 0
         local targetCount = 0
 
@@ -201,13 +220,118 @@ function RARELOAD.RestoreNPCsFromSave(savedInfo, settings)
             end
         end
 
+        local localSpawnedNPCsByID = self.spawnedNPCsByID
+        local localDebugEnabled = self.debugEnabled
+        timer.Simple(0.1, function()
+            if not localSpawnedNPCsByID then return end
+
+            local removedNPCs = 0
+
+            local squads = {}
+            for uniqueID, npc in pairs(localSpawnedNPCsByID) do
+                if not IsValid(npc) then continue end
+
+                local npcData = npc.RareloadData
+                if not npcData then continue end
+
+                local squadName = npcData.originalSquad or
+                    (npcData.keyValues and npcData.keyValues.squadname)
+
+                if not squadName then continue end
+
+                squads[squadName] = squads[squadName] or {}
+                table.insert(squads[squadName], npc)
+            end
+
+            -- Debug squad compositions with new debug system
+            if localDebugEnabled then
+                for squadName, members in pairs(squads) do
+                    RARELOAD.Debug.LogSquadInfo(squadName, members, 0)
+                end
+            end
+
+            for squadName, members in pairs(squads) do
+                if #members <= 1 then
+                    members[1]:Fire("setsquad", squadName, 0)
+                    continue
+                end
+
+                -- Debug relationships with new debug system
+                if localDebugEnabled then
+                    for _, npc1 in ipairs(members) do
+                        for _, npc2 in ipairs(members) do
+                            if npc1 == npc2 then continue end
+                            RARELOAD.Debug.LogSquadRelation(npc1, npc2, npc1:Disposition(npc2))
+                        end
+                    end
+                end
+
+                local npcToRemove = {}
+                for _, npc in ipairs(members) do
+                    if not IsValid(npc) then continue end
+
+                    for _, otherNPC in ipairs(members) do
+                        if not IsValid(otherNPC) or npc == otherNPC then continue end
+
+                        local disp = npc:Disposition(otherNPC)
+                        local reverseDisp = otherNPC:Disposition(npc)
+
+                        if disp == 1 or reverseDisp == 1 then
+                            npcToRemove[npc] = true
+
+                            if localDebugEnabled then
+                                local errorInfo = npc:GetClass() .. " doesn't like " .. otherNPC:GetClass()
+                                RARELOAD.Debug.LogSquadError(squadName, errorInfo)
+                            end
+                            break
+                        end
+                    end
+                end
+
+                for _, npc in ipairs(members) do
+                    if IsValid(npc) then
+                        if not npcToRemove[npc] then
+                            npc:Fire("ClearSquad", "", 0)
+                            npc:Fire("setsquad", squadName, 0.1)
+
+                            if localDebugEnabled then
+                                RARELOAD.Debug.Log("INFO", "Squad Assignment", {
+                                    "NPC: " .. npc:GetClass(),
+                                    "ID: " .. (npc.RareloadUniqueID or "unknown"),
+                                    "Added to Squad: " .. squadName
+                                })
+                            end
+                        else
+                            removedNPCs = removedNPCs + 1
+                            if localDebugEnabled then
+                                RARELOAD.Debug.Log("WARNING", "NPC Squad Removal", {
+                                    "NPC: " .. npc:GetClass(),
+                                    "ID: " .. (npc.RareloadUniqueID or "unknown"),
+                                    "Removed from Squad: " .. squadName,
+                                    "Reason: Has enemies in squad"
+                                })
+                            end
+                        end
+                    end
+                end
+            end
+
+            if localDebugEnabled then
+                RARELOAD.Debug.Log("INFO", "Squad Processing Complete", {
+                    "NPCs removed from squads: " .. removedNPCs,
+                    "Reason: Enemy relationships"
+                })
+            end
+        end)
+
         if self.debugEnabled then
             local totalNPCs = table.Count(self.spawnedNPCsByID)
-            print("[RARELOAD DEBUG] NPC restoration complete:")
-            print("  • " .. totalNPCs .. " NPCs restored")
-            print("  • " .. relationCount .. " relationships restored")
-            print("  • " .. targetCount .. " targets set")
-            print("  • " .. scheduleCount .. " schedules restored")
+            RARELOAD.Debug.Log("INFO", "NPC Restoration Complete", {
+                "Total NPCs restored: " .. totalNPCs,
+                "Relationships restored: " .. relationCount,
+                "Targets set: " .. targetCount,
+                "Schedules restored: " .. scheduleCount
+            })
         end
 
         self.spawnedNPCsByID = nil

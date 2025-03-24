@@ -1,5 +1,6 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.Debug = {}
+RARELOAD.version = "2.0.0"
 
 -- Debug system configuration
 DEBUG_CONFIG = {
@@ -136,59 +137,159 @@ end
 function RARELOAD.Debug.LogSpawnInfo(ply)
     if not DEBUG_CONFIG.ENABLED() then return end
 
-    timer.Simple(0.5, function()
-        if not IsValid(ply) then return end
+    -- Store player reference for validation
+    local playerID = IsValid(ply) and (ply:Nick() .. " (" .. ply:SteamID() .. ")") or "Unknown Player"
 
-        local settings = {}
-        for k, v in pairs(RARELOAD.settings) do
-            settings[k] = v
+    -- Check if player is valid before starting timer
+    if not IsValid(ply) then
+        RARELOAD.Debug.Log("ERROR", "LogSpawnInfo Failed", "Player entity is not valid")
+        return
+    end
+
+    timer.Simple(0.4, function()
+        if not IsValid(ply) then
+            RARELOAD.Debug.Log("ERROR", "LogSpawnInfo Failed", "Player became invalid during timer delay: " .. playerID)
+            return
         end
 
-        RARELOAD.Debug.Log("INFO", "Spawn Debug Information", {
-            "Position: " .. VectorToDetailedString(ply:GetPos()),
-            "Eye Angles: " .. AngleToDetailedString(ply:EyeAngles()),
-            "Move Type: " .. MoveTypeToString(ply:GetMoveType()),
-            "Health: " .. ply:Health() .. " / " .. ply:GetMaxHealth(),
-            "Armor: " .. ply:Armor(),
-            "Current Settings:", settings
-        }, ply)
+        -- Basic player state information
+        local playerState = {
+            position = VectorToDetailedString(ply:GetPos()),
+            eyeAngles = AngleToDetailedString(ply:EyeAngles()),
+            moveType = MoveTypeToString(ply:GetMoveType()),
+            velocity = VectorToDetailedString(ply:GetVelocity()),
+            health = ply:Health() .. " / " .. ply:GetMaxHealth(),
+            armor = ply:Armor(),
+            team = team.GetName(ply:Team()) or ply:Team(),
+            model = ply:GetModel(),
+            isOnGround = ply:IsOnGround() and "Yes" or "No",
+            isCrouching = ply:Crouching() and "Yes" or "No",
+            inVehicle = IsValid(ply:GetVehicle()) and "Yes (" .. ply:GetVehicle():GetClass() .. ")" or "No",
+            currentWeapon = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or "None",
+            walkSpeed = ply:GetWalkSpeed(),
+            runSpeed = ply:GetRunSpeed(),
+            crouchSpeed = ply:GetCrouchedWalkSpeed() * ply:GetWalkSpeed()
+        }
 
+        -- Only include settings if verbose debugging is enabled
+        local messageData = {
+            "=== PLAYER STATE ===",
+            "Position: " .. playerState.position,
+            "Eye Angles: " .. playerState.eyeAngles,
+            "Move Type: " .. playerState.moveType,
+            "Velocity: " .. playerState.velocity,
+            "Health: " .. playerState.health,
+            "Armor: " .. playerState.armor,
+
+            "=== PLAYER DETAILS ===",
+            "Team: " .. playerState.team,
+            "Model: " .. playerState.model,
+            "On Ground: " .. playerState.isOnGround,
+            "Crouching: " .. playerState.isCrouching,
+            "In Vehicle: " .. playerState.inVehicle,
+            "Current Weapon: " .. playerState.currentWeapon,
+
+            "=== MOVEMENT STATS ===",
+            "Walk Speed: " .. playerState.walkSpeed,
+            "Run Speed: " .. playerState.runSpeed,
+            "Crouch Speed: " .. playerState.crouchSpeed
+        }
+
+        -- Add settings info only if verbose debug is enabled
+        if RARELOAD.settings.verboseDebug then
+            local settings = {}
+            for k, v in pairs(RARELOAD.settings) do
+                settings[k] = v
+            end
+            table.insert(messageData, "\n=== CURRENT SETTINGS ===")
+            table.insert(messageData, settings)
+        end
+
+        RARELOAD.Debug.Log("INFO", "Spawn Debug Information", messageData, ply)
+
+        -- Log inventory in a separate call to keep logs organized
         RARELOAD.Debug.LogInventory(ply)
     end)
 end
 
 function RARELOAD.Debug.LogInventory(ply)
-    if not DEBUG_CONFIG.ENABLED() then return end
+    timer.Simple(0.5, function()
+        if not DEBUG_CONFIG.ENABLED() then return end
 
-    local weaponData = {}
-    for _, weapon in ipairs(ply:GetWeapons()) do
-        local wpnInfo = {
-            class = weapon:GetClass(),
-            ammo1 = weapon:Clip1(),
-            ammo2 = weapon:Clip2(),
-            primaryAmmoType = weapon:GetPrimaryAmmoType(),
-            secondaryAmmoType = weapon:GetSecondaryAmmoType(),
-        }
-        table.insert(weaponData, wpnInfo)
-    end
+        local weaponData = {}
+        local totalWeapons = 0
 
-    local ammoData = {}
-    for ammoID = 1, 32 do
-        local count = ply:GetAmmoCount(ammoID)
-        if count > 0 then
-            local ammoName = game.GetAmmoName(ammoID)
-            if ammoName then
-                ammoData[ammoName] = count
+        for _, weapon in ipairs(ply:GetWeapons()) do
+            totalWeapons = totalWeapons + 1
+            local primaryAmmoType = weapon:GetPrimaryAmmoType()
+            local secondaryAmmoType = weapon:GetSecondaryAmmoType()
+
+            local primaryAmmoName = primaryAmmoType ~= -1 and game.GetAmmoName(primaryAmmoType) or "None"
+            local secondaryAmmoName = secondaryAmmoType ~= -1 and game.GetAmmoName(secondaryAmmoType) or "None"
+
+            local wpnInfo = {
+                class = weapon:GetClass(),
+                clip1 = weapon:Clip1(),
+                clip2 = weapon:Clip2(),
+                primaryAmmo = primaryAmmoName .. (primaryAmmoType ~= -1 and " (ID:" .. primaryAmmoType .. ")" or ""),
+                secondaryAmmo = secondaryAmmoName ..
+                    (secondaryAmmoType ~= -1 and " (ID:" .. secondaryAmmoType .. ")" or ""),
+                isActive = (IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():EntIndex() == weapon:EntIndex())
+            }
+            table.insert(weaponData, wpnInfo)
+        end
+
+        local ammoData = {}
+        local ammoCount = 0
+        for ammoID = 1, 32 do
+            local count = ply:GetAmmoCount(ammoID)
+            if count > 0 then
+                local ammoName = game.GetAmmoName(ammoID)
+                if ammoName then
+                    ammoData[ammoName] = {
+                        id = ammoID,
+                        count = count
+                    }
+                    ammoCount = ammoCount + 1
+                end
             end
         end
-    end
 
-    RARELOAD.Debug.Log("INFO", "Player Inventory", {
-        "Weapons: " .. #weaponData,
-        "Weapon Details:", weaponData,
-        "Ammo:", ammoData,
-        "Active Weapon: " .. (IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or "None")
-    }, ply)
+        local weaponDetails = {}
+        for i, wpn in ipairs(weaponData) do
+            local activeMarker = wpn.isActive and " [ACTIVE]" or ""
+            local clipInfo = wpn.clip1 ~= -1 and " | Clip: " .. wpn.clip1 or ""
+
+            table.insert(weaponDetails, string.format("%d. %s%s%s",
+                i,
+                wpn.class,
+                activeMarker,
+                clipInfo
+            ))
+
+            table.insert(weaponDetails, string.format("   - Primary: %s", wpn.primaryAmmo))
+            if wpn.secondaryAmmo ~= "None" then
+                table.insert(weaponDetails, string.format("   - Secondary: %s", wpn.secondaryAmmo))
+            end
+        end
+
+        local ammoDetails = {}
+        for name, data in pairs(ammoData) do
+            table.insert(ammoDetails, string.format("%s: %d (ID:%d)", name, data.count, data.id))
+        end
+
+        local activeWeapon = SavedInfo.activeWeapon or "None"
+
+        RARELOAD.Debug.Log("INFO", "Player Inventory", {
+            string.format("Total Weapons: %d | Active Weapon: %s", totalWeapons, activeWeapon),
+            "",
+            "=== WEAPON DETAILS ===",
+            table.concat(weaponDetails, "\n"),
+            "",
+            string.format("=== AMMO INVENTORY (%d types) ===", ammoCount),
+            #ammoDetails > 0 and table.concat(ammoDetails, "\n") or "No ammo"
+        }, ply)
+    end)
 end
 
 -- Utility for move types
@@ -351,77 +452,182 @@ function RARELOAD.Debug.SavePosDataInfo(ply, oldPosData, playerData)
     end)
 end
 
-function RARELOAD.Debug.MonitorHooks()
-    if not DEBUG_CONFIG.ENABLED() then return end
+function RARELOAD.Debug.LogSquadInfo(squadName, members, removedNPCs)
+    timer.Simple(0.9, function()
+        if not DEBUG_CONFIG.ENABLED() then return end
 
-    local hookNames = {
-        "PlayerSpawn",
-        "PlayerDeath",
-        "PlayerDisconnected",
-        "OnPlayerChangedTeam",
-        "PlayerEnteredVehicle",
-        "PlayerLeaveVehicle"
-    }
+        local squadInfo = {
+            "Squad: " .. squadName,
+            "Members: " .. #members,
+            "Members Details:"
+        }
 
-    for _, hookName in ipairs(hookNames) do
-        hook.Add(hookName, "RARELOAD_DebugMonitor_" .. hookName, function(ply)
-            RARELOAD.Debug.Log("VERBOSE", "Hook " .. hookName .. " triggered", {
-                "Time: " .. os.date("%H:%M:%S"),
-                "Position: " .. VectorToDetailedString(ply:GetPos()),
-            }, ply)
-        end)
-    end
-
-    RARELOAD.Debug.Log("INFO", "Hook Monitoring Enabled", hookNames)
-end
-
-function RARELOAD.Debug.TestSystemState()
-    if not DEBUG_CONFIG.ENABLED() then return end
-
-    local state = {
-        version = RARELOAD.version or "Unknown",
-        settings = RARELOAD.settings,
-        hooks = {},
-        players = {}
-    }
-
-    local hooksToCheck = { "PlayerSpawn", "PlayerDeath", "PlayerInitialSpawn" }
-    for _, hookName in pairs(hooksToCheck) do
-        local hooks = hook.GetTable()[hookName] or {}
-        local rareloadHooks = {}
-
-        for name, _ in pairs(hooks) do
-            if string.find(name, "RARELOAD") then
-                table.insert(rareloadHooks, name)
+        local memberDetails = {}
+        for i, npc in ipairs(members) do
+            if IsValid(npc) then
+                table.insert(memberDetails, {
+                    class = npc:GetClass(),
+                    id = npc.RareloadUniqueID or "unknown",
+                    pos = VectorToDetailedString(npc:GetPos()),
+                    health = npc:Health() .. "/" .. npc:GetMaxHealth()
+                })
             end
         end
 
-        state.hooks[hookName] = rareloadHooks
-    end
-
-    for _, ply in ipairs(player.GetAll()) do
-        table.insert(state.players, {
-            name = ply:Nick(),
-            steamID = ply:SteamID(),
-            health = ply:Health(),
-            armor = ply:Armor(),
-            weapons = #ply:GetWeapons(),
-            alive = ply:Alive(),
-            position = VectorToDetailedString(ply:GetPos())
+        -- Log squad composition
+        RARELOAD.Debug.Log("INFO", "Squad Information", {
+            squadInfo,
+            "Member Details:", memberDetails,
+            "NPCs removed due to enemy relations: " .. (removedNPCs or 0)
         })
-    end
+    end)
+end
 
-    RARELOAD.Debug.Log("INFO", "Rareload System State", state)
-    return state
+function RARELOAD.Debug.LogSquadRelation(npc1, npc2, disposition)
+    timer.Simple(1, function()
+        if not DEBUG_CONFIG.ENABLED() then return end
+
+        if disposition == 1 then -- D_HT (1) is hate/enemy disposition
+            RARELOAD.Debug.Log("WARNING", "Squad Enemy Relation Detected", {
+                "Entity 1: " .. npc1:GetClass() .. " (ID: " .. (npc1.RareloadUniqueID or "unknown") .. ")",
+                "Entity 2: " .. npc2:GetClass() .. " (ID: " .. (npc2.RareloadUniqueID or "unknown") .. ")",
+                "Disposition: " .. disposition .. " (Enemy)",
+                "Squad: " .. (npc1.RareloadData and npc1.RareloadData.originalSquad or "unknown")
+            })
+        elseif DEBUG_CONFIG.ENABLED() and RARELOAD.settings.verboseDebug then
+            -- Only log non-enemy relations in verbose mode
+            RARELOAD.Debug.Log("VERBOSE", "Squad Relation", {
+                "Entity 1: " .. npc1:GetClass() .. " (ID: " .. (npc1.RareloadUniqueID or "unknown") .. ")",
+                "Entity 2: " .. npc2:GetClass() .. " (ID: " .. (npc2.RareloadUniqueID or "unknown") .. ")",
+                "Disposition: " .. disposition,
+                "Squad: " .. (npc1.RareloadData and npc1.RareloadData.originalSquad or "unknown")
+            })
+        end
+    end)
+end
+
+-- Add this function to your NPCs handling file
+function RARELOAD.ForceSquadFriendlyRelations(squadName, members)
+    timer.Simple(1.1, function()
+        if not members or #members < 2 then return end
+
+        -- Force D_LI (3) disposition between all members
+        for i = 1, #members do
+            local npc1 = members[i]
+            if not IsValid(npc1) then continue end
+
+            for j = 1, #members do
+                if i == j then continue end
+                local npc2 = members[j]
+                if not IsValid(npc2) then continue end
+
+                -- Set mutual like disposition
+                npc1:AddEntityRelationship(npc2, D_LI, 99)
+                npc2:AddEntityRelationship(npc1, D_LI, 99)
+
+                -- Override any existing disposition
+                if npc1.SetRelationship then npc1:SetRelationship(npc2, D_LI) end
+                if npc2.SetRelationship then npc2:SetRelationship(npc1, D_LI) end
+            end
+        end
+
+        RARELOAD.Debug.Log("INFO", "Squad Relations Fixed", {
+            "Squad: " .. squadName,
+            "Members: " .. #members,
+            "Action: Forced friendly relations"
+        })
+    end)
+end
+
+-- New function to report squad errors
+function RARELOAD.Debug.LogSquadError(squadName, errorInfo)
+    timer.Simple(1.2, function()
+        if not DEBUG_CONFIG.ENABLED() then return end
+
+        RARELOAD.Debug.Log("ERROR", "Squad Error", {
+            "Squad: " .. squadName,
+            "Error: " .. errorInfo
+        })
+    end)
+end
+
+function RARELOAD.Debug.MonitorHooks()
+    timer.Simple(1.3, function()
+        if not DEBUG_CONFIG.ENABLED() then return end
+
+        local hookNames = {
+            "PlayerSpawn",
+            "PlayerDeath",
+            "PlayerDisconnected",
+            "OnPlayerChangedTeam",
+            "PlayerEnteredVehicle",
+            "PlayerLeaveVehicle"
+        }
+
+        for _, hookName in ipairs(hookNames) do
+            hook.Add(hookName, "RARELOAD_DebugMonitor_" .. hookName, function(ply)
+                RARELOAD.Debug.Log("VERBOSE", "Hook " .. hookName .. " triggered", {
+                    "Time: " .. os.date("%H:%M:%S"),
+                    "Position: " .. VectorToDetailedString(ply:GetPos()),
+                }, ply)
+            end)
+        end
+
+        RARELOAD.Debug.Log("INFO", "Hook Monitoring Enabled", hookNames)
+    end)
+end
+
+function RARELOAD.Debug.TestSystemState()
+    timer.Simple(1.4, function()
+        if not DEBUG_CONFIG.ENABLED() then return end
+
+        local state = {
+            version = RARELOAD.version or "Unknown",
+            settings = RARELOAD.settings,
+            hooks = {},
+            players = {}
+        }
+
+        local hooksToCheck = { "PlayerSpawn", "PlayerDeath", "PlayerInitialSpawn" }
+        for _, hookName in pairs(hooksToCheck) do
+            local hooks = hook.GetTable()[hookName] or {}
+            local rareloadHooks = {}
+
+            for name, _ in pairs(hooks) do
+                if string.find(name, "RARELOAD") then
+                    table.insert(rareloadHooks, name)
+                end
+            end
+
+            state.hooks[hookName] = rareloadHooks
+        end
+
+        for _, ply in ipairs(player.GetAll()) do
+            table.insert(state.players, {
+                name = ply:Nick(),
+                steamID = ply:SteamID(),
+                health = ply:Health(),
+                armor = ply:Armor(),
+                weapons = #ply:GetWeapons(),
+                alive = ply:Alive(),
+                position = VectorToDetailedString(ply:GetPos())
+            })
+        end
+
+        RARELOAD.Debug.Log("INFO", "Rareload System State", state)
+        return state
+    end)
 end
 
 hook.Add("Initialize", "RARELOAD_DebugModuleInit", function()
-    if DEBUG_CONFIG.ENABLED() then
-        RARELOAD.Debug.MonitorHooks()
-        RARELOAD.Debug.Log("INFO", "Rareload Debug Module Initialized", {
-            "Version: " .. (RARELOAD.version or "Unknown"),
-            "Map: " .. game.GetMap(),
-            "Date: " .. os.date("%d/%m/%Y %H:%M:%S")
-        })
-    end
+    timer.Simple(1.5, function()
+        if DEBUG_CONFIG.ENABLED() then
+            RARELOAD.Debug.MonitorHooks()
+            RARELOAD.Debug.Log("INFO", "Rareload Debug Module Initialized", {
+                "Version: " .. (RARELOAD.version or "Unknown"),
+                "Map: " .. game.GetMap(),
+                "Date: " .. os.date("%d/%m/%Y %H:%M:%S")
+            })
+        end
+    end)
 end)
