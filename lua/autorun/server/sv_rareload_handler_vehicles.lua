@@ -32,8 +32,8 @@ function RARELOAD.RestoreVehicles()
 
                     if vehicleData.bodygroups then
                         for id, value in pairs(vehicleData.bodygroups) do
-                            local bodygroup = veh:GetBodygroupCount(id)
-                            veh:SetBodygroup(bodygroup(id), value)
+                            ---@diagnostic disable-next-line: param-type-mismatch
+                            veh:SetBodygroup(tonumber(id), value)
                         end
                     end
 
