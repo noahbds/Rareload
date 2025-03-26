@@ -1,6 +1,8 @@
----@diagnostic disable: undefined-field, param-type-mismatch
+-- Here is the world's most crappiest, disorganized,  spaghetti-like, incomprehensible code 🙁
 
+---@diagnostic disable: undefined-field
 
+---@class RARELOAD
 local RARELOAD              = RARELOAD or {}
 RARELOAD.settings           = RARELOAD.settings or {}
 RARELOAD.playerPositions    = RARELOAD.playerPositions or {}
@@ -67,7 +69,7 @@ local function createButton(parent, text, command, tooltip, isEnabled)
     return button
 end
 
-function TOOL.BuildCPanel(panel)
+function TOOL:BuildCPanel(panel)
     local success, err = pcall(loadAddonStatefortool)
     if not success then
         ErrorNoHalt("Failed to load addon state: " .. err)
@@ -113,7 +115,6 @@ function TOOL.BuildCPanel(panel)
     createButton(panel, "Toggle Debug", "toggle_debug",
         "Enable or disable Debug", RARELOAD.settings.debugEnabled)
 
-
     ---@class DButton
     local savePositionButton = vgui.Create("DButton", panel)
     savePositionButton:SetText("Save Position")
@@ -140,13 +141,29 @@ function TOOL.BuildCPanel(panel)
         slider_grip_hover = Color(100, 160, 255),
         text_primary = Color(255, 255, 255),
         text_secondary = Color(200, 200, 220),
-        value_display = Color(80, 140, 240, 180)
+        value_display = Color(80, 140, 240, 180),
+        default_marker = Color(255, 200, 80, 120),
+        reset_button = Color(70, 70, 80),
+        reset_button_hover = Color(90, 90, 100),
+        reset_button_text = Color(200, 200, 200)
     }
 
-    local function CreateSettingSlider(panel, title, command, min, max, decimals, defaultValue, tooltip, unit)
+    local function CreateFlashEffect(panel, color, duration)
+        local flash = vgui.Create("DPanel", panel)
+        flash:SetSize(panel:GetWide(), panel:GetTall())
+        flash:SetPos(0, 0)
+        flash:SetAlpha(80)
+        flash.Paint = function(self, w, h)
+            draw.RoundedBox(4, 0, 0, w, h, color)
+        end
+        flash:AlphaTo(0, duration or 0.3, 0, function() flash:Remove() end)
+        return flash
+    end
+
+    local function CreateSettingSlider(panel, title, command, min, max, decimals, defaultValue, tooltip, unit, showMinMax)
         local container = vgui.Create("DPanel", panel)
         container:Dock(TOP)
-        container:SetTall(60)
+        container:SetTall(tooltip and 70 or 50)
         container:DockMargin(30, 10, 30, 5)
         container:SetPaintBackground(false)
 
@@ -156,6 +173,7 @@ function TOOL.BuildCPanel(panel)
         header:SetFont("DermaDefaultBold")
         header:Dock(TOP)
         header:DockMargin(0, 0, 0, 2)
+        header:SetTooltip(tooltip)
 
         if tooltip then
             local desc = vgui.Create("DLabel", container)
@@ -165,7 +183,13 @@ function TOOL.BuildCPanel(panel)
             desc:Dock(TOP)
             desc:DockMargin(0, 0, 0, 4)
             desc:SetWrap(true)
-            desc:SetTall(18)
+            desc:SetAutoStretchVertical(true)
+
+            timer.Simple(0, function()
+                if IsValid(desc) then
+                    container:SetTall(60 + desc:GetTall() - 18)
+                end
+            end)
         end
 
         local sliderContainer = vgui.Create("DPanel", container)
@@ -173,9 +197,24 @@ function TOOL.BuildCPanel(panel)
         sliderContainer:DockPadding(0, 0, 0, 0)
         sliderContainer:SetPaintBackground(false)
 
+        local resetButton = vgui.Create("DButton", sliderContainer)
+        resetButton:SetText("↺")
+        resetButton:SetTooltip("Reset to default: " ..
+            (decimals > 0 and string.format("%." .. decimals .. "f", defaultValue) or tostring(defaultValue)) ..
+            (unit or ""))
+        resetButton:SetSize(24, 20)
+        resetButton:Dock(RIGHT)
+        resetButton:DockMargin(5, 0, 0, 0)
+        resetButton:SetTextColor(UI_COLORS.reset_button_text)
+        resetButton.Paint = function(self, w, h)
+            local btnColor = self:IsHovered() and UI_COLORS.reset_button_hover or UI_COLORS.reset_button
+            draw.RoundedBox(4, 0, 0, w, h, btnColor)
+        end
+
         local valueDisplay = vgui.Create("DLabel", sliderContainer)
         valueDisplay:SetSize(50, 20)
         valueDisplay:Dock(RIGHT)
+        valueDisplay:DockMargin(5, 0, 0, 0)
         valueDisplay:SetContentAlignment(6)
         valueDisplay:SetTextColor(UI_COLORS.slider_grip)
 
@@ -188,6 +227,7 @@ function TOOL.BuildCPanel(panel)
         slider:SetDefaultValue(defaultValue)
         slider:SetValue(defaultValue)
         slider:SetDark(false)
+        slider.DefaultValue = defaultValue
 
         slider.Slider.Paint = function(self, w, h)
             draw.RoundedBox(4, 0, h / 2 - 2, w, 4, UI_COLORS.slider_groove)
@@ -198,6 +238,18 @@ function TOOL.BuildCPanel(panel)
                 local x = i * stepSize
                 draw.RoundedBox(1, x - 1, h / 2 - 4, 2, 8, UI_COLORS.slider_notch)
             end
+
+            local defaultX = (defaultValue - min) / (max - min) * w
+            if defaultX >= 0 and defaultX <= w then
+                draw.RoundedBox(3, defaultX - 1.5, h / 2 - 7, 3, 14, UI_COLORS.default_marker)
+            end
+
+            if showMinMax then
+                draw.SimpleText(min, "DermaDefaultBold", 2, h - 2, UI_COLORS.text_secondary, TEXT_ALIGN_LEFT,
+                    TEXT_ALIGN_BOTTOM)
+                draw.SimpleText(max, "DermaDefaultBold", w - 2, h - 2, UI_COLORS.text_secondary, TEXT_ALIGN_RIGHT,
+                    TEXT_ALIGN_BOTTOM)
+            end
         end
 
         slider.Slider.Knob.Paint = function(self, w, h)
@@ -207,25 +259,33 @@ function TOOL.BuildCPanel(panel)
 
         local function updateDisplay()
             local val = slider:GetValue()
-            local displayText = string.format(decimals > 0 and "%." .. decimals .. "f%s" or "%d%s", val, unit or "")
+            local displayText = string.format(
+                decimals > 0 and "%." .. decimals .. "f%s" or "%d%s",
+                val, unit or ""
+            )
             valueDisplay:SetText(displayText)
         end
 
         updateDisplay()
 
+        resetButton.DoClick = function()
+            slider:SetValue(defaultValue)
+            RunConsoleCommand(command, defaultValue)
+            surface.PlaySound("buttons/button16.wav")
+            CreateFlashEffect(slider, UI_COLORS.default_marker, 0.5)
+        end
+
         slider.OnValueChanged = function(self, val)
+            val = math.Clamp(val, min, max)
+
+            if decimals == 0 then
+                val = math.Round(val)
+            end
+
             updateDisplay()
             RunConsoleCommand(command, val)
 
-            -- Animation de confirmation
-            local flash = vgui.Create("DPanel", slider)
-            flash:SetSize(slider:GetWide(), slider:GetTall())
-            flash:SetPos(0, 0)
-            flash:SetAlpha(80)
-            flash.Paint = function(self, w, h)
-                draw.RoundedBox(4, 0, 0, w, h, UI_COLORS.slider_grip)
-            end
-            flash:AlphaTo(0, 0.3, 0, function() flash:Remove() end)
+            CreateFlashEffect(slider, UI_COLORS.slider_grip)
         end
 
         return container, slider
@@ -238,7 +298,8 @@ function TOOL.BuildCPanel(panel)
         1, 60, 0,
         RARELOAD.settings.autoSaveInterval or 2,
         "Nombre de secondes entre chaque sauvegarde automatique de la position",
-        "s"
+        "s",
+        true
     )
 
     local maxDistanceContainer, maxDistanceSlider = CreateSettingSlider(
@@ -248,7 +309,8 @@ function TOOL.BuildCPanel(panel)
         1, 1000, 0,
         RARELOAD.settings.maxDistance or 50,
         "Distance maximale (en unités) à laquelle les entités sauvegardées seront restaurées",
-        " u"
+        " u",
+        true
     )
 
     local angleToleranceContainer, angleToleranceSlider = CreateSettingSlider(
@@ -258,7 +320,38 @@ function TOOL.BuildCPanel(panel)
         1, 360, 1,
         RARELOAD.settings.angleTolerance or 100.0,
         "Tolérance d'angle (en degrés) pour la restauration des entités",
-        "°"
+        "°",
+        true
+    )
+
+    local npcBatchSizeContainer, npcBatchSizeSlider = CreateSettingSlider(
+        panel,
+        "NPC Batch Size",
+        "set_npc_batch_size",
+        1, 5, 0,
+        RARELOAD.settings.npcBatchSize or 5,
+        "Nombre d'entités NPC à restaurer en même temps",
+        " entités"
+    )
+
+    local npcSpawnIntervalContainer, npcSpawnIntervalSlider = CreateSettingSlider(
+        panel,
+        "NPC Spawn Interval",
+        "set_npc_spawn_interval",
+        0.2, 1, 1,
+        RARELOAD.settings.npcSpawnInterval or 0.2,
+        "Nombre de secondes entre chaque restauration d'entité NPC",
+        "s"
+    )
+
+    local restoreDelayContainer, restoreDelaySlider = CreateSettingSlider(
+        panel,
+        "Restore Delay",
+        "set_restore_delay",
+        0, 5, 1,
+        RARELOAD.settings.restoreDelay or 1,
+        "Délai (en secondes) avant de restaurer les entités sauvegardées",
+        "s"
     )
 
     local separator = vgui.Create("DPanel", panel)
@@ -273,7 +366,6 @@ function TOOL.BuildCPanel(panel)
     ------------------------------------------------------------------------]
     --------------------------------------Fin des options de curseurs-------]
     ------------------------------------------------------------------------]
-
 
     -------------------------------------------------------------------------]
     ---------------------------Toolgun Saved Npcs And Entities Information---]
@@ -714,6 +806,7 @@ function TOOL.BuildCPanel(panel)
             local scrollPanel = vgui.Create("DScrollPanel", contentContainer)
             scrollPanel:Dock(FILL)
 
+            ---@class DScrollPanel
             local scrollbar = scrollPanel:GetVBar()
             if IsValid(scrollbar) then
                 scrollbar:SetWide(8)
@@ -731,7 +824,6 @@ function TOOL.BuildCPanel(panel)
                 end
             end
 
-            -- Trier les données alphabétiquement
             table.sort(dataList, function(a, b)
                 return (a.class or "") < (b.class or "")
             end)

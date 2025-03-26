@@ -4,8 +4,8 @@ RARELOAD.settings = RARELOAD.settings or {}
 -- This function is called when the addon need to restore NPCs from a save file. Allow to restore relations, targets, schedules, etc.
 function RARELOAD.RestoreNPCsFromSave(savedInfo, settings)
     local npcsToCreate = table.Copy(savedInfo.npcs)
-    local batchSize = settings.npcBatchSize or 5
-    local interval = settings.npcSpawnInterval or 0.2
+    local batchSize = RARELOAD.settings.npcBatchSize
+    local interval = RARELOAD.settings.npcSpawnInterval
 
     local NPCRestoration = {}
     NPCRestoration.spawnedNPCsByID = {}
@@ -40,6 +40,8 @@ function RARELOAD.RestoreNPCsFromSave(savedInfo, settings)
 
             if not self:NPCExistsAtLocation(npcData) then
                 local success, newNPC = pcall(function()
+                    ---@class npc : Entity
+                    ---@field RareloadData table
                     local npc = ents.Create(npcData.class)
                     if not IsValid(npc) then return nil end
 
@@ -55,18 +57,14 @@ function RARELOAD.RestoreNPCsFromSave(savedInfo, settings)
                     npc:SetAngles(npcData.ang)
 
                     if npcData.keyValues then
-                        -- Make a copy of keyValues without squadname
                         local keyValuesCopy = table.Copy(npcData.keyValues)
-                        -- Store the original squad name but don't apply it yet
                         local originalSquad = keyValuesCopy.squadname
                         keyValuesCopy.squadname = nil
 
-                        -- Apply all keyValues except squadname
                         for key, value in pairs(keyValuesCopy) do
                             npc:SetKeyValue(key, value)
                         end
 
-                        -- Store original squad for later processing
                         if originalSquad then
                             npcData.originalSquad = originalSquad
                         end
@@ -84,13 +82,17 @@ function RARELOAD.RestoreNPCsFromSave(savedInfo, settings)
                     npc:SetSkin(npcData.skin or 0)
                     if npcData.bodygroups then
                         for id, value in pairs(npcData.bodygroups) do
-                            npc:SetBodygroup(tonumber(id), value)
+                            local bodygroupID = tonumber(id)
+                            if bodygroupID then
+                                npc:SetBodygroup(bodygroupID, value)
+                            end
                         end
                     end
 
                     if npcData.weapons and #npcData.weapons > 0 then
                         for _, weaponData in ipairs(npcData.weapons) do
                             if weaponData.class then
+                                ---@diagnostic disable-next-line: undefined-field
                                 local weapon = npc:Give(weaponData.class)
 
                                 if IsValid(weapon) and weaponData.clipAmmo then
@@ -172,7 +174,6 @@ function RARELOAD.RestoreNPCsFromSave(savedInfo, settings)
             end
         end
 
-        -- Continue with other restoration tasks
         local scheduleCount = 0
         local targetCount = 0
 
@@ -243,7 +244,6 @@ function RARELOAD.RestoreNPCsFromSave(savedInfo, settings)
                 table.insert(squads[squadName], npc)
             end
 
-            -- Debug squad compositions with new debug system
             if localDebugEnabled then
                 for squadName, members in pairs(squads) do
                     RARELOAD.Debug.LogSquadInfo(squadName, members, 0)
@@ -256,7 +256,6 @@ function RARELOAD.RestoreNPCsFromSave(savedInfo, settings)
                     continue
                 end
 
-                -- Debug relationships with new debug system
                 if localDebugEnabled then
                     for _, npc1 in ipairs(members) do
                         for _, npc2 in ipairs(members) do
