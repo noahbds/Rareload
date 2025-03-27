@@ -308,3 +308,5 @@ end
 net.Receive("RareloadTeleportTo", function()
     local pos = net.ReadVector()
 end)
+
+concommand.Add("entity_viewer_open", OpenEntityViewer)

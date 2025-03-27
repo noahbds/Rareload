@@ -37,6 +37,7 @@ local function loadAddonStatefortool()
     end
 end
 
+
 local COLOR_ENABLED = Color(50, 150, 255)
 local COLOR_DISABLED = Color(255, 50, 50)
 
