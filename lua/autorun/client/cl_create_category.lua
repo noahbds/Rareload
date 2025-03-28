@@ -18,7 +18,7 @@ function CreateCategory(parent, title, dataList, isNPC, filter)
 
     local mainContainer = vgui.Create("DPanel", parent)
     mainContainer:Dock(TOP)
-    mainContainer:DockMargin(10, 10, 10, 0)
+    mainContainer:DockMargin(40, 40, 40, 0)
     mainContainer:SetPaintBackground(false)
 
     local itemHeight = 140

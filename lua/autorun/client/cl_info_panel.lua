@@ -23,7 +23,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted)
     end
 
     panel.OnCursorExited = function(self)
-        self.IsHovered = function() return true end
+        self.IsHovered = function() return false end
     end
 
     local modelPanel = vgui.Create("DModelPanel", panel)
@@ -130,9 +130,21 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted)
     end
 
     if isNPC and data.weapons and #data.weapons > 0 then
-        AddInfoLine(leftColumn, "Weapons", #data.weapons > 2
-            and data.weapons[1] .. " +" .. (#data.weapons - 1)
-            or table.concat(data.weapons, ", "),
+        local weaponStrings = {}
+        for i, weapon in ipairs(data.weapons) do
+            if type(weapon) == "string" then
+                table.insert(weaponStrings, weapon)
+            elseif type(weapon) == "table" and weapon.class then
+                table.insert(weaponStrings, weapon.class)
+            else
+                table.insert(weaponStrings, tostring(weapon))
+            end
+        end
+
+        AddInfoLine(leftColumn, "Weapons", #weaponStrings > 2
+            and weaponStrings[1] .. " +" .. (#weaponStrings - 1)
+            or table.concat(weaponStrings, ", "),
+            nil,
             "Saved weapons with which the NPC will reappear. This is not necessarily the current weapons of the NPC in question.")
     end
 

@@ -118,7 +118,7 @@ function RARELOAD.Debug.Log(level, header, messages, entity)
     MsgC(levelConfig.color, "[=====================================================================]\n\n")
 
     if DEBUG_CONFIG.LOG_TO_FILE then
-        local logFile = DEBUG_CONFIG.LOG_FOLDER .. "rareload_" .. os.date("%Y-%m-%d") .. ".log"
+        local logFile = DEBUG_CONFIG.LOG_FOLDER .. "rareload_" .. os.date("%Y-%m-%d_%H-%M") .. ".txt"
         local logContent = fullHeader .. "\n"
 
         for _, message in ipairs(messages) do
@@ -134,13 +134,190 @@ function RARELOAD.Debug.Log(level, header, messages, entity)
     end
 end
 
+function RARELOAD.Debug.LogSquadFileOnly(title, level, logEntries)
+    print("[RARELOAD] Squad logging attempt: " .. title)
+
+    if not DEBUG_CONFIG.ENABLED() then
+        print("[RARELOAD] Debug is disabled - aborting squad logging")
+        return
+    end
+
+    if not DEBUG_CONFIG.LOG_TO_FILE then
+        print("[RARELOAD] File logging is disabled - aborting squad logging")
+        return
+    end
+
+    if not file.Exists(DEBUG_CONFIG.LOG_FOLDER, "DATA") then
+        print("[RARELOAD] Creating log folder directly")
+        file.CreateDir(DEBUG_CONFIG.LOG_FOLDER)
+    end
+
+    level = level or DEBUG_CONFIG.DEFAULT_LEVEL
+    local levelConfig = DEBUG_CONFIG.LEVELS[level] or DEBUG_CONFIG.LEVELS[DEBUG_CONFIG.DEFAULT_LEVEL]
+
+    local testFile = DEBUG_CONFIG.LOG_FOLDER .. "write_test.txt"
+    file.Write(testFile, "Test write")
+
+    if not file.Exists(testFile, "DATA") then
+        print("[RARELOAD] ERROR: Cannot write to logs folder! Attempting to write to root data folder instead.")
+        DEBUG_CONFIG.LOG_FOLDER = ""
+    else
+        print("[RARELOAD] Write test successful")
+        file.Delete(testFile)
+    end
+
+    local logFile = DEBUG_CONFIG.LOG_FOLDER .. "rareload_squads_" .. os.date("%Y-%m-%d_%H-%M") .. ".txt"
+    local logContent = "[" .. GetTimestamp() .. "] " .. title .. "\n"
+
+    if type(logEntries) ~= "table" or #logEntries == 0 then
+        logContent = logContent .. "No entries provided\n"
+    else
+        for _, entry in ipairs(logEntries) do
+            local header = entry.header or "No header"
+            local messages = entry.messages or {}
+            local entity = entry.entity
+
+            local entityInfo = ""
+            if IsValid(entity) then
+                if entity:IsPlayer() then
+                    entityInfo = " | Player: " .. entity:Nick() .. " (" .. entity:SteamID() .. ")"
+                else
+                    entityInfo = " | Entity: " .. entity:GetClass() .. " (" .. entity:EntIndex() .. ")"
+                end
+            end
+
+            local timestamp = GetTimestamp()
+            local fullHeader = string.format("[%s][RARELOAD %s] %s%s",
+                timestamp, levelConfig.prefix, header, entityInfo)
+
+            logContent = logContent .. fullHeader .. "\n"
+
+            for _, message in ipairs(messages) do
+                if type(message) == "table" then
+                    logContent = logContent .. TableToString(message) .. "\n"
+                else
+                    logContent = logContent .. tostring(message) .. "\n"
+                end
+            end
+
+            logContent = logContent .. "---------------------------------------------------------------------\n"
+        end
+    end
+
+    print("[RARELOAD DEBUG] Attempting direct write to: " .. logFile)
+
+    if not file.Exists(logFile, "DATA") then
+        file.Write(logFile, "")
+    end
+
+    file.Append(logFile, logContent)
+
+    if file.Exists(logFile, "DATA") then
+        local size = file.Size(logFile, "DATA")
+        print("[RARELOAD] Log file written successfully. Size: " .. size .. " bytes")
+
+        local content = file.Read(logFile, "DATA")
+        if content then
+            print("[RARELOAD] First 20 bytes: " .. string.sub(content, 1, 20))
+        end
+    else
+        print("[RARELOAD] ERROR: Failed to write log file!")
+
+        local rootLogFile = "rareload_emergency_log.txt"
+        file.Append(rootLogFile, logContent)
+
+        if file.Exists(rootLogFile, "DATA") then
+            print("[RARELOAD DEBUG] Emergency log file created in root data folder.")
+        else
+            print("[RARELOAD DEBUG] CRITICAL ERROR: Cannot write to file system at all!")
+        end
+    end
+end
+
+function RARELOAD.Debug.LogGroup(title, level, logEntries)
+    if not DEBUG_CONFIG.ENABLED() then return end
+
+    level = level or DEBUG_CONFIG.DEFAULT_LEVEL
+    local levelConfig = DEBUG_CONFIG.LEVELS[level] or DEBUG_CONFIG.LEVELS[DEBUG_CONFIG.DEFAULT_LEVEL]
+
+    MsgC(levelConfig.color, "\n[=====================================================================] " ..
+        title .. " [=====================================================================]\n\n")
+
+    for _, entry in ipairs(logEntries) do
+        local header = entry.header or ""
+        local messages = entry.messages or {}
+        local entity = entry.entity
+
+        local entityInfo = ""
+        if IsValid(entity) then
+            if entity:IsPlayer() then
+                entityInfo = " | Player: " .. entity:Nick() .. " (" .. entity:SteamID() .. ")"
+            else
+                entityInfo = " | Entity: " .. entity:GetClass() .. " (" .. entity:EntIndex() .. ")"
+            end
+        end
+
+        local timestamp = GetTimestamp()
+        local fullHeader = string.format("[%s][RARELOAD %s] %s%s",
+            timestamp, levelConfig.prefix, header, entityInfo)
+
+        MsgC(levelConfig.color, fullHeader .. "\n")
+
+        for _, message in ipairs(messages) do
+            if type(message) == "table" then
+                print(TableToString(message))
+            else
+                print(tostring(message))
+            end
+        end
+
+        MsgC(levelConfig.color, "---------------------------------------------------------------------\n")
+    end
+
+    MsgC(levelConfig.color, "[=====================================================================]\n\n")
+
+    if DEBUG_CONFIG.LOG_TO_FILE then
+        -- Use a fixed date (e.g., the current day) for the log file name
+        local logFile = DEBUG_CONFIG.LOG_FOLDER .. "rareload_" .. os.date("%Y-%m-%d_%H-%M") .. ".txt"
+        local logContent = "[" .. GetTimestamp() .. "] " .. title .. "\n"
+
+        for _, entry in ipairs(logEntries) do
+            local header = entry.header or ""
+            local messages = entry.messages or {}
+
+            logContent = logContent .. header .. "\n"
+            for _, message in ipairs(messages) do
+                if type(message) == "table" then
+                    logContent = logContent .. TableToString(message) .. "\n"
+                else
+                    logContent = logContent .. tostring(message) .. "\n"
+                end
+            end
+            logContent = logContent .. "---------------------------------------------------------------------\n"
+        end
+
+        -- Append the log content to the single daily log file
+        file.Append(logFile, logContent)
+    end
+end
+
+hook.Add("Initialize", "RARELOAD_DebugModuleInit", function()
+    timer.Simple(0.3, function()
+        if DEBUG_CONFIG.ENABLED() then
+            RARELOAD.Debug.Log("INFO", "Rareload Debug Module Initialized", {
+                "Version: " .. (RARELOAD.version or "Unknown"),
+                "Map: " .. game.GetMap(),
+                "Date: " .. os.date("%Y-%m-%d_%H-%M")
+            })
+        end
+    end)
+end)
+
 function RARELOAD.Debug.LogSpawnInfo(ply)
     if not DEBUG_CONFIG.ENABLED() then return end
 
-    -- Store player reference for validation
     local playerID = IsValid(ply) and (ply:Nick() .. " (" .. ply:SteamID() .. ")") or "Unknown Player"
 
-    -- Check if player is valid before starting timer
     if not IsValid(ply) then
         RARELOAD.Debug.Log("ERROR", "LogSpawnInfo Failed", "Player entity is not valid")
         return
@@ -152,7 +329,6 @@ function RARELOAD.Debug.LogSpawnInfo(ply)
             return
         end
 
-        -- Basic player state information
         local playerState = {
             position = VectorToDetailedString(ply:GetPos()),
             eyeAngles = AngleToDetailedString(ply:EyeAngles()),
@@ -171,7 +347,6 @@ function RARELOAD.Debug.LogSpawnInfo(ply)
             crouchSpeed = ply:GetCrouchedWalkSpeed() * ply:GetWalkSpeed()
         }
 
-        -- Only include settings if verbose debugging is enabled
         local messageData = {
             "=== PLAYER STATE ===",
             "Position: " .. playerState.position,
@@ -195,7 +370,6 @@ function RARELOAD.Debug.LogSpawnInfo(ply)
             "Crouch Speed: " .. playerState.crouchSpeed
         }
 
-        -- Add settings info only if verbose debug is enabled
         if RARELOAD.settings.verboseDebug then
             local settings = {}
             for k, v in pairs(RARELOAD.settings) do
@@ -207,7 +381,6 @@ function RARELOAD.Debug.LogSpawnInfo(ply)
 
         RARELOAD.Debug.Log("INFO", "Spawn Debug Information", messageData, ply)
 
-        -- Log inventory in a separate call to keep logs organized
         RARELOAD.Debug.LogInventory(ply)
     end)
 end
@@ -474,106 +647,16 @@ function RARELOAD.Debug.LogSquadInfo(squadName, members, removedNPCs)
             end
         end
 
-        -- Log squad composition
-        RARELOAD.Debug.Log("INFO", "Squad Information", {
-            squadInfo,
-            "Member Details:", memberDetails,
-            "NPCs removed due to enemy relations: " .. (removedNPCs or 0)
+        RARELOAD.Debug.LogSquadFileOnly("Squad Information", "INFO", {
+            {
+                header = squadName,
+                messages = {
+                    squadInfo,
+                    "Member Details:", memberDetails,
+                    "NPCs removed due to enemy relations: " .. (removedNPCs or 0)
+                }
+            }
         })
-    end)
-end
-
-function RARELOAD.Debug.LogSquadRelation(npc1, npc2, disposition)
-    timer.Simple(1, function()
-        if not DEBUG_CONFIG.ENABLED() then return end
-
-        if disposition == 1 then -- D_HT (1) is hate/enemy disposition
-            RARELOAD.Debug.Log("WARNING", "Squad Enemy Relation Detected", {
-                "Entity 1: " .. npc1:GetClass() .. " (ID: " .. (npc1.RareloadUniqueID or "unknown") .. ")",
-                "Entity 2: " .. npc2:GetClass() .. " (ID: " .. (npc2.RareloadUniqueID or "unknown") .. ")",
-                "Disposition: " .. disposition .. " (Enemy)",
-                "Squad: " .. (npc1.RareloadData and npc1.RareloadData.originalSquad or "unknown")
-            })
-        elseif DEBUG_CONFIG.ENABLED() and RARELOAD.settings.verboseDebug then
-            -- Only log non-enemy relations in verbose mode
-            RARELOAD.Debug.Log("VERBOSE", "Squad Relation", {
-                "Entity 1: " .. npc1:GetClass() .. " (ID: " .. (npc1.RareloadUniqueID or "unknown") .. ")",
-                "Entity 2: " .. npc2:GetClass() .. " (ID: " .. (npc2.RareloadUniqueID or "unknown") .. ")",
-                "Disposition: " .. disposition,
-                "Squad: " .. (npc1.RareloadData and npc1.RareloadData.originalSquad or "unknown")
-            })
-        end
-    end)
-end
-
--- Add this function to your NPCs handling file
-function RARELOAD.ForceSquadFriendlyRelations(squadName, members)
-    timer.Simple(1.1, function()
-        if not members or #members < 2 then return end
-
-        -- Force D_LI (3) disposition between all members
-        for i = 1, #members do
-            local npc1 = members[i]
-            if not IsValid(npc1) then continue end
-
-            for j = 1, #members do
-                if i == j then continue end
-                local npc2 = members[j]
-                if not IsValid(npc2) then continue end
-
-                -- Set mutual like disposition
-                npc1:AddEntityRelationship(npc2, D_LI, 99)
-                npc2:AddEntityRelationship(npc1, D_LI, 99)
-
-                -- Override any existing disposition
-                if npc1.SetRelationship then npc1:SetRelationship(npc2, D_LI) end
-                if npc2.SetRelationship then npc2:SetRelationship(npc1, D_LI) end
-            end
-        end
-
-        RARELOAD.Debug.Log("INFO", "Squad Relations Fixed", {
-            "Squad: " .. squadName,
-            "Members: " .. #members,
-            "Action: Forced friendly relations"
-        })
-    end)
-end
-
--- New function to report squad errors
-function RARELOAD.Debug.LogSquadError(squadName, errorInfo)
-    timer.Simple(1.2, function()
-        if not DEBUG_CONFIG.ENABLED() then return end
-
-        RARELOAD.Debug.Log("ERROR", "Squad Error", {
-            "Squad: " .. squadName,
-            "Error: " .. errorInfo
-        })
-    end)
-end
-
-function RARELOAD.Debug.MonitorHooks()
-    timer.Simple(1.3, function()
-        if not DEBUG_CONFIG.ENABLED() then return end
-
-        local hookNames = {
-            "PlayerSpawn",
-            "PlayerDeath",
-            "PlayerDisconnected",
-            "OnPlayerChangedTeam",
-            "PlayerEnteredVehicle",
-            "PlayerLeaveVehicle"
-        }
-
-        for _, hookName in ipairs(hookNames) do
-            hook.Add(hookName, "RARELOAD_DebugMonitor_" .. hookName, function(ply)
-                RARELOAD.Debug.Log("VERBOSE", "Hook " .. hookName .. " triggered", {
-                    "Time: " .. os.date("%H:%M:%S"),
-                    "Position: " .. VectorToDetailedString(ply:GetPos()),
-                }, ply)
-            end)
-        end
-
-        RARELOAD.Debug.Log("INFO", "Hook Monitoring Enabled", hookNames)
     end)
 end
 
@@ -618,16 +701,3 @@ function RARELOAD.Debug.TestSystemState()
         return state
     end)
 end
-
-hook.Add("Initialize", "RARELOAD_DebugModuleInit", function()
-    timer.Simple(1.5, function()
-        if DEBUG_CONFIG.ENABLED() then
-            RARELOAD.Debug.MonitorHooks()
-            RARELOAD.Debug.Log("INFO", "Rareload Debug Module Initialized", {
-                "Version: " .. (RARELOAD.version or "Unknown"),
-                "Map: " .. game.GetMap(),
-                "Date: " .. os.date("%d/%m/%Y %H:%M:%S")
-            })
-        end
-    end)
-end)

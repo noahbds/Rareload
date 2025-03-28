@@ -1,7 +1,3 @@
-RARELOAD = RARELOAD or {}
-local startTime = SysTime()
-local count = 0
-
 util.AddNetworkString("UpdatePhantomPosition")
 
 concommand.Add("toggle_rareload", function(ply)
@@ -28,6 +24,8 @@ concommand.Add("toggle_debug", function(ply)
     ToggleSetting(ply, 'debugEnabled', 'Debug mode')
 end)
 
+---[[ Beta [NOT TESTED] ]]---
+
 concommand.Add("toggle_retain_health_armor", function(ply)
     ToggleSetting(ply, 'retainHealthArmor', 'Retain health and armor')
 end)
@@ -52,6 +50,7 @@ concommand.Add("toggle_retain_vehicles", function(ply)
     ToggleSetting(ply, 'retainVehicles', 'Retain vehicles')
 end)
 
+---[[ End Of Beta [NOT TESTED] ]]---
 
 -------------------------------------------------------------------------------------------------------------------------]
 ---------------------------------------------------------slider commands-------------------------------------------------]
@@ -141,8 +140,7 @@ concommand.Add("save_position", function(ply, _, _)
         ang = { newAng.p, newAng.y, newAng.r },
         moveType = ply:GetMoveType(),
         activeWeapon = newActiveWeapon,
-        inventory = newInventory,
-        entities = {} -- This will hold all the entities (NPCs, vehicles, etc.)
+        inventory = newInventory
     }
 
     if RARELOAD.settings.retainHealthArmor then
@@ -172,9 +170,42 @@ concommand.Add("save_position", function(ply, _, _)
     end
 
     if RARELOAD.settings.retainVehicles then
+        playerData.vehicles = {}
+        local startTime = SysTime()
+        local count = 0
+
         for _, vehicle in ipairs(ents.FindByClass("prop_vehicle_*")) do
-            SaveEntityData(vehicle, playerData)
-            count = count + 1
+            if IsValid(vehicle) then
+                local owner = vehicle:CPPIGetOwner()
+                if (IsValid(owner) and owner:IsPlayer()) or vehicle.SpawnedByRareload then
+                    count = count + 1
+                    local vehicleData = {
+                        class = vehicle:GetClass(),
+                        model = vehicle:GetModel(),
+                        pos = vehicle:GetPos(),
+                        ang = vehicle:GetAngles(),
+                        health = vehicle:Health(),
+                        skin = vehicle:GetSkin(),
+                        bodygroups = {},
+                        color = vehicle:GetColor(),
+                        frozen = IsValid(vehicle:GetPhysicsObject()) and not vehicle:GetPhysicsObject():IsMotionEnabled(),
+                        owner = IsValid(owner) and owner:SteamID() or nil
+                    }
+
+                    for i = 0, vehicle:GetNumBodyGroups() - 1 do
+                        vehicleData.bodygroups[i] = vehicle:GetBodygroup(i)
+                    end
+
+                    if vehicle.GetVehicleParams then
+                        local params = vehicle:GetVehicleParams()
+                        if params then
+                            vehicleData.vehicleParams = params
+                        end
+                    end
+
+                    table.insert(playerData.vehicles, vehicleData)
+                end
+            end
         end
 
         if RARELOAD.settings.debugEnabled then
@@ -183,27 +214,222 @@ concommand.Add("save_position", function(ply, _, _)
         end
     end
 
-    if RARELOAD.settings.retainNPCs then
-        for _, npc in ipairs(ents.FindByClass("npc_*")) do
-            SaveEntityData(npc, playerData)
-            count = count + 1
-        end
-
-        if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD DEBUG] Saved " .. count .. " NPCs in " ..
-                math.Round((SysTime() - startTime) * 1000) .. " ms")
+    if RARELOAD.settings.retainVehicleState and ply:InVehicle() then
+        local vehicle = ply:GetVehicle()
+        if IsValid(vehicle) then
+            local phys = vehicle:GetPhysicsObject()
+            playerData.vehicleState = {
+                class = vehicle:GetClass(),
+                pos = vehicle:GetPos(),
+                ang = vehicle:GetAngles(),
+                health = vehicle:Health(),
+                frozen = IsValid(phys) and not phys:IsMotionEnabled(),
+                savedinsidevehicle = true
+            }
         end
     end
 
-    if RARELOAD.settings.retainEntities then
-        for _, entity in ipairs(ents.GetAll()) do
-            SaveEntityData(entity, playerData)
-            count = count + 1
+    if RARELOAD.settings.retainMapEntities then
+        playerData.entities = {}
+        local startTime = SysTime()
+        local count = 0
+
+        for _, ent in ipairs(ents.GetAll()) do
+            if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() and not ent:IsVehicle() then
+                local owner = ent:CPPIGetOwner()
+                if (IsValid(owner) and owner:IsPlayer()) or ent.SpawnedByRareload then
+                    count = count + 1
+                    local entityData = {
+                        class = ent:GetClass(),
+                        pos = ent:GetPos(),
+                        ang = ent:GetAngles(),
+                        model = ent:GetModel(),
+                        health = ent:Health(),
+                        maxHealth = ent:GetMaxHealth(),
+                        frozen = IsValid(ent:GetPhysicsObject()) and not ent:GetPhysicsObject():IsMotionEnabled(),
+                    }
+
+                    table.insert(playerData.entities, entityData)
+                end
+            end
         end
 
         if RARELOAD.settings.debugEnabled then
             print("[RARELOAD DEBUG] Saved " .. count .. " entities in " ..
                 math.Round((SysTime() - startTime) * 1000) .. " ms")
+        end
+    end
+
+    if RARELOAD.settings.retainMapNPCs then
+        playerData.npcs = {}
+        local startTime = SysTime()
+        local count = 0
+
+        local function GenerateNPCUniqueID(npc)
+            if not IsValid(npc) then return "invalid" end
+
+            local pos = npc:GetPos()
+            local posStr = math.floor(pos.x) .. "_" .. math.floor(pos.y) .. "_" .. math.floor(pos.z)
+            local id = npc:GetClass() .. "_" .. posStr .. "_" .. (npc:GetModel() or "nomodel")
+
+            if npc:GetKeyValues().targetname then
+                id = id .. "_" .. npc:GetKeyValues().targetname
+            end
+            if npc:GetKeyValues().squadname then
+                id = id .. "_" .. npc:GetKeyValues().squadname
+            end
+
+            return id
+        end
+
+        local function GetNPCRelations(npc)
+            local relations = {
+                players = {},
+                npcs = {}
+            }
+
+            if not npc.Disposition then
+                return relations
+            end
+
+            for _, player in ipairs(player.GetAll()) do
+                local success, disposition = pcall(function() return npc:Disposition(player) end)
+                if success and disposition then
+                    relations.players[player:SteamID()] = disposition
+                end
+            end
+
+            local npcMap = {}
+            for _, otherNPC in ipairs(ents.FindByClass("npc_*")) do
+                if IsValid(otherNPC) and otherNPC ~= npc then
+                    local npcID = GenerateNPCUniqueID(otherNPC)
+                    npcMap[otherNPC] = npcID
+
+                    local success, disposition = pcall(function() return npc:Disposition(otherNPC) end)
+                    if success and disposition then
+                        relations.npcs[npcID] = disposition
+                    end
+                end
+            end
+
+            return relations
+        end
+
+        RARELOAD.npcIDMap = {}
+
+
+        for _, npc in ipairs(ents.FindByClass("npc_*")) do
+            if IsValid(npc) then
+                local owner = npc:CPPIGetOwner()
+                if (IsValid(owner) and owner:IsPlayer()) or npc.SpawnedByRareload then
+                    count = count + 1
+                    local npcID = GenerateNPCUniqueID(npc)
+
+                    local npcData = {
+                        id = npcID,
+                        class = npc:GetClass(),
+                        pos = npc:GetPos(),
+                        ang = npc:GetAngles(),
+                        model = npc:GetModel(),
+                        health = npc:Health(),
+                        maxHealth = npc:GetMaxHealth(),
+                        weapons = {},
+                        keyValues = {},
+                        skin = npc:GetSkin(),
+                        bodygroups = {},
+                        target = nil,
+                        frozen = IsValid(npc:GetPhysicsObject()) and not npc:GetPhysicsObject():IsMotionEnabled(),
+                        relations = GetNPCRelations(npc),
+                        schedule = nil,
+                        SavedByRareload = true
+                    }
+
+                    for i = 0, npc:GetNumBodyGroups() - 1 do
+                        npcData.bodygroups[i] = npc:GetBodygroup(i)
+                    end
+
+                    if npc.GetEnemy and IsValid(npc:GetEnemy()) then
+                        local enemy = npc:GetEnemy()
+                        if enemy:IsPlayer() then
+                            npcData.target = {
+                                type = "player",
+                                id = enemy:SteamID()
+                            }
+                        elseif enemy:IsNPC() then
+                            npcData.target = {
+                                type = "npc",
+                                id = GenerateNPCUniqueID(enemy)
+                            }
+                        end
+                    end
+
+                    if npc.GetCurrentSchedule then
+                        local scheduleID = npc:GetCurrentSchedule()
+                        if scheduleID then
+                            npcData.schedule = {
+                                id = scheduleID
+                            }
+
+                            if npc.GetTarget and IsValid(npc:GetTarget()) then
+                                local target = npc:GetTarget()
+                                if target:IsPlayer() then
+                                    npcData.schedule.target = {
+                                        type = "player",
+                                        id = target:SteamID()
+                                    }
+                                else
+                                    npcData.schedule.target = {
+                                        type = "entity",
+                                        id = GenerateNPCUniqueID(target)
+                                    }
+                                end
+                            end
+                        end
+                    end
+
+                    local success, weapons = pcall(function() return npc:GetWeapons() end)
+                    if success and istable(weapons) then
+                        for _, weapon in ipairs(weapons) do
+                            if IsValid(weapon) then
+                                local weaponData = {
+                                    class = weapon:GetClass()
+                                }
+
+                                pcall(function()
+                                    weaponData.clipAmmo = weapon:Clip1()
+                                end)
+
+                                table.insert(npcData.weapons, weaponData)
+                            end
+                        end
+                    end
+
+                    npcData.keyValues = {}
+                    local keyValues = {
+                        "spawnflags", "squadname", "targetname",
+                        "wakeradius", "sleepstate", "health",
+                        "rendercolor", "rendermode", "renderamt"
+                    }
+
+                    for _, keyName in ipairs(keyValues) do
+                        local value = npc:GetKeyValues()[keyName]
+                        if value then
+                            npcData.keyValues[keyName] = value
+                        end
+                    end
+
+                    RARELOAD.npcIDMap[npcID] = npcData
+
+                    table.insert(playerData.npcs, npcData)
+                end
+            end
+        end
+
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Saved " .. count .. " NPCs in " ..
+                math.Round((SysTime() - startTime) * 1000) .. " ms")
+            print("[RARELOAD DEBUG] NPC data size: " ..
+                string.NiceSize(#util.TableToJSON(playerData.npcs)))
         end
     end
 

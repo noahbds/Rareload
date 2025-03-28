@@ -234,14 +234,81 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
 
     -- **Restore NPCs**
     if settings.retainMapNPCs and SavedInfo.npcs and #SavedInfo.npcs > 0 then
-        RARELOAD.RestoreNPCsFromSave(SavedInfo, settings)
+        RARELOAD.RestoreNPCs()
     end
 
     -- **Restore Active Weapon**
     if SavedInfo.activeWeapon then
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Attempting to restore active weapon: " .. tostring(SavedInfo.activeWeapon))
+        end
+
+        timer.Simple(0.2, function()
+            if not IsValid(ply) then
+                if RARELOAD.settings.debugEnabled then
+                    print("[RARELOAD DEBUG] Player invalid before weapon selection")
+                end
+                return
+            end
+
+            local availableWeapons = {}
+            for _, weapon in ipairs(ply:GetWeapons()) do
+                if IsValid(weapon) then
+                    table.insert(availableWeapons, weapon:GetClass())
+                end
+            end
+
+            if RARELOAD.settings.debugEnabled then
+                print("[RARELOAD DEBUG] Player weapons available: " .. table.concat(availableWeapons, ", "))
+            end
+        end)
+
+        -- First attempt at 0.6 seconds
         timer.Simple(0.6, function()
-            if IsValid(ply) and ply:HasWeapon(SavedInfo.activeWeapon) then
-                ply:SelectWeapon(SavedInfo.activeWeapon)
+            if IsValid(ply) then
+                if ply:HasWeapon(SavedInfo.activeWeapon) then
+                    if RARELOAD.settings.debugEnabled then
+                        print("[RARELOAD DEBUG] Selecting weapon (0.6s): " .. SavedInfo.activeWeapon)
+                    end
+                    ply:SelectWeapon(SavedInfo.activeWeapon)
+                else
+                    if RARELOAD.settings.debugEnabled then
+                        print("[RARELOAD DEBUG] Player doesn't have weapon (0.6s): " .. SavedInfo.activeWeapon)
+                    end
+                end
+            end
+        end)
+
+        -- Second attempt at 1.2 seconds if needed
+        timer.Simple(1.2, function()
+            if IsValid(ply) and ply:GetActiveWeapon() and ply:GetActiveWeapon():GetClass() ~= SavedInfo.activeWeapon then
+                if ply:HasWeapon(SavedInfo.activeWeapon) then
+                    if RARELOAD.settings.debugEnabled then
+                        print("[RARELOAD DEBUG] Second attempt selecting weapon (1.2s): " .. SavedInfo.activeWeapon)
+                    end
+                    ply:SelectWeapon(SavedInfo.activeWeapon)
+
+                    -- Force weapon selection via input
+                    timer.Simple(0.1, function()
+                        if IsValid(ply) and ply:HasWeapon(SavedInfo.activeWeapon) then
+                            ply:ConCommand("use " .. SavedInfo.activeWeapon)
+                        end
+                    end)
+                else
+                    if RARELOAD.settings.debugEnabled then
+                        print("[RARELOAD DEBUG] Weapon still not available (1.2s): " .. SavedInfo.activeWeapon)
+                    end
+                end
+            end
+        end)
+
+        -- Final check
+        timer.Simple(1.5, function()
+            if RARELOAD.settings.debugEnabled and IsValid(ply) then
+                local currentWeapon = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or "none"
+                print("[RARELOAD DEBUG] Final weapon state - Current: " .. currentWeapon ..
+                    ", Expected: " .. SavedInfo.activeWeapon ..
+                    ", Success: " .. tostring(currentWeapon == SavedInfo.activeWeapon))
             end
         end)
     end

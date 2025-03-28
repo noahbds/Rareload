@@ -68,7 +68,7 @@ function OpenEntityViewer()
     local headerPanel = vgui.Create("DPanel", frame)
     headerPanel:Dock(TOP)
     headerPanel:SetTall(40)
-    headerPanel:DockMargin(5, 5, 5, 5)
+    headerPanel:DockMargin(5, 5, 5, 0) -- Reduced bottom margin from 5 to 0
     headerPanel.Paint = function(self, w, h)
         draw.RoundedBox(6, 0, 0, w, h, THEME.panel)
     end
@@ -91,18 +91,18 @@ function OpenEntityViewer()
     ---@class DPropertySheet
     local tabs = vgui.Create("DPropertySheet", frame)
     tabs:Dock(FILL)
-    tabs:DockMargin(5, 5, 5, 5)
+    tabs:DockMargin(5, 0, 5, 5) -- Reduced top margin from 5 to 0
 
     tabs.Paint = function(self, w, h)
         draw.RoundedBox(6, 0, 0, w, h, THEME.panel)
     end
 
 
-    local function CreateTab(title, icon, customColors)
-        local colors = customColors or {
+    local function CreateTab(title, icon, isNPCTab)
+        local colors = {
             bg = THEME.background,
-            accent = THEME.accent,
-            hover = Color(THEME.accent.r * 1.2, THEME.accent.g * 1.2, THEME.accent.b * 1.2)
+            accent = isNPCTab and Color(240, 160, 80) or THEME.accent,
+            hover = isNPCTab and Color(255, 180, 100) or Color(100, 160, 255)
         }
 
         ---@class DScrollPanel
@@ -132,7 +132,15 @@ function OpenEntityViewer()
         end
 
         local sheet = tabs:AddSheet(title, scroll, icon)
-        sheet.Panel:SetPos(0, 0)
+
+        -- Style the tab button
+        if sheet.Tab then
+            sheet.Tab.Paint = function(self, w, h)
+                local isSelected = self:IsActive()
+                local bgColor = isSelected and colors.accent or Color(45, 45, 55)
+                draw.RoundedBox(4, 0, 0, w, h - (isSelected and 0 or 1), bgColor)
+            end
+        end
 
         function scroll:Refresh()
             self:Clear()
@@ -280,11 +288,12 @@ function OpenEntityViewer()
         headerPanel:SetWide(w - 10)
         refreshButton:SetPos(searchBar:GetX() - 40, 5)
 
+        tabs:InvalidateLayout(true)
+
         if tabs and tabs.Items then
             for _, tab in pairs(tabs.Items) do
-                local panel = tab.Panel
-                if IsValid(panel) then
-                    panel:SetTall(h - 100)
+                if IsValid(tab.Panel) then
+                    tab.Panel:InvalidateLayout(true)
                 end
             end
         end

@@ -93,6 +93,5 @@ function RARELOAD.RestoreEntities()
         end
 
         stats.endTime = SysTime()
-        RARELOAD.Debug.LogEntityRestoration(stats, entityData, errorMessages)
     end)
 end
