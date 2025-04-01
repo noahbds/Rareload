@@ -57,6 +57,7 @@ function CreateCategory(parent, title, dataList, isNPC, filter)
     local scrollPanel = vgui.Create("DScrollPanel", contentContainer)
     scrollPanel:Dock(FILL)
 
+    ---@class DScrollPanel
     local scrollbar = scrollPanel:GetVBar()
     if IsValid(scrollbar) then
         scrollbar:SetWide(8)

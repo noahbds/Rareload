@@ -13,9 +13,9 @@ local moveTypeNames = {
     [11] = "MOVETYPE_CUSTOM",
 }
 
-local phantomInfoCache = {}
-local CACHE_LIFETIME = 2
-local PHANTOM_CATEGORIES = {
+PhantomInfoCache = {}
+CACHE_LIFETIME = 2
+PHANTOM_CATEGORIES = {
     { "basic",     "Basic Information",     Color(70, 130, 180) },
     { "position",  "Position and Movement", Color(60, 179, 113) },
     { "equipment", "Equipment",             Color(218, 165, 32) },
@@ -23,31 +23,35 @@ local PHANTOM_CATEGORIES = {
     { "stats",     "Statistics",            Color(147, 112, 219) }
 }
 
-local phantomInteractionMode = false
-local phantomInteractionTarget = nil
-local phantomInteractionAngle = nil
-local panelSizeMultiplier = 1.0
-local scrollOffset = 0
-local maxScrollOffset = 0
-local scrollSpeed = 20
-local maxPanelHeight = 1000
-local scrollPersistence = {}
-local scrollbarWidth = 6
+PhantomInteractionMode = false
+PhantomInteractionTarget = nil
+PhantomInteractionAngle = nil
+PanelSizeMultiplier = 1.0
+ScrollOffset = 0
+MaxScrollOffset = 0
+ScrollSpeed = 20
+MaxPanelHeight = 1000
+ScrollPersistence = {}
+ScrollbarWidth = 6
+IsScrolling = false
+ScrollbarGrabbed = false
+ScrollbarGrabOffset = 0
 
 
-local isScrolling = false
-local scrollbarGrabbed = false
-local scrollbarGrabOffset = 0
+-- Improved CalculateOptimalPanelSize
+function CalculateOptimalPanelSize(categoryContent)
+    if type(categoryContent) ~= "table" then
+        return 350
+    end
 
-
-local function calculateOptimalPanelSize(categoryContent)
     local baseWidth = 350
-    local maxWidth = 500
     local minWidth = 300
-
+    local maxWidth = 500
     local contentWidth = baseWidth
+
     for _, lineData in ipairs(categoryContent) do
-        local label, value = lineData[1], tostring(lineData[2])
+        local label = tostring(lineData[1] or "")
+        local value = tostring(lineData[2] or "")
         surface.SetFont("Trebuchet18")
         local labelWidth = surface.GetTextSize(label .. ":")
         local valueWidth = surface.GetTextSize(value)
@@ -58,35 +62,46 @@ local function calculateOptimalPanelSize(categoryContent)
     return math.Clamp(contentWidth, minWidth, maxWidth)
 end
 
+-- Improved table.map
 function table.map(tbl, func)
-    if not tbl or type(tbl) ~= "table" then return {} end
-    local t = {}
+    if type(tbl) ~= "table" then return {} end
+
+    local result = {}
     for k, v in pairs(tbl) do
-        t[k] = func(v, k)
+        result[k] = func(v, k)
     end
-    return t
+    return result
 end
 
+-- Improved VectorToString
 local function VectorToString(vec)
     if type(vec) == "string" then
-        local x, y, z = vec:match("%[([%d.-]+) ([%d.-]+) ([%d.-]+)%]")
+        local x, y, z = vec:match("%[([%d%.%-]+)%s+([%d%.%-]+)%s+([%d%.%-]+)%]")
         if x and y and z then
             return string.format("X: %.1f, Y: %.1f, Z: %.1f", tonumber(x), tonumber(y), tonumber(z))
         end
         return vec
+    elseif type(vec) == "table" then
+        local x = vec.x or vec[1] or 0
+        local y = vec.y or vec[2] or 0
+        local z = vec.z or vec[3] or 0
+        return string.format("X: %.1f, Y: %.1f, Z: %.1f", x, y, z)
     end
-    return string.format("X: %.1f, Y: %.1f, Z: %.1f", vec.x, vec.y, vec.z)
+
+    return "N/A"
 end
 
+-- Improved AngleToString
 local function AngleToString(ang)
-    if not ang then return "N/A" end
+    if not ang then
+        return "N/A"
+    end
 
     if type(ang) == "string" then
-        local p, y, r = ang:match("{([%d.-]+) ([%d.-]+) ([%d.-]+)}")
+        -- This pattern accepts both curly braces and parenthesis
+        local p, y, r = ang:match("[{%(]?([%d%.%-]+)%s+([%d%.%-]+)%s+([%d%.%-]+)[%]%)?}")
         if p and y and r then
             return string.format("P: %.1f, Y: %.1f, R: %.1f", tonumber(p), tonumber(y), tonumber(r))
-        elseif type(ang) == "table" then
-            return string.format("P: %.1f, Y: %.1f, R: %.1f", ang[1] or 0, ang[2] or 0, ang[3] or 0)
         end
         return ang
     elseif type(ang) == "table" then
@@ -100,7 +115,8 @@ local function AngleToString(ang)
     return "N/A"
 end
 
-local function buildPhantomInfoData(ply, SavedInfo, mapName)
+-- Improved BuildPhantomInfoData
+function BuildPhantomInfoData(ply, SavedInfo, mapName)
     local data = {
         basic = {},
         position = {},
@@ -126,210 +142,207 @@ local function buildPhantomInfoData(ply, SavedInfo, mapName)
     table.insert(data.position, { "Direction", AngleToString(SavedInfo.ang), Color(220, 220, 220) })
     table.insert(data.position, { "Movement Type", moveTypeNames[SavedInfo.moveType] or "Unknown", Color(220, 220, 220) })
 
-    -- Active weapon
+    -- Active Weapon
     if SavedInfo.activeWeapon then
         local weaponName = SavedInfo.activeWeapon
-        local prettyName = string.match(weaponName, "weapon_(.+)") or weaponName
-        prettyName = prettyName:gsub("_", " "):gsub("(%a)([%w_']*)", function(first, rest)
-            return first:upper() .. rest
-        end)
-
+        local prettyName = (string.match(weaponName, "weapon_(.+)") or weaponName)
+            :gsub("_", " ")
+            :gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest end)
         table.insert(data.equipment, { "Active Weapon", prettyName, Color(255, 200, 200) })
     end
 
-
-    -- inventory weapons
+    -- Process Inventory
     if SavedInfo.inventory and type(SavedInfo.inventory) == "table" and #SavedInfo.inventory > 0 then
-        table.insert(data.equipment, { "Inventory", #SavedInfo.inventory .. " items total", Color(255, 220, 150) })
+        table.insert(data.equipment, { "══ Inventory ══", #SavedInfo.inventory .. " items total", Color(255, 220, 150) })
 
         local categories = {
-            Weapons = { items = {}, color = Color(255, 180, 180) },
-            Items = { items = {}, color = Color(180, 255, 180) },
-            Ammo = { items = {}, color = Color(180, 180, 255) },
-            Misc = { items = {}, color = Color(220, 220, 220) }
+            Weapons = { items = {}, color = Color(255, 150, 150), icon = "W" },
+            Items   = { items = {}, color = Color(150, 230, 150), icon = "I" },
+            Ammo    = { items = {}, color = Color(150, 180, 255), icon = "A" },
+            Misc    = { items = {}, color = Color(220, 220, 220), icon = "M" }
         }
 
         for _, item in ipairs(SavedInfo.inventory) do
-            local category = "Misc"
-
-            if string.find(item, "weapon_") then
-                category = "Weapons"
-            elseif string.find(item, "item_") then
-                category = "Items"
-            elseif string.find(item, "ammo_") then
-                category = "Ammo"
+            local cat = "Misc"
+            if item:find("weapon_") then
+                cat = "Weapons"
+            elseif item:find("item_") then
+                cat = "Items"
+            elseif item:find("ammo_") then
+                cat = "Ammo"
             end
-
-            table.insert(categories[category].items, item)
+            table.insert(categories[cat].items, item)
         end
 
-        for categoryName, categoryData in pairs(categories) do
-            local items = categoryData.items
-            if #items > 0 then
-                local itemCounts = {}
-                for _, item in ipairs(items) do
-                    itemCounts[item] = (itemCounts[item] or 0) + 1
+        for catName, catData in pairs(categories) do
+            if #catData.items > 0 then
+                local counts = {}
+                for _, item in ipairs(catData.items) do
+                    counts[item] = (counts[item] or 0) + 1
                 end
 
                 local uniqueItems = {}
-                for item, count in pairs(itemCounts) do
+                for item, count in pairs(counts) do
                     table.insert(uniqueItems, { item = item, count = count })
                 end
 
                 table.sort(uniqueItems, function(a, b) return a.count > b.count end)
-
                 table.insert(data.equipment, {
-                    "» " .. categoryName,
-                    #items .. " total",
-                    categoryData.color
+                    "[" .. catData.icon .. "] " .. catName,
+                    #catData.items .. " total",
+                    catData.color
                 })
 
-                for i, itemData in ipairs(uniqueItems) do
-                    local prettyName = string.match(itemData.item, "[^_]+_(.+)") or itemData.item
-                    prettyName = prettyName:gsub("_", " "):gsub("(%a)([%w_']*)", function(first, rest)
-                        return first:upper() .. rest
-                    end)
+                local maxToShow = math.min(5, #uniqueItems)
+                for i = 1, maxToShow do
+                    local itemData = uniqueItems[i]
+                    local pretty = (string.match(itemData.item, "[^_]+_(.+)") or itemData.item)
+                        :gsub("_", " ")
+                        :gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest end)
 
-                    local displayText = prettyName
-                    if itemData.count > 1 then
-                        displayText = displayText .. " ×" .. itemData.count
-                    end
+                    local displayText = pretty .. (itemData.count > 1 and (" ×" .. itemData.count) or "")
+                    local prefix = (i == maxToShow and i == #uniqueItems) and "  └─" or "  ├─"
 
-                    local prefix = (i == #uniqueItems) and "  └ " or "  ├ "
+                    local shade = 0.9 - (i * 0.05)
+                    local itemColor = Color(
+                        catData.color.r * shade,
+                        catData.color.g * shade,
+                        catData.color.b * shade
+                    )
 
                     table.insert(data.equipment, {
-                        prefix .. itemData.item:sub(1, 15),
+                        prefix .. " " .. itemData.item:sub(1, 12),
                         displayText,
-                        Color(
-                            categoryData.color.r * 0.8,
-                            categoryData.color.g * 0.8,
-                            categoryData.color.b * 0.8
-                        )
+                        itemColor
                     })
+                end
+
+                if #uniqueItems > maxToShow then
+                    table.insert(data.equipment, {
+                        "  └─ More...",
+                        (#uniqueItems - maxToShow) .. " more types",
+                        Color(catData.color.r * 0.7, catData.color.g * 0.7, catData.color.b * 0.7)
+                    })
+                end
+
+                if catName ~= "Misc" then
+                    table.insert(data.equipment, { "", "", Color(0, 0, 0, 0) })
                 end
             end
         end
     end
 
-    -- ammo
+    -- Process Ammo
     if SavedInfo.ammo and type(SavedInfo.ammo) == "table" and #SavedInfo.ammo > 0 then
+        -- Add a visual separator and header
+        table.insert(data.equipment, { "══ Ammunition ══", #SavedInfo.ammo .. " types total", Color(150, 180, 255) })
+
         local ammoTypes = {}
         for i, ammoEntry in ipairs(SavedInfo.ammo) do
             local ammoID = ammoEntry.id or i
             local ammoCount = ammoEntry.count or 0
             local ammoName = ammoEntry.name or ("Ammo #" .. ammoID)
-
             ammoTypes[ammoName] = (ammoTypes[ammoName] or 0) + ammoCount
         end
 
-        table.insert(data.equipment, { "Ammunition", #SavedInfo.ammo .. " types", Color(150, 180, 255) })
+        -- Calculate total ammo count for all types
+        local totalAmmoCount = 0
+        for _, count in pairs(ammoTypes) do
+            totalAmmoCount = totalAmmoCount + count
+        end
 
         local sortedAmmo = {}
         for name, count in pairs(ammoTypes) do
             table.insert(sortedAmmo, { name = name, count = count })
         end
-
         table.sort(sortedAmmo, function(a, b) return a.count > b.count end)
 
-        for i = 1, math.min(3, #sortedAmmo) do
+        -- Show total ammunition count summary
+        table.insert(data.equipment, {
+            "[A] Ammunition",
+            totalAmmoCount .. " rounds in " .. #sortedAmmo .. " types",
+            Color(150, 180, 255)
+        })
+
+        local maxToShow = math.min(5, #sortedAmmo)
+        for i = 1, maxToShow do
             local ammo = sortedAmmo[i]
-            local displayName = ammo.name:gsub("_", " "):gsub("(%a)([%w_']*)", function(first, rest)
-                return first:upper() .. rest
-            end)
-
-            table.insert(data.equipment, {
-                "  " .. (i == #sortedAmmo and "└" or "├") .. " Type " .. i,
-                displayName .. ": " .. ammo.count,
-                Color(180 - i * 10, 180, 255 - i * 10)
-            })
-        end
-
-        if #sortedAmmo > 3 then
-            table.insert(data.equipment, {
-                "  └ More...",
-                (#sortedAmmo - 3) .. " more types",
-                Color(170, 170, 220)
-            })
-        end
-    end
-
-    -- entities
-    if SavedInfo.entities and type(SavedInfo.entities) == "table" and #SavedInfo.entities > 0 then
-        local classes = {}
-        for _, entity in ipairs(SavedInfo.entities) do
-            classes[entity.class] = (classes[entity.class] or 0) + 1
-        end
-
-        local totalEntities = #SavedInfo.entities
-        table.insert(data.entities, { "Total Entities", totalEntities, Color(255, 180, 180) })
-
-        local sortedClasses = {}
-        for class, count in pairs(classes) do
-            table.insert(sortedClasses, { class = class, count = count })
-        end
-        table.sort(sortedClasses, function(a, b) return a.count > b.count end)
-
-        for i = 1, math.min(3, #sortedClasses) do
-            local entry = sortedClasses[i]
-            local prettyName = string.match(entry.class, "[^_]+_(.+)") or entry.class
-            prettyName = prettyName:gsub("_", " "):gsub("(%a)([%w_']*)", function(first, rest)
-                return first:upper() .. rest
-            end)
-
-            table.insert(data.entities, {
-                "Entity " .. i,
-                string.format("%s (%d)", prettyName, entry.count),
-                Color(255 - i * 30, 220 - i * 20, 220 - i * 20)
-            })
-        end
-    end
-
-    -- NPCs
-    if SavedInfo.npcs and type(SavedInfo.npcs) == "table" and #SavedInfo.npcs > 0 then
-        local classes = {}
-        for _, npc in ipairs(SavedInfo.npcs) do
-            classes[npc.class] = (classes[npc.class] or 0) + 1
-        end
-
-        local totalNPCs = #SavedInfo.npcs
-        table.insert(data.entities, { "Total NPCs", totalNPCs, Color(200, 255, 200) })
-
-        local sortedClasses = {}
-        for class, count in pairs(classes) do
-            table.insert(sortedClasses, { class = class, count = count })
-        end
-        table.sort(sortedClasses, function(a, b) return a.count > b.count end)
-
-        for i = 1, math.min(3, #sortedClasses) do
-            local entry = sortedClasses[i]
-            local prettyName = string.match(entry.class, "npc_(.+)") or entry.class
-            prettyName = prettyName:gsub("_", " "):gsub("(%a)([%w_']*)", function(first, rest)
-                return first:upper() .. rest
-            end)
-
-            table.insert(data.entities, {
-                "NPC " .. i,
-                string.format("%s (%d)", prettyName, entry.count),
-                Color(200 - i * 20, 255 - i * 30, 200 - i * 20)
-            })
-        end
-    end
-
-    -- vehicles (not tested)
-    if SavedInfo.vehicles and type(SavedInfo.vehicles) == "table" and #SavedInfo.vehicles > 0 then
-        local vehicleCount = #SavedInfo.vehicles
-        table.insert(data.entities, { "Total Vehicles", vehicleCount, Color(200, 200, 255) })
-
-        if vehicleCount <= 3 then
-            for i, vehicle in ipairs(SavedInfo.vehicles) do
-                local prettyName = string.match(vehicle, "(.+)") or vehicle
-                prettyName = prettyName:gsub("_", " "):gsub("(%a)([%w_']*)", function(first, rest)
+            local displayName = ammo.name
+                :gsub("_", " ")
+                :gsub("(%a)([%w_']*)", function(first, rest)
                     return first:upper() .. rest
                 end)
 
+            -- Calculate color gradient (gets slightly darker as list progresses)
+            local shade = 0.9 - (i * 0.05)
+            local ammoColor = Color(
+                150 * shade,
+                180 * shade,
+                255 * shade
+            )
+
+            local prefix = (i == maxToShow and i == #sortedAmmo) and "  └─" or "  ├─"
+
+            table.insert(data.equipment, {
+                prefix .. " " .. string.sub(ammo.name, 1, 15),
+                displayName .. " ×" .. ammo.count,
+                ammoColor
+            })
+        end
+
+        if #sortedAmmo > maxToShow then
+            table.insert(data.equipment, {
+                "  └─ More...",
+                (#sortedAmmo - maxToShow) .. " more ammo types",
+                Color(120, 140, 220)
+            })
+        end
+
+        -- Add spacing after ammo section
+        table.insert(data.equipment, { "", "", Color(0, 0, 0, 0) })
+    end
+
+    local function processGroupedData(group, config)
+        if group and type(group) == "table" and #group > 0 then
+            local counts = {}
+            for _, entry in ipairs(group) do
+                local class = entry.class or entry
+                counts[class] = (counts[class] or 0) + 1
+            end
+
+            table.insert(data.entities, { config.totalLabel, #group, config.totalColor })
+
+            local sorted = {}
+            for class, count in pairs(counts) do
+                table.insert(sorted, { class = class, count = count })
+            end
+            table.sort(sorted, function(a, b) return a.count > b.count end)
+            for i = 1, #sorted do
+                local entry = sorted[i]
+                local pretty = (string.match(entry.class, config.pattern) or entry.class)
+                    :gsub("_", " ")
+                    :gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest end)
+                table.insert(data.entities, {
+                    config.labelPrefix .. " " .. i,
+                    string.format("%s (%d)", pretty, entry.count),
+                    config.entryColor
+                })
+            end
+        end
+    end
+
+    -- Process Vehicles separately (updated to show all types)
+    if SavedInfo.vehicles and type(SavedInfo.vehicles) == "table" and #SavedInfo.vehicles > 0 then
+        local vehicleCount = #SavedInfo.vehicles
+        table.insert(data.entities, { "Total Vehicles", vehicleCount, Color(200, 200, 255) })
+        if vehicleCount <= 3 then
+            for i, vehicle in ipairs(SavedInfo.vehicles) do
+                local pretty = vehicle
+                    :gsub("_", " ")
+                    :gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest end)
                 table.insert(data.entities, {
                     "Vehicle " .. i,
-                    prettyName,
+                    pretty,
                     Color(200 - i * 20, 200 - i * 20, 255 - i * 30)
                 })
             end
@@ -338,32 +351,47 @@ local function buildPhantomInfoData(ply, SavedInfo, mapName)
             for _, vehicle in ipairs(SavedInfo.vehicles) do
                 types[vehicle] = (types[vehicle] or 0) + 1
             end
-
             local sortedTypes = {}
             for typ, count in pairs(types) do
                 table.insert(sortedTypes, { type = typ, count = count })
             end
             table.sort(sortedTypes, function(a, b) return a.count > b.count end)
-
-            for i = 1, math.min(3, #sortedTypes) do
+            for i = 1, #sortedTypes do
                 local entry = sortedTypes[i]
-                local prettyName = entry.type:gsub("_", " "):gsub("(%a)([%w_']*)", function(first, rest)
-                    return first:upper() .. rest
-                end)
-
+                local pretty = entry.type
+                    :gsub("_", " ")
+                    :gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest end)
                 table.insert(data.entities, {
                     "Vehicle Type " .. i,
-                    string.format("%s (%d)", prettyName, entry.count),
+                    string.format("%s (%d)", pretty, entry.count),
                     Color(200 - i * 20, 200 - i * 20, 255 - i * 30)
                 })
             end
         end
     end
 
+    -- Process Entities
+    processGroupedData(SavedInfo.entities, {
+        totalLabel = "Total Entities",
+        totalColor = Color(255, 180, 180),
+        pattern = "[^_]+_(.+)",
+        labelPrefix = "Entity",
+        entryColor = Color(255, 180, 180)
+    })
+
+    -- Process NPCs
+    processGroupedData(SavedInfo.npcs, {
+        totalLabel = "Total NPCs",
+        totalColor = Color(200, 255, 200),
+        pattern = "npc_(.+)",
+        labelPrefix = "NPC",
+        entryColor = Color(200, 255, 200)
+    })
+
+
     -- Stats
     table.insert(data.stats, { "Health", math.floor(SavedInfo.health or 0), Color(255, 180, 180) })
     table.insert(data.stats, { "Armor", math.floor(SavedInfo.armor or 0), Color(180, 180, 255) })
-
     if SavedInfo.npcs and #SavedInfo.npcs > 0 then
         local totalHealth = 0
         for _, npc in ipairs(SavedInfo.npcs) do
@@ -375,207 +403,170 @@ local function buildPhantomInfoData(ply, SavedInfo, mapName)
     return data
 end
 
-
 function DrawPhantomInfo(phantomData, playerPos, mapName)
     local phantom, ply = phantomData.phantom, phantomData.ply
     if not (IsValid(phantom) and IsValid(ply)) then return end
 
     local steamID = ply:SteamID()
     local phantomPos = phantom:GetPos()
-
     local distanceSqr = playerPos:DistToSqr(phantomPos)
-    local maxDistance = (phantomInteractionMode and phantomInteractionTarget == steamID) and 500000 or 250000
+    local isActiveInteraction = PhantomInteractionMode and PhantomInteractionTarget == steamID
+    local maxDistance = isActiveInteraction and 500000 or 250000
 
     if distanceSqr > maxDistance then
-        phantomInfoCache[steamID] = nil
-        if phantomInteractionTarget == steamID then
-            phantomInteractionMode = false
-            phantomInteractionTarget = nil
-            phantomInteractionAngle = nil
+        PhantomInfoCache[steamID] = nil
+        if isActiveInteraction then
+            PhantomInteractionMode = false
+            PhantomInteractionTarget = nil
+            PhantomInteractionAngle = nil
         end
         return
     end
 
     local now = CurTime()
-    if not phantomInfoCache[steamID] or phantomInfoCache[steamID].expires < now then
-        SavedInfo = (RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][steamID])
-        phantomInfoCache[steamID] = {
-            data = buildPhantomInfoData(ply, SavedInfo, mapName),
+    if not PhantomInfoCache[steamID] or PhantomInfoCache[steamID].expires < now then
+        local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][steamID]
+        PhantomInfoCache[steamID] = {
+            data = BuildPhantomInfoData(ply, savedInfo, mapName),
             expires = now + CACHE_LIFETIME,
-            activeCategory = phantomInfoCache[steamID] and phantomInfoCache[steamID].activeCategory or "basic"
+            activeCategory = (PhantomInfoCache[steamID] and PhantomInfoCache[steamID].activeCategory) or "basic"
         }
     end
 
-    local infoData = phantomInfoCache[steamID].data
-    local activeCategory = phantomInfoCache[steamID].activeCategory
-    local pos = phantomPos + Vector(0, 0, 80)
+    local infoData = PhantomInfoCache[steamID].data
+    local activeCategory = PhantomInfoCache[steamID].activeCategory
+    local drawPos = phantomPos + Vector(0, 0, 80)
+    local panelAng = nil
 
-    local ang
-    if phantomInteractionMode and phantomInteractionTarget == steamID then
-        ang = phantomInteractionAngle
+    if isActiveInteraction then
+        panelAng = PhantomInteractionAngle
     else
-        local playerToPhantom = phantomPos - playerPos
-        playerToPhantom:Normalize()
-        ang = playerToPhantom:Angle()
-        ang.y = ang.y - 90
-        ang.p = 0
-        ang.r = 90
+        local dir = (phantomPos - playerPos)
+        dir:Normalize()
+        panelAng = dir:Angle()
+        panelAng.y = panelAng.y - 90
+        panelAng.p, panelAng.r = 0, 90
     end
-
-    local categoryContent = infoData[activeCategory]
-    local optimalWidth = calculateOptimalPanelSize(categoryContent)
-
-    local interactionBonus = (phantomInteractionMode and phantomInteractionTarget == steamID) and 1.5 or 1.0
-    local hoverScale = phantomInfoCache[steamID].hoverScale or 1.0
 
     local theme = {
         background = Color(20, 20, 30, 220),
         header = Color(30, 30, 45, 255),
         border = Color(70, 130, 180, 255),
         text = Color(220, 220, 255),
-        highlight = Color(100, 180, 255),
-        selectedTab = Color(60, 100, 160, 255),
-        tabHover = Color(50, 80, 120, 200),
-        scrollbar = Color(120, 140, 160, 180),
+        scrollbar = Color(40, 40, 50, 120),
         scrollbarHandle = Color(160, 180, 200, 200)
     }
 
-    local scrollbarWidth = 5
-    local scrollbarPadding = 5
-
-    local scale = 0.1 * hoverScale * interactionBonus
-    surface.SetFont("Trebuchet24")
-    local infoCategoryHeight = 30
-    local titleHeight = 40
     local lineHeight = 22
+    local titleHeight = 40
+    local tabHeight = 30
     local textPadding = 15
-    local contentWidth = optimalWidth * panelSizeMultiplier
+    local scrollbarPadding = 5
+    local optimalWidth = CalculateOptimalPanelSize(infoData[activeCategory])
+    local contentWidth = optimalWidth * PanelSizeMultiplier
     local panelWidth = math.max(contentWidth, 800)
-    local contentHeight = (#categoryContent * lineHeight)
-    local maxDisplayHeight = math.min(contentHeight + 20, maxPanelHeight * scale)
-    local needsScrolling = contentHeight > (maxPanelHeight * scale - 20)
+    local contentHeight = (#infoData[activeCategory]) * lineHeight
+    local maxDisplayHeight = math.min(contentHeight + 20,
+        MaxPanelHeight * (0.1 * (PhantomInfoCache[steamID].hoverScale or 1.0) * (isActiveInteraction and 1.5 or 1.0)))
+    local needsScrolling = contentHeight >
+        (MaxPanelHeight * 0.1 * (PhantomInfoCache[steamID].hoverScale or 1.0) * (isActiveInteraction and 1.5 or 1.0) - 20)
+    local maxScrollOffset = math.max(0,
+        contentHeight -
+        (MaxPanelHeight * 0.1 * (PhantomInfoCache[steamID].hoverScale or 1.0) * (isActiveInteraction and 1.5 or 1.0) - 20))
 
-    local availableContentWidth = panelWidth - (needsScrolling and (scrollbarWidth + scrollbarPadding * 2) or 0)
+    ScrollPersistence[steamID] = ScrollPersistence[steamID] or {}
+    ScrollPersistence[steamID][activeCategory] = ScrollPersistence[steamID][activeCategory] or 0
+    local scrollOffset = needsScrolling and math.Clamp(ScrollPersistence[steamID][activeCategory], 0, maxScrollOffset) or
+        0
+    ScrollPersistence[steamID][activeCategory] = scrollOffset
 
-    maxScrollOffset = math.max(0, contentHeight - (maxPanelHeight * scale - 20))
+    local panelHeight = titleHeight + tabHeight + maxDisplayHeight
+    local offsetX, offsetY = -panelWidth / 2, -panelHeight / 2
 
-    if not scrollPersistence[steamID] then
-        scrollPersistence[steamID] = {}
-    end
+    cam.Start3D2D(drawPos, panelAng,
+        0.1 * (PhantomInfoCache[steamID].hoverScale or 1.0) * (isActiveInteraction and 1.5 or 1.0))
 
-    if not scrollPersistence[steamID][activeCategory] then
-        scrollPersistence[steamID][activeCategory] = 0
-    end
-
-    scrollOffset = scrollPersistence[steamID][activeCategory]
-
-    if needsScrolling then
-        scrollOffset = math.Clamp(scrollOffset, 0, maxScrollOffset)
-        scrollPersistence[steamID][activeCategory] = scrollOffset
-    else
-        scrollOffset = 0
-        scrollPersistence[steamID][activeCategory] = 0
-    end
-
-    local panelHeight = titleHeight + infoCategoryHeight + maxDisplayHeight
-
-    local offsetX = -panelWidth / 2
-    local offsetY = -panelHeight / 2
-
-    cam.Start3D2D(pos, ang, scale)
-
+    ----------------------------
+    -- Draw Background & Border
+    ----------------------------
     draw.RoundedBox(5, offsetX, offsetY, panelWidth, panelHeight, theme.background)
-
     for i = 0, 2 do
-        local borderColor = Color(
-            theme.border.r,
-            theme.border.g,
-            theme.border.b,
-            255 - i * 40
-        )
+        local borderColor = Color(theme.border.r, theme.border.g, theme.border.b, 255 - i * 40)
         surface.SetDrawColor(borderColor)
         surface.DrawOutlinedRect(offsetX - i, offsetY - i, panelWidth + i * 2, panelHeight + i * 2, 1)
     end
 
-    local title = "Phantom of " .. ply:Nick()
+    ----------------------------
+    -- Draw Header
+    ----------------------------
+    local titleText = "Phantom of " .. ply:Nick()
     surface.SetDrawColor(theme.header)
     surface.DrawRect(offsetX, offsetY, panelWidth, titleHeight)
-
-    draw.SimpleText(title, "Trebuchet24", offsetX + (panelWidth / 2) + 1, offsetY + (titleHeight / 2) + 1,
+    draw.SimpleText(titleText, "Trebuchet24", offsetX + panelWidth / 2 + 1, offsetY + titleHeight / 2 + 1,
         Color(0, 0, 0, 150), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    draw.SimpleText(title, "Trebuchet24", offsetX + (panelWidth / 2), offsetY + (titleHeight / 2) + 3, theme.text,
-        TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    draw.SimpleText(titleText, "Trebuchet24", offsetX + panelWidth / 2, offsetY + titleHeight / 2 + 3,
+        theme.text, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
-
-
+    ----------------------------
+    -- Draw Tabs
+    ----------------------------
     local minTabWidth = 0
-    for _, categoryInfo in ipairs(PHANTOM_CATEGORIES) do
-        local catName = categoryInfo[2]
+    for _, cat in ipairs(PHANTOM_CATEGORIES) do
         surface.SetFont("Trebuchet18")
-        local textWidth = surface.GetTextSize(catName)
+        local textWidth = surface.GetTextSize(cat[2])
         minTabWidth = math.max(minTabWidth, textWidth + 20)
     end
-
     local tabWidth = math.max(panelWidth / #PHANTOM_CATEGORIES, minTabWidth)
     panelWidth = math.max(panelWidth, tabWidth * #PHANTOM_CATEGORIES)
     offsetX = -panelWidth / 2
 
     local tabY = offsetY + titleHeight
     local tabScreenInfo = {}
-
     for i, categoryInfo in ipairs(PHANTOM_CATEGORIES) do
         local catID, catName, catColor = categoryInfo[1], categoryInfo[2], categoryInfo[3]
         local tabX = offsetX + (i - 1) * tabWidth
         local isActive = (catID == activeCategory)
 
-        local r = isActive and catColor.r / 2.5 or 40
-        local g = isActive and catColor.g / 2.5 or 40
-        local b = isActive and catColor.b / 2.5 or 40
-
-        surface.SetDrawColor(r, g, b, 200)
-        surface.DrawRect(tabX, tabY, tabWidth, infoCategoryHeight)
+        local bgR = isActive and catColor.r / 2.5 or 40
+        local bgG = isActive and catColor.g / 2.5 or 40
+        local bgB = isActive and catColor.b / 2.5 or 40
+        surface.SetDrawColor(bgR, bgG, bgB, 200)
+        surface.DrawRect(tabX, tabY, tabWidth, tabHeight)
 
         if isActive then
             for j = 0, 2 do
-                local alpha = 255 - j * 50
-                surface.SetDrawColor(catColor.r, catColor.g, catColor.b, alpha)
-                surface.DrawOutlinedRect(tabX + j, tabY + j, tabWidth - j * 2, infoCategoryHeight - j * 2, 1)
+                surface.SetDrawColor(catColor.r, catColor.g, catColor.b, 255 - j * 50)
+                surface.DrawOutlinedRect(tabX + j, tabY + j, tabWidth - j * 2, tabHeight - j * 2, 1)
             end
-
             local triSize = 8
             draw.NoTexture()
             surface.SetDrawColor(catColor)
             surface.DrawPoly({
-                { x = tabX + tabWidth / 2 - triSize, y = tabY + infoCategoryHeight },
-                { x = tabX + tabWidth / 2 + triSize, y = tabY + infoCategoryHeight },
-                { x = tabX + tabWidth / 2,           y = tabY + infoCategoryHeight + triSize }
+                { x = tabX + tabWidth / 2 - triSize, y = tabY + tabHeight },
+                { x = tabX + tabWidth / 2 + triSize, y = tabY + tabHeight },
+                { x = tabX + tabWidth / 2,           y = tabY + tabHeight + triSize }
             })
         end
 
         local textColor = isActive and Color(255, 255, 255) or Color(180, 180, 180)
-
         surface.SetFont("Trebuchet18")
-        local textWidth, textHeight = surface.GetTextSize(catName)
-        local textX = tabX + (tabWidth / 2)
-        local textY = tabY + (infoCategoryHeight / 2)
-
-        draw.SimpleText(catName, "Trebuchet18", textX, textY,
+        draw.SimpleText(catName, "Trebuchet18", tabX + tabWidth / 2, tabY + tabHeight / 2,
             textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-
-        table.insert(tabScreenInfo, {
-            catID = catID,
-            worldX = textX,
-            worldY = textY,
-            worldW = tabWidth,
-            worldH = infoCategoryHeight
-        })
+        table.insert(tabScreenInfo,
+            {
+                catID = catID,
+                worldX = tabX + tabWidth / 2,
+                worldY = tabY + tabHeight / 2,
+                worldW = tabWidth,
+                worldH =
+                    tabHeight
+            })
     end
 
-    -- Scrollbar (if needed, currently goes beyond the frame)
-
-    local contentY = tabY + infoCategoryHeight
-    local contentAreaHeight = maxDisplayHeight
-
+    ----------------------------
+    -- Draw Content via Stencil
+    ----------------------------
+    local contentY = tabY + tabHeight
     render.SetStencilEnable(true)
     render.SetStencilWriteMask(255)
     render.SetStencilTestMask(255)
@@ -585,307 +576,115 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     render.SetStencilFailOperation(STENCIL_KEEP)
     render.SetStencilZFailOperation(STENCIL_KEEP)
 
-    draw.RoundedBox(0, offsetX, contentY, panelWidth, contentAreaHeight, Color(255, 255, 255, 1))
+    draw.RoundedBox(0, offsetX, contentY, panelWidth, maxDisplayHeight, Color(255, 255, 255, 1))
     render.SetStencilCompareFunction(STENCIL_EQUAL)
     render.SetStencilPassOperation(STENCIL_KEEP)
 
-    for i, lineData in ipairs(categoryContent) do
-        local label, value, color = lineData[1], lineData[2], lineData[3]
+    for i, line in ipairs(infoData[activeCategory]) do
+        local label, value, valueColor = line[1], tostring(line[2]), line[3] or Color(255, 255, 255)
         local yPos = contentY + (i - 1) * lineHeight - scrollOffset + 10
-
-        if yPos + lineHeight >= contentY - lineHeight and yPos <= contentY + contentAreaHeight + lineHeight then
-            local fadeInTime = i * 0.05
-            local alpha = math.min((CurTime() - (phantomInfoCache[steamID].categoryChanged or 0) - fadeInTime) * 5, 1)
-            if alpha < 0 then alpha = 0 end
+        if yPos + lineHeight >= contentY - lineHeight and yPos <= contentY + maxDisplayHeight + lineHeight then
+            local fadeDelay = i * 0.05
+            local alpha = math.min((CurTime() - (PhantomInfoCache[steamID].categoryChanged or 0) - fadeDelay) * 5, 1)
+            alpha = math.max(alpha, 0)
 
             surface.SetFont("Trebuchet18")
-            local labelText = label .. ":"
-            draw.SimpleText(labelText, "Trebuchet18", offsetX + textPadding, yPos,
+            draw.SimpleText(label .. ":", "Trebuchet18", offsetX + textPadding, yPos,
                 Color(200, 200, 200, 200 * alpha), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 
-            local valueText = tostring(value)
             local valueX = offsetX + textPadding + 120
-
             local maxValueWidth = panelWidth - (textPadding * 2) - 130 -
-                (needsScrolling and (scrollbarWidth + scrollbarPadding * 2) or 0)
-
-            local valueColor = color or Color(255, 255, 255)
-            valueColor = Color(valueColor.r, valueColor.g, valueColor.b, valueColor.a * alpha)
-
+                (needsScrolling and (5 + scrollbarPadding * 2) or 0)
             surface.SetFont("Trebuchet18")
-            local textWidth = surface.GetTextSize(valueText)
-
+            local textWidth = surface.GetTextSize(value)
             if textWidth > maxValueWidth then
-                local low, high = 1, #valueText
+                local low, high = 1, #value
                 while low <= high do
                     local mid = math.floor((low + high) / 2)
-                    local testText = string.sub(valueText, 1, mid) .. "..."
-                    surface.SetFont("Trebuchet18")
-                    local testWidth = surface.GetTextSize(testText)
-
-                    if testWidth <= maxValueWidth then
+                    local testStr = string.sub(value, 1, mid) .. "..."
+                    if surface.GetTextSize(testStr) <= maxValueWidth then
                         low = mid + 1
                     else
                         high = mid - 1
                     end
                 end
-
-                if high >= 5 then
-                    valueText = string.sub(valueText, 1, high) .. "..."
-                else
-                    valueText = string.sub(valueText, 1, math.floor(maxValueWidth / 10)) .. "..."
-                end
+                value = high >= 5 and (string.sub(value, 1, high) .. "...") or
+                    (string.sub(value, 1, math.floor(maxValueWidth / 10)) .. "...")
             end
-
-            draw.SimpleText(valueText, "Trebuchet18", valueX, yPos,
-                valueColor, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+            local finalColor = Color(valueColor.r, valueColor.g, valueColor.b, (valueColor.a or 255) * alpha)
+            draw.SimpleText(value, "Trebuchet18", valueX, yPos,
+                finalColor, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         end
     end
-
     render.SetStencilEnable(false)
 
+    ----------------------------
+    -- Draw Scrollbar (if needed)
+    ----------------------------
     if needsScrolling then
-        local scrollbarX = offsetX + panelWidth - scrollbarWidth - scrollbarPadding
-        local scrollbarY = contentY
-        local scrollbarHeight = contentAreaHeight
-        surface.SetDrawColor(40, 40, 50, 120)
-        surface.DrawRect(scrollbarX, scrollbarY, scrollbarWidth, scrollbarHeight)
+        local scrollBarWidth = 5
+        local scrollBarX = offsetX + panelWidth - scrollBarWidth - scrollbarPadding
+        local scrollBarY = contentY
+        draw.RoundedBox(4, scrollBarX, scrollBarY, scrollBarWidth, maxDisplayHeight, theme.scrollbar)
 
-        local handleRatio = math.min(1, contentAreaHeight / contentHeight)
-        local handleHeight = math.max(30, scrollbarHeight * handleRatio)
-        local handleY = scrollbarY + (scrollOffset / maxScrollOffset) * (scrollbarHeight - handleHeight)
-        surface.SetDrawColor(theme.scrollbarHandle)
-        surface.DrawRect(scrollbarX, handleY, scrollbarWidth, handleHeight)
+        local handleRatio = math.min(1, maxDisplayHeight / contentHeight)
+        local handleHeight = math.max(30, maxDisplayHeight * handleRatio)
+        local handleY = scrollBarY + (scrollOffset / maxScrollOffset) * (maxDisplayHeight - handleHeight)
+        draw.RoundedBox(4, scrollBarX, handleY, scrollBarWidth, handleHeight, theme.scrollbarHandle)
 
-        phantomInfoCache[steamID].scrollbarInfo = {
-            x = scrollbarX,
-            y = scrollbarY,
-            width = scrollbarWidth,
-            height = scrollbarHeight,
+        local btnSize = scrollBarWidth + 4
+        if scrollOffset > 0 then
+            draw.RoundedBox(4, scrollBarX - 2, scrollBarY - 2, btnSize, btnSize, theme.border)
+            draw.RoundedBox(4, scrollBarX, scrollBarY, scrollBarWidth, btnSize - 4, theme.scrollbarHandle)
+            draw.SimpleText("▲", "Trebuchet18", scrollBarX + scrollBarWidth / 2, scrollBarY + btnSize / 2 - 2,
+                Color(255, 255, 255, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        end
+        if scrollOffset < maxScrollOffset then
+            draw.RoundedBox(4, scrollBarX - 2, scrollBarY + maxDisplayHeight - btnSize + 2, btnSize, btnSize,
+                theme.border)
+            draw.RoundedBox(4, scrollBarX, scrollBarY + maxDisplayHeight - btnSize + 4, scrollBarWidth, btnSize - 4,
+                theme.scrollbarHandle)
+            draw.SimpleText("▼", "Trebuchet18", scrollBarX + scrollBarWidth / 2,
+                scrollBarY + maxDisplayHeight - btnSize / 2 + 2,
+                Color(255, 255, 255, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        end
+
+        PhantomInfoCache[steamID].scrollbarInfo = {
+            x = scrollBarX,
+            y = scrollBarY,
+            width = scrollBarWidth,
+            height = maxDisplayHeight,
             handleY = handleY,
             handleHeight = handleHeight,
             contentHeight = contentHeight,
-            visibleHeight = contentAreaHeight
+            visibleHeight = maxDisplayHeight,
+            maxScrollOffset = maxScrollOffset,
+            upButtonY = scrollBarY,
+            upButtonHeight = btnSize,
+            downButtonY = scrollBarY + maxDisplayHeight - btnSize + 2,
+            downButtonHeight = btnSize
         }
-
-        if scrollOffset > 0 then
-            draw.SimpleText("▲", "Trebuchet18", scrollbarX + scrollbarWidth / 2, scrollbarY + 15,
-                Color(200, 200, 200, 150), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-        end
-
-        if scrollOffset < maxScrollOffset then
-            draw.SimpleText("▼", "Trebuchet18", scrollbarX + scrollbarWidth / 2, scrollbarY + scrollbarHeight - 15,
-                Color(200, 200, 200, 150), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-        end
     end
 
-    if phantomInteractionMode and phantomInteractionTarget == steamID then
+    ----------------------------
+    -- Draw Help/Prompt Text
+    ----------------------------
+    if isActiveInteraction then
         local helpText = "← → to navigate tabs  |  ↑↓ or use Scroll wheel to scroll |  E to Exit"
-        draw.SimpleText(helpText, "Trebuchet18", offsetX + (panelWidth / 2), offsetY - 20,
+        draw.SimpleText(helpText, "Trebuchet18", offsetX + panelWidth / 2, offsetY - 20,
             Color(255, 255, 255, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
-    else
-        if distanceSqr < 10000 then
-            local promptText = "Press [E] to interact"
-            draw.SimpleText(promptText, "Trebuchet18", offsetX + (panelWidth / 2), offsetY - 20,
-                Color(255, 255, 255, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
-        end
+    elseif distanceSqr < 10000 then
+        draw.SimpleText("Press [E] to interact", "Trebuchet18", offsetX + panelWidth / 2, offsetY - 20,
+            Color(255, 255, 255, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
     end
 
-    phantomInfoCache[steamID].panelInfo = {
-        tabInfo = tabScreenInfo,
-        activeTabIndex = nil,
-        hasScrollbar = needsScrolling
-    }
-
-    for i, tabInfo in ipairs(tabScreenInfo) do
-        if tabInfo.catID == activeCategory then
-            phantomInfoCache[steamID].panelInfo.activeTabIndex = i
+    PhantomInfoCache[steamID].panelInfo = { tabInfo = tabScreenInfo, activeTabIndex = nil, hasScrollbar = needsScrolling }
+    for i, tab in ipairs(tabScreenInfo) do
+        if tab.catID == activeCategory then
+            PhantomInfoCache[steamID].panelInfo.activeTabIndex = i
             break
         end
     end
 
     cam.End3D2D()
 end
-
-hook.Remove("GUIMousePressed", "PhantomPanelInteraction")
-
-hook.Add("Think", "PhantomKeyboardNavigation", function()
-    if not phantomInteractionMode or not phantomInteractionTarget then return end
-
-    local cache = phantomInfoCache[phantomInteractionTarget]
-    if not cache or not cache.panelInfo then return end
-
-    local panelInfo = cache.panelInfo
-    local activeIndex = panelInfo.activeTabIndex
-    local activeCategory = cache.activeCategory
-
-    if not activeIndex then return end
-
-    if input.IsKeyDown(KEY_LEFT) and not cache.keyHeld then
-        local newIndex = activeIndex - 1
-        if newIndex < 1 then newIndex = #PHANTOM_CATEGORIES end
-
-        local oldCategory = cache.activeCategory
-        cache.activeCategory = PHANTOM_CATEGORIES[newIndex][1]
-        cache.categoryChanged = CurTime()
-
-        if oldCategory ~= cache.activeCategory then
-            surface.PlaySound("ui/buttonrollover.wav")
-
-            local newContent = cache.data[cache.activeCategory]
-            local optimalWidth = calculateOptimalPanelSize(newContent)
-        end
-
-        cache.keyHeld = true
-        timer.Simple(0.2, function() cache.keyHeld = false end)
-    elseif input.IsKeyDown(KEY_RIGHT) and not cache.keyHeld then
-        local newIndex = activeIndex + 1
-        if newIndex > #PHANTOM_CATEGORIES then newIndex = 1 end
-
-        local oldCategory = cache.activeCategory
-        cache.activeCategory = PHANTOM_CATEGORIES[newIndex][1]
-        cache.categoryChanged = CurTime()
-
-        if oldCategory ~= cache.activeCategory then
-            surface.PlaySound("ui/buttonrollover.wav")
-
-            local newContent = cache.data[cache.activeCategory]
-            local optimalWidth = calculateOptimalPanelSize(newContent)
-        end
-
-        cache.keyHeld = true
-        timer.Simple(0.2, function() cache.keyHeld = false end)
-    end
-
-    if input.IsKeyDown(KEY_UP) then
-        if scrollPersistence[phantomInteractionTarget] and activeCategory then
-            local newScroll = math.max(0, (scrollPersistence[phantomInteractionTarget][activeCategory] or 0) - 5)
-            scrollPersistence[phantomInteractionTarget][activeCategory] = newScroll
-        end
-    elseif input.IsKeyDown(KEY_DOWN) then
-        if scrollPersistence[phantomInteractionTarget] and activeCategory then
-            local newScroll = math.min(maxScrollOffset,
-                (scrollPersistence[phantomInteractionTarget][activeCategory] or 0) + 5)
-            scrollPersistence[phantomInteractionTarget][activeCategory] = newScroll
-        end
-    end
-end)
-
-hook.Add("StartCommand", "PhantomBlockMovement", function(ply, cmd)
-    if ply ~= LocalPlayer() then return end
-
-    if phantomInteractionMode and phantomInteractionTarget then
-        cmd:ClearMovement()
-        cmd:ClearButtons()
-
-        if input.IsKeyDown(KEY_E) then
-            cmd:SetButtons(IN_USE)
-        end
-    end
-end)
-
-hook.Add("PlayerBindPress", "PhantomBlockBindings", function(ply, bind, pressed)
-    if phantomInteractionMode and phantomInteractionTarget then
-        local cache = phantomInfoCache[phantomInteractionTarget]
-        if cache and cache.activeCategory then
-            local activeCategory = cache.activeCategory
-
-            if bind == "invprev" and pressed then
-                if scrollPersistence[phantomInteractionTarget] then
-                    local newScroll = math.max(0,
-                        (scrollPersistence[phantomInteractionTarget][activeCategory] or 0) - scrollSpeed)
-                    scrollPersistence[phantomInteractionTarget][activeCategory] = newScroll
-                end
-                return true
-            elseif bind == "invnext" and pressed then
-                if scrollPersistence[phantomInteractionTarget] then
-                    local newScroll = math.min(maxScrollOffset,
-                        (scrollPersistence[phantomInteractionTarget][activeCategory] or 0) + scrollSpeed)
-                    scrollPersistence[phantomInteractionTarget][activeCategory] = newScroll
-                end
-                return true
-            end
-        end
-
-        if string.find(bind, "+use") then
-            return false
-        end
-
-        return true
-    end
-end)
-
-local originalViewData = nil
-hook.Add("CalcView", "PhantomInteractionView", function(ply, pos, angles, fov)
-    if phantomInteractionMode and phantomInteractionTarget then
-        if not originalViewData then
-            originalViewData = {
-                pos = pos,
-                angles = angles,
-                fov = fov
-            }
-        end
-
-        return {
-            origin = originalViewData.pos,
-            angles = originalViewData.angles,
-            fov = originalViewData.fov,
-            drawviewer = false
-        }
-    else
-        originalViewData = nil
-    end
-end)
-
-hook.Add("KeyPress", "PhantomInteractionToggle", function(ply, key)
-    if not IsValid(ply) or not ply:IsPlayer() or ply ~= LocalPlayer() then return end
-    if key ~= IN_USE then return end
-
-    local playerPos = ply:GetPos()
-    local mapName = game.GetMap()
-
-    if phantomInteractionMode then
-        phantomInteractionMode = false
-        phantomInteractionTarget = nil
-        phantomInteractionAngle = nil
-        surface.PlaySound("ui/buttonclickrelease.wav")
-        return
-    end
-
-    local closestPhantom = nil
-    local closestDistance = 10000
-
-    for steamID, data in pairs(RARELOAD.Phantom) do
-        if IsValid(data.phantom) and IsValid(data.ply) then
-            local distance = playerPos:DistToSqr(data.phantom:GetPos())
-            if distance < closestDistance then
-                closestPhantom = steamID
-                closestDistance = distance
-            end
-        end
-    end
-
-    if closestPhantom and closestDistance < 90000 then
-        phantomInteractionMode = true
-        phantomInteractionTarget = closestPhantom
-
-        if not scrollPersistence[closestPhantom] then
-            scrollPersistence[closestPhantom] = {}
-        end
-
-        local eyeYaw = LocalPlayer():EyeAngles().yaw
-        phantomInteractionAngle = Angle(0, eyeYaw - 90, 90)
-
-        surface.PlaySound("ui/buttonclick.wav")
-
-        local cache = phantomInfoCache[closestPhantom]
-        if cache and cache.data and cache.activeCategory then
-            local content = cache.data[cache.activeCategory]
-            local optimalWidth = calculateOptimalPanelSize(content)
-            panelSizeMultiplier = optimalWidth / 350
-            cache.categoryChanged = CurTime()
-        else
-            panelSizeMultiplier = 1.0
-        end
-    end
-end)
