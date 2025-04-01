@@ -96,6 +96,11 @@ concommand.Add("save_position", function(ply, _, _)
         return
     end
 
+    if not Admin then
+        print("[RARELOAD] Only admins can save player positions.")
+        return
+    end
+
     EnsureFolderExists()
     local mapName = game.GetMap()
     RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
@@ -460,4 +465,208 @@ concommand.Add("save_position", function(ply, _, _)
     net.Send(ply)
 
     SyncPlayerPositions(ply)
+end)
+
+concommand.Add("save_bot_position", function(ply, _, args)
+    -- Check if caller is admin
+    if IsValid(ply) and not ply:IsAdmin() then
+        print("[RARELOAD] Only admins can save bot positions.")
+        return
+    end
+
+    if not RARELOAD.settings.addonEnabled then
+        print("[RARELOAD DEBUG] The Respawn at Reload addon is disabled.")
+        return
+    end
+
+    EnsureFolderExists()
+    local mapName = game.GetMap()
+    RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
+
+    -- Determine which bot(s) to save
+    local targetBotName = args[1]
+    local botsToSave = {}
+
+    -- If a specific bot name is provided, find that bot
+    if targetBotName then
+        for _, bot in ipairs(player.GetBots()) do
+            if bot:GetName() == targetBotName then
+                table.insert(botsToSave, bot)
+                break
+            end
+        end
+        if #botsToSave == 0 then
+            print("[RARELOAD] Bot with name '" .. targetBotName .. "' not found.")
+            return
+        end
+    else
+        -- Otherwise save all bots
+        botsToSave = player.GetBots()
+        if #botsToSave == 0 then
+            print("[RARELOAD] No bots found on server.")
+            return
+        end
+    end
+
+    -- Save each bot's position and other data
+    for _, bot in ipairs(botsToSave) do
+        local botPos = bot:GetPos()
+        local botAng = bot:EyeAngles()
+        local botActiveWeapon = IsValid(bot:GetActiveWeapon()) and bot:GetActiveWeapon():GetClass() or "None"
+
+        local botInventory = {}
+        for _, weapon in ipairs(bot:GetWeapons()) do
+            table.insert(botInventory, weapon:GetClass())
+        end
+
+        local botData = {
+            pos = botPos,
+            ang = { botAng.p, botAng.y, botAng.r },
+            moveType = bot:GetMoveType(),
+            activeWeapon = botActiveWeapon,
+            inventory = botInventory,
+            isBot = true,
+            botName = bot:GetName()
+        }
+
+        -- Add health and armor if enabled
+        if RARELOAD.settings.retainHealthArmor then
+            botData.health = bot:Health()
+            botData.armor = bot:Armor()
+        end
+
+        -- Add ammo if enabled
+        if RARELOAD.settings.retainAmmo then
+            botData.ammo = {}
+            for _, weaponClass in ipairs(botInventory) do
+                local weapon = bot:GetWeapon(weaponClass)
+                if IsValid(weapon) then
+                    local primaryAmmoType = weapon:GetPrimaryAmmoType()
+                    local secondaryAmmoType = weapon:GetSecondaryAmmoType()
+                    local primaryAmmo = bot:GetAmmoCount(primaryAmmoType)
+                    local secondaryAmmo = bot:GetAmmoCount(secondaryAmmoType)
+                    if primaryAmmo > 0 or secondaryAmmo > 0 then
+                        botData.ammo[weaponClass] = {
+                            primary = primaryAmmo,
+                            secondary = secondaryAmmo,
+                            primaryAmmoType = primaryAmmoType,
+                            secondaryAmmoType = secondaryAmmoType
+                        }
+                    end
+                end
+            end
+        end
+
+        if RARELOAD.settings.retainMapEntities then
+            botData.entities = {}
+            local startTime = SysTime()
+            local count = 0
+
+            for _, ent in ipairs(ents.GetAll()) do
+                if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() and not ent:IsVehicle() then
+                    count = count + 1
+                    local entityData = {
+                        class = ent:GetClass(),
+                        pos = ent:GetPos(),
+                        ang = ent:GetAngles(),
+                        model = ent:GetModel(),
+                        health = ent:Health(),
+                        maxHealth = ent:GetMaxHealth(),
+                        frozen = IsValid(ent:GetPhysicsObject()) and not ent:GetPhysicsObject():IsMotionEnabled(),
+                    }
+
+                    table.insert(botData.entities, entityData)
+                end
+            end
+
+            if RARELOAD.settings.debugEnabled then
+                print("[RARELOAD DEBUG] Saved " .. count .. " entities in " ..
+                    math.Round((SysTime() - startTime) * 1000) .. " ms")
+            end
+        end
+
+        -- Save vehicle state if bot is in a vehicle
+        if RARELOAD.settings.retainVehicleState and bot:InVehicle() then
+            local vehicle = bot:GetVehicle()
+            if IsValid(vehicle) then
+                local phys = vehicle:GetPhysicsObject()
+                botData.vehicleState = {
+                    class = vehicle:GetClass(),
+                    pos = vehicle:GetPos(),
+                    ang = vehicle:GetAngles(),
+                    health = vehicle:Health(),
+                    frozen = IsValid(phys) and not phys:IsMotionEnabled(),
+                    savedinsidevehicle = true
+                }
+            end
+        end
+
+        RARELOAD.playerPositions[mapName][bot:SteamID()] = botData
+        print("[RARELOAD] Saved position for bot: " .. bot:GetName())
+
+        -- Show debug visualization if enabled
+        if RARELOAD.settings.debugEnabled then
+            net.Start("CreatePlayerPhantom")
+            net.WriteEntity(bot)
+            net.WriteVector(botData.pos)
+            local savedAng = Angle(botData.ang[1], botData.ang[2], botData.ang[3])
+            net.WriteAngle(savedAng)
+            net.Broadcast()
+        end
+    end
+
+    -- Save all data to file
+    local success, err = pcall(function()
+        file.Write("rareload/player_positions_" .. mapName .. ".json", util.TableToJSON(RARELOAD.playerPositions, true))
+    end)
+
+    if not success then
+        print("[RARELOAD] Failed to save bot position data: " .. err)
+    else
+        print("[RARELOAD] Bot position(s) successfully saved.")
+    end
+
+    -- Update visuals and sync data
+    if IsValid(ply) then
+        SyncPlayerPositions(ply)
+    end
+end)
+
+if SERVER then
+    -- Function to make the bot spawn an entity
+    function SpawnEntityByBot(bot)
+        if not IsValid(bot) or not bot:IsBot() then return end              -- Ensure it's a valid bot
+
+        local ent = ents.Create("prop_physics")                             -- Change this to the entity you want
+        if not IsValid(ent) then return end                                 -- Make sure the entity was created
+
+        ent:SetModel("models/props_c17/oildrum001.mdl")                     -- Set a model
+        ent:SetPos(bot:GetPos() + bot:GetForward() * 50 + Vector(0, 0, 50)) -- Spawn in front of the bot
+        ent:Spawn()
+        ent:Activate()
+
+        print(bot:Nick() .. " has spawned an entity!")
+    end
+
+    concommand.Add("bot_spawn_entity", function(ply)
+        for _, bot in ipairs(player.GetBots()) do
+            SpawnEntityByBot(bot)
+        end
+    end)
+end
+
+-- No use for this command, but I used it to test
+concommand.Add("check_admin_status", function(ply)
+    if not IsValid(ply) then
+        print("[RARELOAD] This command can only be run by a player.")
+        return
+    end
+
+    if ply:IsAdmin() then
+        print("[RARELOAD] Admin")
+        Admin = true
+    else
+        print("[RARELOAD] Not Admin")
+        Admin = false
+    end
 end)

@@ -37,7 +37,11 @@ function ShowNotification(message, type)
     surface.PlaySound(type == NOTIFY_ERROR and "buttons/button10.wav" or "buttons/button15.wav")
 end
 
-function OpenEntityViewer()
+function OpenEntityViewer(ply)
+    if not IsValid(ply) or not ply:IsAdmin() then
+        ShowNotification("You must be an admin to use this command.", NOTIFY_ERROR)
+        return
+    end
     ---@class DFrame
     local frame = vgui.Create("DFrame")
     frame:SetSize(ScrW() * 0.7, ScrH() * 0.8)
@@ -317,5 +321,6 @@ end
 net.Receive("RareloadTeleportTo", function()
     local pos = net.ReadVector()
 end)
+
 
 concommand.Add("entity_viewer_open", OpenEntityViewer)

@@ -24,7 +24,7 @@ function CreateCategory(parent, title, dataList, isNPC, filter)
     local itemHeight = 140
     local headerHeight = 30
     local marginHeight = 10
-    local maxVisibleItems = 3
+    local maxVisibleItems = 10
     local contentHeight = math.min(#dataList, maxVisibleItems) * (itemHeight + marginHeight)
 
     mainContainer:SetTall(headerHeight)
