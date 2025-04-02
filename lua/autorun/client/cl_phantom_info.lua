@@ -38,7 +38,6 @@ ScrollbarGrabbed = false
 ScrollbarGrabOffset = 0
 
 
--- Improved CalculateOptimalPanelSize
 function CalculateOptimalPanelSize(categoryContent)
     if type(categoryContent) ~= "table" then
         return 350
@@ -62,7 +61,6 @@ function CalculateOptimalPanelSize(categoryContent)
     return math.Clamp(contentWidth, minWidth, maxWidth)
 end
 
--- Improved table.map
 function table.map(tbl, func)
     if type(tbl) ~= "table" then return {} end
 
@@ -73,7 +71,6 @@ function table.map(tbl, func)
     return result
 end
 
--- Improved VectorToString
 local function VectorToString(vec)
     if type(vec) == "string" then
         local x, y, z = vec:match("%[([%d%.%-]+)%s+([%d%.%-]+)%s+([%d%.%-]+)%]")
@@ -91,14 +88,12 @@ local function VectorToString(vec)
     return "N/A"
 end
 
--- Improved AngleToString
 local function AngleToString(ang)
     if not ang then
         return "N/A"
     end
 
     if type(ang) == "string" then
-        -- This pattern accepts both curly braces and parenthesis
         local p, y, r = ang:match("[{%(]?([%d%.%-]+)%s+([%d%.%-]+)%s+([%d%.%-]+)[%]%)?}")
         if p and y and r then
             return string.format("P: %.1f, Y: %.1f, R: %.1f", tonumber(p), tonumber(y), tonumber(r))
@@ -115,7 +110,6 @@ local function AngleToString(ang)
     return "N/A"
 end
 
--- Improved BuildPhantomInfoData
 function BuildPhantomInfoData(ply, SavedInfo, mapName)
     local data = {
         basic = {},
@@ -193,35 +187,16 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
                     catData.color
                 })
 
-                local maxToShow = math.min(5, #uniqueItems)
-                for i = 1, maxToShow do
+                for i = 1, #uniqueItems do
                     local itemData = uniqueItems[i]
-                    local pretty = (string.match(itemData.item, "[^_]+_(.+)") or itemData.item)
-                        :gsub("_", " ")
-                        :gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest end)
-
-                    local displayText = pretty .. (itemData.count > 1 and (" ×" .. itemData.count) or "")
-                    local prefix = (i == maxToShow and i == #uniqueItems) and "  └─" or "  ├─"
-
-                    local shade = 0.9 - (i * 0.05)
-                    local itemColor = Color(
-                        catData.color.r * shade,
-                        catData.color.g * shade,
-                        catData.color.b * shade
-                    )
+                    local displayText = (itemData.count > 1 and (" ×" .. itemData.count) or "")
+                    local prefix = (i == #uniqueItems) and "  └─" or "  ├─"
 
                     table.insert(data.equipment, {
                         prefix .. " " .. itemData.item:sub(1, 12),
                         displayText,
-                        itemColor
-                    })
-                end
-
-                if #uniqueItems > maxToShow then
-                    table.insert(data.equipment, {
-                        "  └─ More...",
-                        (#uniqueItems - maxToShow) .. " more types",
-                        Color(catData.color.r * 0.7, catData.color.g * 0.7, catData.color.b * 0.7)
+                        catData.color,
+                        { noColon = true }
                     })
                 end
 
@@ -234,7 +209,6 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
 
     -- Process Ammo
     if SavedInfo.ammo and type(SavedInfo.ammo) == "table" and #SavedInfo.ammo > 0 then
-        -- Add a visual separator and header
         table.insert(data.equipment, { "══ Ammunition ══", #SavedInfo.ammo .. " types total", Color(150, 180, 255) })
 
         local ammoTypes = {}
@@ -245,7 +219,6 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
             ammoTypes[ammoName] = (ammoTypes[ammoName] or 0) + ammoCount
         end
 
-        -- Calculate total ammo count for all types
         local totalAmmoCount = 0
         for _, count in pairs(ammoTypes) do
             totalAmmoCount = totalAmmoCount + count
@@ -257,7 +230,6 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
         end
         table.sort(sortedAmmo, function(a, b) return a.count > b.count end)
 
-        -- Show total ammunition count summary
         table.insert(data.equipment, {
             "[A] Ammunition",
             totalAmmoCount .. " rounds in " .. #sortedAmmo .. " types",
@@ -273,7 +245,6 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
                     return first:upper() .. rest
                 end)
 
-            -- Calculate color gradient (gets slightly darker as list progresses)
             local shade = 0.9 - (i * 0.05)
             local ammoColor = Color(
                 150 * shade,
@@ -298,7 +269,6 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
             })
         end
 
-        -- Add spacing after ammo section
         table.insert(data.equipment, { "", "", Color(0, 0, 0, 0) })
     end
 
@@ -331,7 +301,7 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
         end
     end
 
-    -- Process Vehicles separately (updated to show all types)
+    -- Process Vehicles separately
     if SavedInfo.vehicles and type(SavedInfo.vehicles) == "table" and #SavedInfo.vehicles > 0 then
         local vehicleCount = #SavedInfo.vehicles
         table.insert(data.entities, { "Total Vehicles", vehicleCount, Color(200, 200, 255) })
@@ -589,9 +559,10 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
             alpha = math.max(alpha, 0)
 
             surface.SetFont("Trebuchet18")
-            draw.SimpleText(label .. ":", "Trebuchet18", offsetX + textPadding, yPos,
-                Color(200, 200, 200, 200 * alpha), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 
+            local colonSuffix = (line[4] and line[4].noColon) and "" or ":"
+            draw.SimpleText(label .. colonSuffix, "Trebuchet18", offsetX + textPadding, yPos,
+                Color(200, 200, 200, 200 * alpha), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
             local valueX = offsetX + textPadding + 120
             local maxValueWidth = panelWidth - (textPadding * 2) - 130 -
                 (needsScrolling and (5 + scrollbarPadding * 2) or 0)
@@ -619,33 +590,32 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     render.SetStencilEnable(false)
 
     ----------------------------
-    -- Draw Scrollbar (if needed)
+    -- Draw Scrollbar
     ----------------------------
     if needsScrolling then
         local scrollBarWidth = 5
+        local scrollbarPadding = 5
         local scrollBarX = offsetX + panelWidth - scrollBarWidth - scrollbarPadding
-        local scrollBarY = contentY
-        draw.RoundedBox(4, scrollBarX, scrollBarY, scrollBarWidth, maxDisplayHeight, theme.scrollbar)
+        local scrollbarTopPadding = scrollbarPadding
+        local scrollbarBottomPadding = scrollbarPadding
+        local scrollBarY = contentY + scrollbarTopPadding
+        local scrollBarHeight = maxDisplayHeight - scrollbarTopPadding - scrollbarBottomPadding
 
-        local handleRatio = math.min(1, maxDisplayHeight / contentHeight)
-        local handleHeight = math.max(30, maxDisplayHeight * handleRatio)
-        local handleY = scrollBarY + (scrollOffset / maxScrollOffset) * (maxDisplayHeight - handleHeight)
+        draw.RoundedBox(4, scrollBarX, scrollBarY, scrollBarWidth, scrollBarHeight, theme.scrollbar)
+
+        local handleRatio = math.min(1, scrollBarHeight / contentHeight)
+        local handleHeight = math.max(30, scrollBarHeight * handleRatio)
+        local handleY = scrollBarY + (scrollOffset / maxScrollOffset) * (scrollBarHeight - handleHeight)
         draw.RoundedBox(4, scrollBarX, handleY, scrollBarWidth, handleHeight, theme.scrollbarHandle)
 
         local btnSize = scrollBarWidth + 4
         if scrollOffset > 0 then
-            draw.RoundedBox(4, scrollBarX - 2, scrollBarY - 2, btnSize, btnSize, theme.border)
-            draw.RoundedBox(4, scrollBarX, scrollBarY, scrollBarWidth, btnSize - 4, theme.scrollbarHandle)
             draw.SimpleText("▲", "Trebuchet18", scrollBarX + scrollBarWidth / 2, scrollBarY + btnSize / 2 - 2,
                 Color(255, 255, 255, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
         if scrollOffset < maxScrollOffset then
-            draw.RoundedBox(4, scrollBarX - 2, scrollBarY + maxDisplayHeight - btnSize + 2, btnSize, btnSize,
-                theme.border)
-            draw.RoundedBox(4, scrollBarX, scrollBarY + maxDisplayHeight - btnSize + 4, scrollBarWidth, btnSize - 4,
-                theme.scrollbarHandle)
             draw.SimpleText("▼", "Trebuchet18", scrollBarX + scrollBarWidth / 2,
-                scrollBarY + maxDisplayHeight - btnSize / 2 + 2,
+                scrollBarY + scrollBarHeight - btnSize / 2 + 2,
                 Color(255, 255, 255, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
 
@@ -653,7 +623,7 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
             x = scrollBarX,
             y = scrollBarY,
             width = scrollBarWidth,
-            height = maxDisplayHeight,
+            height = scrollBarHeight,
             handleY = handleY,
             handleHeight = handleHeight,
             contentHeight = contentHeight,
@@ -661,9 +631,11 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
             maxScrollOffset = maxScrollOffset,
             upButtonY = scrollBarY,
             upButtonHeight = btnSize,
-            downButtonY = scrollBarY + maxDisplayHeight - btnSize + 2,
+            downButtonY = scrollBarY + scrollBarHeight - btnSize + 2,
             downButtonHeight = btnSize
         }
+
+        PhantomInfoCache[steamID].maxScrollOffset = maxScrollOffset
     end
 
     ----------------------------
@@ -671,14 +643,42 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     ----------------------------
     if isActiveInteraction then
         local helpText = "← → to navigate tabs  |  ↑↓ or use Scroll wheel to scroll |  E to Exit"
-        draw.SimpleText(helpText, "Trebuchet18", offsetX + panelWidth / 2, offsetY - 20,
-            Color(255, 255, 255, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+        surface.SetFont("Trebuchet18")
+        local textWidth, textHeight = surface.GetTextSize(helpText)
+
+        local textY = offsetY - 20
+        local bgPadding = 5
+
+        draw.RoundedBox(4,
+            offsetX + panelWidth / 2 - textWidth / 2 - 10,
+            textY - textHeight / 2 - bgPadding,
+            textWidth + 20,
+            textHeight + bgPadding * 2,
+            Color(20, 20, 30, 200))
+
+        draw.SimpleText(helpText, "Trebuchet18", offsetX + panelWidth / 2, textY,
+            Color(255, 255, 255, 230), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     elseif distanceSqr < 10000 then
-        draw.SimpleText("Press [E] to interact", "Trebuchet18", offsetX + panelWidth / 2, offsetY - 20,
-            Color(255, 255, 255, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+        local promptText = "Press [E] to interact"
+        surface.SetFont("Trebuchet18")
+        local textWidth, textHeight = surface.GetTextSize(promptText)
+
+        local textY = offsetY - 20
+        local bgPadding = 5
+
+        draw.RoundedBox(4,
+            offsetX + panelWidth / 2 - textWidth / 2 - 10,
+            textY - textHeight / 2 - bgPadding,
+            textWidth + 20,
+            textHeight + bgPadding * 2,
+            Color(20, 20, 30, 200))
+
+        draw.SimpleText(promptText, "Trebuchet18", offsetX + panelWidth / 2, textY,
+            Color(255, 255, 255, 230), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
 
     PhantomInfoCache[steamID].panelInfo = { tabInfo = tabScreenInfo, activeTabIndex = nil, hasScrollbar = needsScrolling }
+
     for i, tab in ipairs(tabScreenInfo) do
         if tab.catID == activeCategory then
             PhantomInfoCache[steamID].panelInfo.activeTabIndex = i

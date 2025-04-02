@@ -96,11 +96,6 @@ concommand.Add("save_position", function(ply, _, _)
         return
     end
 
-    if not Admin then
-        print("[RARELOAD] Only admins can save player positions.")
-        return
-    end
-
     EnsureFolderExists()
     local mapName = game.GetMap()
     RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}

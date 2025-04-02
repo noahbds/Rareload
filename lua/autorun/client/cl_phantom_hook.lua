@@ -1,9 +1,9 @@
 hook.Remove("GUIMousePressed", "PhantomPanelInteraction")
 
 hook.Add("Think", "PhantomKeyboardNavigation", function()
-    if not phantomInteractionMode or not phantomInteractionTarget then return end
+    if not PhantomInteractionMode or not PhantomInteractionTarget then return end
 
-    local cache = PhantomInfoCache[phantomInteractionTarget]
+    local cache = PhantomInfoCache[PhantomInteractionTarget]
     if not cache or not cache.panelInfo then return end
 
     local panelInfo = cache.panelInfo
@@ -49,15 +49,16 @@ hook.Add("Think", "PhantomKeyboardNavigation", function()
     end
 
     if input.IsKeyDown(KEY_UP) then
-        if ScrollPersistence[phantomInteractionTarget] and activeCategory then
-            local newScroll = math.max(0, (ScrollPersistence[phantomInteractionTarget][activeCategory] or 0) - 5)
-            ScrollPersistence[phantomInteractionTarget][activeCategory] = newScroll
+        if ScrollPersistence[PhantomInteractionTarget] and activeCategory then
+            local newScroll = math.max(0, (ScrollPersistence[PhantomInteractionTarget][activeCategory] or 0) - 5)
+            ScrollPersistence[PhantomInteractionTarget][activeCategory] = newScroll
         end
     elseif input.IsKeyDown(KEY_DOWN) then
-        if ScrollPersistence[phantomInteractionTarget] and activeCategory then
-            local newScroll = math.min(MaxScrollOffset,
-                (ScrollPersistence[phantomInteractionTarget][activeCategory] or 0) + 5)
-            ScrollPersistence[phantomInteractionTarget][activeCategory] = newScroll
+        if ScrollPersistence[PhantomInteractionTarget] and activeCategory then
+            local maxScroll = (cache.maxScrollOffset or 0)
+            local newScroll = math.min(maxScroll,
+                (ScrollPersistence[PhantomInteractionTarget][activeCategory] or 0) + 5)
+            ScrollPersistence[PhantomInteractionTarget][activeCategory] = newScroll
         end
     end
 end)
@@ -65,7 +66,7 @@ end)
 hook.Add("StartCommand", "PhantomBlockMovement", function(ply, cmd)
     if ply ~= LocalPlayer() then return end
 
-    if phantomInteractionMode and phantomInteractionTarget then
+    if PhantomInteractionMode and PhantomInteractionTarget then
         cmd:ClearMovement()
         cmd:ClearButtons()
 
@@ -76,23 +77,24 @@ hook.Add("StartCommand", "PhantomBlockMovement", function(ply, cmd)
 end)
 
 hook.Add("PlayerBindPress", "PhantomBlockBindings", function(ply, bind, pressed)
-    if phantomInteractionMode and phantomInteractionTarget then
-        local cache = PhantomInfoCache[phantomInteractionTarget]
+    if PhantomInteractionMode and PhantomInteractionTarget then
+        local cache = PhantomInfoCache[PhantomInteractionTarget]
         if cache and cache.activeCategory then
             local activeCategory = cache.activeCategory
 
             if bind == "invprev" and pressed then
-                if ScrollPersistence[phantomInteractionTarget] then
+                if ScrollPersistence[PhantomInteractionTarget] then
                     local newScroll = math.max(0,
-                        (ScrollPersistence[phantomInteractionTarget][activeCategory] or 0) - ScrollSpeed)
-                    ScrollPersistence[phantomInteractionTarget][activeCategory] = newScroll
+                        (ScrollPersistence[PhantomInteractionTarget][activeCategory] or 0) - ScrollSpeed)
+                    ScrollPersistence[PhantomInteractionTarget][activeCategory] = newScroll
                 end
                 return true
             elseif bind == "invnext" and pressed then
-                if ScrollPersistence[phantomInteractionTarget] then
-                    local newScroll = math.min(MaxScrollOffset,
-                        (ScrollPersistence[phantomInteractionTarget][activeCategory] or 0) + ScrollSpeed)
-                    ScrollPersistence[phantomInteractionTarget][activeCategory] = newScroll
+                if ScrollPersistence[PhantomInteractionTarget] then
+                    local maxScroll = (cache.maxScrollOffset or 0)
+                    local newScroll = math.min(maxScroll,
+                        (ScrollPersistence[PhantomInteractionTarget][activeCategory] or 0) + ScrollSpeed)
+                    ScrollPersistence[PhantomInteractionTarget][activeCategory] = newScroll
                 end
                 return true
             end
@@ -108,7 +110,7 @@ end)
 
 local originalViewData = nil
 hook.Add("CalcView", "PhantomInteractionView", function(ply, pos, angles, fov)
-    if phantomInteractionMode and phantomInteractionTarget then
+    if PhantomInteractionMode and PhantomInteractionTarget then
         if not originalViewData then
             originalViewData = {
                 pos = pos,
@@ -135,7 +137,7 @@ hook.Add("KeyPress", "PhantomInteractionToggle", function(ply, key)
     local playerPos = ply:GetPos()
     local mapName = game.GetMap()
 
-    if phantomInteractionMode then
+    if PhantomInteractionMode then
         PhantomInteractionMode = false
         PhantomInteractionTarget = nil
         PhantomInteractionAngle = nil
