@@ -84,8 +84,6 @@ local function VectorToString(vec)
         local z = vec.z or vec[3] or 0
         return string.format("X: %.1f, Y: %.1f, Z: %.1f", x, y, z)
     end
-
-    return "N/A"
 end
 
 local function AngleToString(ang)
@@ -132,7 +130,7 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
     table.insert(data.basic, { "Map", mapName, Color(180, 180, 200) })
 
     -- Position Information
-    table.insert(data.position, { "Position", VectorToString(SavedInfo.pos), Color(255, 255, 255) })
+    table.insert(data.position, { "Position", (SavedInfo.pos), Color(255, 255, 255) })
     table.insert(data.position, { "Direction", AngleToString(SavedInfo.ang), Color(220, 220, 220) })
     table.insert(data.position, { "Movement Type", moveTypeNames[SavedInfo.moveType] or "Unknown", Color(220, 220, 220) })
 
@@ -150,22 +148,12 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
         table.insert(data.equipment, { "══ Inventory ══", #SavedInfo.inventory .. " items total", Color(255, 220, 150) })
 
         local categories = {
-            Weapons = { items = {}, color = Color(255, 150, 150), icon = "W" },
-            Items   = { items = {}, color = Color(150, 230, 150), icon = "I" },
-            Ammo    = { items = {}, color = Color(150, 180, 255), icon = "A" },
-            Misc    = { items = {}, color = Color(220, 220, 220), icon = "M" }
+            Inventory = { items = {}, color = Color(255, 150, 150), icon = "I" }
         }
 
+        -- Simply add all items to the Inventory category
         for _, item in ipairs(SavedInfo.inventory) do
-            local cat = "Misc"
-            if item:find("weapon_") then
-                cat = "Weapons"
-            elseif item:find("item_") then
-                cat = "Items"
-            elseif item:find("ammo_") then
-                cat = "Ammo"
-            end
-            table.insert(categories[cat].items, item)
+            table.insert(categories["Inventory"].items, item)
         end
 
         for catName, catData in pairs(categories) do
@@ -190,86 +178,57 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
                 for i = 1, #uniqueItems do
                     local itemData = uniqueItems[i]
                     local displayText = (itemData.count > 1 and (" ×" .. itemData.count) or "")
+
+                    -- Add ammo info for weapons (keep this functionality)
+                    if SavedInfo.ammo and SavedInfo.ammo[itemData.item] then
+                        local ammoInfo = SavedInfo.ammo[itemData.item]
+                        local ammoText = ""
+
+                        if ammoInfo.primary and ammoInfo.primary > 0 and ammoInfo.primaryAmmoType and ammoInfo.primaryAmmoType >= 0 then
+                            local ammoName = "Unknown"
+                            -- Convert ammo ID to name
+                            if game.GetAmmoName then
+                                ammoName = game.GetAmmoName(ammoInfo.primaryAmmoType) or
+                                    tostring(ammoInfo.primaryAmmoType)
+                            else
+                                ammoName = "Type:" .. tostring(ammoInfo.primaryAmmoType)
+                            end
+                            ammoText = ammoText .. " [" .. ammoInfo.primary .. " " .. ammoName .. "]"
+                        end
+
+                        if ammoInfo.secondary and ammoInfo.secondary > 0 and ammoInfo.secondaryAmmoType and ammoInfo.secondaryAmmoType >= 0 then
+                            local ammoName = "Unknown"
+                            -- Convert ammo ID to name
+                            if game.GetAmmoName then
+                                ammoName = game.GetAmmoName(ammoInfo.secondaryAmmoType) or
+                                    tostring(ammoInfo.secondaryAmmoType)
+                            else
+                                ammoName = "Type:" .. tostring(ammoInfo.secondaryAmmoType)
+                            end
+                            ammoText = ammoText .. " [+" .. ammoInfo.secondary .. " " .. ammoName .. "]"
+                        end
+
+                        if ammoText ~= "" then
+                            displayText = displayText .. " " .. ammoText
+                        end
+                    end
+
                     local prefix = (i == #uniqueItems) and "  └─" or "  ├─"
 
+                    -- Keep the pretty item name formatting
+                    local prettyItemName = itemData.item:gsub("weapon_", ""):gsub("_", " ")
+                    prettyItemName = prettyItemName:gsub("(%a)([%w_']*)",
+                        function(first, rest) return first:upper() .. rest end)
+
                     table.insert(data.equipment, {
-                        prefix .. " " .. itemData.item:sub(1, 12),
+                        prefix .. " " .. prettyItemName,
                         displayText,
                         catData.color,
                         { noColon = true }
                     })
                 end
-
-                if catName ~= "Misc" then
-                    table.insert(data.equipment, { "", "", Color(0, 0, 0, 0) })
-                end
             end
         end
-    end
-
-    -- Process Ammo
-    if SavedInfo.ammo and type(SavedInfo.ammo) == "table" and #SavedInfo.ammo > 0 then
-        table.insert(data.equipment, { "══ Ammunition ══", #SavedInfo.ammo .. " types total", Color(150, 180, 255) })
-
-        local ammoTypes = {}
-        for i, ammoEntry in ipairs(SavedInfo.ammo) do
-            local ammoID = ammoEntry.id or i
-            local ammoCount = ammoEntry.count or 0
-            local ammoName = ammoEntry.name or ("Ammo #" .. ammoID)
-            ammoTypes[ammoName] = (ammoTypes[ammoName] or 0) + ammoCount
-        end
-
-        local totalAmmoCount = 0
-        for _, count in pairs(ammoTypes) do
-            totalAmmoCount = totalAmmoCount + count
-        end
-
-        local sortedAmmo = {}
-        for name, count in pairs(ammoTypes) do
-            table.insert(sortedAmmo, { name = name, count = count })
-        end
-        table.sort(sortedAmmo, function(a, b) return a.count > b.count end)
-
-        table.insert(data.equipment, {
-            "[A] Ammunition",
-            totalAmmoCount .. " rounds in " .. #sortedAmmo .. " types",
-            Color(150, 180, 255)
-        })
-
-        local maxToShow = math.min(5, #sortedAmmo)
-        for i = 1, maxToShow do
-            local ammo = sortedAmmo[i]
-            local displayName = ammo.name
-                :gsub("_", " ")
-                :gsub("(%a)([%w_']*)", function(first, rest)
-                    return first:upper() .. rest
-                end)
-
-            local shade = 0.9 - (i * 0.05)
-            local ammoColor = Color(
-                150 * shade,
-                180 * shade,
-                255 * shade
-            )
-
-            local prefix = (i == maxToShow and i == #sortedAmmo) and "  └─" or "  ├─"
-
-            table.insert(data.equipment, {
-                prefix .. " " .. string.sub(ammo.name, 1, 15),
-                displayName .. " ×" .. ammo.count,
-                ammoColor
-            })
-        end
-
-        if #sortedAmmo > maxToShow then
-            table.insert(data.equipment, {
-                "  └─ More...",
-                (#sortedAmmo - maxToShow) .. " more ammo types",
-                Color(120, 140, 220)
-            })
-        end
-
-        table.insert(data.equipment, { "", "", Color(0, 0, 0, 0) })
     end
 
     local function processGroupedData(group, config)

@@ -1,16 +1,16 @@
 ---@class RARELOAD
-local RARELOAD = RARELOAD or {}
-RARELOAD.settings = RARELOAD.settings or {}
-RARELOAD.playerPositions = RARELOAD.playerPositions or {}
+local RARELOAD              = RARELOAD or {}
+RARELOAD.settings           = RARELOAD.settings or {}
+RARELOAD.playerPositions    = RARELOAD.playerPositions or {}
 RARELOAD.serverLastSaveTime = 0
 
-TOOL = TOOL or {}
-TOOL.Category = "Rareload"
-TOOL.Name = "Rareload Config Tool"
-TOOL.Command = nil
-TOOL.ConfigName = ""
+TOOL                        = TOOL or {}
+TOOL.Category               = "Rareload"
+TOOL.Name                   = "Rareload Config Tool"
+TOOL.Command                = nil
+TOOL.ConfigName             = ""
 
-local UI = {
+local UI                    = {
     COLORS = {
         ENABLED = Color(50, 150, 255),
         DISABLED = Color(255, 50, 50),
@@ -56,10 +56,39 @@ if CLIENT then
         additive = false
     })
 
+    -- Create tool screen fonts
+    surface.CreateFont("CTNV", {
+        font = "Roboto",
+        size = 18,
+        weight = 500,
+        antialias = true
+    })
+
+    surface.CreateFont("CTNV2", {
+        font = "Roboto",
+        size = 24,
+        weight = 700,
+        antialias = true
+    })
+
     -- Network handling
     net.Receive("RareloadSyncAutoSaveTime", function()
         RARELOAD.serverLastSaveTime = net.ReadFloat()
     end)
+
+    -- Define circle drawing function
+    function draw.Circle(x, y, radius, segments)
+        local points = {}
+        for i = 0, segments do
+            local angle = math.rad((i / segments) * 360)
+            table.insert(points, {
+                x = x + math.cos(angle) * radius,
+                y = y + math.sin(angle) * radius
+            })
+        end
+
+        surface.DrawPoly(points)
+    end
 end
 
 
@@ -222,7 +251,20 @@ local function createSavePositionButton(panel)
     button:SetSize(250, 40)
 
     button.Paint = function(self, w, h)
-        local color = self:IsHovered() and UI.COLORS.SAVE_BUTTON:ToHSL(0.1, 1.1, 1) or UI.COLORS.SAVE_BUTTON
+        local baseColor = UI.COLORS.SAVE_BUTTON
+        local color
+
+        if self:IsHovered() then
+            color = Color(
+                math.min(baseColor.r + 30, 255),
+                math.min(baseColor.g + 30, 255),
+                math.min(baseColor.b + 30, 255),
+                baseColor.a
+            )
+        else
+            color = baseColor
+        end
+
         draw.RoundedBox(8, 0, 0, w, h, color)
     end
 
@@ -579,37 +621,4 @@ function TOOL:DrawToolScreen(width, height)
     end
 
     draw.SimpleText("v2.1", "CTNV", width - 10, height - 10, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
-end
-
-if CLIENT then
-    if not pcall(function() surface.SetFont("CTNV") end) then
-        surface.CreateFont("CTNV", {
-            font = "Roboto",
-            size = 18,
-            weight = 500,
-            antialias = true
-        })
-    end
-
-    if not pcall(function() surface.SetFont("CTNV2") end) then
-        surface.CreateFont("CTNV2", {
-            font = "Roboto",
-            size = 24,
-            weight = 700,
-            antialias = true
-        })
-    end
-
-    function draw.Circle(x, y, radius, segments)
-        local points = {}
-        for i = 0, segments do
-            local angle = math.rad((i / segments) * 360)
-            table.insert(points, {
-                x = x + math.cos(angle) * radius,
-                y = y + math.sin(angle) * radius
-            })
-        end
-
-        surface.DrawPoly(points)
-    end
 end
