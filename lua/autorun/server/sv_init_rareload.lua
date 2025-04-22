@@ -7,12 +7,13 @@ function GetDefaultSettings()
         spawnModeEnabled = true,
         autoSaveEnabled = false,
         retainInventory = false,
-        retainHealthArmor = false,  -- Beta [NOT TESTED]
-        retainAmmo = false,         -- Beta [NOT TESTED]
+        retainGlobalInventory = false,
+        retainHealthArmor = false,
+        retainAmmo = false,
         retainVehicleState = false, -- Beta [NOT TESTED]
         retainMapEntities = false,
         retainMapNPCs = false,
-        retainVehicles = false,
+        retainVehicles = false, -- Beta [NOT TESTED]
         nocustomrespawnatdeath = false,
         debugEnabled = false,
         autoSaveInterval = 5,
@@ -26,6 +27,7 @@ RARELOAD = {}
 RARELOAD.settings = GetDefaultSettings()
 RARELOAD.Phantom = RARELOAD.Phantom or {}
 RARELOAD.playerPositions = RARELOAD.playerPositions or {}
+RARELOAD.globalInventory = RARELOAD.globalInventory or {}
 RARELOAD.lastSavedTime = 0
 MapName = game.GetMap()
 ADDON_STATE_FILE_PATH = "rareload/addon_state.json"
@@ -77,6 +79,50 @@ function LoadAddonState()
         RARELOAD.settings = GetDefaultSettings()
         EnsureFolderExists()
         SaveAddonState()
+    end
+end
+
+function SaveGlobalInventory()
+    EnsureFolderExists()
+    local globalInventoryData = {}
+
+    for steamID, inventory in pairs(RARELOAD.globalInventory) do
+        globalInventoryData[steamID] = inventory
+    end
+
+    local json = util.TableToJSON(globalInventoryData, true)
+    local success, err = pcall(file.Write, "rareload/global_inventory.json", json)
+
+    if not success then
+        print("[RARELOAD] Failed to save global inventory: " .. err)
+    elseif RARELOAD.settings.debugEnabled then
+        print("[RARELOAD DEBUG] Global inventory saved successfully")
+    end
+end
+
+-- Function to load global inventory from file
+function LoadGlobalInventory()
+    EnsureFolderExists()
+
+    if file.Exists("rareload/global_inventory.json", "DATA") then
+        local json = file.Read("rareload/global_inventory.json", "DATA")
+        local success, inventoryData = pcall(util.JSONToTable, json)
+
+        if success and inventoryData then
+            RARELOAD.globalInventory = inventoryData
+            if RARELOAD.settings.debugEnabled then
+                print("[RARELOAD DEBUG] Global inventory loaded successfully")
+            end
+        else
+            print("[RARELOAD] Failed to load global inventory")
+            RARELOAD.globalInventory = {}
+        end
+    else
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] No global inventory file found, creating new one")
+        end
+        RARELOAD.globalInventory = {}
+        SaveGlobalInventory()
     end
 end
 
@@ -275,3 +321,4 @@ function SyncPlayerPositions(ply)
 end
 
 LoadAddonState()
+LoadGlobalInventory()

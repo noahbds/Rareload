@@ -1,53 +1,57 @@
 util.AddNetworkString("UpdatePhantomPosition")
 
-concommand.Add("toggle_rareload", function(ply)
+concommand.Add("rareload_rareload", function(ply)
     ToggleSetting(ply, 'addonEnabled', 'Respawn at Reload addon')
 end)
 
-concommand.Add("toggle_spawn_mode", function(ply)
+concommand.Add("rareload_spawn_mode", function(ply)
     ToggleSetting(ply, 'spawnModeEnabled', 'Spawn with saved move type')
 end)
 
-concommand.Add("toggle_auto_save", function(ply)
+concommand.Add("rareload_auto_save", function(ply)
     ToggleSetting(ply, 'autoSaveEnabled', 'Auto-save position')
 end)
 
-concommand.Add("toggle_retain_inventory", function(ply)
+concommand.Add("rareload_retain_inventory", function(ply)
     ToggleSetting(ply, 'retainInventory', 'Retain inventory')
 end)
 
-concommand.Add("toggle_nocustomrespawnatdeath", function(ply)
+concommand.Add("rareload_nocustomrespawnatdeath", function(ply)
     ToggleSetting(ply, 'nocustomrespawnatdeath', 'No Custom Respawn at Death')
 end)
 
-concommand.Add("toggle_debug", function(ply)
+concommand.Add("rareload_debug", function(ply)
     ToggleSetting(ply, 'debugEnabled', 'Debug mode')
 end)
 
-concommand.Add("toggle_retain_health_armor", function(ply)
+concommand.Add("rareload_retain_health_armor", function(ply)
     ToggleSetting(ply, 'retainHealthArmor', 'Retain health and armor')
 end)
 
-concommand.Add("toggle_retain_ammo", function(ply)
+concommand.Add("rareload_retain_ammo", function(ply)
     ToggleSetting(ply, 'retainAmmo', 'Retain ammo')
 end)
 
-concommand.Add("toggle_retain_vehicle_state", function(ply)
+concommand.Add("rareload_retain_vehicle_state", function(ply)
     ToggleSetting(ply, 'retainVehicleState', 'Retain vehicle state')
 end)
 
-concommand.Add("toggle_retain_map_npcs", function(ply)
+concommand.Add("rareload_retain_map_npcs", function(ply)
     ToggleSetting(ply, 'retainMapNPCs', 'Retain map NPCs')
 end)
 
-concommand.Add("toggle_retain_map_entities", function(ply)
+concommand.Add("rareload_retain_map_entities", function(ply)
     ToggleSetting(ply, 'retainMapEntities', 'Retain map entities')
 end)
 
 ---[[ Beta [NOT TESTED] ]]---
 
-concommand.Add("toggle_retain_vehicles", function(ply)
+concommand.Add("rareload_retain_vehicles", function(ply)
     ToggleSetting(ply, 'retainVehicles', 'Retain vehicles')
+end)
+
+concommand.Add("rareload_retain_global_inventory", function(ply)
+    ToggleSetting(ply, 'retainGlobalInventory', 'Retain global inventory')
 end)
 
 ---[[ End Of Beta [NOT TESTED] ]]---
@@ -104,9 +108,28 @@ concommand.Add("save_position", function(ply, _, _)
     local newAng = ply:EyeAngles()
     local newActiveWeapon = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or "None"
 
+
     local newInventory = {}
-    for _, weapon in ipairs(ply:GetWeapons()) do
-        table.insert(newInventory, weapon:GetClass())
+
+    if RARELOAD.settings.retainInventory then
+        for _, weapon in ipairs(ply:GetWeapons()) do
+            table.insert(newInventory, weapon:GetClass())
+        end
+    end
+
+    if RARELOAD.settings.retainGlobalInventory then
+        local globalInventory = {}
+        for _, weapon in ipairs(ply:GetWeapons()) do
+            table.insert(globalInventory, weapon:GetClass())
+        end
+
+        RARELOAD.globalInventory[ply:SteamID()] = globalInventory
+        SaveGlobalInventory()
+
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Saved " ..
+                #globalInventory .. " weapons to global inventory for player " .. ply:Nick())
+        end
     end
 
     local function tablesAreEqual(t1, t2)
@@ -126,13 +149,23 @@ concommand.Add("save_position", function(ply, _, _)
 
     local oldData = RARELOAD.playerPositions[mapName][ply:SteamID()]
     if oldData and not RARELOAD.settings.autoSaveEnabled then
-        if oldData.pos == newPos and oldData.activeWeapon == newActiveWeapon and tablesAreEqual(oldData.inventory, newInventory) then
+        local inventoryUnchanged = not RARELOAD.settings.retainInventory or
+            tablesAreEqual(oldData.inventory or {}, newInventory)
+        if oldData.pos == newPos and oldData.activeWeapon == newActiveWeapon and inventoryUnchanged then
             return
         else
-            print("[RARELOAD] Overwriting previous save: Position, Camera, Inventory updated.")
+            local message = "[RARELOAD] Overwriting previous save: Position, Camera"
+            if RARELOAD.settings.retainInventory then
+                message = message .. ", Inventory"
+            end
+            print(message .. " updated.")
         end
     else
-        print("[RARELOAD] Player position, camera, and inventory saved.")
+        local message = "[RARELOAD] Player position and camera"
+        if RARELOAD.settings.retainInventory then
+            message = message .. " and inventory"
+        end
+        print(message .. " saved.")
     end
 
     local playerData = {
@@ -140,7 +173,6 @@ concommand.Add("save_position", function(ply, _, _)
         ang = { newAng.p, newAng.y, newAng.r },
         moveType = ply:GetMoveType(),
         activeWeapon = newActiveWeapon,
-        inventory = newInventory
     }
 
     if RARELOAD.settings.retainHealthArmor then

@@ -302,41 +302,44 @@ function TOOL.BuildCPanel(panel)
 
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
 
-    createToggleButton(panel, "Toggle Rareload", "toggle_rareload",
+    createToggleButton(panel, "Toggle Rareload", "rareload_rareload",
         "Enable or disable Rareload", RARELOAD.settings.addonEnabled)
 
-    createToggleButton(panel, "Toggle Move Type", "toggle_spawn_mode",
+    createToggleButton(panel, "Toggle Move Type", "rareload_spawn_mode",
         "Switch between different spawn modes", RARELOAD.settings.spawnModeEnabled)
 
-    createToggleButton(panel, "Toggle Auto Save", "toggle_auto_save",
+    createToggleButton(panel, "Toggle Auto Save", "rareload_auto_save",
         "Enable or disable auto saving position", RARELOAD.settings.autoSaveEnabled)
 
-    createToggleButton(panel, "Toggle Keep Inventory", "toggle_retain_inventory",
+    createToggleButton(panel, "Toggle Keep Inventory", "rareload_retain_inventory",
         "Enable or disable retaining inventory", RARELOAD.settings.retainInventory)
 
-    createToggleButton(panel, "Toggle Keep Health and Armor", "toggle_retain_health_armor",
+    createToggleButton(panel, "Toggle Keep Health and Armor", "rareload_retain_health_armor",
         "Enable or disable retaining health and armor", RARELOAD.settings.retainHealthArmor)
 
-    createToggleButton(panel, "Toggle Keep Ammo", "toggle_retain_ammo",
+    createToggleButton(panel, "Toggle Keep Ammo", "rareload_retain_ammo",
         "Enable or disable retaining ammo", RARELOAD.settings.retainAmmo)
 
-    createToggleButton(panel, "Toggle Keep Vehicles", "toggle_retain_vehicles",
+    createToggleButton(panel, "Toggle Keep Vehicles", "rareload_retain_vehicles",
         "Enable or disable retaining vehicles", RARELOAD.settings.retainVehicle)
 
-    createToggleButton(panel, "Toggle Keep Vehicle State", "toggle_retain_vehicle_state",
+    createToggleButton(panel, "Toggle Keep Vehicle State", "rareload_retain_vehicle_state",
         "Enable or disable retaining vehicle state", RARELOAD.settings.retainVehicleState)
 
-    createToggleButton(panel, "Toggle Keep Map Entities", "toggle_retain_map_entities",
+    createToggleButton(panel, "Toggle Keep Map Entities", "rareload_retain_map_entities",
         "Enable or disable retaining map entities", RARELOAD.settings.retainMapEntities)
 
-    createToggleButton(panel, "Toggle Keep Map NPCs", "toggle_retain_map_npcs",
+    createToggleButton(panel, "Toggle Keep Map NPCs", "rareload_retain_map_npcs",
         "Enable or disable retaining map NPCs", RARELOAD.settings.retainMapNPCs)
 
-    createToggleButton(panel, "Toggle No Custom Respawn At Death", "toggle_nocustomrespawnatdeath",
+    createToggleButton(panel, "Toggle No Custom Respawn At Death", "rareload_nocustomrespawnatdeath",
         "Enable or disable custom respawn at death", RARELOAD.settings.nocustomrespawnatdeath)
 
-    createToggleButton(panel, "Toggle Debug", "toggle_debug",
+    createToggleButton(panel, "Toggle Debug", "rareload_debug",
         "Enable or disable debug mode", RARELOAD.settings.debugEnabled)
+
+    createToggleButton(panel, "Toggle Global Inventory", "rareload_retain_global_inventory",
+        "Enable or disable global inventory", RARELOAD.settings.globalInventory)
 
     createSavePositionButton(panel)
 

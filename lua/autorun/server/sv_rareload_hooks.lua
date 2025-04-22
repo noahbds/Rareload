@@ -178,8 +178,13 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
     end
 
     -- **Restore Inventory**
-    if RARELOAD.settings.retainInventory and SavedInfo.inventory then
+    if RARELOAD.settings.retainInventory and SavedInfo.inventory and not RARELOAD.settings.retainGlobalInventory then
         RARELOAD.RestoreInventory(ply)
+    end
+
+    -- **Restore Global Inventory**
+    if RARELOAD.settings.retainGlobalInventory then
+        RARELOAD.RestoreGlobalInventory(ply)
     end
 
     -- **Restore Health & Ammo**
