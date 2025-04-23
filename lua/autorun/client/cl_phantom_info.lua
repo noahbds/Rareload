@@ -182,7 +182,6 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
                     prettyItemName = prettyItemName:gsub("(%a)([%w_']*)",
                         function(first, rest) return first:upper() .. rest end)
 
-                    -- Add weapon entry
                     table.insert(data.equipment, {
                         prefix .. " " .. prettyItemName,
                         displayText,

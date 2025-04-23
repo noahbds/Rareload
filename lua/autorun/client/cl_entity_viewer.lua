@@ -72,7 +72,7 @@ function OpenEntityViewer(ply)
     local headerPanel = vgui.Create("DPanel", frame)
     headerPanel:Dock(TOP)
     headerPanel:SetTall(40)
-    headerPanel:DockMargin(5, 5, 5, 0) -- Reduced bottom margin from 5 to 0
+    headerPanel:DockMargin(5, 5, 5, 0)
     headerPanel.Paint = function(self, w, h)
         draw.RoundedBox(6, 0, 0, w, h, THEME.panel)
     end
@@ -95,7 +95,7 @@ function OpenEntityViewer(ply)
     ---@class DPropertySheet
     local tabs = vgui.Create("DPropertySheet", frame)
     tabs:Dock(FILL)
-    tabs:DockMargin(5, 0, 5, 5) -- Reduced top margin from 5 to 0
+    tabs:DockMargin(5, 0, 5, 5)
 
     tabs.Paint = function(self, w, h)
         draw.RoundedBox(6, 0, 0, w, h, THEME.panel)
@@ -137,7 +137,6 @@ function OpenEntityViewer(ply)
 
         local sheet = tabs:AddSheet(title, scroll, icon)
 
-        -- Style the tab button
         if sheet.Tab then
             sheet.Tab.Paint = function(self, w, h)
                 local isSelected = self:IsActive()

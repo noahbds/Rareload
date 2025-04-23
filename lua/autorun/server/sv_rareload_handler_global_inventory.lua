@@ -116,9 +116,7 @@ function RARELOAD.RestoreGlobalInventory(ply)
     return restoredCount > 0
 end
 
--- Hook to restore global inventory when player spawns on any map
 hook.Add("PlayerSpawn", "RARELOAD_RestoreGlobalInventory", function(ply)
-    -- Wait a short time to ensure player is ready
     timer.Simple(0.5, function()
         if IsValid(ply) and RARELOAD.settings.retainGlobalInventory then
             RARELOAD.RestoreGlobalInventory(ply)
@@ -126,9 +124,8 @@ hook.Add("PlayerSpawn", "RARELOAD_RestoreGlobalInventory", function(ply)
     end)
 end)
 
--- Function to clear a player's global inventory
 function RARELOAD.ClearGlobalInventory(ply)
-    local steamID = IsValid(ply) and ply:SteamID() or ply -- Can accept either player or steamID
+    local steamID = IsValid(ply) and ply:SteamID() or ply
 
     if type(steamID) ~= "string" then
         print("[RARELOAD] Invalid player or SteamID provided to clear global inventory")
@@ -147,37 +144,3 @@ function RARELOAD.ClearGlobalInventory(ply)
 
     return false
 end
-
--- Add console command to manually restore global inventory
-concommand.Add("rareload_restore_global_inventory", function(ply)
-    if IsValid(ply) then
-        if RARELOAD.RestoreGlobalInventory(ply) then
-            ply:ChatPrint("[RARELOAD] Global inventory restored.")
-        else
-            ply:ChatPrint("[RARELOAD] No global inventory found or nothing to restore.")
-        end
-    end
-end)
-
--- Add console command to clear global inventory
-concommand.Add("rareload_clear_global_inventory", function(ply, _, args)
-    if not IsValid(ply) or ply:IsAdmin() then
-        local targetSteamID = args[1]
-
-        if targetSteamID then
-            if RARELOAD.ClearGlobalInventory(targetSteamID) then
-                print("[RARELOAD] Cleared global inventory for " .. targetSteamID)
-            else
-                print("[RARELOAD] No global inventory found for " .. targetSteamID)
-            end
-        elseif IsValid(ply) then
-            if RARELOAD.ClearGlobalInventory(ply) then
-                ply:ChatPrint("[RARELOAD] Your global inventory has been cleared.")
-            else
-                ply:ChatPrint("[RARELOAD] You don't have a global inventory.")
-            end
-        end
-    else
-        ply:ChatPrint("[RARELOAD] Only admins can clear other players' global inventories.")
-    end
-end)

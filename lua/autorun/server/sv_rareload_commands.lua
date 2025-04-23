@@ -662,7 +662,6 @@ concommand.Add("save_bot_position", function(ply, _, args)
     end
 end)
 
--- Function to make the bot spawn an entity
 function SpawnEntityByBot(bot)
     if not IsValid(bot) or not bot:IsBot() then return end
 
