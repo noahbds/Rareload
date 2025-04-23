@@ -277,7 +277,6 @@ function RARELOAD.Debug.LogGroup(title, level, logEntries)
     MsgC(levelConfig.color, "[=====================================================================]\n\n")
 
     if DEBUG_CONFIG.LOG_TO_FILE then
-        -- Use a fixed date (e.g., the current day) for the log file name
         local logFile = DEBUG_CONFIG.LOG_FOLDER .. "rareload_" .. os.date("%Y-%m-%d_%H-%M") .. ".txt"
         local logContent = "[" .. GetTimestamp() .. "] " .. title .. "\n"
 
@@ -296,7 +295,6 @@ function RARELOAD.Debug.LogGroup(title, level, logEntries)
             logContent = logContent .. "---------------------------------------------------------------------\n"
         end
 
-        -- Append the log content to the single daily log file
         file.Append(logFile, logContent)
     end
 end
@@ -658,6 +656,44 @@ function RARELOAD.Debug.LogSquadInfo(squadName, members, removedNPCs)
             }
         })
     end)
+end
+
+local clipRestoreBuffer = {}
+
+function RARELOAD.Debug.BufferClipRestore(clip1, clip2, weapon)
+    if not DEBUG_CONFIG.ENABLED() then return end
+
+    local weaponClass = IsValid(weapon) and weapon:GetClass() or "Unknown"
+
+    table.insert(clipRestoreBuffer, {
+        weaponClass = weaponClass,
+        clip1 = clip1 and clip1 >= 0 and clip1 or "N/A",
+        clip2 = clip2 and clip2 >= 0 and clip2 or "N/A"
+    })
+end
+
+function RARELOAD.Debug.FlushClipRestoreBuffer()
+    if not DEBUG_CONFIG.ENABLED() or #clipRestoreBuffer == 0 then return end
+
+    local clipInfo = {
+        string.format("Restored clips for %d weapons:", #clipRestoreBuffer)
+    }
+
+    for _, data in ipairs(clipRestoreBuffer) do
+        table.insert(clipInfo, string.format("- %s: Primary: %s, Secondary: %s",
+            data.weaponClass,
+            data.clip1,
+            data.clip2
+        ))
+    end
+
+    RARELOAD.Debug.Log("INFO", "Weapon Clips Restored", clipInfo)
+
+    clipRestoreBuffer = {}
+end
+
+function RARELOAD.Debug.LogClipRestore(clip1, clip2, weapon)
+    RARELOAD.Debug.BufferClipRestore(clip1, clip2, weapon)
 end
 
 function RARELOAD.Debug.TestSystemState()

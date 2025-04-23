@@ -123,12 +123,17 @@ concommand.Add("save_position", function(ply, _, _)
             table.insert(globalInventory, weapon:GetClass())
         end
 
-        RARELOAD.globalInventory[ply:SteamID()] = globalInventory
+        RARELOAD.globalInventory[ply:SteamID()] = {
+            weapons = globalInventory,
+            activeWeapon = newActiveWeapon
+        }
+
         SaveGlobalInventory()
 
         if RARELOAD.settings.debugEnabled then
             print("[RARELOAD DEBUG] Saved " ..
-                #globalInventory .. " weapons to global inventory for player " .. ply:Nick())
+                #globalInventory .. " weapons to global inventory for player " .. ply:Nick() ..
+                " (Active weapon: " .. newActiveWeapon .. ")")
         end
     end
 
@@ -173,6 +178,7 @@ concommand.Add("save_position", function(ply, _, _)
         ang = { newAng.p, newAng.y, newAng.r },
         moveType = ply:GetMoveType(),
         activeWeapon = newActiveWeapon,
+        inventory = newInventory,
     }
 
     if RARELOAD.settings.retainHealthArmor then
@@ -189,12 +195,17 @@ concommand.Add("save_position", function(ply, _, _)
                 local secondaryAmmoType = weapon:GetSecondaryAmmoType()
                 local primaryAmmo = ply:GetAmmoCount(primaryAmmoType)
                 local secondaryAmmo = ply:GetAmmoCount(secondaryAmmoType)
-                if primaryAmmo > 0 or secondaryAmmo > 0 then
+                local clip1 = weapon:Clip1() or -1
+                local clip2 = weapon:Clip2() or -1
+
+                if primaryAmmo > 0 or secondaryAmmo > 0 or clip1 > -1 or clip2 > -1 then
                     playerData.ammo[weaponClass] = {
                         primary = primaryAmmo,
                         secondary = secondaryAmmo,
                         primaryAmmoType = primaryAmmoType,
-                        secondaryAmmoType = secondaryAmmoType
+                        secondaryAmmoType = secondaryAmmoType,
+                        clip1 = clip1,
+                        clip2 = clip2
                     }
                 end
             end

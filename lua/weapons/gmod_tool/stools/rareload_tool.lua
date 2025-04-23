@@ -339,7 +339,7 @@ function TOOL.BuildCPanel(panel)
         "Enable or disable debug mode", RARELOAD.settings.debugEnabled)
 
     createToggleButton(panel, "Toggle Global Inventory", "rareload_retain_global_inventory",
-        "Enable or disable global inventory", RARELOAD.settings.globalInventory)
+        "Enable or disable global inventory", RARELOAD.settings.retainGlobalInventory)
 
     createSavePositionButton(panel)
 

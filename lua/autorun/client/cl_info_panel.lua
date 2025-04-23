@@ -1,8 +1,3 @@
--- Helpers
-local function CreateRoundedBox(w, h, color)
-    draw.RoundedBox(8, 0, 0, w, h, color)
-end
-
 local function CreateInfoLine(parent, label, value, color, tooltip)
     local container = vgui.Create("DPanel", parent)
     container:Dock(TOP)
@@ -104,7 +99,6 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted)
         self.IsHovered = false
     end
 
-    -- Model Panel
     local modelPanel = vgui.Create("DModelPanel", panel)
     modelPanel:SetSize(120, 120)
     modelPanel:Dock(LEFT)
@@ -137,13 +131,11 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted)
         end
     end
 
-    -- Info Container
     local infoContainer = vgui.Create("DPanel", panel)
     infoContainer:Dock(FILL)
     infoContainer:DockMargin(5, 5, 5, 5)
     infoContainer.Paint = function() end
 
-    -- Info Container (earlier code remains unchanged)
 
     local header = vgui.Create("DLabel", infoContainer)
     header:SetText(data.class or "Unknown Entity")
@@ -152,23 +144,20 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted)
     header:Dock(TOP)
     header:DockMargin(5, 2, 0, 3)
 
-    -- Details Panel using two auto-sizing columns with explicit sub-panels and DListLayout
     local detailsPanel = vgui.Create("DPanel", infoContainer)
     detailsPanel:Dock(TOP)
     detailsPanel:DockMargin(5, 5, 5, 5)
-    detailsPanel:SetTall(100)     -- fixed tall so that the columns are visible
+    detailsPanel:SetTall(100)
     detailsPanel.Paint = function() end
 
-    -- Left column container
     local leftPanel = vgui.Create("DPanel", detailsPanel)
     leftPanel:Dock(LEFT)
-    leftPanel:SetWide(200)     -- set a fixed width (adjust as needed)
+    leftPanel:SetWide(200)
     leftPanel.Paint = function() end
 
     local leftList = vgui.Create("DListLayout", leftPanel)
     leftList:Dock(FILL)
 
-    -- Right column container
     local rightPanel = vgui.Create("DPanel", detailsPanel)
     rightPanel:Dock(FILL)
     rightPanel.Paint = function() end
@@ -218,7 +207,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted)
     else
         rightList:Add(CreateInfoLine(rightList, "Position", "Unknown", Color(255, 100, 100)))
     end
-    -- Button Container
+
     local buttonContainer = vgui.Create("DPanel", panel)
     buttonContainer:Dock(BOTTOM)
     buttonContainer:SetTall(40)

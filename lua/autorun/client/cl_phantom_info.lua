@@ -16,11 +16,11 @@ local moveTypeNames = {
 PhantomInfoCache = {}
 CACHE_LIFETIME = 2
 PHANTOM_CATEGORIES = {
-    { "basic",     "Basic Information",     Color(70, 130, 180) },
-    { "position",  "Position and Movement", Color(60, 179, 113) },
-    { "equipment", "Equipment",             Color(218, 165, 32) },
-    { "entities",  "Saved Entities",        Color(178, 34, 34) },
-    { "stats",     "Statistics",            Color(147, 112, 219) }
+    { "basic",     "Basic Information",       Color(70, 130, 180) },
+    { "position",  "Position and Movement",   Color(60, 179, 113) },
+    { "equipment", "Equipment",               Color(218, 165, 32) },
+    { "entities",  "Saved Entities and NPCs", Color(178, 34, 34) },
+    { "stats",     "Statistics",              Color(147, 112, 219) }
 }
 
 PhantomInteractionMode = false
@@ -151,7 +151,6 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
             Inventory = { items = {}, color = Color(255, 150, 150), icon = "I" }
         }
 
-        -- Simply add all items to the Inventory category
         for _, item in ipairs(SavedInfo.inventory) do
             table.insert(categories["Inventory"].items, item)
         end
@@ -178,54 +177,71 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
                 for i = 1, #uniqueItems do
                     local itemData = uniqueItems[i]
                     local displayText = (itemData.count > 1 and (" ×" .. itemData.count) or "")
-
-                    -- Add ammo info for weapons (keep this functionality)
-                    if SavedInfo.ammo and SavedInfo.ammo[itemData.item] then
-                        local ammoInfo = SavedInfo.ammo[itemData.item]
-                        local ammoText = ""
-
-                        if ammoInfo.primary and ammoInfo.primary > 0 and ammoInfo.primaryAmmoType and ammoInfo.primaryAmmoType >= 0 then
-                            local ammoName = "Unknown"
-                            -- Convert ammo ID to name
-                            if game.GetAmmoName then
-                                ammoName = game.GetAmmoName(ammoInfo.primaryAmmoType) or
-                                    tostring(ammoInfo.primaryAmmoType)
-                            else
-                                ammoName = "Type:" .. tostring(ammoInfo.primaryAmmoType)
-                            end
-                            ammoText = ammoText .. " [" .. ammoInfo.primary .. " " .. ammoName .. "]"
-                        end
-
-                        if ammoInfo.secondary and ammoInfo.secondary > 0 and ammoInfo.secondaryAmmoType and ammoInfo.secondaryAmmoType >= 0 then
-                            local ammoName = "Unknown"
-                            -- Convert ammo ID to name
-                            if game.GetAmmoName then
-                                ammoName = game.GetAmmoName(ammoInfo.secondaryAmmoType) or
-                                    tostring(ammoInfo.secondaryAmmoType)
-                            else
-                                ammoName = "Type:" .. tostring(ammoInfo.secondaryAmmoType)
-                            end
-                            ammoText = ammoText .. " [+" .. ammoInfo.secondary .. " " .. ammoName .. "]"
-                        end
-
-                        if ammoText ~= "" then
-                            displayText = displayText .. " " .. ammoText
-                        end
-                    end
-
                     local prefix = (i == #uniqueItems) and "  └─" or "  ├─"
-
-                    -- Keep the pretty item name formatting
                     local prettyItemName = itemData.item:gsub("weapon_", ""):gsub("_", " ")
                     prettyItemName = prettyItemName:gsub("(%a)([%w_']*)",
                         function(first, rest) return first:upper() .. rest end)
 
+                    -- Add weapon entry
                     table.insert(data.equipment, {
                         prefix .. " " .. prettyItemName,
                         displayText,
                         catData.color,
                         { noColon = true }
                     })
+
+                    if SavedInfo.ammo and SavedInfo.ammo[itemData.item] then
+                        local ammoInfo = SavedInfo.ammo[itemData.item]
+                        local ammoText = ""
+
+                        if ammoInfo.primary and ammoInfo.primary > 0 and ammoInfo.primaryAmmoType and ammoInfo.primaryAmmoType >= 0 then
+                            local ammoName = "Unknown"
+                            if game.GetAmmoName then
+                                ammoName = game.GetAmmoName(ammoInfo.primaryAmmoType) or
+                                    tostring(ammoInfo.primaryAmmoType)
+                            else
+                                ammoName = "Type:" .. tostring(ammoInfo.primaryAmmoType)
+                            end
+
+                            local clipText = ""
+                            if ammoInfo.clip1 and ammoInfo.clip1 >= 0 then
+                                clipText = " (" .. ammoInfo.clip1 .. " in clip)"
+                            end
+
+                            ammoText = ammoText .. " [" .. ammoInfo.primary .. clipText .. " " .. ammoName .. "]"
+                        elseif ammoInfo.clip1 and ammoInfo.clip1 > 0 then
+                            ammoText = ammoText .. " [(" .. ammoInfo.clip1 .. " in clip)]"
+                        end
+
+                        if ammoInfo.secondary and ammoInfo.secondary > 0 and ammoInfo.secondaryAmmoType and ammoInfo.secondaryAmmoType >= 0 then
+                            local ammoName = "Unknown"
+                            if game.GetAmmoName then
+                                ammoName = game.GetAmmoName(ammoInfo.secondaryAmmoType) or
+                                    tostring(ammoInfo.secondaryAmmoType)
+                            else
+                                ammoName = "Type:" .. tostring(ammoInfo.secondaryAmmoType)
+                            end
+
+                            local clipText = ""
+                            if ammoInfo.clip2 and ammoInfo.clip2 >= 0 then
+                                clipText = " (" .. ammoInfo.clip2 .. " in clip)"
+                            end
+
+                            ammoText = ammoText .. " [+" .. ammoInfo.secondary .. clipText .. " " .. ammoName .. "]"
+                        elseif ammoInfo.clip2 and ammoInfo.clip2 > 0 and not (ammoInfo.secondary and ammoInfo.secondary > 0) then
+                            ammoText = ammoText .. " [(+" .. ammoInfo.clip2 .. " in alt clip)]"
+                        end
+
+                        if ammoText ~= "" then
+                            local ammoPrefix = (i == #uniqueItems) and "    " or "  │ "
+                            table.insert(data.equipment, {
+                                ammoPrefix .. "    │--> Ammo",
+                                ammoText,
+                                Color(catData.color.r * 0.8, catData.color.g * 0.8, catData.color.b * 0.8),
+                                { noColon = true }
+                            })
+                        end
+                    end
                 end
             end
         end
@@ -257,6 +273,8 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
                     config.entryColor
                 })
             end
+        else
+            table.insert(data.entities, { config.totalLabel, "0", config.totalColor })
         end
     end
 

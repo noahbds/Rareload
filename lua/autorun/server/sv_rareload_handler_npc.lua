@@ -78,7 +78,6 @@ function RARELOAD.RestoreNPCs()
                     stats.endTime = SysTime()
 
                     if RARELOAD.settings.debugEnabled then
-                        -- Add main stats to the logs
                         table.insert(npcLogs, {
                             header = "NPC Restoration Stats",
                             messages = {
@@ -93,7 +92,6 @@ function RARELOAD.RestoreNPCs()
                             }
                         })
 
-                        -- Log with the grouped format
                         RARELOAD.Debug.LogGroup("ALL NPC RESTORATION LOGS", "INFO", npcLogs)
                     end
                 end)
@@ -115,7 +113,6 @@ function RARELOAD.CollectExistingNPCs(spawnedNPCsByID, npcLogs)
             if npc.RareloadUniqueID then
                 spawnedNPCsByID[npc.RareloadUniqueID] = npc
                 if RARELOAD.settings.debugEnabled then
-                    -- Store log entry instead of printing directly
                     table.insert(npcLogs, {
                         header = "Found existing NPC",
                         messages = {
@@ -282,7 +279,7 @@ end
 
 function RARELOAD.RestoreSquads(spawnedNPCsByID)
     local squads = {}
-    local squadLogs = {} -- Create collection for squad logs
+    local squadLogs = {}
 
     for uniqueID, npc in pairs(spawnedNPCsByID) do
         if not IsValid(npc) then continue end
@@ -322,7 +319,6 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
             continue
         end
 
-        -- Create a comprehensive squad relationships log
         local allRelationships = {}
         local enemyRelations = {}
 
@@ -356,7 +352,6 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
             end
         end
 
-        -- Add comprehensive squad relationship log
         if RARELOAD.settings.debugEnabled and #allRelationships > 0 then
             table.insert(squadLogs, {
                 header = "Squad Relationship Map: " .. squadName,
@@ -381,7 +376,6 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
             end
 
             if RARELOAD.settings.debugEnabled then
-                -- Add successful squad formation log
                 table.insert(squadLogs, {
                     header = "Squad Formed",
                     messages = {
@@ -394,7 +388,6 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
     end
 
     if RARELOAD.settings.debugEnabled and #squadLogs > 0 then
-        -- Use the file-only logging function instead of the regular LogGroup
         RARELOAD.Debug.LogSquadFileOnly("SQUAD RESTORATION LOGS", "INFO", squadLogs)
     end
 end

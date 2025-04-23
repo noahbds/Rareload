@@ -3,21 +3,20 @@ RARELOAD = RARELOAD or nil
 RARELOAD.settings = RARELOAD.settings or {}
 RARELOAD.globalInventory = RARELOAD.globalInventory or {}
 
--- This function restores a player's global inventory from the saved global inventory file
 function RARELOAD.RestoreGlobalInventory(ply)
-    if not RARELOAD.settings.retainGlobalInventory then return end
-
     local steamID = ply:SteamID()
-    local globalInventory = RARELOAD.globalInventory[steamID]
+    local globalInventoryData = RARELOAD.globalInventory[steamID]
 
-    if not globalInventory then
+    if not globalInventoryData or not globalInventoryData.weapons then
         if RARELOAD.settings.debugEnabled then
             print("[RARELOAD DEBUG] No global inventory found for player: " .. ply:Nick() .. " (" .. steamID .. ")")
         end
         return
     end
 
-    ply:StripWeapons()
+    if RARELOAD.settings.stripBeforeRestoring then
+        ply:StripWeapons()
+    end
 
     local debugMessages = {
         adminOnly = {},
@@ -30,11 +29,9 @@ function RARELOAD.RestoreGlobalInventory(ply)
         givenWeapons = false
     }
 
-    -- Count how many weapons we successfully restored
     local restoredCount = 0
 
-    -- Give the player each weapon in their global inventory
-    for _, weaponClass in ipairs(globalInventory) do
+    for _, weaponClass in ipairs(globalInventoryData.weapons) do
         local weaponInfo = weapons.Get(weaponClass)
         local canGiveWeapon = weaponInfo and (weaponInfo.Spawnable or weaponInfo.AdminOnly)
 
@@ -50,7 +47,6 @@ function RARELOAD.RestoreGlobalInventory(ply)
                 end
             end
         else
-            -- Don't give the weapon if player already has it
             if not ply:HasWeapon(weaponClass) then
                 ply:Give(weaponClass)
 
@@ -65,7 +61,6 @@ function RARELOAD.RestoreGlobalInventory(ply)
                     debugFlags.givenWeapons = true
                     table.insert(debugMessages.givenWeapons, "Failed to give weapon: " .. weaponClass)
 
-                    -- Log detailed weapon information for debugging
                     local weaponDetails = {
                         "Weapon Info: " .. tostring(weaponInfo),
                         "Weapon Base: " .. tostring(weaponInfo.Base),
@@ -84,15 +79,13 @@ function RARELOAD.RestoreGlobalInventory(ply)
         end
     end
 
-    -- Log the debug messages if debug mode is enabled
+
     if RARELOAD.settings.debugEnabled then
         print("[RARELOAD DEBUG] Restored " .. restoredCount .. " weapons from global inventory for " .. ply:Nick())
 
-        -- Use existing debug log function if available
         if RARELOAD.Debug and RARELOAD.Debug.LogWeaponMessages then
             RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
         else
-            -- Simple fallback logging
             if debugFlags.adminOnly then
                 print("[RARELOAD DEBUG] Admin-only weapons not given: " .. table.concat(debugMessages.adminOnly, ", "))
             end
@@ -108,8 +101,30 @@ function RARELOAD.RestoreGlobalInventory(ply)
         end
     end
 
+    if globalInventoryData.activeWeapon and globalInventoryData.activeWeapon ~= "None" then
+        timer.Simple(0.5, function()
+            if IsValid(ply) and ply:HasWeapon(globalInventoryData.activeWeapon) then
+                ply:SelectWeapon(globalInventoryData.activeWeapon)
+
+                if RARELOAD.settings.debugEnabled then
+                    print("[RARELOAD DEBUG] Selected active weapon: " .. globalInventoryData.activeWeapon)
+                end
+            end
+        end)
+    end
+
     return restoredCount > 0
 end
+
+-- Hook to restore global inventory when player spawns on any map
+hook.Add("PlayerSpawn", "RARELOAD_RestoreGlobalInventory", function(ply)
+    -- Wait a short time to ensure player is ready
+    timer.Simple(0.5, function()
+        if IsValid(ply) and RARELOAD.settings.retainGlobalInventory then
+            RARELOAD.RestoreGlobalInventory(ply)
+        end
+    end)
+end)
 
 -- Function to clear a player's global inventory
 function RARELOAD.ClearGlobalInventory(ply)

@@ -177,17 +177,23 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         if DebugEnabled then print("[RARELOAD DEBUG] Move type set to: " .. tostring(moveType)) end
     end
 
-    -- **Restore Inventory**
-    if RARELOAD.settings.retainInventory and SavedInfo.inventory and not RARELOAD.settings.retainGlobalInventory then
-        RARELOAD.RestoreInventory(ply)
-    end
-
-    -- **Restore Global Inventory**
     if RARELOAD.settings.retainGlobalInventory then
-        RARELOAD.RestoreGlobalInventory(ply)
+        timer.Simple(0.5, function()
+            if IsValid(ply) then
+                RARELOAD.RestoreGlobalInventory(ply)
+                if RARELOAD.settings.debugEnabled then
+                    print("[RARELOAD DEBUG] Attempting to restore global inventory (priority)")
+                end
+            end
+        end)
+    elseif RARELOAD.settings.retainInventory and SavedInfo.inventory then
+        RARELOAD.RestoreInventory(ply)
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Using map-specific inventory (global inventory disabled)")
+        end
     end
 
-    -- **Restore Health & Ammo**
+    -- **Restore Health & Armor**
     if settings.retainHealthArmor then
         timer.Simple(0.5, function()
             ply:SetHealth(SavedInfo.health or ply:GetMaxHealth())
@@ -195,24 +201,41 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
         end)
     end
 
+    -- **Restore Ammo**
     if settings.retainAmmo and SavedInfo.ammo then
-        for weaponClass, ammoData in pairs(SavedInfo.ammo) do
-            local weapon = ply:GetWeapon(weaponClass)
-            if IsValid(weapon) then
-                local primaryAmmoType = weapon:GetPrimaryAmmoType()
-                local secondaryAmmoType = weapon:GetSecondaryAmmoType()
-                ply:SetAmmo(ammoData.primary, primaryAmmoType)
-                ply:SetAmmo(ammoData.secondary, secondaryAmmoType)
+        timer.Simple(1, function()
+            if not IsValid(ply) then return end
+
+            for weaponClass, ammoData in pairs(SavedInfo.ammo) do
+                local weapon = ply:GetWeapon(weaponClass)
+                if IsValid(weapon) then
+                    local primaryAmmoType = weapon:GetPrimaryAmmoType()
+                    local secondaryAmmoType = weapon:GetSecondaryAmmoType()
+                    ply:SetAmmo(ammoData.primary, primaryAmmoType)
+                    ply:SetAmmo(ammoData.secondary, secondaryAmmoType)
+
+                    if ammoData.clip1 and ammoData.clip1 >= 0 then
+                        weapon:SetClip1(ammoData.clip1)
+                    end
+
+                    if ammoData.clip2 and ammoData.clip2 >= 0 then
+                        weapon:SetClip2(ammoData.clip2)
+                    end
+
+                    RARELOAD.Debug.BufferClipRestore(ammoData.clip1, ammoData.clip2, weapon)
+                end
             end
-        end
+
+            RARELOAD.Debug.FlushClipRestoreBuffer()
+        end)
     end
 
-    -- **Restore Vehicles**
+    -- **Restore Vehicles** BROKEN
     if settings.retainVehicles and SavedInfo.vehicles then
         RARELOAD.RestoreVehicles()
     end
 
-    -- **Restore Vehicle State**
+    -- **Restore Vehicle State** BROKEN
     if settings.retainVehicleState and SavedInfo.vehicleState then
         local vehicleData = SavedInfo.vehicleState
 
@@ -243,9 +266,25 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
     end
 
     -- **Restore Active Weapon**
-    if SavedInfo.activeWeapon then
+    local activeWeaponToRestore = nil
+
+    if RARELOAD.settings.retainGlobalInventory then
+        if RARELOAD.globalInventory and RARELOAD.globalInventory[ply:SteamID()] then
+            activeWeaponToRestore = RARELOAD.globalInventory[ply:SteamID()].activeWeapon
+            if RARELOAD.settings.debugEnabled then
+                print("[RARELOAD DEBUG] Using global inventory active weapon: " .. tostring(activeWeaponToRestore))
+            end
+        end
+    elseif SavedInfo.activeWeapon then
+        activeWeaponToRestore = SavedInfo.activeWeapon
         if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD DEBUG] Attempting to restore active weapon: " .. tostring(SavedInfo.activeWeapon))
+            print("[RARELOAD DEBUG] Using saved position active weapon: " .. tostring(activeWeaponToRestore))
+        end
+    end
+
+    if activeWeaponToRestore then
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Attempting to restore active weapon: " .. tostring(activeWeaponToRestore))
         end
 
         timer.Simple(0.2, function()
@@ -268,52 +307,48 @@ hook.Add("PlayerSpawn", "RespawnAtReload", function(ply)
             end
         end)
 
-        -- First attempt at 0.6 seconds
         timer.Simple(0.6, function()
             if IsValid(ply) then
-                if ply:HasWeapon(SavedInfo.activeWeapon) then
+                if ply:HasWeapon(activeWeaponToRestore) then
                     if RARELOAD.settings.debugEnabled then
-                        print("[RARELOAD DEBUG] Selecting weapon (0.6s): " .. SavedInfo.activeWeapon)
+                        print("[RARELOAD DEBUG] Selecting weapon (0.6s): " .. activeWeaponToRestore)
                     end
-                    ply:SelectWeapon(SavedInfo.activeWeapon)
+                    ply:SelectWeapon(activeWeaponToRestore)
                 else
                     if RARELOAD.settings.debugEnabled then
-                        print("[RARELOAD DEBUG] Player doesn't have weapon (0.6s): " .. SavedInfo.activeWeapon)
+                        print("[RARELOAD DEBUG] Player doesn't have weapon (0.6s): " .. activeWeaponToRestore)
                     end
                 end
             end
         end)
 
-        -- Second attempt at 1.2 seconds if needed
         timer.Simple(1.2, function()
-            if IsValid(ply) and ply:GetActiveWeapon() and ply:GetActiveWeapon():GetClass() ~= SavedInfo.activeWeapon then
-                if ply:HasWeapon(SavedInfo.activeWeapon) then
+            if IsValid(ply) and ply:GetActiveWeapon() and ply:GetActiveWeapon():GetClass() ~= activeWeaponToRestore then
+                if ply:HasWeapon(activeWeaponToRestore) then
                     if RARELOAD.settings.debugEnabled then
-                        print("[RARELOAD DEBUG] Second attempt selecting weapon (1.2s): " .. SavedInfo.activeWeapon)
+                        print("[RARELOAD DEBUG] Second attempt selecting weapon (1.2s): " .. activeWeaponToRestore)
                     end
-                    ply:SelectWeapon(SavedInfo.activeWeapon)
+                    ply:SelectWeapon(activeWeaponToRestore)
 
-                    -- Force weapon selection via input
                     timer.Simple(0.1, function()
-                        if IsValid(ply) and ply:HasWeapon(SavedInfo.activeWeapon) then
-                            ply:ConCommand("use " .. SavedInfo.activeWeapon)
+                        if IsValid(ply) and ply:HasWeapon(activeWeaponToRestore) then
+                            ply:ConCommand("use " .. activeWeaponToRestore)
                         end
                     end)
                 else
                     if RARELOAD.settings.debugEnabled then
-                        print("[RARELOAD DEBUG] Weapon still not available (1.2s): " .. SavedInfo.activeWeapon)
+                        print("[RARELOAD DEBUG] Weapon still not available (1.2s): " .. activeWeaponToRestore)
                     end
                 end
             end
         end)
 
-        -- Final check
         timer.Simple(1.5, function()
             if RARELOAD.settings.debugEnabled and IsValid(ply) then
                 local currentWeapon = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or "none"
                 print("[RARELOAD DEBUG] Final weapon state - Current: " .. currentWeapon ..
-                    ", Expected: " .. SavedInfo.activeWeapon ..
-                    ", Success: " .. tostring(currentWeapon == SavedInfo.activeWeapon))
+                    ", Expected: " .. activeWeaponToRestore ..
+                    ", Success: " .. tostring(currentWeapon == activeWeaponToRestore))
             end
         end)
     end
