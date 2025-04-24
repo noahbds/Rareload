@@ -465,11 +465,12 @@ hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
         return
     end
 
-    local interval = settings.autoSaveInterval or DEFAULT_CONFIG.autoSaveInterval
+    local interval = math.max(settings.autoSaveInterval or DEFAULT_CONFIG.autoSaveInterval, 0.1)
     local lastSaveTime = lastSavedTimes[ply:UserID()] or 0
     local currentTime = CurTime()
 
-    if currentTime - lastSaveTime < interval then
+    -- Improved: Only allow save if interval has passed, but also allow a small grace window to avoid missing saves due to tick timing
+    if currentTime - lastSaveTime < interval * 0.98 then
         return
     end
 
@@ -484,6 +485,7 @@ hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
             Save_position(ply)
 
             lastSavedTimes[ply:UserID()] = currentTime
+
             ply.lastSavedPosition = currentPos
             ply.lastSavedEyeAngles = currentEyeAngles
             ply.lastSavedActiveWeapon = currentActiveWeapon
@@ -491,7 +493,7 @@ hook.Add("PlayerPostThink", "AutoSavePosition", function(ply)
             ply.lastSavedArmor = currentArmor
 
             net.Start("RareloadSyncAutoSaveTime")
-            net.WriteFloat(lastSavedTimes[ply:UserID()])
+            net.WriteFloat(currentTime)
             net.Send(ply)
 
             if settings.notifyOnSave then
