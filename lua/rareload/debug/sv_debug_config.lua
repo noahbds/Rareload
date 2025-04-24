@@ -17,16 +17,15 @@ DEBUG_CONFIG = {
     SESSION_ID = os.time(),
     TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S",
     AUTO_CLEANUP_LOGS_OLDER_THAN = 7 * 24 * 60 * 60, -- 7 days in seconds
-    LOG_BUFFER_SIZE = 20,                            -- Number of entries to buffer before writing to file
-    LOG_BUFFER_FLUSH_INTERVAL = 30,                  -- Seconds between forced buffer flushes
-    LOG_FORMAT = "TEXT",                             -- TEXT, JSON, or CSV
-    MAX_LOG_LINE_LENGTH = 1000,                      -- Truncate very long log lines
-    ROTATE_LOGS_BY_SIZE = true,                      -- Enable log rotation by size
-    LOG_FILE_PREFIX = "rareload_"                    -- Prefix for log files
+    LOG_BUFFER_SIZE = 20,
+    LOG_BUFFER_FLUSH_INTERVAL = 30,
+    LOG_FORMAT = "TEXT",
+    MAX_LOG_LINE_LENGTH = 1000,
+    ROTATE_LOGS_BY_SIZE = true,
+    LOG_FILE_PREFIX = "rareload_"
 }
 
--- Cache the authorized debug level to avoid function calls
-local currentDebugLevel = 3 -- Default to INFO level
+local currentDebugLevel = 3
 
 local logBuffer = {}
 local lastFlush = os.time()
@@ -58,7 +57,6 @@ end
 local function CleanupOldLogs()
     local files, _ = file.Find(DEBUG_CONFIG.LOG_FOLDER .. "*.txt", "DATA")
 
-    -- Sort files by modification time
     local fileData = {}
     for _, fileName in ipairs(files) do
         local fullPath = DEBUG_CONFIG.LOG_FOLDER .. fileName
@@ -70,10 +68,8 @@ local function CleanupOldLogs()
         })
     end
 
-    -- Sort newest first
     table.sort(fileData, function(a, b) return a.time > b.time end)
 
-    -- Clean up if too many files
     if #fileData > DEBUG_CONFIG.MAX_LOG_FILES then
         for i = DEBUG_CONFIG.MAX_LOG_FILES + 1, #fileData do
             print("[RARELOAD DEBUG] Removing old log file: " .. fileData[i].name)
@@ -81,7 +77,6 @@ local function CleanupOldLogs()
         end
     end
 
-    -- Clean up files older than AUTO_CLEANUP_LOGS_OLDER_THAN
     local cutoffTime = os.time() - DEBUG_CONFIG.AUTO_CLEANUP_LOGS_OLDER_THAN
     for _, fileInfo in ipairs(fileData) do
         if fileInfo.time < cutoffTime then

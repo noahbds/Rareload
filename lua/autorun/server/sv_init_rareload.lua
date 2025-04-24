@@ -30,6 +30,7 @@ RARELOAD.playerPositions = RARELOAD.playerPositions or {}
 RARELOAD.globalInventory = RARELOAD.globalInventory or {}
 RARELOAD.lastSavedTime = 0
 MapName = game.GetMap()
+RARELOAD.version = "2.0.0"
 ADDON_STATE_FILE_PATH = "rareload/addon_state.json"
 local lastDebugTime = 0
 

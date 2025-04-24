@@ -29,7 +29,6 @@ local function EnsureLogFolder()
         file.CreateDir(DEBUG_CONFIG.LOG_FOLDER)
     end
 
-    -- Test if we can write to the folder
     local testFile = DEBUG_CONFIG.LOG_FOLDER .. "write_test.txt"
     file.Write(testFile, "Test write")
 
@@ -44,14 +43,12 @@ local function EnsureLogFolder()
 end
 
 local function WriteToLogFile(logPath, content)
-    -- Create the file if it doesn't exist
     if not file.Exists(logPath, "DATA") then
         file.Write(logPath, "")
     end
 
     file.Append(logPath, content)
 
-    -- Verify write was successful
     if file.Exists(logPath, "DATA") then
         local size = file.Size(logPath, "DATA")
         return true, size
@@ -60,20 +57,16 @@ local function WriteToLogFile(logPath, content)
     end
 end
 
--- Main logging functions
 function RARELOAD.Debug.Log(level, header, messages, entity)
     if not DEBUG_CONFIG.ENABLED() then return end
 
     level = level or DEBUG_CONFIG.DEFAULT_LEVEL
     local levelConfig = DEBUG_CONFIG.LEVELS[level] or DEBUG_CONFIG.LEVELS[DEBUG_CONFIG.DEFAULT_LEVEL]
 
-    -- Normalize messages to table
     messages = type(messages) == "table" and messages or { messages }
 
-    -- Format header
     local fullHeader = FormatHeader(level, header or "", entity)
 
-    -- Console output
     MsgC(levelConfig.color, "\n[=====================================================================]\n")
     MsgC(levelConfig.color, fullHeader .. "\n")
 
@@ -83,7 +76,6 @@ function RARELOAD.Debug.Log(level, header, messages, entity)
 
     MsgC(levelConfig.color, "[=====================================================================]\n\n")
 
-    -- File output
     if DEBUG_CONFIG.LOG_TO_FILE then
         local logFile = DEBUG_CONFIG.LOG_FOLDER .. "rareload_" .. os.date("%Y-%m-%d_%H-%M") .. ".txt"
         local logContent = fullHeader .. "\n"
@@ -110,18 +102,14 @@ function RARELOAD.Debug.LogSquadFileOnly(title, level, logEntries)
         return
     end
 
-    -- Ensure log folder exists and is writable
     EnsureLogFolder()
 
-    -- Set default level
     level = level or DEBUG_CONFIG.DEFAULT_LEVEL
     local levelConfig = DEBUG_CONFIG.LEVELS[level] or DEBUG_CONFIG.LEVELS[DEBUG_CONFIG.DEFAULT_LEVEL]
 
-    -- Prepare log file
     local logFile = DEBUG_CONFIG.LOG_FOLDER .. "rareload_squads_" .. os.date("%Y-%m-%d_%H-%M") .. ".txt"
     local logContent = "[" .. GetTimestamp() .. "] " .. title .. "\n"
 
-    -- Format and add log entries
     if type(logEntries) ~= "table" or #logEntries == 0 then
         logContent = logContent .. "No entries provided\n"
     else
@@ -138,7 +126,6 @@ function RARELOAD.Debug.LogSquadFileOnly(title, level, logEntries)
         end
     end
 
-    -- Write to log file
     print("[RARELOAD DEBUG] Attempting to write to: " .. logFile)
     local success, size = WriteToLogFile(logFile, logContent)
 
@@ -147,7 +134,6 @@ function RARELOAD.Debug.LogSquadFileOnly(title, level, logEntries)
     else
         print("[RARELOAD] ERROR: Failed to write log file!")
 
-        -- Attempt emergency logging to root folder
         local rootLogFile = "rareload_emergency_log.txt"
         local emergencySuccess = WriteToLogFile(rootLogFile, logContent)
 
@@ -165,7 +151,6 @@ function RARELOAD.Debug.LogGroup(title, level, logEntries)
     level = level or DEBUG_CONFIG.DEFAULT_LEVEL
     local levelConfig = DEBUG_CONFIG.LEVELS[level] or DEBUG_CONFIG.LEVELS[DEBUG_CONFIG.DEFAULT_LEVEL]
 
-    -- Console output
     MsgC(levelConfig.color, "\n[=====================================================================] " ..
         title .. " [=====================================================================]\n\n")
 
@@ -183,7 +168,6 @@ function RARELOAD.Debug.LogGroup(title, level, logEntries)
 
     MsgC(levelConfig.color, "[=====================================================================]\n\n")
 
-    -- File output
     if DEBUG_CONFIG.LOG_TO_FILE then
         local logFile = DEBUG_CONFIG.LOG_FOLDER .. "rareload_" .. os.date("%Y-%m-%d_%H-%M") .. ".txt"
         local logContent = "[" .. GetTimestamp() .. "] " .. title .. "\n"

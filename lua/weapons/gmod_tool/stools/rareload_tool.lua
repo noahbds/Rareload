@@ -34,12 +34,10 @@ local UI                    = {
 }
 
 if CLIENT then
-    -- Add language strings
-    language.Add("tool.sv_rareload_tool.name", "Rareload Configuration Panel")
-    language.Add("tool.sv_rareload_tool.desc", "Configuration Panel For Rareload Addon.")
-    language.Add("tool.sv_rareload_tool.0", "By Noahbds")
+    language.Add("tool.rareload_tool.name", "Rareload Configuration Panel")
+    language.Add("tool.rareload_tool.desc", "Configuration Panel For Rareload Addon.")
+    language.Add("tool.rareload_tool.0", "By Noahbds")
 
-    -- Create fonts
     surface.CreateFont("RARELOAD_NORMAL", {
         font = "Arial",
         size = 20.9,
@@ -56,7 +54,6 @@ if CLIENT then
         additive = false
     })
 
-    -- Create tool screen fonts
     surface.CreateFont("CTNV", {
         font = "Roboto",
         size = 18,
@@ -71,12 +68,10 @@ if CLIENT then
         antialias = true
     })
 
-    -- Network handling
     net.Receive("RareloadSyncAutoSaveTime", function()
         RARELOAD.serverLastSaveTime = net.ReadFloat()
     end)
 
-    -- Define circle drawing function
     function draw.Circle(x, y, radius, segments)
         local points = {}
         for i = 0, segments do
@@ -623,5 +618,5 @@ function TOOL:DrawToolScreen(width, height)
         end
     end
 
-    draw.SimpleText("v2.1", "CTNV", width - 10, height - 10, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
+    draw.SimpleText("v2.0", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
 end

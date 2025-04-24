@@ -2,6 +2,9 @@
     RARELOAD Debug Specialized Functions
     Provides advanced debug logging capabilities for specific game events
     and state tracking.
+
+    Useful if something goes wrong and you need to track down the issue.
+    Certainly useful for me when I code the addon.
 ]]
 
 local IsValid = IsValid
@@ -270,7 +273,6 @@ function RARELOAD.Debug.FlushClipRestoreBuffer()
 
     RARELOAD.Debug.Log("INFO", "Weapon Clips Restored", clipInfo)
 
-    -- Clear buffer after logging
     clipRestoreBuffer = {}
 end
 
@@ -406,9 +408,6 @@ function RARELOAD.Debug.LogSquadInfo(squadName, members, removedNPCs)
     end)
 end
 
---[[
-    System Diagnostic Testing
-]]
 function RARELOAD.Debug.TestSystemState()
     DelayedDebugCheck(1.4, function()
         local state = {
@@ -424,7 +423,6 @@ function RARELOAD.Debug.TestSystemState()
             }
         }
 
-        -- Collect hook information
         local hooksToCheck = { "PlayerSpawn", "PlayerDeath", "PlayerInitialSpawn" }
         for _, hookName in pairs(hooksToCheck) do
             local hooks = hook.GetTable()[hookName] or {}
@@ -439,7 +437,6 @@ function RARELOAD.Debug.TestSystemState()
             state.hooks[hookName] = rareloadHooks
         end
 
-        -- Collect player information
         for _, ply in ipairs(player.GetAll()) do
             if IsValid(ply) then
                 table_insert(state.players, {
