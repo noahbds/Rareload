@@ -11,11 +11,13 @@ TOOL.Name                   = "Rareload Config Tool"
 TOOL.Command                = nil
 TOOL.ConfigName             = ""
 
--- Load UI and ToolScreen modules with error handling
-local ok_ui, UI             = pcall(require, "rareload.rareload_ui")
-if not ok_ui then error("Failed to load rareload_ui: " .. tostring(UI)) end
-local ok_ts, ToolScreen = pcall(require, "rareload.rareload_toolscreen")
-if not ok_ts then error("Failed to load rareload_toolscreen: " .. tostring(ToolScreen)) end
+if SERVER then
+    AddCSLuaFile("rareload/rareload_ui.lua")
+    AddCSLuaFile("rareload/rareload_toolscreen.lua")
+end
+
+local UI = include("rareload/rareload_ui.lua")
+local ToolScreen = include("rareload/rareload_toolscreen.lua")
 
 if CLIENT then
     UI.RegisterFonts()
@@ -56,6 +58,7 @@ function TOOL.BuildCPanel(panel)
     if not success then
         ErrorNoHalt("Failed to load addon settings: " .. (err or "unknown error"))
 
+        ---@diagnostic disable-next-line: param-type-mismatch
         local errorLabel = vgui.Create("DLabel", panel)
         errorLabel:SetText("Error loading settings! Please check console.")
         errorLabel:SetTextColor(UI.COLORS.DISABLED)
@@ -142,6 +145,7 @@ function TOOL.BuildCPanel(panel)
 
     createSeparator(panel)
 
+    ---@diagnostic disable-next-line: undefined-field
     panel:Button("Open Entity Viewer", "entity_viewer_open")
 end
 

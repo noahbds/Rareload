@@ -23,7 +23,6 @@ UI.MARGINS = setmetatable({
     SLIDERS = { 30, 10, 30, 5 }
 }, { __newindex = function() error("UI.MARGINS is read-only") end })
 
--- Register fonts for UI
 function UI.RegisterFonts()
     surface.CreateFont("RARELOAD_NORMAL", {
         font = "Arial",
@@ -178,6 +177,7 @@ function UI.CreateSettingSlider(panel, title, command, min, max, decimals, defau
     slider:SetValue(defaultValue)
     slider:SetDark(false)
 
+    ---@diagnostic disable-next-line: undefined-field
     slider.Slider.Paint = function(self, w, h)
         draw.RoundedBox(4, 0, h / 2 - 2, w, 4, UI.COLORS.SLIDER.GROOVE)
         local steps = 5
@@ -188,6 +188,7 @@ function UI.CreateSettingSlider(panel, title, command, min, max, decimals, defau
         end
     end
 
+    ---@diagnostic disable-next-line: undefined-field
     slider.Slider.Knob.Paint = function(self, w, h)
         local color = self:IsHovered() and UI.COLORS.SLIDER.GRIP_HOVER or UI.COLORS.SLIDER.GRIP
         draw.RoundedBox(6, 0, 0, w, h, color)

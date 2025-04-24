@@ -1,4 +1,4 @@
-local UI = require("rareload.rareload_ui")
+local UI = include("rareload/rareload_ui.lua")
 
 local TOOL_UI = UI.TOOL_UI or {
     COLORS = {

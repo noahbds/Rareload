@@ -10,11 +10,12 @@ util.AddNetworkString("RareloadReloadData")
 util.AddNetworkString("RareloadSyncAutoSaveTime")
 
 -- Require modules
-include("lua/rareload/rareload_core.lua")
-include("lua/rareload/rareload_position_cache.lua")
-include("lua/rareload/rareload_autosave.lua")
-include("lua/rareload/rareload_teleport.lua")
-include("lua/rareload/rareload_reload_data.lua")
+include("rareload/rareload_core.lua")
+include("rareload/rareload_position_cache.lua")
+include("rareload/rareload_autosave.lua")
+include("rareload/rareload_player_spawn.lua")
+include("rareload/rareload_teleport.lua")
+include("rareload/rareload_reload_data.lua")
 
 -- Hook registrations
 hook.Add("PlayerInitialSpawn", "SyncDataOnJoin", function(ply)
