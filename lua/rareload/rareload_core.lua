@@ -1,8 +1,6 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 RARELOAD.Debug = RARELOAD.Debug or {}
-SavedInfo = RARELOAD.playerPositions[MapName] and RARELOAD.playerPositions[MapName][SteamID]
-
 
 local MapName = game.GetMap()
 

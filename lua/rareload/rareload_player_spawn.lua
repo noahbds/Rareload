@@ -1,8 +1,9 @@
 function RARELOAD.HandlePlayerSpawn(ply)
-    Settings = RARELOAD.settings
-    DebugEnabled = Settings.debugEnabled
-    SteamID = ply:SteamID()
-    MapName = game.GetMap()
+    local Settings = RARELOAD.settings
+    local DebugEnabled = Settings.debugEnabled
+    local SteamID = ply:SteamID()
+    local MapName = game.GetMap()
+    SavedInfo = RARELOAD.playerPositions[MapName] and RARELOAD.playerPositions[MapName][SteamID]
 
     RARELOAD.Debug.LogSpawnInfo(ply)
     RARELOAD.Debug.LogInventory(ply)

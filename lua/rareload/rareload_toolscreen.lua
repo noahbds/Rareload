@@ -40,6 +40,28 @@ local TOOL_UI = UI.TOOL_UI or {
     }
 }
 
+-- Register required fonts for the tool screen
+local function RegisterFonts()
+    surface.CreateFont("CTNV", {
+        font = "Roboto",
+        size = 18,
+        weight = 500,
+        antialias = true
+    })
+
+    surface.CreateFont("CTNV2", {
+        font = "Roboto",
+        size = 24,
+        weight = 700,
+        antialias = true,
+        shadow = true
+    })
+end
+
+if CLIENT then
+    RegisterFonts()
+end
+
 local ToolScreen = {}
 
 local function initAnimState(RARELOAD)
@@ -145,6 +167,10 @@ local function getProgressColor(progress)
 end
 
 function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
+    -- Ensure width and height are valid numbers to prevent errors
+    width = width or 256
+    height = height or 256
+
     assert(RARELOAD, "RARELOAD table required")
     assert(loadAddonSettings, "loadAddonSettings function required")
 
@@ -162,10 +188,15 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
     local colors = TOOL_UI.COLORS
     local layout = TOOL_UI.LAYOUT
 
+    -- Background
     surface.SetDrawColor(colors.BG)
     surface.DrawRect(0, 0, width, height)
+
+    -- Header
     surface.SetDrawColor(colors.HEADER)
     surface.DrawRect(0, 0, width, 50)
+
+    -- Title with proper font
     draw.SimpleText("RARELOAD", "CTNV2", width / 2, 25, colors.TEXT_LIGHT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
     local isEnabled = settings.addonEnabled
@@ -192,7 +223,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
 
         surface.SetDrawColor(dotColor)
         draw.NoTexture()
-        UI.DrawCircle(20, y + iconSize / 2, iconSize / 2, 20)
+        UI.DrawCircle(20, y + iconSize / 2, iconSize / 2, 20, dotColor)
 
         draw.SimpleText(feature.name, "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         local stateText = feature.enabled and "ON" or "OFF"
@@ -246,6 +277,11 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
     end
 
     draw.SimpleText("v2.0", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
+end
+
+function ToolScreen.EndDraw()
+    -- Reset any render targets if needed
+    render.SetRenderTarget(nil)
 end
 
 return ToolScreen
