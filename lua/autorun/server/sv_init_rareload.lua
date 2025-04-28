@@ -10,10 +10,10 @@ function GetDefaultSettings()
         retainGlobalInventory = false,
         retainHealthArmor = false,
         retainAmmo = false,
-        retainVehicleState = false, -- Beta [NOT TESTED]
+        retainVehicleState = false, -- BROKEN
         retainMapEntities = false,
         retainMapNPCs = false,
-        retainVehicles = false, -- Beta [NOT TESTED]
+        retainVehicles = false, -- BROKEN
         nocustomrespawnatdeath = false,
         debugEnabled = false,
         autoSaveInterval = 5,

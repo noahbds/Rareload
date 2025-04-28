@@ -517,13 +517,19 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     render.SetStencilWriteMask(255)
     render.SetStencilTestMask(255)
     render.SetStencilReferenceValue(1)
+    ---@diagnostic disable-next-line: param-type-mismatch
     render.SetStencilCompareFunction(STENCIL_ALWAYS)
+    ---@diagnostic disable-next-line: param-type-mismatch
     render.SetStencilPassOperation(STENCIL_REPLACE)
+    ---@diagnostic disable-next-line: param-type-mismatch
     render.SetStencilFailOperation(STENCIL_KEEP)
+    ---@diagnostic disable-next-line: param-type-mismatch
     render.SetStencilZFailOperation(STENCIL_KEEP)
 
     draw.RoundedBox(0, offsetX, contentY, panelWidth, maxDisplayHeight, Color(255, 255, 255, 1))
+    ---@diagnostic disable-next-line: param-type-mismatch
     render.SetStencilCompareFunction(STENCIL_EQUAL)
+    ---@diagnostic disable-next-line: param-type-mismatch
     render.SetStencilPassOperation(STENCIL_KEEP)
 
     for i, line in ipairs(infoData[activeCategory]) do

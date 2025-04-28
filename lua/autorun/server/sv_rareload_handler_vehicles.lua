@@ -1,7 +1,11 @@
+-- FOR NOW THIS SYSTEM DOES NOT WORK WELL, SO IT'S NOT SHOWN IN THE TOOL MENU
+
+
 ---@class RARELOAD
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 
+-- BROKEN
 -- This function is called when the addon need to restore vehicles from a save file. Allow to restore vehicles, their health, color, etc.
 function RARELOAD.RestoreVehicles()
     timer.Simple(1, function()
@@ -69,13 +73,13 @@ function RARELOAD.RestoreVehicles()
 
                 if success and IsValid(vehicle) then
                     vehicleCount = vehicleCount + 1
-                elseif DebugEnabled then
+                elseif RARELOAD.settings.DebugEnabled then
                     print("[RARELOAD DEBUG] Failed to create vehicle: " .. vehicleData.class)
                 end
             end
         end
 
-        if DebugEnabled and vehicleCount > 0 then
+        if RARELOAD.settings.DebugEnabled and vehicleCount > 0 then
             print("[RARELOAD DEBUG] Restored " .. vehicleCount .. " vehicles")
         end
     end)

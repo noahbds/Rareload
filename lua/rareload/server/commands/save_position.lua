@@ -19,10 +19,8 @@ return function(ply, _, _)
     local newAng = ply:EyeAngles()
     local newActiveWeapon = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or "None"
 
-    -- Inventory
     local newInventory = save_inventory(ply)
 
-    -- Global Inventory
     if RARELOAD.settings.retainGlobalInventory then
         local globalInventory = {}
         for _, weapon in ipairs(ply:GetWeapons()) do

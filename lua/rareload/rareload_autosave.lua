@@ -69,15 +69,24 @@ function RARELOAD.HandleAutoSave(ply)
             ply.lastSavedActiveWeapon = currentActiveWeapon
             ply.lastSavedHealth = currentHealth
             ply.lastSavedArmor = currentArmor
-            net.Start("RareloadSyncAutoSaveTime")
+
+            net.Start("RareloadAutoSaveTriggered")
             net.WriteFloat(currentTime)
             net.Send(ply)
-            if settings.notifyOnSave then
-                ply:PrintMessage(HUD_PRINTTALK, "[Rareload] Position sauvegardée")
-            end
             if settings.debugEnabled then
-                print("[RARELOAD DEBUG] Position sauvegardée pour " .. ply:Nick())
+                print("[RARELOAD DEBUG] Position saved for " .. ply:Nick())
             end
         end
     end
+end
+
+if SERVER then
+    util.AddNetworkString("RareloadAutoSaveTriggered")
+end
+
+if CLIENT then
+    net.Receive("RareloadAutoSaveTriggered", function()
+        local triggerTime = net.ReadFloat()
+        RARELOAD.newAutoSaveTrigger = triggerTime
+    end)
 end

@@ -35,7 +35,6 @@ if CLIENT then
         local settings = util.JSONToTable(json)
         if settings then
             RARELOAD.settings = settings
-            -- Optionally, force all open panels to update
             if IsValid(RareloadUI.LastPanel) then
                 RareloadUI.LastPanel:InvalidateChildren(true)
             end

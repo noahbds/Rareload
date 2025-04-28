@@ -71,39 +71,36 @@ local function initAnimState(RARELOAD)
         glowPhase = 0,
         showingMessage = false,
         messageOpacity = 0,
-        lastProgress = 0
+        lastProgress = 0,
+        waitingForTrigger = false
     }
     return RARELOAD.AnimState
 end
 
-local function drawSaveMessage(width, height, state, barY, barHeight, currentTime)
-    local textY = barY + barHeight / 2
-    local messageOpacity = math.Clamp(state.messageOpacity * 255, 0, 255)
+local function drawWaitingForTriggerBar(width, height, state, barY, barHeight, currentTime, baseColor)
+    draw.RoundedBox(4, 8, barY, width - 16, barHeight, TOOL_UI.COLORS.PROGRESS.BG_OUTER)
+    draw.RoundedBox(4, 9, barY + 1, width - 18, barHeight - 2, TOOL_UI.COLORS.PROGRESS.BG_INNER)
+    draw.RoundedBox(3, 10, barY + 2, width - 20, barHeight - 4, baseColor)
 
-    if messageOpacity <= 0 then return end
+    local shineOpacity = math.abs(math.sin(state.glowPhase)) * 40
+    surface.SetDrawColor(TOOL_UI.COLORS.PROGRESS.SHINE.r, TOOL_UI.COLORS.PROGRESS.SHINE.g,
+        TOOL_UI.COLORS.PROGRESS.SHINE.b, shineOpacity)
+    surface.DrawRect(10, barY + 2, width - 20, 2)
 
-    local savedText = "Position saved!"
-    local textColor = ColorAlpha(TOOL_UI.COLORS.TEXT.SAVED, messageOpacity)
-    local shadowColor = ColorAlpha(TOOL_UI.COLORS.TEXT.SHADOW, messageOpacity * 0.7)
-
-    local timeSinceSave = currentTime - state.lastSaveTime
-    if timeSinceSave < 1 then
-        local scale = 1 + math.sin(timeSinceSave * math.pi) * 0.1
-        local matrix = Matrix()
-        matrix:Translate(Vector(width / 2, textY, 0))
-        matrix:Scale(Vector(scale, scale, 1))
-        matrix:Translate(Vector(-width / 2, -textY, 0))
-
-        cam.PushModelMatrix(matrix)
-        draw.SimpleText(savedText, "CTNV", width / 2 + 1, textY + 1, shadowColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-        draw.SimpleText(savedText, "CTNV", width / 2, textY, textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-        cam.PopModelMatrix()
-    elseif timeSinceSave < TOOL_UI.ANIMATION.SAVE_MESSAGE_DURATION then
-        draw.SimpleText(savedText, "CTNV", width / 2 + 1, textY + 1, shadowColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-        draw.SimpleText(savedText, "CTNV", width / 2, textY, textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    else
-        state.showingMessage = false
+    local steps = 4
+    for i = 1, steps - 1 do
+        local stepX = 10 + (width - 20) * (i / steps)
+        surface.SetDrawColor(TOOL_UI.COLORS.PROGRESS.STEP)
+        surface.DrawRect(stepX - 0.5, barY + 4, 1, barHeight - 8)
     end
+
+    local textY = barY + barHeight / 2
+    local infoText = "Ready for next save..."
+    local textColor = TOOL_UI.COLORS.TEXT.NORMAL
+
+    draw.SimpleText(infoText, "CTNV", width / 2 + 1, textY + 1, TOOL_UI.COLORS.TEXT.SHADOW, TEXT_ALIGN_CENTER,
+        TEXT_ALIGN_CENTER)
+    draw.SimpleText(infoText, "CTNV", width / 2, textY, textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 end
 
 local function drawProgressBar(width, height, state, barY, barHeight, progress, timeRemaining, currentTime, baseColor)
@@ -167,7 +164,6 @@ local function getProgressColor(progress)
 end
 
 function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
-    -- Ensure width and height are valid numbers to prevent errors
     width = width or 256
     height = height or 256
 
@@ -235,25 +231,37 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
         local currentTime = CurTime()
         local lastSave = RARELOAD.serverLastSaveTime or 0
         local interval = math.max(settings.autoSaveInterval, 0.1)
+
         local timeElapsed = math.max(0, currentTime - lastSave)
-        local progress = math.Clamp(timeElapsed / interval, 0, 1)
+        local progress
+
+        if state.waitingForTrigger then
+            progress = 1
+        else
+            progress = math.Clamp(timeElapsed / interval, 0, 1)
+        end
+
         local barHeight = TOOL_UI.LAYOUT.BAR_HEIGHT
         local barY = height - 22
-        local timeRemaining = math.max(0, interval - timeElapsed)
+        local timeRemaining = state.waitingForTrigger and 0 or math.max(0, interval - timeElapsed)
 
-        if progress >= 1 and not state.showingMessage then
+        if progress >= 1 and not state.showingMessage and not state.waitingForTrigger then
             state.showingMessage = true
             state.lastSaveTime = currentTime
             state.messageOpacity = 1
+            state.waitingForTrigger = true
+
             if currentTime - lastSave >= interval * 0.95 then
                 RARELOAD.serverLastSaveTime = currentTime
             end
         end
 
-        if progress < 0.95 and state.showingMessage and (currentTime - state.lastSaveTime) > 0.5 then
-            state.showingMessage = false
-            state.messageOpacity = 0
+        if RARELOAD.newAutoSaveTrigger and RARELOAD.newAutoSaveTrigger > lastSave then
+            state.waitingForTrigger = false
+            RARELOAD.serverLastSaveTime = RARELOAD.newAutoSaveTrigger
+            RARELOAD.newAutoSaveTrigger = nil
         end
+
 
         if state.showingMessage then
             local timeSinceSave = currentTime - state.lastSaveTime
@@ -265,13 +273,11 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
             end
         end
 
-        state.pulsePhase = (state.pulsePhase + FrameTime() * 8) % (math.pi * 2)
-        state.glowPhase = (state.glowPhase + FrameTime() * 1.5) % (math.pi * 2)
 
-        if state.showingMessage and state.messageOpacity > 0 then
-            drawSaveMessage(width, height, state, barY, barHeight, currentTime)
+        local baseColor = getProgressColor(progress)
+        if state.waitingForTrigger then
+            drawWaitingForTriggerBar(width, height, state, barY, barHeight, currentTime, baseColor)
         else
-            local baseColor = getProgressColor(progress)
             drawProgressBar(width, height, state, barY, barHeight, progress, timeRemaining, currentTime, baseColor)
         end
     end
@@ -280,8 +286,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
 end
 
 function ToolScreen.EndDraw()
-    -- Reset any render targets if needed
-    render.SetRenderTarget(nil)
+    render.SetRenderTarget(render.GetRenderTarget())
 end
 
 return ToolScreen
