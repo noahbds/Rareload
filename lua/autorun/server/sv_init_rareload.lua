@@ -243,7 +243,7 @@ function FindWalkableGround(startPos, ply)
     return startPos
 end
 
--- Set the player's position and eye angles
+-- Set the player's position and eye angles. This is the most important function of the addon
 function SetPlayerPositionAndEyeAngles(ply, savedInfo)
     ply:SetPos(savedInfo.pos)
 

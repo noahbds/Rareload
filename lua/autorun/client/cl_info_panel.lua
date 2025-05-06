@@ -1,4 +1,5 @@
 local function CreateInfoLine(parent, label, value, color, tooltip)
+    ---@class DPanel
     local container = vgui.Create("DPanel", parent)
     container:Dock(TOP)
     container:SetTall(18)
@@ -69,12 +70,14 @@ end
 
 function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
     local panelID = "RareloadInfoPanel_" .. math.random(100000, 999999)
+    ---@class DPanel
     local panel = vgui.Create("DPanel", parent)
     panel:Dock(TOP)
     panel:SetTall(140)
     panel:DockMargin(5, 5, 5, 5)
     panel:SetAlpha(0)
     panel:AlphaTo(255, 0.3, 0)
+    ---@diagnostic disable-next-line: assign-type-mismatch
     panel.IsHovered = false
 
     panel.Paint = function(self, w, h)
@@ -89,14 +92,17 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
     end
 
     panel.OnCursorEntered = function(self)
+        ---@diagnostic disable-next-line: assign-type-mismatch
         self.IsHovered = true
         surface.PlaySound("ui/buttonrollover.wav")
     end
 
     panel.OnCursorExited = function(self)
+        ---@diagnostic disable-next-line: assign-type-mismatch
         self.IsHovered = false
     end
 
+    ---@class DModelPanel
     local modelPanel = vgui.Create("DModelPanel", panel)
     modelPanel:SetSize(120, 120)
     modelPanel:Dock(LEFT)
@@ -104,6 +110,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
 
     if data.model and util.IsValidModel(data.model) then
         modelPanel:SetModel(data.model)
+        ---@diagnostic disable-next-line: undefined-field
         local min, max = modelPanel.Entity:GetRenderBounds()
         local center = (min + max) * 0.5
         local size = max:Distance(min)
@@ -114,7 +121,9 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
         modelPanel.Think = function(self)
             targetAngle = (targetAngle + FrameTime() * rotateSpeed) % 360
             currentAngle = Lerp(FrameTime() * 5, currentAngle, targetAngle)
+            ---@diagnostic disable-next-line: undefined-field
             if self.Entity and IsValid(self.Entity) then
+                ---@diagnostic disable-next-line: undefined-field
                 self.Entity:SetAngles(Angle(0, currentAngle, 0))
             end
         end
@@ -197,7 +206,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
             end
         end
         local weaponDisplay = #weaponStrings > 2 and (weaponStrings[1] .. " +" .. (#weaponStrings - 1)) or
-        table.concat(weaponStrings, ", ")
+            table.concat(weaponStrings, ", ")
         leftList:Add(CreateInfoLine(leftList, "Weapons", weaponDisplay, THEME.accent,
             "Saved weapons with which the NPC will reappear."))
     end
@@ -237,35 +246,13 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
     local exportIcon = Material("icon16/disk.png")
     local trackIcon = Material("icon16/eye.png")
 
-    local highlightEndTime, highlightPos, tracked = 0, nil, false
+    local highlightActive = false
+    local tracked = false
 
-    for k in pairs(hook.GetTable()["PostDrawTranslucentRenderables"] or {}) do
-        if string.find(k, "RareloadHighlightEntity_") then
-            hook.Remove("PostDrawTranslucentRenderables", k)
-        end
+    local function addButton(text, iconMat, col, fn)
+        buttonScroll:AddPanel(CreateStyledButton(buttonScroll, text, iconMat,
+            col, fn))
     end
-
-    hook.Add("PostDrawTranslucentRenderables", "RareloadHighlightEntity_" .. panelID, function()
-        if highlightPos and CurTime() < highlightEndTime then
-            render.SetColorMaterial()
-            render.DrawSphere(highlightPos, 24, 16, 16, Color(255, 255, 0, 100))
-            local ply = LocalPlayer()
-            if IsValid(ply) then
-                render.DrawLine(ply:GetPos() + Vector(0, 0, 36), highlightPos, Color(255, 255, 0, 100), false)
-            end
-        end
-        if tracked and data.pos then
-            render.SetColorMaterial()
-            render.DrawSphere(Vector(data.pos.x, data.pos.y, data.pos.z), 28, 16, 16, Color(0, 255, 255, 80))
-        end
-    end)
-
-    panel.OnRemove = function()
-        hook.Remove("PostDrawTranslucentRenderables", "RareloadHighlightEntity_" .. panelID)
-    end
-
-    local function addButton(text, iconMat, col, fn) buttonScroll:AddPanel(CreateStyledButton(buttonScroll, text, iconMat,
-            col, fn)) end
 
     addButton("Copy All Info", copyAllIcon, THEME.accent, function()
         local info = { "Class: " .. (data.class or "Unknown") }
@@ -278,23 +265,111 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
             end
             table.insert(info, "Weapons: " .. table.concat(wlist, ", "))
         end
-        if data.pos then table.insert(info,
-                string.format("Position: Vector(%.1f, %.1f, %.1f)", data.pos.x, data.pos.y, data.pos.z)) end
+        if data.pos then
+            table.insert(info,
+                string.format("Position: Vector(%.1f, %.1f, %.1f)", data.pos.x, data.pos.y, data.pos.z))
+        end
         SetClipboardText(table.concat(info, "\n"))
         ShowNotification("All info copied to clipboard!", NOTIFY_GENERIC)
         if onAction then onAction("copy_all", data) end
     end)
 
-    addButton("Highlight", highlightIcon, Color(255, 220, 80), function()
-        if data.pos then
-            highlightPos = Vector(data.pos.x, data.pos.y, data.pos.z)
-            highlightEndTime = CurTime() + 5
-            ShowNotification("Entity highlighted in world for 5 seconds!", NOTIFY_GENERIC)
-            if onAction then onAction("highlight", data) end
-        else
-            ShowNotification("No position to highlight!", NOTIFY_ERROR)
-        end
-    end)
+    HighlightBtn = CreateStyledButton(buttonScroll, "Highlight", highlightIcon, Color(255, 220, 80),
+        function()
+            if not data.pos then
+                ShowNotification("No position to highlight!", NOTIFY_ERROR)
+                return
+            end
+
+            local entityID = string.format("pos_%.1f_%.1f_%.1f", data.pos.x, data.pos.y, data.pos.z)
+
+            if not RARELOAD.HighlightData then
+                RARELOAD.HighlightData = {}
+
+                hook.Add("PostDrawTranslucentRenderables", "RareloadHighlightAllEntities", function()
+                    local curTime = CurTime()
+                    local toRemove = {}
+
+                    for i, highlight in ipairs(RARELOAD.HighlightData) do
+                        if highlight.persistent or curTime < highlight.endTime then
+                            render.SetColorMaterial()
+                            render.DrawSphere(
+                                Vector(highlight.pos.x, highlight.pos.y, highlight.pos.z),
+                                24, 16, 16,
+                                highlight.color or Color(255, 255, 0, 100)
+                            )
+
+                            local ply = LocalPlayer()
+                            if IsValid(ply) then
+                                render.DrawLine(
+                                    ply:GetPos() + Vector(0, 0, 36),
+                                    Vector(highlight.pos.x, highlight.pos.y, highlight.pos.z),
+                                    highlight.lineColor or Color(255, 255, 0, 80),
+                                    false
+                                )
+                            end
+                        else
+                            table.insert(toRemove, i)
+                        end
+                    end
+
+                    for i = #toRemove, 1, -1 do
+                        table.remove(RARELOAD.HighlightData, toRemove[i])
+                    end
+                end)
+            end
+
+            local alreadyHighlighted = false
+            local existingIndex = nil
+
+            for i, highlight in ipairs(RARELOAD.HighlightData) do
+                if highlight.id == entityID then
+                    alreadyHighlighted = true
+                    existingIndex = i
+                    break
+                end
+            end
+
+            if alreadyHighlighted then
+                table.remove(RARELOAD.HighlightData, existingIndex)
+                highlightActive = false
+                ShowNotification("Highlight turned off for this entity!", NOTIFY_GENERIC)
+            else
+                table.insert(RARELOAD.HighlightData, {
+                    id = entityID,
+                    pos = data.pos,
+                    persistent = true,
+                    color = Color(255, 255, 0, 100),
+                    lineColor = Color(255, 255, 255, 40)
+                })
+                highlightActive = true
+                ShowNotification("Highlighting position! Click again to turn off.", NOTIFY_GENERIC)
+            end
+
+            HighlightBtn.Paint = function(self, w, h)
+                local baseColor = highlightActive and Color(255, 140, 0) or
+                    Color(255, 220, 80)
+                local btnColor = self:IsHovered() and Color(baseColor.r * 1.2, baseColor.g * 1.2, baseColor.b * 1.2) or
+                    baseColor
+
+                draw.RoundedBox(4, 0, 0, w, h, btnColor)
+
+                surface.SetDrawColor(255, 255, 255, 230)
+                surface.SetMaterial(Material("icon16/eye.png"))
+                surface.DrawTexturedRect(w / 2 - 8, h / 2 - 8, 16, 16)
+
+                if highlightActive then
+                    local pulseAlpha = math.sin(CurTime() * 4) * 40 + 60
+                    surface.SetDrawColor(255, 255, 255, pulseAlpha)
+                    surface.DrawOutlinedRect(0, 0, w, h, 2)
+                end
+            end
+        end)
+
+
+    local originalHighlightPaint = HighlightBtn.Paint
+    HighlightBtn.Paint = originalHighlightPaint
+
 
     addButton("Copy Position", copyIcon, THEME.accent, function()
         if data.pos then
@@ -351,7 +426,29 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
 
     addButton("Track", trackIcon, Color(0, 200, 255), function()
         tracked = not tracked
-        ShowNotification(tracked and "Tracking enabled!" or "Tracking disabled!", NOTIFY_GENERIC)
+
+        local trackingID = "entity_tracking_" .. panelID
+
+        for i, highlight in ipairs(RARELOAD.HighlightData) do
+            if highlight.id == trackingID then
+                table.remove(RARELOAD.HighlightData, i)
+                break
+            end
+        end
+
+        if tracked then
+            table.insert(RARELOAD.HighlightData, {
+                id = trackingID,
+                pos = data.pos,
+                persistent = true,
+                color = Color(0, 255, 255, 80),
+                lineColor = Color(0, 200, 255, 60)
+            })
+            ShowNotification("Tracking enabled!", NOTIFY_GENERIC)
+        else
+            ShowNotification("Tracking disabled!", NOTIFY_GENERIC)
+        end
+
         if onAction then onAction("track", data, tracked) end
     end)
 
@@ -439,6 +536,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
         header:SetText(data.class or "Unknown Entity")
         if data.model and util.IsValidModel(data.model) then
             modelPanel:SetModel(data.model)
+            ---@diagnostic disable-next-line: undefined-field
             local min, max = modelPanel.Entity:GetRenderBounds()
             local center = (min + max) * 0.5
             local size = max:Distance(min)

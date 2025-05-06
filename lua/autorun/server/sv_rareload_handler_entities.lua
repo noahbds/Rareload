@@ -2,102 +2,137 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 
--- Register network string for entity respawn
 util.AddNetworkString("RareloadRespawnEntity")
 
 
 -- This function is called when the addon need to restore entities from a save file. Allow to restore entities, their position, health, etc.
-function RARELOAD.RestoreEntities()
-    local delay = RARELOAD.settings.restoreDelay or 1
+function RARELOAD.RestoreEntities(playerSpawnPos)
+    if not SavedInfo or not SavedInfo.entities or #SavedInfo.entities == 0 then
+        return
+    end
 
-    timer.Simple(delay, function()
-        if not SavedInfo or not SavedInfo.entities or #SavedInfo.entities == 0 then
-            return
+    local stats = {
+        total = #SavedInfo.entities,
+        restored = 0,
+        skipped = 0,
+        failed = 0,
+        startTime = SysTime()
+    }
+
+    local entityData = {
+        restored = {},
+        skipped = {},
+        failed = {}
+    }
+    local errorMessages = {}
+
+    local existingEntities = {}
+    for _, ent in ipairs(ents.GetAll()) do
+        if ent.SpawnedByRareload or ent.SavedByRareload then
+            local key = ent:GetClass() .. "|" .. ent:GetModel()
+            existingEntities[key] = true
+        end
+    end
+
+    local closeEntities = {}
+    local farEntities = {}
+    local proximityRadius = 150
+
+    for _, entData in ipairs(SavedInfo.entities) do
+        if not entData.class or not entData.model then
+            stats.failed = stats.failed + 1
+            table.insert(entityData.failed, entData)
+            table.insert(errorMessages, "Missing class or model")
+            continue
         end
 
-        local stats = {
-            total = #SavedInfo.entities,
-            restored = 0,
-            skipped = 0,
-            failed = 0,
-            startTime = SysTime()
-        }
+        local entityKey = entData.class .. "|" .. entData.model
 
-        local entityData = {
-            restored = {},
-            skipped = {},
-            failed = {}
-        }
-        local errorMessages = {}
-
-        local existingEntities = {}
-        for _, ent in ipairs(ents.GetAll()) do
-            if ent.SpawnedByRareload or ent.SavedByRareload then
-                local key = ent:GetClass() .. "|" .. ent:GetModel()
-                existingEntities[key] = true
-            end
+        if existingEntities[entityKey] then
+            stats.skipped = stats.skipped + 1
+            table.insert(entityData.skipped, entData)
+            continue
         end
 
-        for _, entData in ipairs(SavedInfo.entities) do
-            if not entData.class or not entData.model then
-                stats.failed = stats.failed + 1
-                table.insert(entityData.failed, entData)
-                table.insert(errorMessages, "Missing class or model")
-                continue
+        if playerSpawnPos then
+            local entPos = util.StringToType(entData.pos, "Vector")
+            local distSqr = entPos:DistToSqr(playerSpawnPos)
+
+            if distSqr < (proximityRadius * proximityRadius) then
+                table.insert(closeEntities, entData)
+            else
+                table.insert(farEntities, entData)
             end
+        else
+            table.insert(farEntities, entData)
+        end
+    end
 
-            local entityKey = entData.class .. "|" .. entData.model
+    local function SpawnEntity(entData)
+        local success, result = pcall(function()
+            ---@class Entity
+            local ent = ents.Create(entData.class)
+            if not IsValid(ent) then return false, "Failed to create entity" end
 
-            if existingEntities[entityKey] then
-                stats.skipped = stats.skipped + 1
-                table.insert(entityData.skipped, entData)
-                continue
-            end
+            ent:SetPos(util.StringToType(entData.pos, "Vector"))
+            ent:SetAngles(util.StringToType(entData.ang, "Angle"))
+            ent:SetModel(entData.model)
+            ent:Spawn()
 
-            local success, result = pcall(function()
-                ---@class Entity
-                local ent = ents.Create(entData.class)
-                if not IsValid(ent) then return false, "Failed to create entity" end
+            if entData.health then ent:SetHealth(entData.health) end
+            if entData.color then ent:SetColor(util.StringToType(entData.color, "Color")) end
+            if entData.material then ent:SetMaterial(entData.material) end
 
-                ent:SetPos(util.StringToType(entData.pos, "Vector"))
-                ent:SetAngles(util.StringToType(entData.ang, "Angle"))
-                ent:SetModel(entData.model)
-                ent:Spawn()
+            ent.SpawnedByRareload = true
+            ent.SavedByRareload = true
 
-                if entData.health then ent:SetHealth(entData.health) end
-                if entData.color then ent:SetColor(util.StringToType(entData.color, "Color")) end
-                if entData.material then ent:SetMaterial(entData.material) end
-
-                ent.SpawnedByRareload = true
-                ent.SavedByRareload = true
-
-                local phys = ent:GetPhysicsObject()
-                if IsValid(phys) then
-                    if entData.frozen then
-                        phys:EnableMotion(false)
-                    end
-
-                    if entData.velocity then
-                        phys:SetVelocity(util.StringToType(entData.velocity, "Vector"))
-                    end
+            local phys = ent:GetPhysicsObject()
+            if IsValid(phys) then
+                if entData.frozen then
+                    phys:EnableMotion(false)
                 end
 
-                return true, ent
-            end)
-
-            if success and result == true then
-                stats.restored = stats.restored + 1
-                table.insert(entityData.restored, entData)
-            else
-                stats.failed = stats.failed + 1
-                local errorMsg = isstring(result) and result or "Unknown error"
-                table.insert(entityData.failed, entData)
-                table.insert(errorMessages, errorMsg)
+                if entData.velocity then
+                    phys:SetVelocity(util.StringToType(entData.velocity, "Vector"))
+                end
             end
+
+            return true, ent
+        end)
+
+        if success and result == true then
+            stats.restored = stats.restored + 1
+            table.insert(entityData.restored, entData)
+        else
+            stats.failed = stats.failed + 1
+            local errorMsg = isstring(result) and result or "Unknown error"
+            table.insert(entityData.failed, entData)
+            table.insert(errorMessages, errorMsg)
+        end
+    end
+
+    if RARELOAD.settings.debugEnabled then
+        print("[RARELOAD DEBUG] Spawning " .. #closeEntities .. " close entities immediately")
+    end
+
+    for _, entData in ipairs(closeEntities) do
+        SpawnEntity(entData)
+    end
+
+    local delay = RARELOAD.settings.restoreDelay or 1
+    timer.Simple(delay, function()
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Spawning " .. #farEntities .. " distant entities with delay")
+        end
+
+        for _, entData in ipairs(farEntities) do
+            SpawnEntity(entData)
         end
 
         stats.endTime = SysTime()
     end)
+
+    return #closeEntities > 0
 end
 
 -- Used to respawn the entities from the saved entities and npcs viewer.

@@ -1,3 +1,6 @@
+local highlightAllActive = false
+local highlightAllButton
+
 function CreateCategory(parent, title, dataList, isNPC, filter)
     if not dataList or #dataList == 0 then return nil end
 
@@ -88,22 +91,26 @@ function CreateCategory(parent, title, dataList, isNPC, filter)
     local scrollbar = scrollPanel:GetVBar()
     if IsValid(scrollbar) then
         scrollbar:SetWide(8)
+        ---@diagnostic disable-next-line: inject-field
         scrollbar.Paint = function(_, w, h)
             draw.RoundedBox(4, 0, 0, w, h, Color(THEME.background.r, THEME.background.g, THEME.background.b, 150))
         end
+        ---@diagnostic disable-next-line: undefined-field
         scrollbar.btnUp.Paint = function(self, w, h)
             local color = self:IsHovered() and Color(THEME.accent.r * 1.2, THEME.accent.g * 1.2, THEME.accent.b * 1.2) or
-            THEME.accent
+                THEME.accent
             draw.RoundedBox(4, 2, 0, w - 4, h - 2, color)
         end
+        ---@diagnostic disable-next-line: undefined-field
         scrollbar.btnDown.Paint = function(self, w, h)
             local color = self:IsHovered() and Color(THEME.accent.r * 1.2, THEME.accent.g * 1.2, THEME.accent.b * 1.2) or
-            THEME.accent
+                THEME.accent
             draw.RoundedBox(4, 2, 2, w - 4, h - 2, color)
         end
+        ---@diagnostic disable-next-line: undefined-field
         scrollbar.btnGrip.Paint = function(self, w, h)
             local color = self:IsHovered() and Color(THEME.accent.r * 1.2, THEME.accent.g * 1.2, THEME.accent.b * 1.2) or
-            THEME.accent
+                THEME.accent
             draw.RoundedBox(4, 2, 0, w - 4, h, color)
         end
     end
@@ -159,13 +166,104 @@ function CreateCategory(parent, title, dataList, isNPC, filter)
             end
         end)
 
-        CreateBatchButton("Highlight All", "icon16/eye.png", Color(255, 220, 80), function(items)
-            local count = 0
-            for _, item in ipairs(items) do
-                if item.pos then count = count + 1 end
+        highlightAllButton = CreateBatchButton("Highlight All", "icon16/eye.png", Color(255, 220, 80), function(items)
+            highlightAllActive = not highlightAllActive
+
+            if not RARELOAD.HighlightData then
+                RARELOAD.HighlightData = {}
+
+                hook.Add("PostDrawTranslucentRenderables", "RareloadHighlightAllEntities", function()
+                    local curTime = CurTime()
+                    local toRemove = {}
+
+                    for i, highlight in ipairs(RARELOAD.HighlightData) do
+                        if highlight.persistent or curTime < highlight.endTime then
+                            render.SetColorMaterial()
+                            render.DrawSphere(
+                                Vector(highlight.pos.x, highlight.pos.y, highlight.pos.z),
+                                24, 16, 16,
+                                highlight.color or Color(255, 255, 0, 100)
+                            )
+
+                            local ply = LocalPlayer()
+                            if IsValid(ply) then
+                                render.DrawLine(
+                                    ply:GetPos() + Vector(0, 0, 36),
+                                    Vector(highlight.pos.x, highlight.pos.y, highlight.pos.z),
+                                    highlight.lineColor or Color(255, 255, 0, 80),
+                                    false
+                                )
+                            end
+                        else
+                            table.insert(toRemove, i)
+                        end
+                    end
+
+                    for i = #toRemove, 1, -1 do
+                        table.remove(RARELOAD.HighlightData, toRemove[i])
+                    end
+                end)
             end
-            ShowNotification("Highlighting " .. count .. " positions is not implemented yet", NOTIFY_HINT)
+
+            for i = #RARELOAD.HighlightData, 1, -1 do
+                if RARELOAD.HighlightData[i].isBatch then
+                    table.remove(RARELOAD.HighlightData, i)
+                end
+            end
+
+            if highlightAllActive then
+                local validItems = {}
+                for _, item in ipairs(items) do
+                    if item.pos then
+                        table.insert(validItems, item)
+                    end
+                end
+
+                local colorVariations = {
+                    Color(255, 255, 0, 100), -- Yellow
+                    Color(0, 255, 255, 100), -- Cyan
+                    Color(255, 0, 255, 100), -- Magenta
+                    Color(0, 255, 0, 100),   -- Green
+                    Color(255, 128, 0, 100)  -- Orange
+                }
+
+                for i, item in ipairs(validItems) do
+                    table.insert(RARELOAD.HighlightData, {
+                        pos = item.pos,
+                        isBatch = true,
+                        persistent = true,
+                        color = colorVariations[(i - 1) % #colorVariations + 1],
+                        lineColor = Color(255, 255, 255, 40)
+                    })
+                end
+
+                ShowNotification("Highlighting " .. #validItems .. " positions! Click again to turn off.", NOTIFY_GENERIC)
+            else
+                ShowNotification("Highlight turned off!", NOTIFY_GENERIC)
+            end
+
+            highlightAllButton.Paint = function(self, w, h)
+                local baseColor = highlightAllActive and Color(255, 140, 0) or
+                    Color(255, 220, 80)
+                local btnColor = self:IsHovered() and Color(baseColor.r * 1.2, baseColor.g * 1.2, baseColor.b * 1.2) or
+                    baseColor
+
+                draw.RoundedBox(4, 0, 0, w, h, btnColor)
+
+                surface.SetDrawColor(255, 255, 255, 230)
+                surface.SetMaterial(Material("icon16/eye.png"))
+                surface.DrawTexturedRect(w / 2 - 8, h / 2 - 8, 16, 16)
+
+                if highlightAllActive then
+                    local pulseAlpha = math.sin(CurTime() * 4) * 40 + 60
+                    surface.SetDrawColor(255, 255, 255, pulseAlpha)
+                    surface.DrawOutlinedRect(0, 0, w, h, 2)
+                end
+            end
         end)
+
+        local originalHighlightPaint = highlightAllButton.Paint
+        highlightAllButton.Paint = originalHighlightPaint
 
         CreateBatchButton("Export All", "icon16/disk.png", Color(180, 180, 255), function(items)
             SetClipboardText(util.TableToJSON(items, true))
@@ -190,7 +288,7 @@ function CreateCategory(parent, title, dataList, isNPC, filter)
 
             local message = vgui.Create("DLabel", confirmFrame)
             message:SetText("Are you sure you want to delete all " ..
-            #items .. " " .. (isNPC and "NPCs" or "entities") .. " in this category?")
+                #items .. " " .. (isNPC and "NPCs" or "entities") .. " in this category?")
             message:SetFont("RareloadText")
             message:SetTextColor(THEME.text)
             message:SetContentAlignment(5)
@@ -228,8 +326,63 @@ function CreateCategory(parent, title, dataList, isNPC, filter)
                 end
             end
             yesButton.DoClick = function()
-                ShowNotification("Batch deletion not implemented yet", NOTIFY_HINT)
-                confirmFrame:Close()
+                local mapName = game.GetMap()
+                local filePath = "rareload/player_positions_" .. mapName .. ".json"
+
+                if file.Exists(filePath, "DATA") then
+                    local success, rawData = pcall(util.JSONToTable, file.Read(filePath, "DATA"))
+                    if success and rawData and rawData[mapName] then
+                        local dataType = isNPC and "npcs" or "entities"
+                        local deletedCount = 0
+
+                        for _, playerData in pairs(rawData[mapName]) do
+                            if playerData[dataType] then
+                                local originalCount = #playerData[dataType]
+
+                                local newItems = {}
+                                for _, entity in ipairs(playerData[dataType]) do
+                                    local shouldKeep = true
+
+                                    for _, item in ipairs(items) do
+                                        if item.class == entity.class and
+                                            item.pos.x == entity.pos.x and
+                                            item.pos.y == entity.pos.y and
+                                            item.pos.z == entity.pos.z then
+                                            shouldKeep = false
+                                            break
+                                        end
+                                    end
+
+                                    if shouldKeep then
+                                        table.insert(newItems, entity)
+                                    end
+                                end
+
+                                playerData[dataType] = newItems
+                                deletedCount = deletedCount + (originalCount - #newItems)
+                            end
+                        end
+
+                        file.Write(filePath, util.TableToJSON(rawData, true))
+
+                        net.Start("RareloadReloadData")
+                        net.SendToServer()
+
+                        LoadData()
+
+                        ShowNotification(
+                            "Deleted " .. deletedCount .. " " .. (isNPC and "NPCs" or "entities") .. " successfully!",
+                            NOTIFY_GENERIC)
+
+                        confirmFrame:Close()
+                    else
+                        ShowNotification("Failed to parse saved data!", NOTIFY_ERROR)
+                        confirmFrame:Close()
+                    end
+                else
+                    ShowNotification("No saved data found for this map!", NOTIFY_ERROR)
+                    confirmFrame:Close()
+                end
             end
 
             local noButton = vgui.Create("DButton", buttonPanel)

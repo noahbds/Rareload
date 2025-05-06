@@ -40,7 +40,6 @@ local TOOL_UI = UI.TOOL_UI or {
     }
 }
 
--- Register required fonts for the tool screen
 local function RegisterFonts()
     surface.CreateFont("CTNV", {
         font = "Roboto",
@@ -184,15 +183,11 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
     local colors = TOOL_UI.COLORS
     local layout = TOOL_UI.LAYOUT
 
-    -- Background
     surface.SetDrawColor(colors.BG)
     surface.DrawRect(0, 0, width, height)
-
-    -- Header
     surface.SetDrawColor(colors.HEADER)
     surface.DrawRect(0, 0, width, 50)
 
-    -- Title with proper font
     draw.SimpleText("RARELOAD", "CTNV2", width / 2, 25, colors.TEXT_LIGHT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
     local isEnabled = settings.addonEnabled

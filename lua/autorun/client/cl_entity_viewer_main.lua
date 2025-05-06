@@ -283,7 +283,7 @@ function OpenEntityViewer(ply)
         if loadingPanel and IsValid(loadingPanel) then loadingPanel:Remove() end
     end
 
-    local function LoadData(filter)
+    function LoadData(filter)
         ShowLoading()
         timer.Simple(0.1, function()
             entityScroll:Clear()
@@ -347,6 +347,7 @@ function OpenEntityViewer(ply)
                     filter and "No NPCs match your search criteria" or "No saved NPCs found for this map", errorIcon)
             end
 
+            ---@diagnostic disable-next-line: undefined-field
             for _, tab in pairs(tabs.Items) do
                 if tab.Name == "Entities" then
                     tab.Name = "Entities (" .. entityCount .. ")"
@@ -362,6 +363,30 @@ function OpenEntityViewer(ply)
     end
 
     LoadData()
+
+    -- Function to reset all data for the current map
+    function ResetData()
+        local mapName = game.GetMap()
+        local filePath = "rareload/player_positions_" .. mapName .. ".json"
+
+        if file.Exists(filePath, "DATA") then
+            local emptyData = {}
+            emptyData[mapName] = {}
+
+            file.Write(filePath, util.TableToJSON(emptyData, true))
+
+            net.Start("RareloadReloadData")
+            net.SendToServer()
+
+            if entityViewerFrame and IsValid(entityViewerFrame) then
+                LoadData()
+            end
+
+            ShowNotification("All entity and NPC data has been reset for " .. mapName, NOTIFY_GENERIC)
+        else
+            ShowNotification("No data file exists for " .. mapName, NOTIFY_ERROR)
+        end
+    end
 
     local searchDelay = 0
     searchBar.OnChange = function()
@@ -384,7 +409,9 @@ function OpenEntityViewer(ply)
         end
         headerPanel:SetWide(w - 16)
         tabs:InvalidateLayout(true)
+        ---@diagnostic disable-next-line: undefined-field
         if tabs and tabs.Items then
+            ---@diagnostic disable-next-line: undefined-field
             for _, tab in pairs(tabs.Items) do
                 if IsValid(tab.Panel) then
                     tab.Panel:InvalidateLayout(true)

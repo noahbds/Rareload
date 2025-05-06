@@ -167,7 +167,17 @@ function RARELOAD.HandlePlayerSpawn(ply)
 
     -- **Restore Entities**
     if Settings.retainMapEntities and SavedInfo.entities then
-        RARELOAD.RestoreEntities()
+        local playerPos = SavedInfo.pos
+        local spawnedCloseEntities = RARELOAD.RestoreEntities(playerPos)
+
+        -- If there were close entities, add a tiny delay to player positioning, needed if the player saved on a entity
+        if spawnedCloseEntities and not Settings.spawnModeEnabled then
+            timer.Simple(0.05, function()
+                if IsValid(ply) then
+                    SetPlayerPositionAndEyeAngles(ply, SavedInfo)
+                end
+            end)
+        end
     end
 
     -- **Restore NPCs**
