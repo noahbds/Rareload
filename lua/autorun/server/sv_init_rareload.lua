@@ -16,6 +16,7 @@ function GetDefaultSettings()
         retainVehicles = false, -- BROKEN
         nocustomrespawnatdeath = false,
         debugEnabled = false,
+        maxHistorySize = 10,
         autoSaveInterval = 5,
         angleTolerance = 100,
         maxDistance = 50

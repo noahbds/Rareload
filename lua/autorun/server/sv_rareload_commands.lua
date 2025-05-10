@@ -24,6 +24,7 @@ concommand.Add("rareload_retain_global_inventory", load_command("toggle_retain_g
 concommand.Add("set_auto_save_interval", load_command("set_auto_save_interval"))
 concommand.Add("set_max_distance", load_command("set_max_distance"))
 concommand.Add("set_angle_tolerance", load_command("set_angle_tolerance"))
+concommand.Add("set_history_size", load_command("set_history_size"))
 
 -- Save commands
 concommand.Add("save_position", load_command("save_position"))

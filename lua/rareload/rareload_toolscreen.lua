@@ -1,5 +1,8 @@
 local UI = include("rareload/rareload_ui.lua")
 
+RARELOAD = RARELOAD or {}
+RARELOAD.settings = RARELOAD.settings or {}
+
 local TOOL_UI = UI.TOOL_UI or {
     COLORS = {
         BG = Color(30, 30, 35),
@@ -71,7 +74,13 @@ local function initAnimState(RARELOAD)
         showingMessage = false,
         messageOpacity = 0,
         lastProgress = 0,
-        waitingForTrigger = false
+        waitingForTrigger = false,
+        scrollOffset = 0,
+        targetScrollOffset = 0,
+        scrollDirection = 1,
+        nextScrollTime = CurTime(),
+        scrollPauseTime = 5,
+        scrollSpeed = 15
     }
     return RARELOAD.AnimState
 end
@@ -163,6 +172,7 @@ local function getProgressColor(progress)
 end
 
 function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
+    cam.Start2D()
     width = width or 256
     height = height or 256
 
@@ -183,6 +193,54 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
     local colors = TOOL_UI.COLORS
     local layout = TOOL_UI.LAYOUT
 
+    local state = initAnimState(RARELOAD)
+    local currentTime = CurTime()
+
+    local keyFeatures = {
+        { name = "Move Type",             enabled = settings.spawnModeEnabled },
+        { name = "Auto Save",             enabled = settings.autoSaveEnabled },
+        { name = "Save Inventory",        enabled = settings.retainInventory },
+        { name = "Save Global Inventory", enabled = settings.retainGlobalInventory },
+        { name = "Save Ammo",             enabled = settings.retainAmmo },
+        { name = "Save Health and Armor", enabled = settings.retainHealthArmor },
+        { name = "Save Entities",         enabled = settings.retainMapEntities },
+        { name = "Save NPCs",             enabled = settings.retainMapNPCs },
+        --  { name = "Save Vehicles",  enabled = settings.retainVehicles },
+        --  { name = "Save Vehicule State", enabled = settings.retainVehicleState },
+        { name = "Debug Mode",            enabled = settings.debugEnabled },
+        { name = "Auto Save Interval",    enabled = settings.autoSaveInterval },
+        --  { name = "Max Distance",          enabled = settings.maxDistance },
+        { name = "Angle Tolerance",       enabled = settings.angleTolerance },
+        { name = "Max History Size",      enabled = settings.maxHistorySize }
+
+    }
+
+    local totalFeatureHeight = #keyFeatures * layout.FEATURE_SPACING
+    local visibleHeight = height - layout.FEATURE_START_Y - 30
+    local maxScrollOffset = math.max(0, totalFeatureHeight - visibleHeight)
+
+    state.nextScrollTime = state.nextScrollTime or currentTime
+
+    if maxScrollOffset > 0 then
+        if currentTime > (state.nextScrollTime or 0) then
+            if state.scrollDirection == 1 and state.targetScrollOffset >= maxScrollOffset then
+                state.scrollDirection = -1
+                state.nextScrollTime = currentTime + state.scrollPauseTime
+            elseif state.scrollDirection == -1 and state.targetScrollOffset <= 0 then
+                state.scrollDirection = 1
+                state.nextScrollTime = currentTime + state.scrollPauseTime
+            else
+                state.targetScrollOffset = math.Clamp(
+                    state.targetScrollOffset + state.scrollDirection * state.scrollSpeed * FrameTime(),
+                    0, maxScrollOffset
+                )
+            end
+        end
+
+        state.scrollOffset = Lerp(FrameTime() * 3, state.scrollOffset, state.targetScrollOffset)
+    end
+
+
     surface.SetDrawColor(colors.BG)
     surface.DrawRect(0, 0, width, height)
     surface.SetDrawColor(colors.HEADER)
@@ -199,30 +257,50 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
     local textColor = isEnabled and colors.TEXT_DARK or colors.TEXT_LIGHT
     draw.SimpleText(statusText, "CTNV", width / 2, 75, textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
-    local keyFeatures = {
-        { name = "Auto Save",  enabled = settings.autoSaveEnabled },
-        { name = "Move Type",  enabled = settings.spawnModeEnabled },
-        { name = "Keep Items", enabled = settings.retainInventory },
-        { name = "Death Save", enabled = not settings.nocustomrespawnatdeath },
-        { name = "Debug",      enabled = settings.debugEnabled }
-    }
+    render.SetScissorRect(0, layout.FEATURE_START_Y, width, height - 30, true)
 
     for i, feature in ipairs(keyFeatures) do
-        local y = layout.FEATURE_START_Y + (i - 1) * layout.FEATURE_SPACING
-        local iconSize = layout.FEATURE_ICON_SIZE
-        local dotColor = feature.enabled and colors.ENABLED or colors.DISABLED
+        local y = layout.FEATURE_START_Y + (i - 1) * layout.FEATURE_SPACING - state.scrollOffset
 
-        surface.SetDrawColor(dotColor)
-        draw.NoTexture()
-        UI.DrawCircle(20, y + iconSize / 2, iconSize / 2, 20, dotColor)
+        if y + layout.FEATURE_SPACING > layout.FEATURE_START_Y and y < height - 30 then
+            local iconSize = layout.FEATURE_ICON_SIZE
 
-        draw.SimpleText(feature.name, "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        local stateText = feature.enabled and "ON" or "OFF"
-        draw.SimpleText(stateText, "CTNV", width - 15, y + iconSize / 2, dotColor, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+            local isValueSetting = feature.name == "Angle Tolerance" or
+                feature.name == "Auto Save Interval" or
+                feature.name == "Max Distance" or
+                feature.name == "Max History Size"
+
+            if isValueSetting then
+                local value = feature.enabled
+                local valueText = tostring(value)
+
+                surface.SetDrawColor(colors.HEADER)
+                draw.NoTexture()
+                UI.DrawCircle(20, y + iconSize / 2, iconSize / 2, 20, colors.HEADER)
+
+                draw.SimpleText(feature.name, "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT, TEXT_ALIGN_LEFT,
+                    TEXT_ALIGN_CENTER)
+                draw.SimpleText(valueText, "CTNV", width - 15, y + iconSize / 2, colors.TEXT_LIGHT, TEXT_ALIGN_RIGHT,
+                    TEXT_ALIGN_CENTER)
+            else
+                local dotColor = feature.enabled and colors.ENABLED or colors.DISABLED
+
+                surface.SetDrawColor(dotColor)
+                draw.NoTexture()
+                UI.DrawCircle(20, y + iconSize / 2, iconSize / 2, 20, dotColor)
+
+                draw.SimpleText(feature.name, "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT, TEXT_ALIGN_LEFT,
+                    TEXT_ALIGN_CENTER)
+                local stateText = feature.enabled and "ON" or "OFF"
+                draw.SimpleText(stateText, "CTNV", width - 15, y + iconSize / 2, dotColor, TEXT_ALIGN_RIGHT,
+                    TEXT_ALIGN_CENTER)
+            end
+        end
     end
 
+    render.SetScissorRect(0, 0, 0, 0, false)
+
     if settings.autoSaveEnabled and settings.autoSaveInterval then
-        local state = initAnimState(RARELOAD)
         local currentTime = CurTime()
         local lastSave = RARELOAD.serverLastSaveTime or 0
         local interval = math.max(settings.autoSaveInterval, 0.1)
@@ -281,7 +359,8 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
 end
 
 function ToolScreen.EndDraw()
-    render.SetRenderTarget(render.GetRenderTarget())
+    render.SetScissorRect(0, 0, 0, 0, false)
+    cam.End2D()
 end
 
 return ToolScreen

@@ -4,10 +4,12 @@ local save_entities = include("rareload/server/save_helpers/rareload_save_entiti
 local save_npcs = include("rareload/server/save_helpers/rareload_save_npcs.lua")
 local save_ammo = include("rareload/server/save_helpers/rareload_save_ammo.lua")
 local save_vehicle_state = include("rareload/server/save_helpers/rareload_save_vehicle_state.lua")
+local position_history = include("rareload/server/save_helpers/rareload_position_history.lua")
+
 
 return function(ply, _, _)
     if not RARELOAD.settings.addonEnabled then
-        print("[RARELOAD DEBUG] The Respawn at Reload addon is disabled.")
+        ply:ChatPrint("[RARELOAD] The Rareload addon is disabled.")
         return
     end
 
@@ -109,6 +111,8 @@ return function(ply, _, _)
     if RARELOAD.settings.retainMapNPCs then
         playerData.npcs = save_npcs(ply)
     end
+
+    RARELOAD.CacheCurrentPositionData(ply:SteamID(), mapName)
 
     RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
     local success, err = pcall(function()
