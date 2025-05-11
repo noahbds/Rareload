@@ -126,7 +126,7 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
     -- Basic Information
     table.insert(data.basic, { "Player", ply:Nick(), Color(255, 255, 255) })
     table.insert(data.basic, { "SteamID", ply:SteamID(), Color(200, 200, 200) })
-    table.insert(data.basic, { "Model", ply:GetModel(), Color(200, 200, 200) })
+    table.insert(data.basic, { "Model", SavedInfo.playermodel, Color(200, 200, 200) })
     table.insert(data.basic, { "Map", mapName, Color(180, 180, 200) })
 
     -- Position Information

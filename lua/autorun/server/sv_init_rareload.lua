@@ -52,14 +52,6 @@ function SaveAddonState()
     if not success then
         print("[RARELOAD] Failed to save addon state: " .. err)
     end
-
-    if RARELOAD.settings.debugEnabled then
-        local currentTime = SysTime()
-        if currentTime - lastDebugTime >= 5 then
-            print("[RARELOAD DEBUG] Debug: " .. json)
-            lastDebugTime = currentTime
-        end
-    end
 end
 
 -- Function to load addon state from file

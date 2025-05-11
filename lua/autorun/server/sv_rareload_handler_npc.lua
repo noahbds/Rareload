@@ -3,7 +3,6 @@ RARELOAD.settings = RARELOAD.settings or {}
 local npcLogs = {}
 util.AddNetworkString("RareloadRespawnNPC")
 
-
 function RARELOAD.RestoreNPCs()
     if not SavedInfo or not SavedInfo.npcs or #SavedInfo.npcs == 0 then return end
 
@@ -53,20 +52,20 @@ function RARELOAD.RestoreNPCs()
                     continue
                 end
 
-                local success, newNPC = RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
+                local success, result = RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
 
-                if success and IsValid(newNPC) then
+                if success and IsValid(result) then
                     stats.restored = stats.restored + 1
                     table.insert(npcDataStats.restored, npcData)
                 else
                     stats.failed = stats.failed + 1
-                    local errorMsg = isstring(newNPC) and newNPC or "Unknown error"
+                    local errorMsg = isstring(result) and result or "Unknown error"
                     table.insert(npcDataStats.failed, npcData)
                     table.insert(errorMessages, errorMsg)
                     if RARELOAD.settings.debugEnabled then
                         RARELOAD.Debug.Log("ERROR", "Failed to Create NPC", {
                             "Class: " .. npcData.class,
-                            "Error: " .. tostring(newNPC)
+                            "Error: " .. tostring(result)
                         })
                     end
                 end
@@ -131,8 +130,7 @@ function RARELOAD.CollectExistingNPCs(spawnedNPCsByID, npcLogs)
 end
 
 function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
-    return pcall(function()
-        ---@class Entity
+    local success, result = pcall(function()
         local npc = ents.Create(npcData.class)
         if not IsValid(npc) then return nil, "Failed to create NPC" end
 
@@ -164,6 +162,10 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
         end
 
         npc:SetHealth(npcData.health or npc:GetMaxHealth())
+        if npcData.maxHealth then
+            npc:SetMaxHealth(npcData.maxHealth)
+        end
+
         npc:SetSkin(npcData.skin or 0)
 
         if npcData.bodygroups then
@@ -175,25 +177,61 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
             end
         end
 
+        if npcData.color then
+            npc:SetColor(Color(
+                npcData.color.r or 255,
+                npcData.color.g or 255,
+                npcData.color.b or 255,
+                npcData.color.a or 255
+            ))
+        end
+
+        if npcData.materialOverride and npcData.materialOverride ~= "" then
+            npc:SetMaterial(npcData.materialOverride)
+        end
+
+        if npcData.renderMode then npc:SetRenderMode(npcData.renderMode) end
+        if npcData.renderFX then npc:SetRenderFX(npcData.renderFX) end
+
         if npcData.weapons and #npcData.weapons > 0 then
             for _, weaponData in ipairs(npcData.weapons) do
                 if weaponData.class then
-                    ---@diagnostic disable-next-line: undefined-field
-                    local weapon = npc:Give(weaponData.class)
-                    if IsValid(weapon) and weaponData.clipAmmo then
+                    local success, weapon = pcall(function()
+                        return npc:Give(weaponData.class)
+                    end)
+
+                    if success and IsValid(weapon) and weaponData.clipAmmo then
                         pcall(function() weapon:SetClip1(weaponData.clipAmmo) end)
                     end
                 end
             end
         end
 
-        if npcData.frozen then
-            local phys = npc:GetPhysicsObject()
-            if IsValid(phys) then phys:EnableMotion(false) end
+        local phys = npc:GetPhysicsObject()
+        if IsValid(phys) then
+            if npcData.frozen or (npcData.physics and npcData.physics.frozen) then
+                phys:EnableMotion(false)
+            end
+
+            if npcData.physics and npcData.physics.mass then
+                pcall(function() phys:SetMass(npcData.physics.mass) end)
+            end
+
+            if npcData.physics and npcData.physics.gravityEnabled ~= nil then
+                pcall(function() phys:EnableGravity(npcData.physics.gravityEnabled) end)
+            end
         end
 
         if npcData.relations then
             pendingRelations[npc] = npcData.relations
+        end
+
+        if npcData.citizenData and npc:GetClass() == "npc_citizen" then
+            RARELOAD.RestoreCitizenProperties(npc, npcData.citizenData)
+        end
+
+        if npcData.vjBaseData and string.find(npc:GetClass() or "", "npc_vj_") == 1 then
+            RARELOAD.RestoreVJBaseProperties(npc, npcData.vjBaseData)
         end
 
         npc.RareloadData = npcData
@@ -203,6 +241,80 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
 
         return npc
     end)
+
+    return success, result
+end
+
+function RARELOAD.RestoreCitizenProperties(npc, citizenData)
+    if not IsValid(npc) or not citizenData then return end
+
+    if citizenData.isMedic then
+        npc:SetKeyValue("citizentype", "3")
+        npc:SetNWBool("IsMedic", true)
+    end
+
+    if citizenData.isAmmoSupplier then
+        npc:SetKeyValue("ammosupplier", "1")
+        npc:SetNWBool("IsAmmoSupplier", true)
+    end
+
+    if citizenData.isRebel then
+        npc:SetNWBool("IsRebel", true)
+
+        if not string.find(npc:GetModel() or "", "rebel") then
+            local rebelModels = {
+                "models/humans/group03/male_01.mdl",
+                "models/humans/group03/male_02.mdl",
+                "models/humans/group03/female_01.mdl"
+            }
+            npc:SetModel(rebelModels[math.random(#rebelModels)])
+        end
+    end
+end
+
+function RARELOAD.RestoreVJBaseProperties(npc, vjData)
+    if not IsValid(npc) or not vjData then return end
+
+    if vjData.vjType then
+        npc:SetNWString("VJ_Type", vjData.vjType)
+    end
+
+    if vjData.maxHealth then
+        npc:SetMaxHealth(vjData.maxHealth)
+        npc:SetHealth(vjData.maxHealth)
+    end
+
+    if vjData.startHealth then
+        npc:SetNWInt("VJ_StartingHealth", vjData.startHealth)
+    end
+
+    if vjData.animationPlaybackRate then
+        npc:SetNWFloat("AnimationPlaybackRate", vjData.animationPlaybackRate)
+    end
+
+    if vjData.walkSpeed then
+        npc:SetNWInt("VJ_WalkSpeed", vjData.walkSpeed)
+    end
+
+    if vjData.runSpeed then
+        npc:SetNWInt("VJ_RunSpeed", vjData.runSpeed)
+    end
+
+    if vjData.isFollowing ~= nil then
+        npc:SetNWBool("VJ_IsBeingControlled", vjData.isFollowing)
+    end
+
+    if vjData.faction then
+        npc:SetNWString("VJ_NPC_Class", vjData.faction)
+    end
+
+    if vjData.isMeleeAttacker ~= nil then
+        npc:SetNWBool("VJ_IsMeleeAttacking", vjData.isMeleeAttacker)
+    end
+
+    if vjData.isRangeAttacker ~= nil then
+        npc:SetNWBool("VJ_IsRangeAttacking", vjData.isRangeAttacker)
+    end
 end
 
 function RARELOAD.FindPlayerBySteamID(steamID)
@@ -232,6 +344,13 @@ function RARELOAD.RestoreNPCRelationships(pendingRelations, spawnedNPCsByID, sta
                         npc:AddEntityRelationship(targetNPC, disposition, 99)
                         stats.relationshipsRestored = stats.relationshipsRestored + 1
                     end
+                end
+            end
+
+            if relations.factions then
+                for faction, disposition in pairs(relations.factions) do
+                    -- NOT_IMPLEMENTED: Faction relationships
+                    stats.relationshipsRestored = stats.relationshipsRestored + 1
                 end
             end
         end
@@ -274,6 +393,16 @@ function RARELOAD.RestoreNPCTargetsAndSchedules(spawnedNPCsByID, stats)
                 end
 
                 if IsValid(target) then npc:SetTarget(target) end
+            end
+        end
+
+        if npcData.aiProperties and npc.SetNPCState then
+            if npcData.aiProperties.weaponProficiency then
+                pcall(function() npc:SetCurrentWeaponProficiency(npcData.aiProperties.weaponProficiency) end)
+            end
+
+            if npcData.npcState then
+                pcall(function() npc:SetNPCState(npcData.npcState) end)
             end
         end
     end
@@ -402,7 +531,6 @@ hook.Add("RARELOAD_SaveEntities", "RARELOAD_MarkSavedNPCs", function()
     end
 end)
 
--- Used to respawn the npcs from the saved entities and npcs viewer.
 net.Receive("RareloadRespawnNPC", function(len, ply)
     if not IsValid(ply) or not ply:IsAdmin() then
         ply:ChatPrint("You need admin privileges to respawn entities")

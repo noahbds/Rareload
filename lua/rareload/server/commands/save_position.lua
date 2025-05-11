@@ -7,7 +7,7 @@ local save_vehicle_state = include("rareload/server/save_helpers/rareload_save_v
 local position_history = include("rareload/server/save_helpers/rareload_position_history.lua")
 
 
-return function(ply, _, _)
+return function(ply, pos, ang)
     if not RARELOAD.settings.addonEnabled then
         ply:ChatPrint("[RARELOAD] The Rareload addon is disabled.")
         return
@@ -85,6 +85,7 @@ return function(ply, _, _)
         moveType = ply:GetMoveType(),
         activeWeapon = newActiveWeapon,
         inventory = newInventory,
+        playermodel = ply:GetModel(),
     }
 
     if RARELOAD.settings.retainHealthArmor then
@@ -125,20 +126,8 @@ return function(ply, _, _)
         print("[RARELOAD] Player position successfully saved.")
     end
 
-    if RARELOAD.settings.debugEnabled then
-        net.Start("CreatePlayerPhantom")
-        net.WriteEntity(ply)
-        net.WriteVector(playerData.pos)
-        local savedAng = Angle(playerData.ang[1], playerData.ang[2], playerData.ang[3])
-        net.WriteAngle(savedAng)
-        net.Broadcast()
-    end
+    RARELOAD.UpdateClientPhantoms(ply, pos, ang)
 
-    net.Start("UpdatePhantomPosition")
-    net.WriteString(ply:SteamID())
-    net.WriteVector(playerData.pos)
-    net.WriteAngle(Angle(playerData.ang[1], playerData.ang[2], playerData.ang[3]))
-    net.Send(ply)
 
     SyncPlayerPositions(ply)
 end

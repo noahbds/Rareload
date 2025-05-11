@@ -22,20 +22,38 @@ TOOL.Information = {
 }
 TOOL.ConfigName  = ""
 
-
-
-
 if SERVER then
     AddCSLuaFile("rareload/rareload_ui.lua")
     AddCSLuaFile("rareload/rareload_toolscreen.lua")
+    util.AddNetworkString("RareloadToolReloadState")
 end
-
 
 if CLIENT then
     UI.RegisterFonts()
     UI.RegisterLanguage()
     net.Receive("RareloadSyncAutoSaveTime", function()
         RARELOAD.serverLastSaveTime = net.ReadFloat()
+    end)
+
+    net.Receive("RareloadPlayerMoved", function()
+        RARELOAD.lastMoveTime = net.ReadFloat()
+        RARELOAD.showAutoSaveMessage = false
+    end)
+
+    net.Receive("RareloadAutoSaveTriggered", function()
+        local triggerTime = net.ReadFloat()
+        RARELOAD.newAutoSaveTrigger = triggerTime
+        RARELOAD.showAutoSaveMessage = true
+        RARELOAD.autoSaveMessageTime = CurTime()
+    end)
+
+    net.Receive("RareloadToolReloadState", function()
+        local hasData = net.ReadBool()
+        RARELOAD.reloadImageState = {
+            hasData = hasData,
+            showTime = CurTime(),
+            duration = 3 -- Show for 3 seconds
+        }
     end)
 end
 
@@ -162,6 +180,7 @@ function TOOL:LeftClick(trace, ply)
         pos = newPos,
         ang = { newAng.p, newAng.y, newAng.r },
         moveType = ply:GetMoveType(),
+        playermodel = ply:GetModel(),
         activeWeapon = newActiveWeapon,
         inventory = newInventory,
     }
@@ -216,11 +235,7 @@ function TOOL:LeftClick(trace, ply)
         net.Broadcast()
     end
 
-    net.Start("UpdatePhantomPosition")
-    net.WriteString(ply:SteamID())
-    net.WriteVector(playerData.pos)
-    net.WriteAngle(Angle(playerData.ang[1], playerData.ang[2], playerData.ang[3]))
-    net.Send(ply)
+    RARELOAD.UpdateClientPhantoms(ply, playerData.pos, Angle(playerData.ang[1], playerData.ang[2], playerData.ang[3]))
     return true
 end
 
@@ -287,6 +302,11 @@ function TOOL:Reload()
                     net.WriteAngle(Angle(previousData.ang[1], previousData.ang[2], previousData.ang[3]))
                     net.Send(ply)
                 end
+
+                net.Start("RareloadToolReloadState")
+                net.WriteBool(true)
+                net.Send(ply)
+
                 ply:EmitSound("buttons/button14.wav")
                 --  return true (commented - we don't want laser pew pew)
             else
@@ -297,6 +317,10 @@ function TOOL:Reload()
             end
         end
     else
+        net.Start("RareloadToolReloadState")
+        net.WriteBool(false)
+        net.Send(ply)
+
         ply:ChatPrint("[RARELOAD] No previous position data found to restore.")
         ply:EmitSound("buttons/button8.wav")
         return false

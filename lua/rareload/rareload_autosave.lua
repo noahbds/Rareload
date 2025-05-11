@@ -1,4 +1,5 @@
 local lastSavedTimes = {}
+local lastPlayerMoves = {}
 local DEFAULT_CONFIG = {
     autoSaveInterval = 30,
     maxDistance = 100,
@@ -36,6 +37,22 @@ local function IsPlayerInStableState(ply)
     return true
 end
 
+-- Track player movement
+hook.Add("SetupMove", "Rareload_TrackPlayerMovement", function(ply, mv, cmd)
+    if not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() then return end
+    if not RARELOAD.settings.autoSaveEnabled then return end
+
+    -- Only track significant movement (walking, not just looking around)
+    if mv:GetVelocity():LengthSqr() > 100 then
+        lastPlayerMoves[ply:UserID()] = CurTime()
+
+        -- Sync this with client
+        net.Start("RareloadPlayerMoved")
+        net.WriteFloat(lastPlayerMoves[ply:UserID()])
+        net.Send(ply)
+    end
+end)
+
 function RARELOAD.SyncAutoSaveTimes()
     if not RARELOAD.settings.autoSaveEnabled then return end
     for _, ply in ipairs(player.GetAll()) do
@@ -43,6 +60,13 @@ function RARELOAD.SyncAutoSaveTimes()
             net.Start("RareloadSyncAutoSaveTime")
             net.WriteFloat(lastSavedTimes[ply:UserID()] or 0)
             net.Send(ply)
+
+            -- Also sync the last movement time
+            if lastPlayerMoves[ply:UserID()] then
+                net.Start("RareloadPlayerMoved")
+                net.WriteFloat(lastPlayerMoves[ply:UserID()])
+                net.Send(ply)
+            end
         end
     end
 end
@@ -51,15 +75,24 @@ function RARELOAD.HandleAutoSave(ply)
     if not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() then return end
     local settings = RARELOAD.settings
     if not settings or not settings.autoSaveEnabled then return end
+
     local interval = math.max(settings.autoSaveInterval or DEFAULT_CONFIG.autoSaveInterval, 0.1)
-    local lastSaveTime = lastSavedTimes[ply:UserID()] or 0
+    local lastMoveTime = lastPlayerMoves[ply:UserID()] or 0
     local currentTime = CurTime()
+
+    -- Only auto-save if player hasn't moved for the specified interval
+    if (currentTime - lastMoveTime) < interval then return end
+
+    -- Check last save to prevent saving too frequently
+    local lastSaveTime = lastSavedTimes[ply:UserID()] or 0
     if currentTime - lastSaveTime < interval * 0.98 then return end
+
     local currentPos = ply:GetPos()
     local currentEyeAngles = ply:EyeAngles()
     local currentActiveWeapon = ply:GetActiveWeapon()
     local currentHealth = ply:Health()
     local currentArmor = ply:Armor()
+
     if ShouldSavePosition(ply, currentPos, currentEyeAngles, currentActiveWeapon, currentHealth, currentArmor) then
         if IsPlayerInStableState(ply) then
             Save_position(ply)
@@ -73,6 +106,7 @@ function RARELOAD.HandleAutoSave(ply)
             net.Start("RareloadAutoSaveTriggered")
             net.WriteFloat(currentTime)
             net.Send(ply)
+
             if settings.debugEnabled then
                 print("[RARELOAD DEBUG] Position saved for " .. ply:Nick())
             end
@@ -82,11 +116,20 @@ end
 
 if SERVER then
     util.AddNetworkString("RareloadAutoSaveTriggered")
+    util.AddNetworkString("RareloadPlayerMoved")
 end
 
 if CLIENT then
     net.Receive("RareloadAutoSaveTriggered", function()
         local triggerTime = net.ReadFloat()
         RARELOAD.newAutoSaveTrigger = triggerTime
+        RARELOAD.showAutoSaveMessage = true
+        RARELOAD.autoSaveMessageTime = CurTime()
+    end)
+
+    net.Receive("RareloadPlayerMoved", function()
+        local moveTime = net.ReadFloat()
+        RARELOAD.lastMoveTime = moveTime
+        RARELOAD.showAutoSaveMessage = false
     end)
 end
