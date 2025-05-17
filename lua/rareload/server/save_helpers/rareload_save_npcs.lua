@@ -6,6 +6,7 @@ RARELOAD.NPCSaver = RARELOAD.NPCSaver or {}
 local CONFIG = {
     DEBUG = true,
     SAVE_PLAYER_OWNED_ONLY = false,
+    SAVE_RADIUS = 5000,
     MAX_NPCS_TO_SAVE = 500,
     KEY_VALUES_TO_SAVE = {
         "spawnflags", "squadname", "targetname",
