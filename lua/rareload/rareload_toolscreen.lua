@@ -435,7 +435,8 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
         { name = "Debug Mode",            enabled = settings.debugEnabled },
         { name = "Auto Save Interval",    enabled = settings.autoSaveInterval },
         { name = "Angle Tolerance",       enabled = settings.angleTolerance },
-        { name = "Max History Size",      enabled = settings.maxHistorySize }
+        { name = "Max History Size",      enabled = settings.maxHistorySize },
+        { name = "Admin Menu",            enabled = true,                          command = "rareload_admin_menu" }
     }
 
     local totalFeatureHeight = #keyFeatures * layout.FEATURE_SPACING

@@ -566,8 +566,8 @@ end
 net.Receive("RareloadRespawnEntity", function(len, ply)
     if not IsValid(ply) then return end
 
-    if not ply:IsAdmin() then
-        ply:ChatPrint("[RARELOAD] You need admin privileges to respawn entities")
+    if not RARELOAD.Admin.HasPermission(ply, "entity_restore") then
+        ply:ChatPrint("[RARELOAD] You need permission to respawn entities")
         return
     end
 
@@ -602,69 +602,52 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
 
     if matchedData then
         local success, entity = pcall(function()
-            ---@class Entity
             local ent = ents.Create(entityClass)
-            if not IsValid(ent) then return nil end
+            if IsValid(ent) then
+                ent:SetPos(position)
+                if matchedData.ang then ent:SetAngles(matchedData.ang) end
+                if matchedData.model and util.IsValidModel(matchedData.model) then ent:SetModel(matchedData.model) end
+                ent:Spawn()
+                ent:Activate()
 
-            ent:SetPos(position)
+                if matchedData.health then ent:SetHealth(matchedData.health) end
+                if matchedData.skin then ent:SetSkin(matchedData.skin) end
 
-            if matchedData.ang then
-                ent:SetAngles(type(matchedData.ang) == "Angle" and matchedData.ang or matchedData.ang)
-            end
-
-            if matchedData.model and util.IsValidModel(matchedData.model) then
-                ent:SetModel(matchedData.model)
-            end
-
-            ent:Spawn()
-            ent:Activate()
-
-            if matchedData.health then ent:SetHealth(matchedData.health) end
-            if matchedData.skin then ent:SetSkin(matchedData.skin) end
-
-            if matchedData.color then
-                local color = Color(
-                    matchedData.color.r or 255,
-                    matchedData.color.g or 255,
-                    matchedData.color.b or 255,
-                    matchedData.color.a or 255
-                )
-                ent:SetColor(color)
-            end
-
-            if matchedData.material then ent:SetMaterial(matchedData.material) end
-
-            if matchedData.bodygroups then
-                for id, value in pairs(matchedData.bodygroups) do
-                    local bodygroupID = tonumber(id)
-                    if bodygroupID then
-                        ent:SetBodygroup(bodygroupID, value)
+                if matchedData.bodygroups then
+                    for id, value in pairs(matchedData.bodygroups) do
+                        local bodygroupID = tonumber(id)
+                        if bodygroupID then
+                            ent:SetBodygroup(bodygroupID, value)
+                        end
                     end
                 end
+
+                if matchedData.frozen then
+                    local phys = ent:GetPhysicsObject()
+                    if IsValid(phys) then phys:EnableMotion(false) end
+                end
+
+                if matchedData.color then
+                    ent:SetColor(Color(
+                        matchedData.color.r or 255,
+                        matchedData.color.g or 255,
+                        matchedData.color.b or 255,
+                        matchedData.color.a or 255
+                    ))
+                end
+
+                ent.SpawnedByRareload = true
+                ent.SavedByRareload = true
+
+                if ent.CPPISetOwner then
+                    ent:CPPISetOwner(ply)
+                end
+
+                return ent
             end
-
-            local phys = ent:GetPhysicsObject()
-            if IsValid(phys) then
-                if matchedData.frozen then phys:EnableMotion(false) end
-                if matchedData.velocity then phys:SetVelocity(matchedData.velocity) end
-                if matchedData.mass then phys:SetMass(matchedData.mass) end
-            end
-
-            ent.SpawnedByRareload = true
-            ent.SavedByRareload = true
-            ent.RespawnedBy = ply:SteamID()
-            ent.RespawnTime = os.time()
-
-            return ent
         end)
 
         if success and IsValid(entity) then
-            if entity then
-                if entity.CPPISetOwner then
-                    entity:CPPISetOwner(ply)
-                end
-            end
-
             ply:ChatPrint("[RARELOAD] Entity " .. entityClass .. " respawned with saved properties!")
         else
             local basicEntity = ents.Create(entityClass)
@@ -673,9 +656,7 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
                 basicEntity:Spawn()
                 basicEntity:Activate()
 
-                ---@diagnostic disable-next-line: undefined-field
                 if basicEntity.CPPISetOwner then
-                    ---@diagnostic disable-next-line: undefined-field
                     basicEntity:CPPISetOwner(ply)
                 end
 
@@ -694,9 +675,7 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
             entity:Activate()
             entity.SpawnedByRareload = true
 
-            ---@diagnostic disable-next-line: undefined-field
             if entity.CPPISetOwner then
-                ---@diagnostic disable-next-line: undefined-field
                 entity:CPPISetOwner(ply)
             end
 

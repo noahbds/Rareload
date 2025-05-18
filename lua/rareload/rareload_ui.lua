@@ -737,4 +737,292 @@ function RareloadUI.RegisterLanguage()
         "Reload with the Rareload tool in hand to restore your previous saved position")
 end
 
+-- Admin Menu Panel
+function RareloadUI.CreateAdminMenu()
+    local frame = vgui.Create("DFrame")
+    frame:SetSize(800, 600)
+    frame:Center()
+    frame:SetTitle("Rareload Admin Menu")
+    frame:MakePopup()
+
+    local theme = RareloadUI.Theme
+
+    local scroll = vgui.Create("DScrollPanel", frame)
+    scroll:Dock(FILL)
+    scroll:DockMargin(theme.Sizes.Margin, theme.Sizes.Margin, theme.Sizes.Margin, theme.Sizes.Margin)
+
+    local tabs = vgui.Create("DPropertySheet", scroll)
+    tabs:Dock(FILL)
+
+    -- Admin Management Tab
+    local adminPanel = vgui.Create("DPanel")
+    adminPanel:Dock(FILL)
+    adminPanel:SetPaintBackground(false)
+
+    local adminList = vgui.Create("DListView", adminPanel)
+    adminList:Dock(FILL)
+    adminList:AddColumn("SteamID")
+    adminList:AddColumn("Role")
+    adminList:AddColumn("ULX Group")
+    adminList:AddColumn("Status")
+
+    -- Populate admin list
+    for steamid, level in pairs(RARELOAD.Admin.admins) do
+        local role = "user"
+        for r, data in pairs(RARELOAD.Admin.roles) do
+            if data.level == level then
+                role = r
+                break
+            end
+        end
+
+        local ulxGroup = "None"
+        if ULib and ULib.ucl then
+            local user = ULib.ucl.users[steamid]
+            if user then
+                ulxGroup = user.group
+            end
+        end
+
+        local status = "Custom"
+        if ULib and ULib.ucl then
+            local user = ULib.ucl.users[steamid]
+            if user then
+                status = "ULX"
+            end
+        end
+
+        adminList:AddLine(steamid, RARELOAD.Admin.roles[role].name, ulxGroup, status)
+    end
+
+    -- Add admin section
+    local addAdminPanel = vgui.Create("DPanel", adminPanel)
+    addAdminPanel:Dock(TOP)
+    addAdminPanel:SetTall(100)
+    addAdminPanel:SetPaintBackground(false)
+
+    local steamidEntry = vgui.Create("DTextEntry", addAdminPanel)
+    steamidEntry:SetPlaceholderText("SteamID")
+    steamidEntry:Dock(TOP)
+    steamidEntry:DockMargin(0, 0, 0, 5)
+
+    local roleCombo = vgui.Create("DComboBox", addAdminPanel)
+    roleCombo:Dock(TOP)
+    roleCombo:DockMargin(0, 0, 0, 5)
+    for role, data in pairs(RARELOAD.Admin.roles) do
+        roleCombo:AddChoice(data.name, role)
+    end
+
+    local addButton = RareloadUI.CreateButton(addAdminPanel, "Add Admin", nil, "Add new admin")
+    addButton:Dock(TOP)
+    addButton.DoClick = function()
+        local steamid = steamidEntry:GetValue()
+        local _, role = roleCombo:GetSelected()
+
+        if not steamid or steamid == "" then
+            chat.AddText(Color(255, 0, 0), "[RARELOAD] Please enter a SteamID")
+            return
+        end
+
+        if RARELOAD.Admin.AddAdmin(steamid, role) then
+            adminList:AddLine(steamid, RARELOAD.Admin.roles[role].name, "None", "Custom")
+            chat.AddText(Color(0, 255, 0), "[RARELOAD] Admin added successfully")
+        else
+            chat.AddText(Color(255, 0, 0), "[RARELOAD] Failed to add admin")
+        end
+    end
+
+    -- Admin actions
+    local actionPanel = vgui.Create("DPanel", adminPanel)
+    actionPanel:Dock(TOP)
+    actionPanel:SetTall(40)
+    actionPanel:SetPaintBackground(false)
+
+    local removeButton = RareloadUI.CreateButton(actionPanel, "Remove Selected", nil, "Remove selected admin")
+    removeButton:Dock(LEFT)
+    removeButton:DockMargin(0, 0, 10, 0)
+    removeButton:SetWide(150)
+    removeButton.DoClick = function()
+        local selected = adminList:GetSelected()
+        if selected and selected[1] then
+            local steamid = selected[1]:GetColumnText(1)
+            if RARELOAD.Admin.RemoveAdmin(steamid) then
+                adminList:RemoveLine(adminList:GetSelected()[1]:GetID())
+                chat.AddText(Color(0, 255, 0), "[RARELOAD] Admin removed successfully")
+            else
+                chat.AddText(Color(255, 0, 0), "[RARELOAD] Failed to remove admin")
+            end
+        end
+    end
+
+    local updateButton = RareloadUI.CreateButton(actionPanel, "Update Role", nil, "Update admin role")
+    updateButton:Dock(LEFT)
+    updateButton:SetWide(150)
+    updateButton.DoClick = function()
+        local selected = adminList:GetSelected()
+        if selected and selected[1] then
+            local steamid = selected[1]:GetColumnText(1)
+            local roleCombo = vgui.Create("DComboBox")
+            for role, data in pairs(RARELOAD.Admin.roles) do
+                roleCombo:AddChoice(data.name, role)
+            end
+            roleCombo.OnSelect = function(_, _, role)
+                if RARELOAD.Admin.UpdateAdminRole(steamid, role) then
+                    selected[1]:SetColumnText(2, RARELOAD.Admin.roles[role].name)
+                    chat.AddText(Color(0, 255, 0), "[RARELOAD] Admin role updated successfully")
+                else
+                    chat.AddText(Color(255, 0, 0), "[RARELOAD] Failed to update admin role")
+                end
+            end
+            roleCombo:OpenMenu()
+        end
+    end
+
+    tabs:AddSheet("Admin Management", adminPanel, "icon16/shield.png")
+
+    -- Roles Tab
+    local rolesPanel = vgui.Create("DPanel")
+    rolesPanel:Dock(FILL)
+    rolesPanel:SetPaintBackground(false)
+
+    local rolesList = vgui.Create("DListView", rolesPanel)
+    rolesList:Dock(FILL)
+    rolesList:AddColumn("Role")
+    rolesList:AddColumn("Level")
+    rolesList:AddColumn("Permissions")
+
+    for role, data in pairs(RARELOAD.Admin.roles) do
+        local permissions = data.permissions == "*" and "All" or table.Count(data.permissions)
+        rolesList:AddLine(data.name, RARELOAD.Admin.PermissionNames[data.level], permissions)
+    end
+
+    tabs:AddSheet("Roles", rolesPanel, "icon16/group.png")
+
+    -- Commands Tab
+    local commandsPanel = vgui.Create("DPanel")
+    commandsPanel:Dock(FILL)
+    commandsPanel:SetPaintBackground(false)
+
+    local commandsList = vgui.Create("DListView", commandsPanel)
+    commandsList:Dock(FILL)
+    commandsList:AddColumn("Command")
+    commandsList:AddColumn("Category")
+    commandsList:AddColumn("Permission")
+    commandsList:AddColumn("Description")
+
+    for cmd, data in pairs(RARELOAD.Admin.Commands) do
+        commandsList:AddLine(cmd, data.category, data.permission, data.description)
+    end
+
+    tabs:AddSheet("Commands", commandsPanel, "icon16/script.png")
+
+    -- Player Management Tab
+    local playerPanel = vgui.Create("DPanel")
+    playerPanel:Dock(FILL)
+    playerPanel:SetPaintBackground(false)
+
+    local playerList = vgui.Create("DListView", playerPanel)
+    playerList:Dock(FILL)
+    playerList:AddColumn("Player")
+    playerList:AddColumn("SteamID")
+    playerList:AddColumn("Role")
+    playerList:AddColumn("ULX Group")
+
+    for _, ply in ipairs(player.GetAll()) do
+        local role = RARELOAD.Admin.GetPlayerRole(ply)
+        local ulxGroup = "None"
+        if ULib and ULib.ucl then
+            local user = ULib.ucl.users[ply:SteamID()]
+            if user then
+                ulxGroup = user.group
+            end
+        end
+
+        playerList:AddLine(ply:Nick(), ply:SteamID(), RARELOAD.Admin.roles[role].name, ulxGroup)
+    end
+
+    -- Player management buttons
+    local playerButtonPanel = vgui.Create("DPanel", playerPanel)
+    playerButtonPanel:Dock(TOP)
+    playerButtonPanel:DockMargin(0, 0, 0, theme.Sizes.Margin)
+    playerButtonPanel:SetTall(40)
+    playerButtonPanel:SetPaintBackground(false)
+
+    local respawnButton = RareloadUI.CreateButton(playerButtonPanel, "Force Respawn", nil,
+        "Force selected player to respawn")
+    respawnButton:Dock(LEFT)
+    respawnButton:DockMargin(0, 0, 10, 0)
+    respawnButton:SetWide(150)
+    respawnButton.DoClick = function()
+        local selected = playerList:GetSelected()
+        if selected and selected[1] then
+            local steamid = selected[1]:GetColumnText(2)
+            local target = player.GetBySteamID(steamid)
+            if IsValid(target) and RARELOAD.Admin.HasPermission(LocalPlayer(), "respawn_override") then
+                RunConsoleCommand("rareload_respawn_force", steamid)
+            end
+        end
+    end
+
+    local inventoryButton = RareloadUI.CreateButton(playerButtonPanel, "Clear Inventory", nil,
+        "Clear selected player's inventory")
+    inventoryButton:Dock(LEFT)
+    inventoryButton:SetWide(150)
+    inventoryButton.DoClick = function()
+        local selected = playerList:GetSelected()
+        if selected and selected[1] then
+            local steamid = selected[1]:GetColumnText(2)
+            local target = player.GetBySteamID(steamid)
+            if IsValid(target) and RARELOAD.Admin.HasPermission(LocalPlayer(), "inventory_clear") then
+                RunConsoleCommand("rareload_inventory_clear", steamid)
+            end
+        end
+    end
+
+    tabs:AddSheet("Player Management", playerPanel, "icon16/user.png")
+
+    -- Features Tab
+    local featuresPanel = vgui.Create("DPanel")
+    featuresPanel:Dock(FILL)
+    featuresPanel:SetPaintBackground(false)
+
+    local featuresList = vgui.Create("DListView", featuresPanel)
+    featuresList:Dock(FILL)
+    featuresList:AddColumn("Category")
+    featuresList:AddColumn("Feature")
+    featuresList:AddColumn("Required Role")
+
+    local categories = RARELOAD.Admin.GetFeaturesByCategory()
+    for category, features in pairs(categories) do
+        for feature, data in pairs(features) do
+            local requiredRole = "None"
+            for role, roleData in pairs(RARELOAD.Admin.roles) do
+                if roleData.permissions == "*" or table.HasValue(roleData.permissions, feature) then
+                    requiredRole = roleData.name
+                    break
+                end
+            end
+            featuresList:AddLine(category, data.name, requiredRole)
+        end
+    end
+
+    tabs:AddSheet("Features", featuresPanel, "icon16/cog.png")
+
+    -- Save changes button
+    local saveButton = RareloadUI.CreateButton(scroll, "Save Changes", nil, "Save admin changes to disk")
+    saveButton.DoClick = function()
+        RARELOAD.Admin.SaveAdmins()
+        RARELOAD.Admin.SaveRoles()
+        chat.AddText(Color(0, 255, 0), "[RARELOAD] Admin changes saved successfully!")
+    end
+
+    return frame
+end
+
+-- Hook the admin menu concommand to open the admin menu
+concommand.Add("rareload_admin_menu", function(ply)
+    if not IsValid(ply) or not RARELOAD.Admin.HasPermission(ply, "admin_menu") then return end
+    RareloadUI.CreateAdminMenu()
+end)
+
 return RareloadUI

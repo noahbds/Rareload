@@ -4,6 +4,9 @@ RARELOAD.Debug = RARELOAD.Debug or {}
 
 local MapName = game.GetMap()
 
+-- Load admin system
+include("rareload/rareload_admin.lua")
+
 function RARELOAD.LoadPlayerPositions()
     local filePath = "rareload/player_positions_" .. MapName .. ".json"
     if file.Exists(filePath, "DATA") then
@@ -24,6 +27,8 @@ function RARELOAD.LoadPlayerPositions()
 end
 
 function RARELOAD.SavePlayerPositionOnDisconnect(ply)
+    if not RARELOAD.Admin.HasPermission(ply, "respawn_save") then return end
+
     RARELOAD.playerPositions[MapName] = RARELOAD.playerPositions[MapName] or {}
     RARELOAD.playerPositions[MapName][ply:SteamID()] = {
         pos = ply:GetPos(),
@@ -37,6 +42,57 @@ local function loadSettings()
         local json = file.Read(settingsFilePath, "DATA")
         RARELOAD.settings = util.JSONToTable(json)
     end
+end
+
+-- Initialize the addon
+hook.Add("Initialize", "RARELOAD_Initialize", function()
+    loadSettings()
+    RARELOAD.LoadPlayerPositions()
+    RARELOAD.Admin.LoadAdmins()
+end)
+
+-- Save settings when they change
+function RARELOAD.SaveSettings()
+    if not file.Exists("rareload", "DATA") then
+        file.CreateDir("rareload")
+    end
+    file.Write("rareload/addon_state.json", util.TableToJSON(RARELOAD.settings, true))
+end
+
+-- Add permission checks to settings changes
+function RARELOAD.UpdateSetting(setting, value, ply)
+    if not IsValid(ply) then return false end
+
+    -- Map settings to required permissions
+    local settingPermissions = {
+        addonEnabled = "addon_enable",
+        autoSaveEnabled = "auto_save",
+        retainInventory = "inventory_save",
+        retainGlobalInventory = "save_global_inventory",
+        retainHealthArmor = "save_health_armor",
+        retainAmmo = "save_ammo",
+        retainVehicleState = "save_vehicles",
+        retainMapEntities = "save_entities",
+        retainMapNPCs = "save_npcs",
+        retainVehicles = "save_vehicles",
+        spawnModeEnabled = "respawn_override",
+        debugEnabled = "addon_enable"
+    }
+
+    local requiredPermission = settingPermissions[setting]
+    if not requiredPermission then
+        ply:ChatPrint("[RARELOAD] Invalid setting.")
+        return false
+    end
+
+    if not RARELOAD.Admin.HasPermission(ply, requiredPermission) then
+        ply:ChatPrint("[RARELOAD] You don't have permission to change this setting.")
+        return false
+    end
+
+    RARELOAD.settings[setting] = value
+    RARELOAD.SaveSettings()
+    return true
 end
 
 function RARELOAD.UpdateClientPhantoms(ply, pos, ang)
@@ -55,33 +111,8 @@ function RARELOAD.UpdateClientPhantoms(ply, pos, ang)
 
     RARELOAD.playerPositions[MapName][steamID].playermodel = currentModel
 
-    local vectorPos
-    if type(pos) == "string" then
-        local x, y, z = string.match(pos, "%(([^,]+), ([^,]+), ([^)]+)%)")
-        if x and y and z then
-            vectorPos = Vector(tonumber(x), tonumber(y), tonumber(z))
-        else
-            vectorPos = ply:GetPos()
-        end
-    elseif type(pos) == "Vector" or (type(pos) == "table" and pos.x and pos.y and pos.z) then
-        vectorPos = pos
-    else
-        vectorPos = ply:GetPos()
-    end
-
-    local angleObj
-    if type(ang) == "string" then
-        local p, y, r = string.match(ang, "%(([^,]+), ([^,]+), ([^)]+)%)")
-        if p and y and r then
-            angleObj = Angle(tonumber(p), tonumber(y), tonumber(r))
-        else
-            angleObj = ply:EyeAngles()
-        end
-    elseif type(ang) == "Angle" or (type(ang) == "table" and ang.p and ang.y and ang.r) then
-        angleObj = ang
-    else
-        angleObj = ply:EyeAngles()
-    end
+    local vectorPos = type(pos) == "Vector" and pos or ply:GetPos()
+    local angleObj = type(ang) == "Angle" and ang or ply:EyeAngles()
 
     net.Start("UpdatePhantomPosition")
     net.WriteString(steamID)
@@ -97,5 +128,3 @@ function RARELOAD.UpdateClientPhantoms(ply, pos, ang)
         print("[RARELOAD DEBUG] Position: " .. tostring(vectorPos))
     end
 end
-
-loadSettings()

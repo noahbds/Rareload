@@ -7,10 +7,16 @@ local DEFAULT_CONFIG = {
 }
 
 local function ShouldSavePosition(ply, currentPos, currentEyeAngles, currentActiveWeapon, currentHealth, currentArmor)
+    if not RARELOAD.Admin.HasPermission(ply, "auto_save") then
+        return false
+    end
+
     local settings = RARELOAD.settings
     if not ply.lastSavedPosition then return true end
+
     local maxDist = settings.maxDistance or DEFAULT_CONFIG.maxDistance
     if currentPos:DistToSqr(ply.lastSavedPosition) > (maxDist * maxDist) then return true end
+
     if ply.lastSavedEyeAngles then
         local tolerance = settings.angleTolerance or DEFAULT_CONFIG.angleTolerance
         if math.abs(currentEyeAngles.p - ply.lastSavedEyeAngles.p) > tolerance or
@@ -19,14 +25,18 @@ local function ShouldSavePosition(ply, currentPos, currentEyeAngles, currentActi
             return true
         end
     end
-    if settings.retainInventory and ply.lastSavedActiveWeapon and
-        IsValid(currentActiveWeapon) and currentActiveWeapon ~= ply.lastSavedActiveWeapon then
+
+    if settings.retainInventory and RARELOAD.Admin.HasPermission(ply, "inventory_save") and
+        ply.lastSavedActiveWeapon and IsValid(currentActiveWeapon) and
+        currentActiveWeapon ~= ply.lastSavedActiveWeapon then
         return true
     end
-    if settings.retainHealthArmor then
+
+    if settings.retainHealthArmor and RARELOAD.Admin.HasPermission(ply, "save_health_armor") then
         if ply.lastSavedHealth and currentHealth ~= ply.lastSavedHealth then return true end
         if ply.lastSavedArmor and currentArmor ~= ply.lastSavedArmor then return true end
     end
+
     return false
 end
 
@@ -73,10 +83,9 @@ end
 
 function RARELOAD.HandleAutoSave(ply)
     if not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() then return end
-    local settings = RARELOAD.settings
-    if not settings or not settings.autoSaveEnabled then return end
+    if not RARELOAD.settings.autoSaveEnabled then return end
 
-    local interval = math.max(settings.autoSaveInterval or DEFAULT_CONFIG.autoSaveInterval, 0.1)
+    local interval = math.max(RARELOAD.settings.autoSaveInterval or DEFAULT_CONFIG.autoSaveInterval, 0.1)
     local lastMoveTime = lastPlayerMoves[ply:UserID()] or 0
     local currentTime = CurTime()
 
@@ -84,8 +93,7 @@ function RARELOAD.HandleAutoSave(ply)
     if (currentTime - lastMoveTime) < interval then return end
 
     -- Check last save to prevent saving too frequently
-    local lastSaveTime = lastSavedTimes[ply:UserID()] or 0
-    if currentTime - lastSaveTime < interval * 0.98 then return end
+    if currentTime - (lastSavedTimes[ply:UserID()] or 0) < interval * 0.98 then return end
 
     local currentPos = ply:GetPos()
     local currentEyeAngles = ply:EyeAngles()
@@ -107,8 +115,8 @@ function RARELOAD.HandleAutoSave(ply)
             net.WriteFloat(currentTime)
             net.Send(ply)
 
-            if settings.debugEnabled then
-                print("[RARELOAD DEBUG] Position saved for " .. ply:Nick())
+            if RARELOAD.settings.debugEnabled then
+                print("[RARELOAD DEBUG] Auto-saved position for " .. ply:Nick())
             end
         end
     end
