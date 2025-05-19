@@ -532,10 +532,8 @@ hook.Add("RARELOAD_SaveEntities", "RARELOAD_MarkSavedNPCs", function()
 end)
 
 net.Receive("RareloadRespawnNPC", function(len, ply)
-    if not IsValid(ply) then return end
-
-    if not RARELOAD.Admin.HasPermission(ply, "save_npcs") then
-        ply:ChatPrint("[RARELOAD] You need permission to respawn NPCs")
+    if not IsValid(ply) or not ply:IsAdmin() then
+        ply:ChatPrint("You need admin privileges to respawn entities")
         return
     end
 
@@ -543,7 +541,7 @@ net.Receive("RareloadRespawnNPC", function(len, ply)
     local position = net.ReadVector()
 
     if not entityClass or entityClass == "" or not position then
-        ply:ChatPrint("[RARELOAD] Invalid entity data received")
+        ply:ChatPrint("Invalid entity data received")
         return
     end
 
@@ -565,69 +563,109 @@ net.Receive("RareloadRespawnNPC", function(len, ply)
     end
 
     if matchedData then
-        local entity = ents.Create(entityClass)
-        if IsValid(entity) then
-            entity:SetPos(position)
+        if isNPC then
+            local spawnedNPCsByID = {}
+            local pendingRelations = {}
+            local success, newNPC = RARELOAD.SpawnNPC(matchedData, spawnedNPCsByID, pendingRelations)
 
-            if matchedData.ang then entity:SetAngles(matchedData.ang) end
-            if matchedData.model and util.IsValidModel(matchedData.model) then entity:SetModel(matchedData.model) end
+            if success and IsValid(newNPC) then
+                if next(pendingRelations) then
+                    timer.Simple(0.1, function()
+                        RARELOAD.RestoreNPCRelationships(pendingRelations, spawnedNPCsByID, {
+                            relationshipsRestored = 0,
+                            targetsSet = 0,
+                            schedulesRestored = 0
+                        })
+                    end)
+                end
 
-            entity:Spawn()
-            entity:Activate()
-
-            if matchedData.health then entity:SetHealth(matchedData.health) end
-            if matchedData.skin then entity:SetSkin(matchedData.skin) end
-
-            if matchedData.bodygroups then
-                for id, value in pairs(matchedData.bodygroups) do
-                    local bodygroupID = tonumber(id)
-                    if bodygroupID then
-                        entity:SetBodygroup(bodygroupID, value)
-                    end
+                ply:ChatPrint("[RARELOAD] " .. entityClass .. " respawned")
+            else
+                local entity = ents.Create(entityClass)
+                if IsValid(entity) then
+                    entity:SetPos(position)
+                    entity:Spawn()
+                    ply:ChatPrint("NPC " .. entityClass .. " respawned with basic properties (full restore failed)")
+                else
+                    ply:ChatPrint("Failed to respawn NPC: " .. entityClass)
                 end
             end
-
-            if matchedData.frozen then
-                local phys = entity:GetPhysicsObject()
-                if IsValid(phys) then phys:EnableMotion(false) end
-            end
-
-            if matchedData.color then
-                entity:SetColor(Color(
-                    matchedData.color.r or 255,
-                    matchedData.color.g or 255,
-                    matchedData.color.b or 255,
-                    matchedData.color.a or 255
-                ))
-            end
-
-            entity.SpawnedByRareload = true
-            entity.SavedByRareload = true
-
-            if entity.CPPISetOwner then
-                entity:CPPISetOwner(ply)
-            end
-
-            ply:ChatPrint("[RARELOAD] Entity " .. entityClass .. " respawned with saved properties!")
         else
-            ply:ChatPrint("[RARELOAD] Failed to respawn entity: " .. entityClass)
+            local entity = ents.Create(entityClass)
+            if IsValid(entity) then
+                entity:SetPos(position)
+
+                if matchedData.ang then entity:SetAngles(matchedData.ang) end
+                if matchedData.model and util.IsValidModel(matchedData.model) then entity:SetModel(matchedData.model) end
+
+                entity:Spawn()
+                entity:Activate()
+
+                if matchedData.health then entity:SetHealth(matchedData.health) end
+                if matchedData.skin then entity:SetSkin(matchedData.skin) end
+
+                if matchedData.bodygroups then
+                    for id, value in pairs(matchedData.bodygroups) do
+                        local bodygroupID = tonumber(id)
+                        if bodygroupID then
+                            entity:SetBodygroup(bodygroupID, value)
+                        end
+                    end
+                end
+
+                if matchedData.frozen then
+                    local phys = entity:GetPhysicsObject()
+                    if IsValid(phys) then phys:EnableMotion(false) end
+                end
+
+                if matchedData.color then
+                    entity:SetColor(Color(
+                        matchedData.color.r or 255,
+                        matchedData.color.g or 255,
+                        matchedData.color.b or 255,
+                        matchedData.color.a or 255
+                    ))
+                end
+
+                entity.SpawnedByRareload = true
+                entity.SavedByRareload = true
+
+                ply:ChatPrint("Entity " .. entityClass .. " respawned with saved properties!")
+            else
+                ply:ChatPrint("Failed to respawn entity: " .. entityClass)
+            end
         end
     else
-        local entity = ents.Create(entityClass)
-        if IsValid(entity) then
-            entity:SetPos(position)
-            entity:Spawn()
-            entity:Activate()
-            entity.SpawnedByRareload = true
+        local entity
 
-            if entity.CPPISetOwner then
-                entity:CPPISetOwner(ply)
+        if isNPC then
+            entity = ents.Create(entityClass)
+            if IsValid(entity) then
+                entity:SetPos(position)
+                entity:Spawn()
+                ply:ChatPrint("NPC " .. entityClass .. " respawned with default properties (no saved data found)")
+            else
+                ply:ChatPrint("Failed to respawn NPC: " .. entityClass)
             end
-
-            ply:ChatPrint("[RARELOAD] Entity " ..
-                entityClass .. " respawned with default properties (no saved data found)")
         else
-            ply:ChatPrint("[RARELOAD] Failed to respawn entity: " .. entityClass)
+            entity = ents.Create(entityClass)
+            if IsValid(entity) then
+                entity:SetPos(position)
+                entity:Spawn()
+                entity:Activate()
+                ply:ChatPrint("Entity " .. entityClass .. " respawned with default properties (no saved data found)")
+            else
+                ply:ChatPrint("Failed to respawn entity: " .. entityClass)
+            end
         end
+
+        if IsValid(entity) then
+            entity.SpawnedByRareload = true
+        end
+    end
+
+    local entity = ents.FindInSphere(position, 5)[1]
+    if IsValid(entity) and entity.CPPISetOwner then
+        entity:CPPISetOwner(ply)
     end
 end)

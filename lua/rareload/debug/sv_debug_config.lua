@@ -306,7 +306,7 @@ local function InitDebugSystem()
 end
 
 concommand.Add("rareload_debug_toggle", function(ply, cmd, args)
-    if IsValid(ply) and not RARELOAD.Admin.HasPermission(ply, "debug_mode") then return end
+    if IsValid(ply) and not ply:IsSuperAdmin() then return end
 
     RARELOAD.settings.debugEnabled = not RARELOAD.settings.debugEnabled
     local status = RARELOAD.settings.debugEnabled and "enabled" or "disabled"
@@ -318,7 +318,7 @@ concommand.Add("rareload_debug_toggle", function(ply, cmd, args)
 end, nil, "Toggles the RARELOAD debug system on/off")
 
 concommand.Add("rareload_debug_level", function(ply, cmd, args)
-    if IsValid(ply) and not RARELOAD.Admin.HasPermission(ply, "debug_level") then return end
+    if IsValid(ply) and not ply:IsSuperAdmin() then return end
 
     local level = args[1] and string.upper(args[1])
     if level and DEBUG_CONFIG.LEVELS[level] then
@@ -344,7 +344,7 @@ concommand.Add("rareload_debug_level", function(ply, cmd, args)
 end, nil, "Sets the debug level (ERROR, WARNING, INFO, VERBOSE)")
 
 concommand.Add("rareload_debug_status", function(ply, cmd, args)
-    if IsValid(ply) and not RARELOAD.Admin.HasPermission(ply, "debug_mode") then return end
+    if IsValid(ply) and not ply:IsAdmin() then return end
 
     local status = {
         enabled = DEBUG_CONFIG.ENABLED(),
@@ -364,7 +364,7 @@ concommand.Add("rareload_debug_status", function(ply, cmd, args)
 end, nil, "Shows the current debug system status")
 
 concommand.Add("rareload_debug_clean", function(ply, cmd, args)
-    if IsValid(ply) and not RARELOAD.Admin.HasPermission(ply, "debug_clean") then return end
+    if IsValid(ply) and not ply:IsSuperAdmin() then return end
 
     CleanupOldLogs()
     print("[RARELOAD DEBUG] Log cleanup completed")
@@ -375,7 +375,7 @@ concommand.Add("rareload_debug_clean", function(ply, cmd, args)
 end, nil, "Cleans up old log files")
 
 concommand.Add("rareload_debug_format", function(ply, cmd, args)
-    if IsValid(ply) and not RARELOAD.Admin.HasPermission(ply, "debug_format") then return end
+    if IsValid(ply) and not ply:IsSuperAdmin() then return end
 
     local format = args[1] and string.upper(args[1])
     local validFormats = { "TEXT", "JSON", "CSV" }
@@ -403,7 +403,7 @@ concommand.Add("rareload_debug_format", function(ply, cmd, args)
 end, nil, "Sets the log format (TEXT, JSON, CSV)")
 
 concommand.Add("rareload_debug_flush", function(ply, cmd, args)
-    if IsValid(ply) and not RARELOAD.Admin.HasPermission(ply, "debug_mode") then return end
+    if IsValid(ply) and not ply:IsAdmin() then return end
 
     local count = #logBuffer
     FlushLogBuffer()

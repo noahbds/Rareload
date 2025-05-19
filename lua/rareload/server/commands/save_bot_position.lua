@@ -1,11 +1,11 @@
 return function(ply, _, args)
-    if not RARELOAD.settings.addonEnabled then
-        print("[RARELOAD] The addon is disabled.")
+    if IsValid(ply) and not ply:IsAdmin() then
+        print("[RARELOAD] Only admins can save bot positions.")
         return
     end
 
-    if not RARELOAD.Admin.HasPermission(ply, "respawn_override") then
-        ply:ChatPrint("[RARELOAD] You need admin permission to save bot positions.")
+    if not RARELOAD.settings.addonEnabled then
+        print("[RARELOAD DEBUG] The Respawn at Reload addon is disabled.")
         return
     end
 
@@ -41,10 +41,8 @@ return function(ply, _, args)
         local botActiveWeapon = IsValid(bot:GetActiveWeapon()) and bot:GetActiveWeapon():GetClass() or "None"
 
         local botInventory = {}
-        if RARELOAD.Admin.HasPermission(ply, "inventory_save") then
-            for _, weapon in ipairs(bot:GetWeapons()) do
-                table.insert(botInventory, weapon:GetClass())
-            end
+        for _, weapon in ipairs(bot:GetWeapons()) do
+            table.insert(botInventory, weapon:GetClass())
         end
 
         local botData = {
@@ -57,12 +55,12 @@ return function(ply, _, args)
             botName = bot:GetName()
         }
 
-        if RARELOAD.settings.retainHealthArmor and RARELOAD.Admin.HasPermission(ply, "save_health_armor") then
+        if RARELOAD.settings.retainHealthArmor then
             botData.health = bot:Health()
             botData.armor = bot:Armor()
         end
 
-        if RARELOAD.settings.retainAmmo and RARELOAD.Admin.HasPermission(ply, "save_ammo") then
+        if RARELOAD.settings.retainAmmo then
             botData.ammo = {}
             for _, weaponClass in ipairs(botInventory) do
                 local weapon = bot:GetWeapon(weaponClass)
@@ -83,8 +81,9 @@ return function(ply, _, args)
             end
         end
 
-        if RARELOAD.settings.retainMapEntities and RARELOAD.Admin.HasPermission(ply, "save_entities") then
+        if RARELOAD.settings.retainMapEntities then
             botData.entities = {}
+            local startTime = SysTime()
             local count = 0
 
             for _, ent in ipairs(ents.GetAll()) do
@@ -92,25 +91,28 @@ return function(ply, _, args)
                     local owner = ent:CPPIGetOwner()
                     if (IsValid(owner) and owner:IsBot()) or ent.SpawnedByRareload then
                         count = count + 1
-                        table.insert(botData.entities, {
+                        local entityData = {
                             class = ent:GetClass(),
                             pos = ent:GetPos(),
                             ang = ent:GetAngles(),
                             model = ent:GetModel(),
                             health = ent:Health(),
                             maxHealth = ent:GetMaxHealth(),
-                            frozen = IsValid(ent:GetPhysicsObject()) and not ent:GetPhysicsObject():IsMotionEnabled()
-                        })
+                            frozen = IsValid(ent:GetPhysicsObject()) and not ent:GetPhysicsObject():IsMotionEnabled(),
+                        }
+
+                        table.insert(botData.entities, entityData)
                     end
                 end
             end
 
             if RARELOAD.settings.debugEnabled then
-                print("[RARELOAD DEBUG] Saved " .. count .. " entities for bot " .. bot:GetName())
+                print("[RARELOAD DEBUG] Saved " .. count .. " entities in " ..
+                    math.Round((SysTime() - startTime) * 1000) .. " ms")
             end
         end
 
-        if RARELOAD.settings.retainVehicleState and RARELOAD.Admin.HasPermission(ply, "save_vehicles") and bot:InVehicle() then
+        if RARELOAD.settings.retainVehicleState and bot:InVehicle() then
             local vehicle = bot:GetVehicle()
             if IsValid(vehicle) then
                 local phys = vehicle:GetPhysicsObject()
@@ -144,6 +146,8 @@ return function(ply, _, args)
 
     if not success then
         print("[RARELOAD] Failed to save bot position data: " .. err)
+    else
+        print("[RARELOAD] Bot position(s) successfully saved.")
     end
 
     if IsValid(ply) then
