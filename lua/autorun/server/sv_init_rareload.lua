@@ -120,6 +120,18 @@ function LoadGlobalInventory()
     end
 end
 
+function RARELOAD.CheckPermission(ply, permName)
+    if ply:IsSuperAdmin() then
+        return true
+    end
+
+    if RARELOAD.Permissions.HasPermission then
+        return RARELOAD.Permissions.HasPermission(ply, permName)
+    end
+
+    return ply:IsAdmin()
+end
+
 ------------------------------------------------------------------------------------------------
 --[[ Anti-Stuck System for Player Spawning ]] --------------------------------------------------
 ------------------------------------------------------------------------------------------------
@@ -238,6 +250,12 @@ end
 
 -- Set the player's position and eye angles. This is the most important function of the addon
 function SetPlayerPositionAndEyeAngles(ply, savedInfo)
+    if not RARELOAD.CheckPermission(ply, "RARELOAD_SPAWN") then
+        ply:ChatPrint("[RARELOAD] You don't have permission to spawn with rareload.")
+        ply:EmitSound("buttons/button10.wav")
+        return
+    end
+
     ply:SetPos(savedInfo.pos)
 
     local angTable = type(savedInfo.ang) == "string" and util.JSONToTable(savedInfo.ang) or savedInfo.ang

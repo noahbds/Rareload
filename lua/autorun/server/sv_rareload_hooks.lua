@@ -1,4 +1,3 @@
--- Initialization and network strings
 LoadAddonState()
 
 util.AddNetworkString("CreatePlayerPhantom")
@@ -9,16 +8,21 @@ util.AddNetworkString("SyncPlayerPositions")
 util.AddNetworkString("RareloadTeleportTo")
 util.AddNetworkString("RareloadReloadData")
 util.AddNetworkString("RareloadSyncAutoSaveTime")
+util.AddNetworkString("RareloadSendPermissionsDefinitions")
 
--- Require modules
+include("rareload/shared/permissions_def.lua")
 include("rareload/rareload_core.lua")
+include("rareload/rareload_permissions.lua")
 include("rareload/rareload_position_cache.lua")
 include("rareload/rareload_autosave.lua")
 include("rareload/rareload_player_spawn.lua")
 include("rareload/rareload_teleport.lua")
 include("rareload/rareload_reload_data.lua")
 
--- Hook registrations
+if RARELOAD.Permissions and RARELOAD.Permissions.Initialize then
+    RARELOAD.Permissions.Initialize()
+end
+
 hook.Add("PlayerInitialSpawn", "SyncDataOnJoin", function(ply)
     SyncData(ply)
 end)

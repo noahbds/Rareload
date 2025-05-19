@@ -110,6 +110,12 @@ function TOOL:LeftClick(trace, ply)
         return
     end
 
+    if not RARELOAD.CheckPermission(ply, "USE_TOOL") then
+        ply:ChatPrint("[RARELOAD] You don't have permission to use the Rareload tool.")
+        ply:EmitSound("buttons/button10.wav")
+        return false
+    end
+
     EnsureFolderExists()
     local mapName = game.GetMap()
     RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
@@ -242,11 +248,17 @@ end
 function TOOL:RightClick()
     local ply = self:GetOwner()
 
-    if CLIENT then return true end
+    if CLIENT then return false end
 
     if not RARELOAD.settings.addonEnabled then
         ply:ChatPrint("[RARELOAD] The Rareload addon is disabled.")
         return
+    end
+
+    if not RARELOAD.CheckPermission(ply, "USE_TOOL") then
+        ply:ChatPrint("[RARELOAD] You don't have permission to use the Rareload tool.")
+        ply:EmitSound("buttons/button10.wav")
+        return false
     end
 
     RunConsoleCommand("save_position")
@@ -264,6 +276,12 @@ function TOOL:Reload()
 
     if not RARELOAD.settings.addonEnabled then
         ply:ChatPrint("[RARELOAD] The Rareload addon is disabled.")
+        return false
+    end
+
+    if not RARELOAD.CheckPermission(ply, "USE_TOOL") then
+        ply:ChatPrint("[RARELOAD] You don't have permission to use the Rareload tool.")
+        ply:EmitSound("buttons/button10.wav")
         return false
     end
 
