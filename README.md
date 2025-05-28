@@ -2,7 +2,6 @@
 
 [![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/noahbds/rareload)
 [![GMod](https://img.shields.io/badge/GMod-Compatible-green.svg)](https://gmod.facepunch.com/)
-[![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 RareLoad is a comprehensive Garry's Mod addon that provides advanced position saving, inventory management, and world state persistence. Perfect for roleplay servers, creative building, and any scenario where you need reliable state management.
 
@@ -117,9 +116,9 @@ RareLoad includes sophisticated spawn protection:
 
 ```
 save_position              - Save current position and state
-rareload_spawn_mode       - Toggle movement type saving
-rareload_auto_save        - Toggle automatic saving
-rareload_retain_inventory - Toggle inventory retention
+rareload_spawn_mode        - Toggle movement type saving
+rareload_auto_save         - Toggle automatic saving
+rareload_retain_inventory  - Toggle inventory retention
 ```
 
 ### Admin Commands
@@ -127,8 +126,8 @@ rareload_retain_inventory - Toggle inventory retention
 ```
 rareload_admin            - Open admin permission panel
 entity_viewer_open        - Open entity/NPC browser
-rareload_debug           - Toggle debug mode
-set_auto_save_interval   - Set auto-save timing
+rareload_debug            - Toggle debug mode
+set_auto_save_interval    - Set auto-save timing
 ```
 
 ## 🔍 Technical Specifications
@@ -198,14 +197,16 @@ This is my first foray into Garry's Mod addon development. While the code may no
 - Enhanced NPC relationship management
 - Performance optimizations and bug fixes
 
-### v1.x
+### v1.2
 
 - Initial release with basic position saving
 - Inventory management features
 - Simple entity persistence
 
+### v1.24
+
+- Actual Steam Addon
+
 ---
 
 **Note**: This addon represents a learning journey in Garry's Mod development. While the code continues to evolve, the functionality is robust and thoroughly tested in both singleplayer and multiplayer environments.
-
-_Created by Noahbds | Enhanced with community feedback_
