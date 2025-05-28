@@ -210,3 +210,5 @@ This is my first foray into Garry's Mod addon development. While the code may no
 ---
 
 **Note**: This addon represents a learning journey in Garry's Mod development. While the code continues to evolve, the functionality is robust and thoroughly tested in both singleplayer and multiplayer environments.
+
+_Created by Noahbds | Enhanced with community feedback (I recieved 1 comment on the addon page :))_
