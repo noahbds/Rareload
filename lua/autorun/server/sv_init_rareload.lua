@@ -120,15 +120,16 @@ function LoadGlobalInventory()
     end
 end
 
+-- Enhanced permission checking function
 function RARELOAD.CheckPermission(ply, permName)
-    if ply:IsSuperAdmin() then
-        return true
-    end
+    if not IsValid(ply) then return false end
+    if ply:IsSuperAdmin() then return true end
 
-    if RARELOAD.Permissions.HasPermission then
+    if RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
         return RARELOAD.Permissions.HasPermission(ply, permName)
     end
 
+    -- Fallback for legacy support
     return ply:IsAdmin()
 end
 
@@ -248,12 +249,24 @@ function FindWalkableGround(startPos, ply)
     return startPos
 end
 
--- Set the player's position and eye angles. This is the most important function of the addon
+-- Enhanced player position setting with permission validation
 function SetPlayerPositionAndEyeAngles(ply, savedInfo)
     if not RARELOAD.CheckPermission(ply, "RARELOAD_SPAWN") then
         ply:ChatPrint("[RARELOAD] You don't have permission to spawn with rareload.")
         ply:EmitSound("buttons/button10.wav")
-        return
+        return false
+    end
+
+    -- Additional checks for specific features
+    if savedInfo.inventory and not RARELOAD.CheckPermission(ply, "KEEP_INVENTORY") then
+        savedInfo.inventory = nil
+        ply:ChatPrint("[RARELOAD] Inventory restoration disabled - insufficient permissions.")
+    end
+
+    if savedInfo.health and not RARELOAD.CheckPermission(ply, "KEEP_HEALTH_ARMOR") then
+        savedInfo.health = nil
+        savedInfo.armor = nil
+        ply:ChatPrint("[RARELOAD] Health/Armor restoration disabled - insufficient permissions.")
     end
 
     ply:SetPos(savedInfo.pos)
@@ -265,6 +278,8 @@ function SetPlayerPositionAndEyeAngles(ply, savedInfo)
     else
         print("[RARELOAD] Error: Invalid angle data.")
     end
+
+    return true
 end
 
 ------------------------------------------------------------------------------------------------
