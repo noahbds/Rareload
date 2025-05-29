@@ -2,40 +2,19 @@ RARELOAD = RARELOAD or {}
 RARELOAD.AdminPanel = RARELOAD.AdminPanel or {}
 RARELOAD.Permissions = RARELOAD.Permissions or {}
 RARELOAD.Permissions.PlayerPerms = RARELOAD.Permissions.PlayerPerms or {}
-RARELOAD.Permissions.PlayerRoles = RARELOAD.Permissions.PlayerRoles or {}
 RARELOAD.Permissions.DEFS = RARELOAD.Permissions.DEFS or {}
 
 net.Receive("RareloadSendPermissionsDefinitions", function()
-    local defs = net.ReadTable()
-    if defs and type(defs) == "table" then
-        RARELOAD.Permissions.DEFS = defs
+    RARELOAD.Permissions.DEFS = net.ReadTable()
 
-        if RARELOAD.AdminPanel.Frame and IsValid(RARELOAD.AdminPanel.Frame) then
-            local steamID = RARELOAD.AdminPanel.Frame.selectedPlayer
-            if steamID then
-                RARELOAD.AdminPanel.Frame:SelectPlayer(steamID)
-            end
+    if RARELOAD.AdminPanel.Frame and IsValid(RARELOAD.AdminPanel.Frame) then
+        local steamID = RARELOAD.AdminPanel.Frame.selectedPlayer
+        if steamID then
+            RARELOAD.AdminPanel.Frame:SelectPlayer(steamID)
         end
-
-        print("[Rareload] Permission definitions loaded: " .. table.Count(RARELOAD.Permissions.DEFS) .. " permissions")
-    else
-        print("[Rareload] Error: Invalid permission definitions received")
     end
-end)
 
-net.Receive("RareloadSendRoles", function()
-    local roles = net.ReadTable()
-    if roles and type(roles) == "table" then
-        RARELOAD.Permissions.PlayerRoles = roles
-        if RARELOAD.AdminPanel.Frame and IsValid(RARELOAD.AdminPanel.Frame) then
-            local steamID = RARELOAD.AdminPanel.Frame.selectedPlayer
-            if steamID then
-                RARELOAD.AdminPanel.Frame:SelectPlayer(steamID)
-            end
-        end
-    else
-        print("[Rareload] Error: Invalid roles data received")
-    end
+    print("[Rareload] Permission definitions loaded: " .. table.Count(RARELOAD.Permissions.DEFS) .. " permissions")
 end)
 
 local PANEL = {}
@@ -286,27 +265,6 @@ function PANEL:Init()
     self.playerAdminStatus:SetFont("DermaDefault")
     self.playerAdminStatus:SetPos(90, 65)
 
-    self.roleDropdown = vgui.Create("DComboBox", self.playerInfo)
-    self.roleDropdown:SetSize(150, 25)
-    self.roleDropdown:SetPos(300, 15)
-    self.roleDropdown:SetValue("Select Role...")
-
-    self.roleDropdown:AddChoice("NONE (Individual Permissions)")
-    for roleName, roleData in SortedPairs(RARELOAD.Permissions.ROLES) do
-        self.roleDropdown:AddChoice(roleData.name, roleName)
-    end
-
-    self.roleDropdown.OnSelect = function(panel, index, value, data)
-        if self.selectedPlayer and data then
-            net.Start("RareloadUpdateRole")
-            net.WriteString(self.selectedPlayer)
-            net.WriteString(data)
-            net.SendToServer()
-
-            self:ShowNotification("Role updated to: " .. value, THEME.success)
-        end
-    end
-
     local permHeader = vgui.Create("DPanel", self.permContainer)
     permHeader:Dock(TOP)
     permHeader:SetTall(40)
@@ -377,14 +335,9 @@ function PANEL:Init()
     net.SendToServer()
 
     net.Receive("RareloadSendPermissions", function()
-        local perms = net.ReadTable()
-        if perms and type(perms) == "table" then
-            RARELOAD.Permissions.PlayerPerms = perms
-            if self.selectedPlayer then
-                self:SelectPlayer(self.selectedPlayer)
-            end
-        else
-            print("[Rareload] Error: Invalid permissions data received")
+        RARELOAD.Permissions.PlayerPerms = net.ReadTable()
+        if self.selectedPlayer then
+            self:SelectPlayer(self.selectedPlayer)
         end
     end)
 end
@@ -512,11 +465,6 @@ function PANEL:AddPlayerButton(ply)
 end
 
 function PANEL:SelectPlayer(steamID)
-    if not steamID or steamID == "" then
-        print("[Rareload] Error: Invalid SteamID for player selection")
-        return
-    end
-
     self.selectedPlayer = steamID
 
     local targetPly = nil
@@ -549,6 +497,7 @@ function PANEL:SelectPlayer(steamID)
     end
 
     self.permContainer:SetVisible(true)
+
     self.noPlayerSelectedLabel:SetVisible(false)
 
     self.playerInfo:SetAlpha(0)
@@ -576,18 +525,10 @@ function PANEL:SelectPlayer(steamID)
     self.playerAdminStatus:SetText(adminStatus)
     self.playerAdminStatus:SizeToContents()
 
-    local playerRole = RARELOAD.Permissions.PlayerRoles[steamID]
-    if playerRole and RARELOAD.Permissions.ROLES and RARELOAD.Permissions.ROLES[playerRole] then
-        local roleData = RARELOAD.Permissions.ROLES[playerRole]
-        self.roleDropdown:SetValue(roleData.name)
-    else
-        self.roleDropdown:SetValue("NONE (Individual Permissions)")
-    end
-
     self.permList:Clear()
     self.checkboxes = {}
 
-    if not RARELOAD.Permissions.DEFS or table.Count(RARELOAD.Permissions.DEFS) == 0 then
+    if not RARELOAD.Permissions.DEFS then
         local errorPanel = vgui.Create("DPanel", self.permList)
         errorPanel:Dock(FILL)
         errorPanel:DockMargin(10, 10, 10, 10)
@@ -611,76 +552,59 @@ function PANEL:SelectPlayer(steamID)
     end
 
     local permCategories = {
-        ["BASIC"] = {},
-        ["TOOLS"] = {},
-        ["SAVE_LOAD"] = {},
-        ["INVENTORY"] = {},
-        ["WORLD"] = {},
-        ["ADMIN"] = {}
+        ["ADMIN"] = {},
+        ["TOOL"] = {},
+        ["SAVE"] = {},
+        ["OTHER"] = {}
+        -- TODO : Add more categories for better organization
     }
 
     for permName, permData in pairs(RARELOAD.Permissions.DEFS) do
-        local category = permData.category or "OTHER"
-        if not permCategories[category] then
-            permCategories[category] = {}
+        local category = "OTHER"
+
+        if string.find(permName, "^ADMIN") then
+            category = "ADMIN"
+        elseif string.find(permName, "TOOL") then
+            category = "TOOL"
+        elseif string.find(permName, "SAVE") or string.find(permName, "RETAIN") then
+            category = "SAVE"
         end
+
         permCategories[category][permName] = permData
     end
 
-    local categoryOrder = { "BASIC", "TOOLS", "SAVE_LOAD", "INVENTORY", "WORLD", "ADMIN" }
-
-    for _, catName in ipairs(categoryOrder) do
-        local perms = permCategories[catName]
+    for catName, perms in pairs(permCategories) do
         if table.Count(perms) > 0 then
-            local catInfo = RARELOAD.Permissions.CATEGORIES[catName]
-            local catDisplayName = catInfo and catInfo.name or catName
-            local catColor = self:GetCategoryColor(catName)
+            local catDisplayName = catName == "ADMIN" and "Administration" or
+                catName == "TOOL" and "Tool Permissions" or
+                catName == "SAVE" and "Save Features" or "Other Permissions"
+
+            local catColor = catName == "ADMIN" and THEME.danger or
+                catName == "TOOL" and THEME.success or
+                catName == "SAVE" and THEME.accent or THEME.warning
 
             local categoryPanel = vgui.Create("DPanel", self.permList)
             categoryPanel:Dock(TOP)
-            categoryPanel:SetTall(35)
+            categoryPanel:SetTall(30)
             categoryPanel:DockMargin(5, 5, 5, 0)
             categoryPanel.Paint = function(pnl, w, h)
                 DrawRoundedBoxEx(0, 0, 0, w, h, catColor, true, true, true, true)
                 draw.SimpleText(catDisplayName, "DermaDefaultBold", 10, h / 2, THEME.textHighlight, TEXT_ALIGN_LEFT,
                     TEXT_ALIGN_CENTER)
-
-                if catInfo and catInfo.description then
-                    draw.SimpleText(catInfo.description, "DermaDefault", w - 10, h / 2,
-                        Color(255, 255, 255, 180), TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
-                end
             end
 
-            local sortedPerms = {}
-            for permName, permData in pairs(perms) do
-                table.insert(sortedPerms, { name = permName, data = permData })
-            end
-            table.sort(sortedPerms, function(a, b) return (a.data.priority or 999) < (b.data.priority or 999) end)
-
-            for _, permInfo in ipairs(sortedPerms) do
-                self:AddPermissionRow(permInfo.name, permInfo.data, targetPly, steamID)
+            for permName, permData in SortedPairs(perms) do
+                self:AddPermissionRow(permName, permData, targetPly, steamID)
             end
         end
     end
-end
-
-function PANEL:GetCategoryColor(catName)
-    local colors = {
-        BASIC = Color(100, 150, 100),
-        TOOLS = Color(100, 100, 150),
-        SAVE_LOAD = Color(150, 100, 100),
-        INVENTORY = Color(150, 150, 100),
-        WORLD = Color(100, 150, 150),
-        ADMIN = Color(150, 100, 150)
-    }
-    return colors[catName] or THEME.accent
 end
 
 function PANEL:AddPermissionRow(permName, permData, targetPly, steamID)
     local permPanel = vgui.Create("DPanel", self.permList)
     permPanel:Dock(TOP)
     permPanel:DockMargin(5, 5, 5, 5)
-    permPanel:SetTall(permData.dependencies and #permData.dependencies > 0 and 70 or 50)
+    permPanel:SetTall(50)
 
     permPanel.hoverFrac = 0
     permPanel.Paint = function(pnl, w, h)
@@ -766,29 +690,6 @@ function PANEL:AddPermissionRow(permName, permData, targetPly, steamID)
         superAdminHint:SizeToContents()
     end
 
-    if permData.dependencies and #permData.dependencies > 0 then
-        local depLabel = vgui.Create("DLabel", permPanel)
-        depLabel:SetText("Dependencies: " .. table.concat(permData.dependencies, ", "))
-        depLabel:SetFont("DermaDefault")
-        depLabel:SetTextColor(THEME.textSecondary)
-        depLabel:SetPos(10, 45)
-        depLabel:SizeToContents()
-    end
-
-    if permData.adminOnly then
-        local adminIcon = vgui.Create("DImage", permPanel)
-        adminIcon:SetSize(16, 16)
-        adminIcon:SetPos(permPanel:GetWide() - 120, 5)
-        adminIcon:SetImage("icon16/shield.png")
-
-        local adminLabel = vgui.Create("DLabel", permPanel)
-        adminLabel:SetText("Admin Only")
-        adminLabel:SetFont("DermaDefault")
-        adminLabel:SetTextColor(THEME.danger)
-        adminLabel:SetPos(permPanel:GetWide() - 100, 5)
-        adminLabel:SizeToContents()
-    end
-
     permPanel.PerformLayout = function(pnl, w, h)
         toggleSwitch:SetPos(w - 60, 12)
     end
@@ -797,23 +698,18 @@ function PANEL:AddPermissionRow(permName, permData, targetPly, steamID)
 end
 
 function PANEL:GetPermissionValue(steamID, permName)
-    if not steamID or not permName then return false end
-
     for _, ply in ipairs(player.GetAll()) do
         if ply:SteamID() == steamID and ply:IsSuperAdmin() then
             return true
         end
     end
 
-    if RARELOAD.Permissions.PlayerPerms[steamID] and RARELOAD.Permissions.PlayerPerms[steamID][permName] ~= nil then
-        return RARELOAD.Permissions.PlayerPerms[steamID][permName]
+    local perms = RARELOAD.Permissions.PlayerPerms[steamID]
+    if perms and perms[permName] ~= nil then
+        return perms[permName]
     end
 
-    if RARELOAD.Permissions.DEFS[permName] then
-        return RARELOAD.Permissions.DEFS[permName].default or false
-    end
-
-    return false
+    return RARELOAD.Permissions.DEFS[permName].default
 end
 
 function PANEL:SavePermissions()
@@ -821,15 +717,8 @@ function PANEL:SavePermissions()
 
     local changedCount = 0
     local totalCount = 0
-    local errors = 0
 
     for permName, toggleBtn in pairs(self.checkboxes) do
-        if not RARELOAD.Permissions.DEFS[permName] then
-            print("[Rareload] Warning: Skipping unknown permission: " .. permName)
-            errors = errors + 1
-            continue
-        end
-
         totalCount = totalCount + 1
         local currentValue = self:GetPermissionValue(self.selectedPlayer, permName)
         local newValue = toggleBtn.switched
@@ -879,10 +768,6 @@ function PANEL:SavePermissions()
     end)
 
     surface.PlaySound(changedCount > 0 and "buttons/button14.wav" or "ui/buttonclickrelease.wav")
-
-    if errors > 0 then
-        print("[Rareload] Warning: " .. errors .. " permission errors encountered during save")
-    end
 end
 
 function LerpColor(frac, from, to)

@@ -14,6 +14,18 @@ if SERVER then
     BroadcastSettings()
 end
 
+function RARELOAD.CheckPermission(ply, permName)
+    if ply:IsSuperAdmin() then
+        return true
+    end
+
+    if RARELOAD.Permissions.HasPermission then
+        return RARELOAD.Permissions.HasPermission(ply, permName)
+    end
+
+    return ply:IsAdmin()
+end
+
 -- ==============================
 --    THEME & VISUAL SETTINGS
 -- ==============================
@@ -512,23 +524,30 @@ function RareloadUI.CreateButton(parent, text, command, description, settingKey,
     end
 
     button.DoClick = function()
-        if command then
-            RunConsoleCommand(command, button.IsEnabled and "0" or "1")
-            timer.Simple(0.2, function()
-                button.IsEnabled = GetSettingValue()
-                button:InvalidateLayout()
-            end)
-        end
+        local ply = LocalPlayer()
+        if not RARELOAD.CheckPermission(ply, "RARELOAD_TOGGLE") then
+            ply:ChatPrint("[RARELOAD] You don't have permission to toggle settings.")
+            surface.PlaySound("buttons/button10.wav")
+            return
+        else
+            if command then
+                RunConsoleCommand(command, button.IsEnabled and "0" or "1")
+                timer.Simple(0.2, function()
+                    button.IsEnabled = GetSettingValue()
+                    button:InvalidateLayout()
+                end)
+            end
 
-        local flash = vgui.Create("DPanel", button)
-        flash:SetSize(button:GetWide(), button:GetTall())
-        flash:SetAlpha(120)
-        flash.Paint = function(self, w, h)
-            RareloadUI.DrawRoundedBox(0, 0, w, h, theme.Sizes.CornerRadius, Color(255, 255, 255))
-        end
-        flash:AlphaTo(0, 0.3, 0, function() flash:Remove() end)
+            local flash = vgui.Create("DPanel", button)
+            flash:SetSize(button:GetWide(), button:GetTall())
+            flash:SetAlpha(120)
+            flash.Paint = function(self, w, h)
+                RareloadUI.DrawRoundedBox(0, 0, w, h, theme.Sizes.CornerRadius, Color(255, 255, 255))
+            end
+            flash:AlphaTo(0, 0.3, 0, function() flash:Remove() end)
 
-        surface.PlaySound("ui/buttonclickrelease.wav")
+            surface.PlaySound("ui/buttonclickrelease.wav")
+        end
     end
 
     button.OnCursorEntered = function(self)

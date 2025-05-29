@@ -20,11 +20,17 @@ local function canOpenAdminPanel(ply)
         return adminPanelPermCache[steamID].value
     end
 
+    if ply:IsAdmin() or ply:IsSuperAdmin() then
+        adminPanelPermCache[steamID] = { value = true, time = CurTime() }
+        return true
+    end
+
     local hasPermission = false
-    if RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
-        hasPermission = RARELOAD.Permissions.HasPermission(ply, "ADMIN_FUNCTIONS") or ply:IsSuperAdmin()
-    else
-        hasPermission = ply:IsAdmin() or ply:IsSuperAdmin()
+    if RARELOAD.Permissions and RARELOAD.Permissions.PlayerPerms then
+        local perms = RARELOAD.Permissions.PlayerPerms[steamID]
+        if perms and perms["can_use_admin_panel"] then
+            hasPermission = true
+        end
     end
 
     adminPanelPermCache[steamID] = { value = hasPermission, time = CurTime() }
@@ -36,11 +42,6 @@ timer.Create("RareloadAdminPanelPermCacheCleanup", 300, 0, function()
 end)
 
 concommand.Add("rareload_admin", function(ply)
-    if not IsValid(ply) then
-        print("[RARELOAD] This command can only be run by a player.")
-        return
-    end
-
     if canOpenAdminPanel(ply) then
         net.Start("RareloadOpenAdminPanel")
         net.Send(ply)

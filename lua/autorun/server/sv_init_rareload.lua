@@ -120,16 +120,15 @@ function LoadGlobalInventory()
     end
 end
 
--- Enhanced permission checking function
 function RARELOAD.CheckPermission(ply, permName)
-    if not IsValid(ply) then return false end
-    if ply:IsSuperAdmin() then return true end
+    if ply:IsSuperAdmin() then
+        return true
+    end
 
-    if RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
+    if RARELOAD.Permissions.HasPermission then
         return RARELOAD.Permissions.HasPermission(ply, permName)
     end
 
-    -- Fallback for legacy support
     return ply:IsAdmin()
 end
 
@@ -249,24 +248,12 @@ function FindWalkableGround(startPos, ply)
     return startPos
 end
 
--- Enhanced player position setting with permission validation
+-- Set the player's position and eye angles. This is the most important function of the addon
 function SetPlayerPositionAndEyeAngles(ply, savedInfo)
     if not RARELOAD.CheckPermission(ply, "RARELOAD_SPAWN") then
         ply:ChatPrint("[RARELOAD] You don't have permission to spawn with rareload.")
         ply:EmitSound("buttons/button10.wav")
-        return false
-    end
-
-    -- Additional checks for specific features
-    if savedInfo.inventory and not RARELOAD.CheckPermission(ply, "KEEP_INVENTORY") then
-        savedInfo.inventory = nil
-        ply:ChatPrint("[RARELOAD] Inventory restoration disabled - insufficient permissions.")
-    end
-
-    if savedInfo.health and not RARELOAD.CheckPermission(ply, "KEEP_HEALTH_ARMOR") then
-        savedInfo.health = nil
-        savedInfo.armor = nil
-        ply:ChatPrint("[RARELOAD] Health/Armor restoration disabled - insufficient permissions.")
+        return
     end
 
     ply:SetPos(savedInfo.pos)
@@ -278,8 +265,6 @@ function SetPlayerPositionAndEyeAngles(ply, savedInfo)
     else
         print("[RARELOAD] Error: Invalid angle data.")
     end
-
-    return true
 end
 
 ------------------------------------------------------------------------------------------------
@@ -317,8 +302,9 @@ end
 
 -- This function only purpose is to print a message in the console when a setting is changed (and change the setting)
 function ToggleSetting(ply, settingKey, message)
-    if not ply:IsSuperAdmin() then
-        print("[RARELOAD] You do not have permission to use this command.")
+    if not RARELOAD.CheckPermission(ply, "RARELOAD_TOGGLE") then
+        ply:ChatPrint("[RARELOAD] You don't have permission to toggle settings.")
+        ply:EmitSound("buttons/button10.wav")
         return
     end
 

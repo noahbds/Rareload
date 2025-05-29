@@ -1,76 +1,38 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.Permissions = RARELOAD.Permissions or {}
 RARELOAD.Permissions.PlayerPerms = RARELOAD.Permissions.PlayerPerms or {}
-RARELOAD.Permissions.PlayerRoles = RARELOAD.Permissions.PlayerRoles or {}
-
-local PERMISSIONS_FILE = "rareload/permissions.json"
-
-local permissionCache = {}
-local roleCache = {}
-local cacheTimeout = 30 -- seconds
-
-local function IsValidPermission(permName)
-    return RARELOAD.Permissions.DEFS and RARELOAD.Permissions.DEFS[permName] ~= nil
-end
-
-local function IsValidRole(roleName)
-    return RARELOAD.Permissions.ROLES and RARELOAD.Permissions.ROLES[roleName] ~= nil
-end
-
-local function IsValidPlayer(ply)
-    return IsValid(ply) and ply:IsPlayer()
-end
 
 function RARELOAD.Permissions.Initialize()
     if not file.Exists("rareload", "DATA") then
         file.CreateDir("rareload")
     end
 
-    local loadSuccess = RARELOAD.Permissions.Load()
-    if not loadSuccess then
-        print("[RARELOAD ERROR] Failed to load permissions, using defaults")
-    end
+    RARELOAD.Permissions.Load()
 
-    local networkStrings = {
-        "RareloadRequestPermissions",
-        "RareloadSendPermissions",
-        "RareloadUpdatePermissions",
-        "RareloadSendPermissionsDefinitions",
-        "RareloadRequestRoles",
-        "RareloadSendRoles",
-        "RareloadUpdateRole",
-        "RareloadGetPlayerRole"
-    }
-
-    for _, str in ipairs(networkStrings) do
-        util.AddNetworkString(str)
-    end
-
-    timer.Create("RareloadPermissionCacheCleanup", cacheTimeout, 0, function()
-        permissionCache = {}
-        roleCache = {}
-    end)
+    util.AddNetworkString("RareloadRequestPermissions")
+    util.AddNetworkString("RareloadSendPermissions")
+    util.AddNetworkString("RareloadUpdatePermissions")
+    util.AddNetworkString("RareloadSendPermissionsDefinitions")
 
     net.Receive("RareloadRequestPermissions", function(len, ply)
-        if not IsValidPlayer(ply) or not RARELOAD.Permissions.HasPermission(ply, "ADMIN_FUNCTIONS") then
+        if not RARELOAD.Permissions.HasPermission(ply, "ADMIN_FUNCTIONS") and not ply:IsAdmin() and not ply:IsSuperAdmin() then
             return
         end
 
         net.Start("RareloadSendPermissions")
-        net.WriteTable(RARELOAD.Permissions.PlayerPerms or {})
+        net.WriteTable(RARELOAD.Permissions.PlayerPerms)
         net.Send(ply)
 
         timer.Simple(0.1, function()
-            if IsValidPlayer(ply) then
+            if IsValid(ply) then
                 RARELOAD.Permissions.SendDefinitions(ply)
             end
         end)
     end)
 
     net.Receive("RareloadUpdatePermissions", function(len, ply)
-        if not IsValidPlayer(ply) or not RARELOAD.Permissions.HasPermission(ply, "MANAGE_PERMISSIONS") then
-            print("[RARELOAD] Permission update rejected: " ..
-                (IsValid(ply) and ply:Nick() or "Invalid player") .. " lacks MANAGE_PERMISSIONS")
+        if not RARELOAD.Permissions.HasPermission(ply, "ADMIN_FUNCTIONS") and not ply:IsAdmin() and not ply:IsSuperAdmin() then
+            print("[Rareload] Permission update rejected: " .. ply:Nick() .. " doesn't have ADMIN_FUNCTIONS permission")
             return
         end
 
@@ -78,350 +40,368 @@ function RARELOAD.Permissions.Initialize()
         local permName = net.ReadString()
         local value = net.ReadBool()
 
-        if not targetSteamID or not permName or not IsValidPermission(permName) then
-            print("[RARELOAD] Invalid permission update request")
+        if not RARELOAD.Permissions.DEFS[permName] then
+            print("[Rareload] Unknown permission: " .. permName)
             return
         end
 
-        local permData = RARELOAD.Permissions.DEFS[permName]
-        if permData.adminOnly and not ply:IsSuperAdmin() then
-            print("[RARELOAD] Non-superadmin attempted to modify admin-only permission: " .. permName)
-            return
-        end
+        print("[Rareload] Permission updated: " .. targetSteamID .. " - " .. permName .. " = " .. tostring(value))
 
-        print("[RARELOAD] Permission updated: " .. targetSteamID .. " - " .. permName .. " = " .. tostring(value))
-
-        if RARELOAD.Permissions.SetPermission(targetSteamID, permName, value) then
-            RARELOAD.Permissions.Save()
-
-            for _, admin in ipairs(player.GetAll()) do
-                if RARELOAD.Permissions.HasPermission(admin, "ADMIN_FUNCTIONS") then
-                    net.Start("RareloadSendPermissions")
-                    net.WriteTable(RARELOAD.Permissions.PlayerPerms)
-                    net.Send(admin)
-                end
-            end
-        end
-    end)
-
-    net.Receive("RareloadRequestRoles", function(len, ply)
-        if not IsValidPlayer(ply) or not RARELOAD.Permissions.HasPermission(ply, "ADMIN_FUNCTIONS") then
-            return
-        end
-
-        net.Start("RareloadSendRoles")
-        net.WriteTable(RARELOAD.Permissions.PlayerRoles or {})
-        net.Send(ply)
-    end)
-
-    net.Receive("RareloadUpdateRole", function(len, ply)
-        if not IsValidPlayer(ply) or not RARELOAD.Permissions.HasPermission(ply, "MANAGE_PERMISSIONS") then
-            print("[RARELOAD] Role update rejected: " ..
-                (IsValid(ply) and ply:Nick() or "Invalid player") .. " lacks MANAGE_PERMISSIONS")
-            return
-        end
-
-        local targetSteamID = net.ReadString()
-        local roleName = net.ReadString()
-
-        if not targetSteamID or not roleName then
-            print("[RARELOAD] Invalid role update request")
-            return
-        end
-
-        if roleName ~= "NONE" and not IsValidRole(roleName) then
-            print("[RARELOAD] Invalid role name: " .. roleName)
-            return
-        end
-
-        if roleName ~= "NONE" and RARELOAD.Permissions.ROLES[roleName] then
-            local role = RARELOAD.Permissions.ROLES[roleName]
-            if role.permissions == "*" and not ply:IsSuperAdmin() then
-                print("[RARELOAD] Non-superadmin attempted to assign admin role")
-                return
-            end
-        end
-
-        RARELOAD.Permissions.SetPlayerRole(targetSteamID, roleName)
+        RARELOAD.Permissions.SetPermission(targetSteamID, permName, value)
         RARELOAD.Permissions.Save()
 
-        RARELOAD.Permissions.ClearPlayerCache(targetSteamID)
-
-        print("[RARELOAD] Role updated: " .. targetSteamID .. " assigned role: " .. roleName)
+        for _, admin in ipairs(player.GetAll()) do
+            if RARELOAD.Permissions.HasPermission(admin, "ADMIN_FUNCTIONS") or admin:IsAdmin() or admin:IsSuperAdmin() then
+                net.Start("RareloadSendPermissions")
+                net.WriteTable(RARELOAD.Permissions.PlayerPerms)
+                net.Send(admin)
+            end
+        end
     end)
 end
 
 function RARELOAD.Permissions.HasPermission(ply, permName)
-    if not IsValidPlayer(ply) then return false end
+    if not IsValid(ply) then return false end
+
     if ply:IsSuperAdmin() then return true end
 
+    if ply:IsAdmin() and permName == "ADMIN_FUNCTIONS" then return true end
+
     local steamID = ply:SteamID()
-    local cacheKey = steamID .. "_" .. permName
 
-    if permissionCache[cacheKey] and permissionCache[cacheKey].time > CurTime() - cacheTimeout then
-        return permissionCache[cacheKey].value
+    if RARELOAD.Permissions.PlayerPerms[steamID] and
+        RARELOAD.Permissions.PlayerPerms[steamID][permName] ~= nil then
+        return RARELOAD.Permissions.PlayerPerms[steamID][permName]
     end
 
-    local hasPermission = false
-
-    if not IsValidPermission(permName) then
-        print("[RARELOAD] Warning: Unknown permission requested: " .. tostring(permName))
-        permissionCache[cacheKey] = { value = false, time = CurTime() }
-        return false
+    if RARELOAD.Permissions.DEFS[permName] then
+        return RARELOAD.Permissions.DEFS[permName].default
     end
 
-    local permDef = RARELOAD.Permissions.DEFS[permName]
-
-    if permDef.adminOnly and not (ply:IsAdmin() or ply:IsSuperAdmin()) then
-        hasPermission = false
-    elseif RARELOAD.Permissions.PlayerRoles[steamID] then
-        local roleName = RARELOAD.Permissions.PlayerRoles[steamID]
-        hasPermission = RARELOAD.Permissions.RoleHasPermission(roleName, permName)
-    elseif RARELOAD.Permissions.PlayerPerms[steamID] and RARELOAD.Permissions.PlayerPerms[steamID][permName] ~= nil then
-        hasPermission = RARELOAD.Permissions.PlayerPerms[steamID][permName]
-    else
-        hasPermission = permDef.default or false
-    end
-
-    if hasPermission and permDef.dependencies and #permDef.dependencies > 0 then
-        local visited = { [permName] = true }
-        hasPermission = RARELOAD.Permissions.CheckDependencies(ply, permDef.dependencies, visited)
-    end
-
-    permissionCache[cacheKey] = {
-        value = hasPermission,
-        time = CurTime()
-    }
-
-    return hasPermission
-end
-
-function RARELOAD.Permissions.CheckDependencies(ply, dependencies, visited)
-    for _, depPerm in ipairs(dependencies) do
-        if visited[depPerm] then
-            print("[RARELOAD] Warning: Circular dependency detected for permission: " .. depPerm)
-            return false
-        end
-
-        if not RARELOAD.Permissions.HasPermission(ply, depPerm) then
-            return false
-        end
-    end
-    return true
-end
-
-function RARELOAD.Permissions.SetPlayerRole(steamID, roleName)
-    if not steamID then
-        print("[RARELOAD] Error: Invalid SteamID for role assignment")
-        return false
-    end
-
-    if roleName == "NONE" or roleName == "" then
-        RARELOAD.Permissions.PlayerRoles[steamID] = nil
-    elseif IsValidRole(roleName) then
-        RARELOAD.Permissions.PlayerRoles[steamID] = roleName
-        RARELOAD.Permissions.PlayerPerms[steamID] = nil
-    else
-        print("[RARELOAD] Warning: Unknown role: " .. tostring(roleName))
-        return false
-    end
-
-    RARELOAD.Permissions.ClearPlayerCache(steamID)
-    return true
-end
-
-function RARELOAD.Permissions.GetPlayerRole(steamID)
-    if not steamID then return "GUEST" end
-    return RARELOAD.Permissions.PlayerRoles[steamID] or "GUEST"
-end
-
-function RARELOAD.Permissions.RoleHasPermission(roleName, permName)
-    if not IsValidRole(roleName) or not IsValidPermission(permName) then
-        return false
-    end
-
-    local cacheKey = roleName .. "_" .. permName
-    if roleCache[cacheKey] and roleCache[cacheKey].time > CurTime() - cacheTimeout then
-        return roleCache[cacheKey].value
-    end
-
-    local role = RARELOAD.Permissions.ROLES[roleName]
-    local hasPermission = false
-
-    if role.permissions == "*" then
-        hasPermission = true
-    elseif type(role.permissions) == "table" then
-        for _, perm in ipairs(role.permissions) do
-            if perm == permName then
-                hasPermission = true
-                break
-            end
-        end
-    end
-
-    roleCache[cacheKey] = { value = hasPermission, time = CurTime() }
-    return hasPermission
+    return false
 end
 
 function RARELOAD.Permissions.SetPermission(steamID, permName, value)
-    if not steamID or not IsValidPermission(permName) then
-        print("[RARELOAD] Error: Invalid parameters for SetPermission")
-        return false
-    end
-
-    if RARELOAD.Permissions.PlayerRoles[steamID] then
-        RARELOAD.Permissions.PlayerRoles[steamID] = nil
-    end
-
     if not RARELOAD.Permissions.PlayerPerms[steamID] then
         RARELOAD.Permissions.PlayerPerms[steamID] = {}
     end
 
     RARELOAD.Permissions.PlayerPerms[steamID][permName] = value
-
-    RARELOAD.Permissions.ClearPlayerCache(steamID)
-
-    return true
 end
 
-function RARELOAD.Permissions.ClearPlayerCache(steamID)
-    for cacheKey, _ in pairs(permissionCache) do
-        if string.StartWith(cacheKey, steamID .. "_") then
-            permissionCache[cacheKey] = nil
-        end
-    end
-end
-
-function RARELOAD.Permissions.GetPlayerPermissions(steamID)
-    local permissions = {}
-    local role = RARELOAD.Permissions.GetPlayerRole(steamID)
-
-    if role and IsValidRole(role) then
-        local roleData = RARELOAD.Permissions.ROLES[role]
-        if roleData.permissions == "*" then
-            for permName, _ in pairs(RARELOAD.Permissions.DEFS or {}) do
-                permissions[permName] = true
-            end
-        elseif type(roleData.permissions) == "table" then
-            for _, permName in ipairs(roleData.permissions) do
-                if IsValidPermission(permName) then
-                    permissions[permName] = true
-                end
-            end
-        end
-    end
-
-    if RARELOAD.Permissions.PlayerPerms[steamID] then
-        for permName, value in pairs(RARELOAD.Permissions.PlayerPerms[steamID]) do
-            if IsValidPermission(permName) then
-                permissions[permName] = value
-            end
-        end
-    end
-
-    return permissions
-end
-
+-- using SQLite for permissions storage, it's more safe and prevent 'accident'
 function RARELOAD.Permissions.Save()
-    local success = pcall(function()
-        if not sql.TableExists("rareload_permissions") then
-            local result = sql.Query("CREATE TABLE rareload_permissions (steamid TEXT PRIMARY KEY, permissions TEXT)")
-            if result == false then
-                error("Failed to create permissions table: " .. sql.LastError())
-            end
+    if not sql.TableExists("rareload_permissions") then
+        local result = sql.Query(
+            "CREATE TABLE rareload_permissions (steamid TEXT PRIMARY KEY, permissions TEXT, last_updated INTEGER)")
+        if result == false then
+            ErrorNoHalt("[Rareload] Failed to create permissions table: " .. sql.LastError() .. "\n")
+            return false
+        end
+    end
+
+    sql.Begin()
+
+    local success = true
+    local count = 0
+
+    for steamID, perms in pairs(RARELOAD.Permissions.PlayerPerms) do
+        if type(steamID) ~= "string" or steamID == "" then
+            print("[Rareload] Warning: Skipping invalid SteamID in permissions")
+            continue
         end
 
-        sql.Query("DELETE FROM rareload_permissions")
-
-        for steamID, perms in pairs(RARELOAD.Permissions.PlayerPerms or {}) do
-            local permJson = util.TableToJSON(perms)
-            local result = sql.Query("INSERT INTO rareload_permissions (steamid, permissions) VALUES (" ..
-                sql.SQLStr(steamID) .. ", " .. sql.SQLStr(permJson) .. ")")
-            if result == false then
-                error("Failed to save permissions for " .. steamID .. ": " .. sql.LastError())
-            end
+        if type(perms) ~= "table" then
+            print("[Rareload] Warning: Skipping invalid permissions for " .. steamID)
+            continue
         end
 
-        if not sql.TableExists("rareload_roles") then
-            local result = sql.Query("CREATE TABLE rareload_roles (steamid TEXT PRIMARY KEY, role TEXT)")
-            if result == false then
-                error("Failed to create roles table: " .. sql.LastError())
-            end
+        local permJson = util.TableToJSON(perms)
+        if not permJson then
+            print("[Rareload] Error: Failed to encode permissions for " .. steamID)
+            success = false
+            continue
         end
 
-        sql.Query("DELETE FROM rareload_roles")
+        local query = string.format(
+            "INSERT OR REPLACE INTO rareload_permissions (steamid, permissions, last_updated) VALUES (%s, %s, %d)",
+            sql.SQLStr(steamID),
+            sql.SQLStr(permJson),
+            os.time()
+        )
 
-        for steamID, role in pairs(RARELOAD.Permissions.PlayerRoles or {}) do
-            local result = sql.Query("INSERT INTO rareload_roles (steamid, role) VALUES (" ..
-                sql.SQLStr(steamID) .. ", " .. sql.SQLStr(role) .. ")")
-            if result == false then
-                error("Failed to save role for " .. steamID .. ": " .. sql.LastError())
-            end
+        local result = sql.Query(query)
+        if result == false then
+            ErrorNoHalt("[Rareload] Error saving permissions for " .. steamID .. ": " .. sql.LastError() .. "\n")
+            success = false
+        else
+            count = count + 1
         end
-    end)
+    end
 
     if success then
-        print("[RARELOAD] Permissions and roles saved successfully!")
+        sql.Commit()
+        print("[Rareload] Permissions saved successfully! Updated " .. count .. " player records.")
+
+        RARELOAD.Permissions.CreateBackup()
         return true
     else
-        print("[RARELOAD] Error saving permissions: " .. sql.LastError())
+        sql.Rollback()
+        print("[Rareload] Some errors occurred while saving permissions. Changes rolled back.")
         return false
     end
 end
 
 function RARELOAD.Permissions.Load()
-    local success = pcall(function()
-        if sql.TableExists("rareload_permissions") then
-            local results = sql.Query("SELECT * FROM rareload_permissions")
-            if results then
-                RARELOAD.Permissions.PlayerPerms = {}
-                for _, row in ipairs(results) do
-                    local perms = util.JSONToTable(row.permissions)
-                    if perms then
-                        local validatedPerms = {}
-                        for permName, value in pairs(perms) do
-                            if IsValidPermission(permName) then
-                                validatedPerms[permName] = value
-                            else
-                                print("[RARELOAD] Warning: Removing invalid permission '" ..
-                                    tostring(permName) .. "' for " .. row.steamid)
-                            end
-                        end
-                        RARELOAD.Permissions.PlayerPerms[row.steamid] = validatedPerms
-                    end
-                end
-                print("[RARELOAD] Individual permissions loaded successfully!")
-            else
-                print("[RARELOAD] Error loading permissions: " .. (sql.LastError() or "Unknown error"))
-            end
+    if not sql.TableExists("rareload_permissions") then
+        if RARELOAD.Permissions.RestoreFromBackup() then
+            print("[Rareload] Restored permissions from backup!")
+            return true
         else
             RARELOAD.Permissions.PlayerPerms = {}
-            print("[RARELOAD] No individual permissions found, created new table")
+            print("[Rareload] No permissions found, created a new database")
+            return false
+        end
+    end
+
+    if not RARELOAD.Permissions.ValidateTable() then
+        print("[Rareload] Permissions table may be corrupted, attempting repair...")
+        if not RARELOAD.Permissions.RepairTable() then
+            print("[Rareload] Could not repair table, attempting to restore from backup...")
+            if not RARELOAD.Permissions.RestoreFromBackup() then
+                RARELOAD.Permissions.PlayerPerms = {}
+                print("[Rareload] Failed to load permissions. Starting fresh.")
+                return false
+            end
+        end
+    end
+
+    local results = sql.Query("SELECT steamid, permissions FROM rareload_permissions")
+    if results == false then
+        ErrorNoHalt("[Rareload] SQL error loading permissions: " .. (sql.LastError() or "Unknown error") .. "\n")
+        RARELOAD.Permissions.PlayerPerms = {}
+        return false
+    elseif results == nil then
+        RARELOAD.Permissions.PlayerPerms = {}
+        print("[Rareload] Permissions database exists but is empty")
+        return true
+    end
+
+    RARELOAD.Permissions.PlayerPerms = {}
+    local loadedCount = 0
+    local errorCount = 0
+
+    for _, row in ipairs(results) do
+        if not row.steamid or not row.permissions then
+            errorCount = errorCount + 1
+            continue
         end
 
-        if sql.TableExists("rareload_roles") then
-            local results = sql.Query("SELECT * FROM rareload_roles")
-            if results then
-                RARELOAD.Permissions.PlayerRoles = {}
-                for _, row in ipairs(results) do
-                    if IsValidRole(row.role) then
-                        RARELOAD.Permissions.PlayerRoles[row.steamid] = row.role
-                    else
-                        print("[RARELOAD] Warning: Invalid role '" ..
-                            tostring(row.role) .. "' for " .. row.steamid .. ", removing")
+        local success, permTable = pcall(util.JSONToTable, row.permissions)
+        if success and type(permTable) == "table" then
+            RARELOAD.Permissions.PlayerPerms[row.steamid] = permTable
+            loadedCount = loadedCount + 1
+        else
+            print("[Rareload] Error parsing permissions JSON for " .. row.steamid)
+            errorCount = errorCount + 1
+        end
+    end
+
+    print("[Rareload] Permissions loaded successfully! Loaded " .. loadedCount .. " player records"
+        .. (errorCount > 0 and " (with " .. errorCount .. " errors)" or ""))
+    return true
+end
+
+function RARELOAD.Permissions.CreateBackup()
+    if not sql.TableExists("rareload_permissions") then return false end
+
+    if not sql.TableExists("rareload_permissions_backup") then
+        sql.Query(
+            "CREATE TABLE rareload_permissions_backup (backup_id INTEGER PRIMARY KEY AUTOINCREMENT, steamid TEXT, permission_name TEXT, permission_value INTEGER, last_updated INTEGER, backup_date INTEGER)")
+    end
+
+    local backupTime = os.time()
+
+    sql.Begin()
+
+    local success = true
+    local mainData = sql.Query("SELECT * FROM rareload_permissions")
+
+    if mainData then
+        for _, row in ipairs(mainData) do
+            local steamID = row.steamid
+            local permJson = row.permissions
+            local lastUpdated = row.last_updated or backupTime
+
+            local success, permTable = pcall(util.JSONToTable, permJson)
+            if success and type(permTable) == "table" then
+                for permName, permValue in pairs(permTable) do
+                    local intValue = permValue and 1 or 0
+
+                    local insertQuery = string.format(
+                        "INSERT INTO rareload_permissions_backup (steamid, permission_name, permission_value, last_updated, backup_date) VALUES (%s, %s, %d, %d, %d)",
+                        sql.SQLStr(steamID),
+                        sql.SQLStr(permName),
+                        intValue,
+                        lastUpdated,
+                        backupTime
+                    )
+
+                    local result = sql.Query(insertQuery)
+                    if result == false then
+                        print("[Rareload] Failed to backup permission " ..
+                            permName .. " for " .. steamID .. ": " .. sql.LastError())
+                        success = false
                     end
                 end
-                print("[RARELOAD] Roles loaded successfully!")
             else
-                print("[RARELOAD] Error loading roles: " .. (sql.LastError() or "Unknown error"))
+                print("[Rareload] Couldn't parse permissions JSON for backup: " .. steamID)
+                success = false
             end
-        else
-            RARELOAD.Permissions.PlayerRoles = {}
-            print("[RARELOAD] No roles found, created new table")
         end
-    end)
+    else
+        print("[Rareload] No permissions data to backup")
+    end
 
-    return success
+    if success then
+        sql.Commit()
+
+        if mainData then
+            local jsonData = util.TableToJSON({
+                metadata = {
+                    version = "2.0",
+                    timestamp = backupTime,
+                    format = "normalized"
+                },
+                data = mainData
+            }, true)
+
+            if jsonData then
+                file.Write("rareload/permissions_backup_" .. backupTime .. ".json", jsonData)
+                file.Write("rareload/permissions_backup.json", jsonData)
+            end
+        end
+
+        print("[Rareload] Backup created successfully at " .. os.date("%Y-%m-%d %H:%M:%S", backupTime))
+        return true
+    else
+        sql.Rollback()
+        print("[Rareload] Failed to create backup, transaction rolled back")
+        return false
+    end
+end
+
+function RARELOAD.Permissions.RestoreFromBackup()
+    if sql.TableExists("rareload_permissions_backup") then
+        local latestBackup = sql.QueryValue("SELECT MAX(backup_date) FROM rareload_permissions_backup")
+
+        if latestBackup then
+            sql.Query(
+                "CREATE TABLE IF NOT EXISTS rareload_permissions (steamid TEXT PRIMARY KEY, permissions TEXT, last_updated INTEGER)")
+
+            sql.Query("DELETE FROM rareload_permissions")
+
+            local steamIDs = sql.Query("SELECT DISTINCT steamid FROM rareload_permissions_backup WHERE backup_date = " ..
+                latestBackup)
+
+            if steamIDs then
+                for _, row in ipairs(steamIDs) do
+                    local steamID = row.steamid
+                    local permTable = {}
+
+                    local perms = sql.Query(
+                        "SELECT permission_name, permission_value FROM rareload_permissions_backup WHERE steamid = " ..
+                        sql.SQLStr(steamID) .. " AND backup_date = " .. latestBackup)
+
+                    if perms then
+                        for _, perm in ipairs(perms) do
+                            permTable[perm.permission_name] = (perm.permission_value == 1)
+                        end
+
+                        local permJson = util.TableToJSON(permTable)
+                        if permJson then
+                            sql.Query(string.format(
+                                "INSERT INTO rareload_permissions (steamid, permissions, last_updated) VALUES (%s, %s, %d)",
+                                sql.SQLStr(steamID),
+                                sql.SQLStr(permJson),
+                                os.time()
+                            ))
+                        end
+                    end
+                end
+
+                return RARELOAD.Permissions.Load()
+            end
+        end
+    end
+
+    local backupFiles = file.Find("rareload/permissions_backup*.json", "DATA")
+    if #backupFiles > 0 then
+        table.sort(backupFiles, function(a, b)
+            local timeA = file.Time("rareload/" .. a, "DATA")
+            local timeB = file.Time("rareload/" .. b, "DATA")
+            return timeA > timeB
+        end)
+
+        for _, backupFile in ipairs(backupFiles) do
+            local jsonData = file.Read("rareload/" .. backupFile, "DATA")
+            if jsonData then
+                local success, dataTable = pcall(util.JSONToTable, jsonData)
+                if success and dataTable then
+                    if dataTable.metadata and dataTable.metadata.version == "2.0" then
+                        dataTable = dataTable.data
+                    end
+
+                    sql.Query(
+                        "CREATE TABLE IF NOT EXISTS rareload_permissions (steamid TEXT PRIMARY KEY, permissions TEXT, last_updated INTEGER)")
+                    sql.Query("DELETE FROM rareload_permissions")
+
+                    for _, row in ipairs(dataTable) do
+                        sql.Query(string.format(
+                            "INSERT INTO rareload_permissions (steamid, permissions, last_updated) VALUES (%s, %s, %d)",
+                            sql.SQLStr(row.steamid),
+                            sql.SQLStr(row.permissions),
+                            tonumber(row.last_updated) or os.time()
+                        ))
+                    end
+
+                    print("[Rareload] Restored from backup file: " .. backupFile)
+                    return RARELOAD.Permissions.Load()
+                end
+            end
+        end
+    end
+
+    print("[Rareload] All backup restoration attempts failed")
+    return false
+end
+
+function RARELOAD.Permissions.ValidateTable()
+    local columns = sql.Query("PRAGMA table_info(rareload_permissions)")
+    if not columns then return false end
+
+    local hasRequiredColumns = false
+    for _, col in ipairs(columns) do
+        if col.name == "steamid" and col.name == "permissions" then
+            hasRequiredColumns = true
+            break
+        end
+    end
+
+    return hasRequiredColumns
+end
+
+function RARELOAD.Permissions.RepairTable()
+    sql.Query(
+        "CREATE TABLE IF NOT EXISTS rareload_permissions_temp (steamid TEXT PRIMARY KEY, permissions TEXT, last_updated INTEGER)")
+
+    sql.Query("INSERT OR IGNORE INTO rareload_permissions_temp SELECT steamid, permissions, COALESCE(last_updated, " ..
+        os.time() .. ") FROM rareload_permissions")
+
+    sql.Query("DROP TABLE rareload_permissions")
+    sql.Query("ALTER TABLE rareload_permissions_temp RENAME TO rareload_permissions")
+
+    return sql.TableExists("rareload_permissions")
 end
 
 function RARELOAD.Permissions.SendDefinitions(ply)
@@ -442,159 +422,4 @@ hook.Add("PlayerInitialSpawn", "RareloadSendPermissionDefs", function(ply)
             RARELOAD.Permissions.SendDefinitions(ply)
         end
     end)
-end)
-
-function RARELOAD.Permissions.GetPermissionsByCategory()
-    local categories = {}
-
-    for permName, permData in pairs(RARELOAD.Permissions.DEFS) do
-        local category = permData.category or "OTHER"
-        if not categories[category] then
-            categories[category] = {}
-        end
-        categories[category][permName] = permData
-    end
-
-    return categories
-end
-
-function RARELOAD.Permissions.ValidatePermissionDependencies(steamID)
-    local permissions = RARELOAD.Permissions.GetPlayerPermissions(steamID)
-    local issues = {}
-
-    for permName, hasPermission in pairs(permissions) do
-        if hasPermission then
-            local permData = RARELOAD.Permissions.DEFS[permName]
-            if permData and permData.dependencies then
-                for _, depPerm in ipairs(permData.dependencies) do
-                    if not permissions[depPerm] then
-                        table.insert(issues, {
-                            permission = permName,
-                            missing_dependency = depPerm
-                        })
-                    end
-                end
-            end
-        end
-    end
-
-    return issues
-end
-
-concommand.Add("rareload_perm_give", function(ply, cmd, args)
-    if not IsValidPlayer(ply) or not (ply:IsAdmin() or ply:IsSuperAdmin()) then
-        if IsValidPlayer(ply) then
-            ply:ChatPrint("[RARELOAD] Admin access required.")
-        end
-        return
-    end
-
-    if #args < 3 then
-        ply:ChatPrint("[RARELOAD] Usage: rareload_perm_give <player> <permission> <1/0>")
-        return
-    end
-
-    local targetPly = nil
-    local searchTerm = args[1]
-
-    if tonumber(searchTerm) then
-        targetPly = player.GetByID(tonumber(searchTerm))
-    end
-
-    if not IsValid(targetPly) then
-        for _, p in ipairs(player.GetAll()) do
-            if string.find(string.lower(p:Nick()), string.lower(searchTerm), 1, true) then
-                targetPly = p
-                break
-            end
-        end
-    end
-
-    if not IsValidPlayer(targetPly) then
-        ply:ChatPrint("[RARELOAD] Player not found: " .. searchTerm)
-        return
-    end
-
-    local permName = string.upper(args[2])
-    local value = tobool(args[3])
-
-    if not IsValidPermission(permName) then
-        ply:ChatPrint("[RARELOAD] Unknown permission: " .. permName)
-        return
-    end
-
-    local permData = RARELOAD.Permissions.DEFS[permName]
-    if permData.adminOnly and not ply:IsSuperAdmin() then
-        ply:ChatPrint("[RARELOAD] You cannot modify admin-only permissions.")
-        return
-    end
-
-    if RARELOAD.Permissions.SetPermission(targetPly:SteamID(), permName, value) then
-        RARELOAD.Permissions.Save()
-        ply:ChatPrint("[RARELOAD] Permission " ..
-            permName .. " set to " .. tostring(value) .. " for " .. targetPly:Nick())
-    else
-        ply:ChatPrint("[RARELOAD] Failed to set permission.")
-    end
-end)
-
-concommand.Add("rareload_role_set", function(ply, cmd, args)
-    if not IsValidPlayer(ply) or not (ply:IsAdmin() or ply:IsSuperAdmin()) then
-        if IsValidPlayer(ply) then
-            ply:ChatPrint("[RARELOAD] Admin access required.")
-        end
-        return
-    end
-
-    if #args < 2 then
-        ply:ChatPrint("[RARELOAD] Usage: rareload_role_set <player> <role>")
-        ply:ChatPrint("[RARELOAD] Available roles: " ..
-            table.concat(table.GetKeys(RARELOAD.Permissions.ROLES or {}), ", "))
-        return
-    end
-
-    local targetPly = nil
-    local searchTerm = args[1]
-
-    if tonumber(searchTerm) then
-        targetPly = player.GetByID(tonumber(searchTerm))
-    end
-
-    if not IsValid(targetPly) then
-        for _, p in ipairs(player.GetAll()) do
-            if string.find(string.lower(p:Nick()), string.lower(searchTerm), 1, true) then
-                targetPly = p
-                break
-            end
-        end
-    end
-
-    if not IsValidPlayer(targetPly) then
-        ply:ChatPrint("[RARELOAD] Player not found: " .. searchTerm)
-        return
-    end
-
-    local roleName = string.upper(args[2])
-
-    if roleName ~= "NONE" and not IsValidRole(roleName) then
-        ply:ChatPrint("[RARELOAD] Unknown role: " .. roleName)
-        ply:ChatPrint("[RARELOAD] Available roles: " ..
-            table.concat(table.GetKeys(RARELOAD.Permissions.ROLES or {}), ", "))
-        return
-    end
-
-    if roleName ~= "NONE" and RARELOAD.Permissions.ROLES[roleName] then
-        local role = RARELOAD.Permissions.ROLES[roleName]
-        if role.permissions == "*" and not ply:IsSuperAdmin() then
-            ply:ChatPrint("[RARELOAD] You cannot assign admin roles.")
-            return
-        end
-    end
-
-    if RARELOAD.Permissions.SetPlayerRole(targetPly:SteamID(), roleName) then
-        RARELOAD.Permissions.Save()
-        ply:ChatPrint("[RARELOAD] Role " .. roleName .. " assigned to " .. targetPly:Nick())
-    else
-        ply:ChatPrint("[RARELOAD] Failed to set role.")
-    end
 end)

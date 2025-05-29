@@ -4,25 +4,11 @@ return function(ply)
         return
     end
 
-    local adminStatus = "Player"
-    local hasAdminPerms = false
-
-    if ply:IsSuperAdmin() then
-        adminStatus = "SuperAdmin"
-        hasAdminPerms = true
-    elseif ply:IsAdmin() then
-        adminStatus = "Admin"
-        hasAdminPerms = true
-    elseif RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
-        if RARELOAD.Permissions.HasPermission(ply, "ADMIN_FUNCTIONS") then
-            adminStatus = "Rareload Admin"
-            hasAdminPerms = true
-        end
+    if ply:IsAdmin() then
+        print("[RARELOAD] Admin")
+        Admin = true
+    else
+        print("[RARELOAD] Not Admin")
+        Admin = false
     end
-
-    print("[RARELOAD] " .. ply:Nick() .. " status: " .. adminStatus)
-
-    Admin = hasAdminPerms
-
-    return hasAdminPerms
 end
