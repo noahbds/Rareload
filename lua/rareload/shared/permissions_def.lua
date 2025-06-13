@@ -28,14 +28,15 @@ RARELOAD.Permissions.DEFS = {
         desc = "Can manage saved entities and NPCs",
         default = false
     },
-    ADMIN_FUNCTIONS = {
-        name = "Admin Functions",
-        desc = "Can use admin functions and access the admin panel",
+    ADMIN_PANEL = {
+        name = "Admin Panel Access",
+        desc =
+        "Can access the admin panel and manage permissions without having the 'rareload_admin' permission",
         default = false
     },
     RARELOAD_TOGGLE = {
-        name = "Rareload Toggle",
-        desc = "Can toggle settings on/off",
+        name = "Settings Toggle",
+        desc = "Can toggle addon settings on/off",
         default = false
     },
     ENTITY_VIEWER = {
@@ -45,8 +46,7 @@ RARELOAD.Permissions.DEFS = {
     },
     RARELOAD_SPAWN = {
         name = "Rareload Spawn",
-        desc = "Allowed or not to spawn with rareload",
+        desc = "Allowed to spawn with rareload features",
         default = false
-    },
-    -- Add more permissions if needed
+    }
 }

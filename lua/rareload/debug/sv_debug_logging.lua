@@ -67,14 +67,16 @@ function RARELOAD.Debug.Log(level, header, messages, entity)
 
     local fullHeader = FormatHeader(level, header or "", entity)
 
-    MsgC(levelConfig.color, "\n[=====================================================================]\n")
-    MsgC(levelConfig.color, fullHeader .. "\n")
+    if DEBUG_CONFIG.LOG_TO_CONSOLE then
+        MsgC(levelConfig.color, "\n[=====================================================================]\n")
+        MsgC(levelConfig.color, fullHeader .. "\n")
 
-    for _, message in ipairs(messages) do
-        print(FormatMessage(message))
+        for _, message in ipairs(messages) do
+            print(FormatMessage(message))
+        end
+
+        MsgC(levelConfig.color, "[=====================================================================]\n\n")
     end
-
-    MsgC(levelConfig.color, "[=====================================================================]\n\n")
 
     if DEBUG_CONFIG.LOG_TO_FILE then
         local logFile = DEBUG_CONFIG.LOG_FOLDER .. "rareload_" .. os.date("%Y-%m-%d_%H-%M") .. ".txt"
@@ -90,15 +92,11 @@ function RARELOAD.Debug.Log(level, header, messages, entity)
 end
 
 function RARELOAD.Debug.LogSquadFileOnly(title, level, logEntries)
-    print("[RARELOAD] Squad logging attempt: " .. title)
-
     if not DEBUG_CONFIG.ENABLED() then
-        print("[RARELOAD] Debug is disabled - aborting squad logging")
         return
     end
 
     if not DEBUG_CONFIG.LOG_TO_FILE then
-        print("[RARELOAD] File logging is disabled - aborting squad logging")
         return
     end
 
@@ -113,35 +111,18 @@ function RARELOAD.Debug.LogSquadFileOnly(title, level, logEntries)
     if type(logEntries) ~= "table" or #logEntries == 0 then
         logContent = logContent .. "No entries provided\n"
     else
-        for _, entry in ipairs(logEntries) do
-            local fullHeader = FormatHeader(level, entry.header or "No header", entry.entity)
-            logContent = logContent .. fullHeader .. "\n"
-
-            local messages = entry.messages or {}
-            for _, message in ipairs(messages) do
-                logContent = logContent .. FormatMessage(message) .. "\n"
-            end
-
-            logContent = logContent .. "---------------------------------------------------------------------\n"
+        for i, entry in ipairs(logEntries) do
+            logContent = logContent .. string.format("[%d] %s\n", i, tostring(entry))
         end
     end
 
-    print("[RARELOAD DEBUG] Attempting to write to: " .. logFile)
     local success, size = WriteToLogFile(logFile, logContent)
 
-    if success then
-        print("[RARELOAD] Log file written successfully. Size: " .. size .. " bytes")
-    else
-        print("[RARELOAD] ERROR: Failed to write log file!")
-
-        local rootLogFile = "rareload_emergency_log.txt"
-        local emergencySuccess = WriteToLogFile(rootLogFile, logContent)
-
-        if emergencySuccess then
-            print("[RARELOAD DEBUG] Emergency log file created in root data folder.")
-        else
-            print("[RARELOAD DEBUG] CRITICAL ERROR: Cannot write to file system at all!")
-        end
+    -- Only print to console if enabled
+    if success and DEBUG_CONFIG.LOG_TO_CONSOLE then
+        -- print("[RARELOAD] Log file written successfully. Size: " .. size .. " bytes")
+    elseif not success then
+        print("[RARELOAD ERROR] Failed to write log file: " .. logFile)
     end
 end
 
@@ -151,38 +132,22 @@ function RARELOAD.Debug.LogGroup(title, level, logEntries)
     level = level or DEBUG_CONFIG.DEFAULT_LEVEL
     local levelConfig = DEBUG_CONFIG.LEVELS[level] or DEBUG_CONFIG.LEVELS[DEBUG_CONFIG.DEFAULT_LEVEL]
 
-    MsgC(levelConfig.color, "\n[=====================================================================] " ..
-        title .. " [=====================================================================]\n\n")
+    if DEBUG_CONFIG.LOG_TO_CONSOLE then
+        MsgC(levelConfig.color,
+            "\n[=====================================================================] " .. title .. "\n")
 
-    for _, entry in ipairs(logEntries or {}) do
-        local fullHeader = FormatHeader(level, entry.header or "", entry.entity)
-        MsgC(levelConfig.color, fullHeader .. "\n")
-
-        local messages = entry.messages or {}
-        for _, message in ipairs(messages) do
-            print(FormatMessage(message))
+        if type(logEntries) == "table" then
+            for i, entry in ipairs(logEntries) do
+                print(string.format("[%d] %s", i, FormatMessage(entry)))
+            end
+        else
+            print(FormatMessage(logEntries))
         end
 
-        MsgC(levelConfig.color, "---------------------------------------------------------------------\n")
+        MsgC(levelConfig.color, "[=====================================================================]\n\n")
     end
 
-    MsgC(levelConfig.color, "[=====================================================================]\n\n")
-
     if DEBUG_CONFIG.LOG_TO_FILE then
-        local logFile = DEBUG_CONFIG.LOG_FOLDER .. "rareload_" .. os.date("%Y-%m-%d_%H-%M") .. ".txt"
-        local logContent = "[" .. GetTimestamp() .. "] " .. title .. "\n"
-
-        for _, entry in ipairs(logEntries or {}) do
-            logContent = logContent .. (entry.header or "") .. "\n"
-
-            local messages = entry.messages or {}
-            for _, message in ipairs(messages) do
-                logContent = logContent .. FormatMessage(message) .. "\n"
-            end
-
-            logContent = logContent .. "---------------------------------------------------------------------\n"
-        end
-
-        WriteToLogFile(logFile, logContent)
+        DEBUG_CONFIG.AddToLogBuffer(level, title, logEntries)
     end
 end

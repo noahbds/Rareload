@@ -4,28 +4,41 @@ RARELOAD.settings           = RARELOAD.settings or {}
 RARELOAD.playerPositions    = RARELOAD.playerPositions or {}
 RARELOAD.serverLastSaveTime = 0
 
-UI                          = include("rareload/rareload_ui.lua")
-RareloadUI                  = include("rareload/rareload_ui.lua")
-
+UI                          = include("rareload/ui/rareload_ui.lua")
+RareloadUI                  = UI
 
 ---@class TOOL
-local TOOL       = TOOL or {}
-TOOL.Category    = "Rareload"
-TOOL.Name        = "Position Saver Tool"
-TOOL.Command     = nil
-TOOL.Information = {
+local TOOL                  = TOOL or {}
+TOOL.Category               = "Rareload"
+TOOL.Name                   = "Position Saver Tool"
+TOOL.Command                = nil
+TOOL.Information            = {
     { name = "left",   stage = 0, "Click to save a respawn position at target location" },
     { name = "right",  stage = 0, "Click to save a respawn position at your location" },
     { name = "reload", stage = 0, "Reload with the Rareload tool in hand to restore your previous saved position" },
     { name = "info",   stage = 0, "By Noahbds" }
 
 }
-TOOL.ConfigName  = ""
+TOOL.ConfigName             = ""
 
 if SERVER then
-    AddCSLuaFile("rareload/rareload_ui.lua")
-    AddCSLuaFile("rareload/rareload_toolscreen.lua")
+    AddCSLuaFile("rareload/ui/rareload_ui.lua")
+    AddCSLuaFile("rareload/ui/rareload_toolscreen.lua")
     util.AddNetworkString("RareloadToolReloadState")
+    util.AddNetworkString("CreatePlayerPhantom")
+    util.AddNetworkString("RareloadRequestAntiStuckConfig")
+    util.AddNetworkString("RareloadAntiStuckConfig")
+    util.AddNetworkString("RareloadUpdateAntiStuckConfig")
+
+    AddCSLuaFile("rareload/anti_stuck/cl_anti_stuck_debug.lua")
+
+    RARELOAD.save_inventory = include("rareload/core/save_helpers/rareload_save_inventory.lua")
+    RARELOAD.save_vehicles = include("rareload/core/save_helpers/rareload_save_vehicles.lua")
+    RARELOAD.save_entities = include("rareload/core/save_helpers/rareload_save_entities.lua")
+    RARELOAD.save_npcs = include("rareload/core/save_helpers/rareload_save_npcs.lua")
+    RARELOAD.save_ammo = include("rareload/core/save_helpers/rareload_save_ammo.lua")
+    RARELOAD.save_vehicle_state = include("rareload/core/save_helpers/rareload_save_vehicle_state.lua")
+    RARELOAD.position_history = include("rareload/core/save_helpers/rareload_position_history.lua")
 end
 
 if CLIENT then
@@ -91,14 +104,39 @@ local function loadAddonSettings()
     return true, nil
 end
 
-local save_inventory = include("rareload/server/save_helpers/rareload_save_inventory.lua")
-local save_vehicles = include("rareload/server/save_helpers/rareload_save_vehicles.lua")
-local save_entities = include("rareload/server/save_helpers/rareload_save_entities.lua")
-local save_npcs = include("rareload/server/save_helpers/rareload_save_npcs.lua")
-local save_ammo = include("rareload/server/save_helpers/rareload_save_ammo.lua")
-local save_vehicle_state = include("rareload/server/save_helpers/rareload_save_vehicle_state.lua")
-local position_history = include("rareload/server/save_helpers/rareload_position_history.lua")
+local function toVecTable(vec)
+    if type(vec) == "Vector" then
+        return { x = vec.x, y = vec.y, z = vec.z }
+    elseif type(vec) == "table" and vec.x and vec.y and vec.z then
+        return vec
+    elseif type(vec) == "string" then
+        local x, y, z = string.match(vec, "%[([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)%]")
+        if not x then x, y, z = string.match(vec, "([%d%-%.]+),%s*([%d%-%.]+),%s*([%d%-%.]+)") end
+        if not x then x, y, z = string.match(vec, "^([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)$") end
+        if x and y and z then
+            return { x = tonumber(x), y = tonumber(y), z = tonumber(z) }
+        end
+    end
+    return { x = 0, y = 0, z = 0 }
+end
 
+local function toAngTable(ang)
+    if type(ang) == "Angle" then
+        return { p = ang.p, y = ang.y, r = ang.r }
+    elseif type(ang) == "table" and ang.p and ang.y and ang.r then
+        return ang
+    elseif type(ang) == "table" and #ang == 3 then
+        return { p = ang[1], y = ang[2], r = ang[3] }
+    elseif type(ang) == "string" then
+        local p, y, r = string.match(ang, "{([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)}")
+        if not p then p, y, r = string.match(ang, "([%d%-%.]+),%s*([%d%-%.]+),%s*([%d%-%.]+)") end
+        if not p then p, y, r = string.match(ang, "^([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)$") end
+        if p and y and r then
+            return { p = tonumber(p), y = tonumber(y), r = tonumber(r) }
+        end
+    end
+    return { p = 0, y = 0, r = 0 }
+end
 
 function TOOL:LeftClick(trace, ply)
     local ply = self:GetOwner()
@@ -120,11 +158,11 @@ function TOOL:LeftClick(trace, ply)
     local mapName = game.GetMap()
     RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
 
-    local newPos = trace.HitPos
-    local newAng = ply:EyeAngles()
+    local newPos = toVecTable(trace.HitPos)
+    local newAng = toAngTable(ply:EyeAngles())
     local newActiveWeapon = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or "None"
 
-    local newInventory = save_inventory(ply)
+    local newInventory = RARELOAD.save_inventory(ply)
 
     if RARELOAD.settings.retainGlobalInventory then
         local globalInventory = {}
@@ -184,7 +222,7 @@ function TOOL:LeftClick(trace, ply)
 
     local playerData = {
         pos = newPos,
-        ang = { newAng.p, newAng.y, newAng.r },
+        ang = newAng,
         moveType = ply:GetMoveType(),
         playermodel = ply:GetModel(),
         activeWeapon = newActiveWeapon,
@@ -197,23 +235,23 @@ function TOOL:LeftClick(trace, ply)
     end
 
     if RARELOAD.settings.retainAmmo then
-        playerData.ammo = save_ammo(ply, newInventory)
+        playerData.ammo = RARELOAD.save_ammo(ply, newInventory)
     end
 
     if RARELOAD.settings.retainVehicles then
-        playerData.vehicles = save_vehicles(ply)
+        playerData.vehicles = RARELOAD.save_vehicles(ply)
     end
 
     if RARELOAD.settings.retainVehicleState and ply:InVehicle() then
-        playerData.vehicleState = save_vehicle_state(ply)
+        playerData.vehicleState = RARELOAD.save_vehicle_state(ply)
     end
 
     if RARELOAD.settings.retainMapEntities then
-        playerData.entities = save_entities(ply)
+        playerData.entities = RARELOAD.save_entities(ply)
     end
 
     if RARELOAD.settings.retainMapNPCs then
-        playerData.npcs = save_npcs(ply)
+        playerData.npcs = RARELOAD.save_npcs(ply)
     end
 
     RARELOAD.CacheCurrentPositionData(ply:SteamID(), mapName)
@@ -235,13 +273,13 @@ function TOOL:LeftClick(trace, ply)
     if RARELOAD.settings.debugEnabled then
         net.Start("CreatePlayerPhantom")
         net.WriteEntity(ply)
-        net.WriteVector(playerData.pos)
-        local savedAng = Angle(playerData.ang[1], playerData.ang[2], playerData.ang[3])
+        net.WriteVector(Vector(newPos.x, newPos.y, newPos.z))
+        local savedAng = Angle(newAng.p, newAng.y, newAng.r)
         net.WriteAngle(savedAng)
         net.Broadcast()
     end
 
-    RARELOAD.UpdateClientPhantoms(ply, playerData.pos, Angle(playerData.ang[1], playerData.ang[2], playerData.ang[3]))
+    RARELOAD.UpdateClientPhantoms(ply, newPos, newAng)
     return true
 end
 
@@ -309,15 +347,16 @@ function TOOL:Reload()
                 if RARELOAD.settings.debugEnabled then
                     net.Start("CreatePlayerPhantom")
                     net.WriteEntity(ply)
-                    net.WriteVector(previousData.pos)
-                    local savedAng = Angle(previousData.ang[1], previousData.ang[2], previousData.ang[3])
-                    net.WriteAngle(savedAng)
+                    local pos = toVecTable(previousData.pos)
+                    net.WriteVector(Vector(pos.x, pos.y, pos.z))
+                    local ang = toAngTable(previousData.ang)
+                    net.WriteAngle(Angle(ang.p, ang.y, ang.r))
                     net.Broadcast()
 
                     net.Start("UpdatePhantomPosition")
                     net.WriteString(steamID)
-                    net.WriteVector(previousData.pos)
-                    net.WriteAngle(Angle(previousData.ang[1], previousData.ang[2], previousData.ang[3]))
+                    net.WriteVector(Vector(pos.x, pos.y, pos.z))
+                    net.WriteAngle(Angle(ang.p, ang.y, ang.r))
                     net.Send(ply)
                 end
 
@@ -350,19 +389,19 @@ function TOOL.BuildCPanel(panel)
     if not success then
         ErrorNoHalt("Failed to load addon settings: " .. (err or "unknown error"))
 
-        ---@diagnostic disable-next-line: param-type-mismatch
         local errorLabel = vgui.Create("DLabel", panel)
-        errorLabel:SetText("Error loading settings! Please check console.")
-        errorLabel:SetTextColor(RareloadUI.COLORS.DISABLED)
+        errorLabel:SetText("Error loading Rareload Tool")
+        errorLabel:SetTextColor(Color(255, 50, 50))
         errorLabel:Dock(TOP)
-        errorLabel:DockMargin(10, 10, 10, 10)
-        errorLabel:SetWrap(true)
-        errorLabel:SetTall(40)
-
+        errorLabel:DockMargin(5, 5, 5, 5)
         return
     end
 
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
+
+    panel:AddControl("Label", {
+        Text = "Main settings for the Rareload tool",
+    })
 
     RareloadUI.CreateButton(panel, "Toggle Rareload", "rareload_rareload",
         "Enable or disable Rareload", "addonEnabled")
@@ -410,6 +449,13 @@ function TOOL.BuildCPanel(panel)
         "Manually save your current position now"
     )
 
+    RareloadUI.CreateSeparator(panel)
+
+    panel:AddControl("Label", {
+        Text = "Slider Settings",
+        Description = "Adjust the settings below to customize the Rareload tool"
+    })
+
 
     RareloadUI.CreateSlider(
         panel,
@@ -452,11 +498,39 @@ function TOOL.BuildCPanel(panel)
 
     RareloadUI.CreateSeparator(panel)
 
-    ---@diagnostic disable-next-line: undefined-field
-    panel:Button("Open Entity Viewer", "entity_viewer_open")
+    panel:AddControl("Label", {
+        Text = "Anti-Stuck Debugging Tools",
+        Description = "Tools for testing and configuring the anti-stuck system"
+    })
+
+    local debugBtn = vgui.Create("DButton", panel)
+    debugBtn:SetText("Open Anti-Stuck Debug Panel")
+    debugBtn:SetSize(200, 25)
+    debugBtn:Dock(TOP)
+    debugBtn:DockMargin(5, 5, 5, 5)
+    debugBtn.DoClick = function()
+        RunConsoleCommand("rareload_open_antistuck_debug")
+    end
+    panel:AddItem(debugBtn)
+
+    RareloadUI.CreateSeparator(panel)
+
+    panel:AddControl("Label", {
+        Text = "Entity Viewer to manage saved entities and npcs",
+    })
+
+    local entv = vgui.Create("DButton", panel)
+    entv:SetText("Open Entity Viewer")
+    entv:SetSize(200, 25)
+    entv:Dock(TOP)
+    entv:DockMargin(5, 5, 5, 5)
+    entv.DoClick = function()
+        RunConsoleCommand("entity_viewer_open")
+    end
+    panel:AddItem(entv)
 end
 
-local screenTool = include("rareload/rareload_toolscreen.lua")
+local screenTool = include("rareload/ui/rareload_toolscreen.lua")
 
 function TOOL:DrawToolScreen()
     screenTool:Draw(256, 256, RARELOAD, loadAddonSettings)

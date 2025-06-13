@@ -32,215 +32,151 @@ local function ValidatePlayer(ply, functionName)
     return true
 end
 
+
 function RARELOAD.Debug.LogSpawnInfo(ply)
     if not DEBUG_CONFIG.ENABLED() then return end
+    if not IsValid(ply) then return end
 
-    local playerID = FormatPlayerIdentifier(ply)
-    if not ValidatePlayer(ply, "LogSpawnInfo") then return end
+    local spawnInfo = {
+        "Player: " .. ply:Nick() .. " (" .. ply:SteamID() .. ")",
+        "Position: " .. tostring(ply:GetPos()),
+        "Health: " .. ply:Health(),
+        "Armor: " .. ply:Armor(),
+        "Model: " .. ply:GetModel(),
+        "Team: " .. team.GetName(ply:Team()),
+        "Admin Status: " .. (ply:IsSuperAdmin() and "SuperAdmin" or (ply:IsAdmin() and "Admin" or "Player"))
+    }
 
-    DelayedDebugCheck(0.4, function()
-        if not IsValid(ply) then
-            RARELOAD.Debug.Log("ERROR", "LogSpawnInfo Failed",
-                string_format("Player became invalid during timer delay: %s", playerID))
-            return
-        end
-
-        local playerState = {
-            position = VectorToDetailedString(ply:GetPos()),
-            eyeAngles = AngleToDetailedString(ply:EyeAngles()),
-            moveType = MoveTypeToString(ply:GetMoveType()),
-            velocity = VectorToDetailedString(ply:GetVelocity()),
-            health = string_format("%d / %d", ply:Health(), ply:GetMaxHealth()),
-            armor = ply:Armor(),
-            team = team.GetName(ply:Team()) or ply:Team(),
-            model = ply:GetModel(),
-            isOnGround = ply:IsOnGround() and "Yes" or "No",
-            isCrouching = ply:Crouching() and "Yes" or "No",
-            inVehicle = IsValid(ply:GetVehicle()) and
-                string_format("Yes (%s)", ply:GetVehicle():GetClass()) or "No",
-            currentWeapon = IsValid(ply:GetActiveWeapon()) and
-                ply:GetActiveWeapon():GetClass() or "None",
-            walkSpeed = ply:GetWalkSpeed(),
-            runSpeed = ply:GetRunSpeed(),
-            crouchSpeed = ply:GetCrouchedWalkSpeed() * ply:GetWalkSpeed()
-        }
-
-        local messageData = {
-            "=== PLAYER STATE ===",
-            string_format("Position: %s", playerState.position),
-            string_format("Eye Angles: %s", playerState.eyeAngles),
-            string_format("Move Type: %s", playerState.moveType),
-            string_format("Velocity: %s", playerState.velocity),
-            string_format("Health: %s", playerState.health),
-            string_format("Armor: %d", playerState.armor),
-
-            "=== PLAYER DETAILS ===",
-            string_format("Team: %s", playerState.team),
-            string_format("Model: %s", playerState.model),
-            string_format("On Ground: %s", playerState.isOnGround),
-            string_format("Crouching: %s", playerState.isCrouching),
-            string_format("In Vehicle: %s", playerState.inVehicle),
-            string_format("Current Weapon: %s", playerState.currentWeapon),
-
-            "=== MOVEMENT STATS ===",
-            string_format("Walk Speed: %.1f", playerState.walkSpeed),
-            string_format("Run Speed: %.1f", playerState.runSpeed),
-            string_format("Crouch Speed: %.1f", playerState.crouchSpeed)
-        }
-
-        if RARELOAD.settings.verboseDebug then
-            local settings = table.Copy(RARELOAD.settings) -- Safe copy
-            table_insert(messageData, "\n=== CURRENT SETTINGS ===")
-            table_insert(messageData, settings)
-        end
-
-        RARELOAD.Debug.Log("INFO", "Spawn Debug Information", messageData, ply)
-
-        RARELOAD.Debug.LogInventory(ply)
-    end)
+    RARELOAD.Debug.Log("INFO", "Player Spawn Information", spawnInfo, ply)
 end
 
 function RARELOAD.Debug.LogInventory(ply)
-    DelayedDebugCheck(0.5, function()
-        if not ValidatePlayer(ply, "LogInventory") then return end
+    if not DEBUG_CONFIG.ENABLED() then return end
+    if not IsValid(ply) then return end
 
-        local weaponData = {}
-        local totalWeapons = 0
-        local activeWeapon = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon() or nil
+    local weapons = ply:GetWeapons()
+    local weaponList = {}
 
-        for _, weapon in ipairs(ply:GetWeapons()) do
-            totalWeapons = totalWeapons + 1
-            local primaryAmmoType = weapon:GetPrimaryAmmoType()
-            local secondaryAmmoType = weapon:GetSecondaryAmmoType()
-
-            local primaryAmmoName = primaryAmmoType ~= -1 and game.GetAmmoName(primaryAmmoType) or "None"
-            local secondaryAmmoName = secondaryAmmoType ~= -1 and game.GetAmmoName(secondaryAmmoType) or "None"
-
-            local wpnInfo = {
-                class = weapon:GetClass(),
-                clip1 = weapon:Clip1(),
-                clip2 = weapon:Clip2(),
-                primaryAmmo = string_format("%s%s", primaryAmmoName,
-                    primaryAmmoType ~= -1 and string_format(" (ID:%d)", primaryAmmoType) or ""),
-                secondaryAmmo = string_format("%s%s", secondaryAmmoName,
-                    secondaryAmmoType ~= -1 and string_format(" (ID:%d)", secondaryAmmoType) or ""),
-                isActive = activeWeapon and (activeWeapon:EntIndex() == weapon:EntIndex())
-            }
-            table_insert(weaponData, wpnInfo)
+    for i, weapon in ipairs(weapons) do
+        if IsValid(weapon) then
+            table.insert(weaponList, string.format("%d. %s", i, weapon:GetClass()))
         end
+    end
 
-        local ammoData = {}
-        local ammoCount = 0
-        for ammoID = 1, 32 do
-            local count = ply:GetAmmoCount(ammoID)
-            if count > 0 then
-                local ammoName = game.GetAmmoName(ammoID)
-                if ammoName then
-                    ammoData[ammoName] = {
-                        id = ammoID,
-                        count = count
-                    }
-                    ammoCount = ammoCount + 1
-                end
-            end
-        end
+    if #weaponList == 0 then
+        weaponList = { "No weapons" }
+    end
 
-        local weaponDetails = {}
-        for i, wpn in ipairs(weaponData) do
-            local activeMarker = wpn.isActive and " [ACTIVE]" or ""
-            local clipInfo = wpn.clip1 ~= -1 and string_format(" | Clip: %d", wpn.clip1) or ""
+    local activeWeapon = ply:GetActiveWeapon()
+    local activeWeaponClass = IsValid(activeWeapon) and activeWeapon:GetClass() or "None"
 
-            table_insert(weaponDetails, string_format("%d. %s%s%s",
-                i, wpn.class, activeMarker, clipInfo))
+    table.insert(weaponList, 1, "Active Weapon: " .. activeWeaponClass)
+    table.insert(weaponList, 2, "Total Weapons: " .. (#weaponList - 2))
 
-            table_insert(weaponDetails, string_format("   - Primary: %s", wpn.primaryAmmo))
-            if wpn.secondaryAmmo ~= "None" then
-                table_insert(weaponDetails, string_format("   - Secondary: %s", wpn.secondaryAmmo))
-            end
-        end
-
-        local ammoDetails = {}
-        for name, data in pairs(ammoData) do
-            table_insert(ammoDetails, string_format("%s: %d (ID:%d)", name, data.count, data.id))
-        end
-
-        local savedActiveWeapon = SavedInfo and SavedInfo.activeWeapon or "None"
-
-        RARELOAD.Debug.Log("INFO", "Player Inventory", {
-            string_format("Total Weapons: %d | Active Weapon: %s", totalWeapons, savedActiveWeapon),
-            "",
-            "=== WEAPON DETAILS ===",
-            table_concat(weaponDetails, "\n"),
-            "",
-            string_format("=== AMMO INVENTORY (%d types) ===", ammoCount),
-            #ammoDetails > 0 and table_concat(ammoDetails, "\n") or "No ammo"
-        }, ply)
-    end)
+    RARELOAD.Debug.Log("VERBOSE", "Player Inventory", weaponList, ply)
 end
 
-function RARELOAD.Debug.LogAfterRespawnInfo()
-    DelayedDebugCheck(0.6, function()
-        if not SavedInfo then
-            RARELOAD.Debug.Log("ERROR", "After Respawn Debug", "SavedInfo is nil!")
-            return
+function RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
+    if not DEBUG_CONFIG.ENABLED() then return end
+
+    local hasMessages = false
+    for _, flag in pairs(debugFlags) do
+        if flag then
+            hasMessages = true
+            break
         end
+    end
 
-        local savedInfoData = {
-            moveType = MoveTypeToString(SavedInfo.moveType),
-            position = VectorToDetailedString(SavedInfo.pos),
-            angles = AngleToDetailedString(SavedInfo.ang),
-            activeWeapon = SavedInfo.activeWeapon or "None",
-            health = SavedInfo.health or 0,
-            armor = SavedInfo.armor or 0,
-        }
+    if not hasMessages then return end
 
-        local inventoryInfo = SavedInfo.inventory and table_concat(SavedInfo.inventory, ", ") or "None"
-        local ammoInfo = {}
+    local logEntries = {}
 
-        if SavedInfo.ammo then
-            for _, ammoData in ipairs(SavedInfo.ammo) do
-                table_insert(ammoInfo, string_format("%s: %d", ammoData.type, ammoData.count))
-            end
+    if debugFlags.adminOnly and #debugMessages.adminOnly > 0 then
+        table.insert(logEntries, "=== Admin-Only Weapons Not Given ===")
+        for _, msg in ipairs(debugMessages.adminOnly) do
+            table.insert(logEntries, msg)
         end
+    end
 
-        local entityCount = SavedInfo.entities and #SavedInfo.entities or 0
-        local npcCount = SavedInfo.npcs and #SavedInfo.npcs or 0
+    if debugFlags.notRegistered and #debugMessages.notRegistered > 0 then
+        table.insert(logEntries, "=== Unregistered Weapons ===")
+        for _, msg in ipairs(debugMessages.notRegistered) do
+            table.insert(logEntries, msg)
+        end
+    end
 
-        RARELOAD.Debug.Log("INFO", "After Respawn Information", {
-            "Saved Data:", savedInfoData,
-            string_format("Inventory: %s", inventoryInfo),
-            string_format("Ammo: %s", (#ammoInfo > 0 and table_concat(ammoInfo, ", ") or "None")),
-            string_format("Saved Entities: %d", entityCount),
-            string_format("Saved NPCs: %d", npcCount)
-        })
-    end)
+    if debugFlags.givenWeapons and #debugMessages.givenWeapons > 0 then
+        table.insert(logEntries, "=== Weapon Assignment Results ===")
+        for _, msg in ipairs(debugMessages.givenWeapons) do
+            table.insert(logEntries, msg)
+        end
+    end
+
+    RARELOAD.Debug.Log("INFO", "Weapon Restoration Results", logEntries)
 end
 
-function RARELOAD.Debug.LogWeaponMessages(debugMessages, debugInfo)
-    DelayedDebugCheck(0.7, function()
-        if not debugMessages or not debugInfo then
-            RARELOAD.Debug.Log("ERROR", "Weapon Messages Debug", "Missing required parameters")
-            return
-        end
+function RARELOAD.Debug.LogPositionSave(ply, position, reason)
+    if not DEBUG_CONFIG.ENABLED() then return end
+    if not IsValid(ply) or not position then return end
 
-        local weaponData = {
-            adminOnly = (debugInfo.adminOnly and debugMessages.adminOnly) or {},
-            notRegistered = (debugInfo.notRegistered and debugMessages.notRegistered) or {},
-            givenWeapons = (debugInfo.givenWeapons and debugMessages.givenWeapons) or {}
+    local saveInfo = {
+        "Reason: " .. (reason or "Manual save"),
+        "Position: " .. tostring(position),
+        "Map: " .. game.GetMap(),
+        "Timestamp: " .. os.date("%Y-%m-%d %H:%M:%S")
+    }
+
+    RARELOAD.Debug.Log("VERBOSE", "Position Saved", saveInfo, ply)
+end
+
+function RARELOAD.Debug.LogAutoSave(ply, interval)
+    if not DEBUG_CONFIG.ENABLED() then return end
+    if not IsValid(ply) then return end
+
+    ply.rareloadAutoSaveCount = (ply.rareloadAutoSaveCount or 0) + 1
+
+    if ply.rareloadAutoSaveCount % 10 == 0 then
+        local autoSaveInfo = {
+            "Auto-save #" .. ply.rareloadAutoSaveCount,
+            "Interval: " .. (interval or "Unknown") .. " seconds",
+            "Position: " .. tostring(ply:GetPos())
         }
 
-        if debugInfo.adminOnly and #weaponData.adminOnly > 0 then
-            RARELOAD.Debug.Log("WARNING", "Admin Only Weapons", weaponData.adminOnly)
-        end
+        RARELOAD.Debug.Log("VERBOSE", "Auto-Save Checkpoint", autoSaveInfo, ply)
+    end
+end
 
-        if debugInfo.notRegistered and #weaponData.notRegistered > 0 then
-            RARELOAD.Debug.Log("ERROR", "Unregistered Weapons", weaponData.notRegistered)
-        end
+function RARELOAD.Debug.LogAntiStuck(ply, originalPos, finalPos, method, success)
+    if not DEBUG_CONFIG.ENABLED() then return end
+    if not IsValid(ply) then return end
 
-        if debugInfo.givenWeapons and #weaponData.givenWeapons > 0 then
-            RARELOAD.Debug.Log("INFO", "Given Weapons", weaponData.givenWeapons)
-        end
-    end)
+    local stuckInfo = {
+        "Original Position: " .. tostring(originalPos),
+        "Final Position: " .. tostring(finalPos),
+        "Method Used: " .. (method or "Unknown"),
+        "Success: " .. (success and "Yes" or "No"),
+        "Distance Moved: " .. string.format("%.2f units", originalPos:Distance(finalPos))
+    }
+
+    local level = success and "INFO" or "WARNING"
+    RARELOAD.Debug.Log(level, "Anti-Stuck Resolution", stuckInfo, ply)
+end
+
+function RARELOAD.Debug.LogPermissionCheck(ply, permission, granted, reason)
+    if not DEBUG_CONFIG.ENABLED() then return end
+    if not IsValid(ply) then return end
+
+    if not granted or permission:find("ADMIN") then
+        local permInfo = {
+            "Permission: " .. permission,
+            "Granted: " .. (granted and "Yes" or "No"),
+            "Reason: " .. (reason or "Standard check"),
+            "Admin Level: " .. (ply:IsSuperAdmin() and "SuperAdmin" or (ply:IsAdmin() and "Admin" or "Player"))
+        }
+
+        local level = granted and "INFO" or "WARNING"
+        RARELOAD.Debug.Log(level, "Permission Check", permInfo, ply)
+    end
 end
 
 function RARELOAD.Debug.BufferClipRestore(clip1, clip2, weapon)
@@ -454,4 +390,76 @@ function RARELOAD.Debug.TestSystemState()
         RARELOAD.Debug.Log("INFO", "Rareload System State", state)
         return state
     end)
+end
+
+function RARELOAD.Debug.LogAntiStuck(operation, methodName, data, ply)
+    if not DEBUG_CONFIG or not DEBUG_CONFIG.ENABLED() then return end
+
+    local header = "Anti-Stuck"
+    if methodName and methodName ~= "" then
+        header = header .. " [" .. methodName .. "]"
+    end
+
+    local level = "INFO"
+    if string.find(string.lower(operation or ""), "error") or
+        string.find(string.lower(operation or ""), "fail") or
+        string.find(string.lower(operation or ""), "critical") then
+        level = "ERROR"
+    elseif string.find(string.lower(operation or ""), "warn") then
+        level = "WARNING"
+    end
+
+    local mainMessage = operation
+
+    local additionalDetails = {}
+    if type(data) == "table" then
+        if data.methodCount then
+            table.insert(additionalDetails, "Methods count: " .. data.methodCount)
+        end
+
+        if data.source then
+            table.insert(additionalDetails, "Source: " .. data.source)
+        end
+
+        if data.position then
+            if type(data.position) == "Vector" then
+                table.insert(additionalDetails, "Position: " .. VectorToDetailedString(data.position))
+            else
+                table.insert(additionalDetails, "Position: " .. tostring(data.position))
+            end
+        end
+
+        if data.success ~= nil then
+            table.insert(additionalDetails, "Success: " .. (data.success and "Yes" or "No"))
+        end
+
+        if data.reason then
+            table.insert(additionalDetails, "Reason: " .. tostring(data.reason))
+        end
+
+        for k, v in pairs(data) do
+            if k ~= "methodName" and k ~= "methodCount" and
+                k ~= "position" and k ~= "success" and
+                k ~= "reason" and k ~= "source" and
+                k ~= "methods" and type(v) ~= "table" then
+                table.insert(additionalDetails, k .. ": " .. tostring(v))
+            end
+        end
+
+        if data.methods and type(data.methods) == "table" and
+            (string.find(operation, "priorities") or string.find(operation, "Methods")) then
+            table.insert(additionalDetails, "")
+            table.insert(additionalDetails, "Method priorities:")
+            for i, method in ipairs(data.methods) do
+                local status = method.enabled and "Enabled" or "Disabled"
+                table.insert(additionalDetails, string.format("  %d. %s (%s)", i, method.name, status))
+            end
+        end
+    end
+
+    if #additionalDetails > 0 then
+        RARELOAD.Debug.Log(level, header, { mainMessage, "", unpack(additionalDetails) }, ply)
+    else
+        RARELOAD.Debug.Log(level, header, mainMessage, ply)
+    end
 end
