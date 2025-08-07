@@ -273,24 +273,13 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
             entData.pos = pos
         end
         if entData.ang and type(entData.ang) ~= "Angle" then
-            if type(entData.ang) == "table" and entData.ang.p and entData.ang.y and entData.ang.r then
-                entData.ang = Angle(entData.ang.p, entData.ang.y, entData.ang.r)
-            elseif type(entData.ang) == "table" and #entData.ang == 3 then
-                entData.ang = Angle(entData.ang[1], entData.ang[2], entData.ang[3])
-            elseif type(entData.ang) == "string" then
-                local p, y, r = string.match(entData.ang, "[{%(]?([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)[%]%)?}]")
-                if not (p and y and r) then
-                    p, y, r = string.match(entData.ang, "^([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)$")
-                end
-                if not (p and y and r) then
-                    p, y, r = string.match(entData.ang, "([%d%-%.]+),%s*([%d%-%.]+),%s*([%d%-%.]+)")
-                end
-                if p and y and r then
-                    entData.ang = Angle(tonumber(p), tonumber(y), tonumber(r))
-                else
-                    entData.ang = nil
-                end
+            -- Load centralized conversion functions
+            if not RARELOAD or not RARELOAD.DataUtils then
+                include("rareload/utils/rareload_data_utils.lua")
             end
+
+            local convertedAngle = RARELOAD.DataUtils.ToAngle(entData.ang)
+            entData.ang = convertedAngle
         end
         if not entData.class or type(entData.class) ~= "string" or entData.class == "" then
             stats.failed = stats.failed + 1
@@ -440,21 +429,15 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
                     ang = Angle(entData.ang.p, entData.ang.y, entData.ang.r)
                 elseif type(entData.ang) == "table" and #entData.ang == 3 then
                     ang = Angle(entData.ang[1], entData.ang[2], entData.ang[3])
-                elseif type(entData.ang) == "string" then
-                    local p, y, r = string.match(entData.ang, "[{%(]?([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)[%]%)?}]")
-                    if not (p and y and r) then
-                        p, y, r = string.match(entData.ang, "^([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)$")
-                    end
-                    if not (p and y and r) then
-                        p, y, r = string.match(entData.ang, "([%d%-%.]+),%s*([%d%-%.]+),%s*([%d%-%.]+)")
-                    end
-                    if p and y and r then
-                        ang = Angle(tonumber(p), tonumber(y), tonumber(r))
-                    else
-                        ang = nil
-                    end
                 else
-                    ang = util.StringToType(tostring(entData.ang), "Angle")
+                    -- Use centralized conversion functions for string and other types
+                    if not RARELOAD or not RARELOAD.DataUtils then
+                        include("rareload/utils/rareload_data_utils.lua")
+                    end
+                    ang = RARELOAD.DataUtils.ToAngle(entData.ang)
+                    if not ang then
+                        ang = util.StringToType(tostring(entData.ang), "Angle")
+                    end
                 end
                 if ang then
                     ent:SetAngles(ang)

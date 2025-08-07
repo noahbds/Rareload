@@ -68,29 +68,6 @@ THEME = {
     textDark = Color(97, 106, 117)
 }
 
-local function createFont(name, family, size, weight)
-    ---@diagnostic disable-next-line: missing-fields
-    surface.CreateFont(name, {
-        font = family,
-        size = size,
-        weight = weight or 400,
-        antialias = true,
-        extended = true
-    })
-end
-
-createFont("RareloadDisplay", "Segoe UI", 36, 700)
-createFont("RareloadHeading", "Segoe UI", 24, 600)
-createFont("RareloadSubheading", "Segoe UI", 18, 500)
-createFont("RareloadBody", "Segoe UI", 14, 400)
-createFont("RareloadCaption", "Segoe UI", 12, 400)
-createFont("RareloadLabel", "Segoe UI", 13, 500)
-
-createFont("RareloadHeader", "Segoe UI", 22, 600)
-createFont("RareloadTitle", "Segoe UI", 28, 700)
-createFont("RareloadText", "Segoe UI", 14, 400)
-createFont("RareloadSmall", "Segoe UI", 12, 400)
-
 function THEME:GetHealthColor(health, maxHealth)
     if not health or not maxHealth or maxHealth <= 0 then
         return self.textSecondary

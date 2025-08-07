@@ -1,22 +1,6 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.JSONEditor = RARELOAD.JSONEditor or {}
 
-surface.CreateFont("RareloadEditor", {
-    font = "Courier New",
-    size = 20,
-    weight = 400,
-    antialias = true,
-    additive = false
-})
-
-surface.CreateFont("RareloadEditorSmall", {
-    font = "Arial",
-    size = 20,
-    weight = 400,
-    antialias = true,
-    additive = false
-})
-
 local SYNTAX_COLORS = {
     string_key = Color(102, 217, 239),
     string_value = Color(166, 226, 46),
@@ -55,7 +39,7 @@ local function TokenizeJSON(text)
 
             if endPos <= len then
                 potentialVector = string.sub(text, start, endPos)
-                if ParsePosString and ParsePosString(potentialVector) then
+                if RARELOAD.DataUtils.ParsePositionString and RARELOAD.DataUtils.ParsePositionString(potentialVector) then
                     table.insert(tokens, {
                         type = "vector",
                         content = potentialVector,
@@ -92,7 +76,7 @@ local function TokenizeJSON(text)
 
             if endPos <= len then
                 potentialAngle = string.sub(text, start, endPos)
-                if ParseAngString and ParseAngString(potentialAngle) then
+                if RARELOAD.DataUtils.ParseAngleString and RARELOAD.DataUtils.ParseAngleString(potentialAngle) then
                     table.insert(tokens, {
                         type = "angle",
                         content = potentialAngle,
@@ -260,49 +244,16 @@ local function FormatJSON(data, indent)
     end
 end
 
-include("rareload/utils/vector_serialization.lua")
-local ParsePosString = RARELOAD.ParsePosString
-local ParseAngString = RARELOAD.ParseAngString
-local PosTableToString = RARELOAD.PosTableToString
-local AngTableToString = RARELOAD.AngTableToString
-
 function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
     local panel = vgui.Create("DPanel", parent)
     panel:Dock(FILL)
-    panel.Paint = function() end
-
+    panel.Paint = function() end -- Use centralized functions for formatting position and angle data
     if data.pos then
-        if type(data.pos) == "table" then
-            if data.pos.x and data.pos.y and data.pos.z then
-                data.pos = string.format("[%.4f %.4f %.4f]", data.pos.x, data.pos.y, data.pos.z)
-            elseif #data.pos == 3 then
-                data.pos = string.format("[%.4f %.4f %.4f]", data.pos[1], data.pos[2], data.pos[3])
-            end
-        elseif type(data.pos) == "string" then
-            if not string.match(data.pos, "^%[.*%]$") then
-                local x, y, z = string.match(data.pos, "([%-%d%.]+)%s+([%-%d%.]+)%s+([%-%d%.]+)")
-                if x and y and z then
-                    data.pos = string.format("[%.4f %.4f %.4f]", tonumber(x), tonumber(y), tonumber(z))
-                end
-            end
-        end
+        data.pos = RARELOAD.DataUtils.FormatPositionForJSON(data.pos, 4)
     end
 
     if data.ang then
-        if type(data.ang) == "table" then
-            if data.ang.p and data.ang.y and data.ang.r then
-                data.ang = string.format("{%.4f %.4f %.4f}", data.ang.p, data.ang.y, data.ang.r)
-            elseif #data.ang == 3 then
-                data.ang = string.format("{%.4f %.4f %.4f}", data.ang[1], data.ang[2], data.ang[3])
-            end
-        elseif type(data.ang) == "string" then
-            if not string.match(data.ang, "^{.*}$") then
-                local p, y, r = string.match(data.ang, "([%-%d%.]+)%s+([%-%d%.]+)%s+([%-%d%.]+)")
-                if p and y and r then
-                    data.ang = string.format("{%.4f %.4f %.4f}", tonumber(p), tonumber(y), tonumber(r))
-                end
-            end
-        end
+        data.ang = RARELOAD.DataUtils.FormatAngleForJSON(data.ang, 4)
     end
 
     local formattedJSON = FormatJSON(data)
@@ -315,6 +266,16 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
         surface.SetDrawColor(100, 100, 120, 150)
         surface.DrawOutlinedRect(0, 0, w, h, 2)
     end
+
+    ---@class DTextEntry
+    local textEntry = vgui.Create("DTextEntry", editorContainer)
+    textEntry:Dock(FILL)
+    textEntry:DockMargin(0, 8, 8, 8)
+    textEntry:SetMultiline(true)
+    textEntry:SetFont("RareloadEditor")
+    textEntry:SetUpdateOnType(true)
+    textEntry:SetValue(formattedJSON)
+    textEntry:SetTextColor(Color(220, 220, 230))
 
     local lineNumbers = vgui.Create("DPanel", editorContainer)
     lineNumbers:SetWide(60)
@@ -336,15 +297,6 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
             end
         end
     end
-
-    local textEntry = vgui.Create("DTextEntry", editorContainer)
-    textEntry:Dock(FILL)
-    textEntry:DockMargin(0, 8, 8, 8)
-    textEntry:SetMultiline(true)
-    textEntry:SetFont("RareloadEditor")
-    textEntry:SetUpdateOnType(true)
-    textEntry:SetValue(formattedJSON)
-    textEntry:SetTextColor(Color(220, 220, 230))
 
     local tokens = {}
     local lastValidJSON = formattedJSON
@@ -380,7 +332,7 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
                         end
 
                         surface.SetFont("RareloadEditor")
-                        surface.SetTextColor(color)
+                        surface.SetTextColor(color.r, color.g, color.b, color.a or 255)
                         surface.SetTextPos(charX, charY)
                         surface.DrawText(char)
 
@@ -521,12 +473,17 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
             end
             return
         end
-
-        if newData.pos and type(newData.pos) == "table" and newData.pos.x and newData.pos.y and newData.pos.z then
-            newData.pos = string.format("[%.4f %.4f %.4f]", newData.pos.x, newData.pos.y, newData.pos.z)
+        if not newData then
+            if ShowNotification then
+                ShowNotification("No data to save!", NOTIFY_ERROR)
+            end
+            return
         end
-        if newData.ang and type(newData.ang) == "table" and newData.ang.p and newData.ang.y and newData.ang.r then
-            newData.ang = string.format("{%.4f %.4f %.4f}", newData.ang.p, newData.ang.y, newData.ang.r)
+        if newData.pos then
+            newData.pos = RARELOAD.DataUtils.FormatPositionForJSON(newData.pos, 4)
+        end
+        if newData.ang then
+            newData.ang = RARELOAD.DataUtils.FormatAngleForJSON(newData.ang, 4)
         end
 
         if onSave then

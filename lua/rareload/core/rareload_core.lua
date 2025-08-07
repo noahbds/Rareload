@@ -55,37 +55,18 @@ function RARELOAD.UpdateClientPhantoms(ply, pos, ang)
 
     RARELOAD.playerPositions[MapName][steamID].playermodel = currentModel
 
-    local vectorPos
-    if type(pos) == "table" and pos.x and pos.y and pos.z then
-        vectorPos = Vector(pos.x, pos.y, pos.z)
-    elseif type(pos) == "string" then
-        local x, y, z = string.match(pos, "%[([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)%]")
-        if not x then x, y, z = string.match(pos, "([%d%-%.]+),%s*([%d%-%.]+),%s*([%d%-%.]+)") end
-        if not x then x, y, z = string.match(pos, "^([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)$") end
-        if x and y and z then
-            vectorPos = Vector(tonumber(x), tonumber(y), tonumber(z))
-        else
-            vectorPos = ply:GetPos()
-        end
-    else
+    -- Load centralized conversion functions
+    if not RARELOAD or not RARELOAD.DataUtils then
+        include("rareload/utils/rareload_data_utils.lua")
+    end
+
+    local vectorPos = RARELOAD.DataUtils.ToVector(pos)
+    if not vectorPos then
         vectorPos = ply:GetPos()
     end
 
-    local angleObj
-    if type(ang) == "table" and ang.p and ang.y and ang.r then
-        angleObj = Angle(ang.p, ang.y, ang.r)
-    elseif type(ang) == "table" and #ang == 3 then
-        angleObj = Angle(ang[1], ang[2], ang[3])
-    elseif type(ang) == "string" then
-        local p, y, r = string.match(ang, "{([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)}")
-        if not p then p, y, r = string.match(ang, "([%d%-%.]+),%s*([%d%-%.]+),%s*([%d%-%.]+)") end
-        if not p then p, y, r = string.match(ang, "^([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)$") end
-        if p and y and r then
-            angleObj = Angle(tonumber(p), tonumber(y), tonumber(r))
-        else
-            angleObj = ply:EyeAngles()
-        end
-    else
+    local angleObj = RARELOAD.DataUtils.ToAngle(ang)
+    if not angleObj then
         angleObj = ply:EyeAngles()
     end
 

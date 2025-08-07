@@ -1,3 +1,11 @@
+-- Load centralized conversion functions
+if not RARELOAD or not RARELOAD.DataUtils then
+    include("rareload/utils/rareload_data_utils.lua")
+end
+
+-- Using centralized angle conversion function directly
+-- from RARELOAD.DataUtils instead of creating a local wrapper function
+
 function RARELOAD.HandlePlayerSpawn(ply)
     if not RARELOAD.settings.addonEnabled then return end
     if not IsValid(ply) then return end
@@ -23,6 +31,11 @@ function RARELOAD.HandlePlayerSpawn(ply)
     RARELOAD.Debug.LogSpawnInfo(ply)
     RARELOAD.Debug.LogInventory(ply)
     if not SavedInfo then return end
+
+    if DebugEnabled and SavedInfo.ang then
+        print("[RARELOAD DEBUG] Saved angle data type: " .. type(SavedInfo.ang))
+        print("[RARELOAD DEBUG] Saved angle data: " .. tostring(SavedInfo.ang))
+    end
     if not Settings then return end
     ply.lastSpawnPosition = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
         and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
@@ -70,20 +83,13 @@ function RARELOAD.HandlePlayerSpawn(ply)
             and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z + 2)
             or (SavedInfo.pos + Vector(0, 0, 2))
         local isStuck, stuckReason = false, nil
-        local traceHull = util.TraceHull({
-            start = testPos,
-            endpos = testPos,
-            mins = ply:OBBMins(),
-            maxs = ply:OBBMaxs(),
-            filter = ply,
-            mask = MASK_PLAYERSOLID
-        })
-        if traceHull.Hit or traceHull.StartSolid then
-            isStuck, stuckReason = RARELOAD.AntiStuck.IsPositionStuck(
-                (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
-                and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
-                or SavedInfo.pos, ply)
-        end
+
+        -- Always check if position is stuck, regardless of hull collision
+        isStuck, stuckReason = RARELOAD.AntiStuck.IsPositionStuck(
+            (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
+            and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
+            or SavedInfo.pos, ply, true) -- Mark as original position
+
         if isStuck then
             if RARELOAD.settings.debugEnabled then
                 print("[RARELOAD DEBUG] Position is stuck (" .. stuckReason .. "), using anti-stuck system")
@@ -99,21 +105,23 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 end
                 ply:SetPos(pos)
                 RARELOAD.SavePositionToCache(safePos)
-                local angTable = type(SavedInfo.ang) == "table" and SavedInfo.ang.p and SavedInfo.ang.y and
-                    SavedInfo.ang.r
-                    and SavedInfo.ang
-                    or
-                    (type(SavedInfo.ang) == "table" and #SavedInfo.ang == 3 and { p = SavedInfo.ang[1], y = SavedInfo.ang[2], r = SavedInfo.ang[3] })
-                    or (type(SavedInfo.ang) == "string" and (function()
-                        local p, y, r = string.match(SavedInfo.ang, "{([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)}")
-                        if not p then p, y, r = string.match(SavedInfo.ang, "([%d%-%.]+),%s*([%d%-%.]+),%s*([%d%-%.]+)") end
-                        if not p then p, y, r = string.match(SavedInfo.ang, "^([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)$") end
-                        if p and y and r then return { p = tonumber(p), y = tonumber(y), r = tonumber(r) } end
-                        return nil
-                    end)()) or nil
-                if angTable then
-                    ply:SetEyeAngles(Angle(angTable.p, angTable.y, angTable.r))
-                end
+
+                -- Apply saved angle with slight delay
+                timer.Simple(0.05, function()
+                    if not IsValid(ply) then return end
+                    local parsedAngle = RARELOAD.DataUtils.ToAngle(SavedInfo.ang)
+                    if parsedAngle then
+                        ply:SetEyeAngles(parsedAngle)
+                        if DebugEnabled then
+                            print("[RARELOAD DEBUG] Applied saved angle after anti-stuck: " .. tostring(parsedAngle))
+                        end
+                    else
+                        if DebugEnabled then
+                            print("[RARELOAD DEBUG] Could not parse saved angle: " .. tostring(SavedInfo.ang))
+                        end
+                    end
+                end)
+
                 ply:SetMoveType(MOVETYPE_WALK)
                 if safePos ~= SavedInfo.pos and DebugEnabled then
                     print("[RARELOAD DEBUG] Player position adjusted by anti-stuck system")
@@ -131,26 +139,32 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 or SavedInfo.pos
             ply:SetPos(pos)
             RARELOAD.SavePositionToCache(SavedInfo.pos)
-            local angTable = type(SavedInfo.ang) == "table" and SavedInfo.ang.p and SavedInfo.ang.y and SavedInfo.ang.r
-                and SavedInfo.ang
-                or
-                (type(SavedInfo.ang) == "table" and #SavedInfo.ang == 3 and { p = SavedInfo.ang[1], y = SavedInfo.ang[2], r = SavedInfo.ang[3] })
-                or (type(SavedInfo.ang) == "string" and (function()
-                    local p, y, r = string.match(SavedInfo.ang, "{([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)}")
-                    if not p then p, y, r = string.match(SavedInfo.ang, "([%d%-%.]+),%s*([%d%-%.]+),%s*([%d%-%.]+)") end
-                    if not p then p, y, r = string.match(SavedInfo.ang, "^([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)$") end
-                    if p and y and r then return { p = tonumber(p), y = tonumber(y), r = tonumber(r) } end
-                    return nil
-                end)()) or nil
-            if angTable then
-                ply:SetEyeAngles(Angle(angTable.p, angTable.y, angTable.r))
-            end
+
+            -- Apply saved angle with slight delay
+            timer.Simple(0.05, function()
+                if not IsValid(ply) then return end
+                local parsedAngle = RARELOAD.DataUtils.ToAngle(SavedInfo.ang)
+                if parsedAngle then
+                    ply:SetEyeAngles(parsedAngle)
+                    if DebugEnabled then
+                        print("[RARELOAD DEBUG] Applied saved angle: " .. tostring(parsedAngle))
+                    end
+                else
+                    if DebugEnabled then
+                        print("[RARELOAD DEBUG] Could not parse saved angle: " .. tostring(SavedInfo.ang))
+                    end
+                end
+            end)
+
             ply:SetMoveType(MOVETYPE_WALK)
         end
     else
         timer.Simple(0, function() ply:SetMoveType(moveType) end)
         SetPlayerPositionAndEyeAngles(ply, SavedInfo)
-        if DebugEnabled then print("[RARELOAD DEBUG] Move type set to: " .. tostring(moveType)) end
+        if DebugEnabled then
+            print("[RARELOAD DEBUG] Move type set to: " .. tostring(moveType))
+            print("[RARELOAD DEBUG] Using SetPlayerPositionAndEyeAngles for spawn mode")
+        end
     end
     if RARELOAD.settings.retainGlobalInventory then
         timer.Simple(0.5, function()

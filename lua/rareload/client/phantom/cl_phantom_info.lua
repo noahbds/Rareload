@@ -14,7 +14,7 @@ local moveTypeNames = {
 }
 
 PhantomInfoCache = {}
-CACHE_LIFETIME = 2
+CACHE_LIFETIME = 5
 PHANTOM_CATEGORIES = {
     { "basic",     "Basic Information",       Color(70, 130, 180) },
     { "position",  "Position and Movement",   Color(60, 179, 113) },
@@ -23,24 +23,36 @@ PHANTOM_CATEGORIES = {
     { "stats",     "Statistics",              Color(147, 112, 219) }
 }
 
+-- Performance constants
+local LOD_DISTANCE_HIGH = 400
+local LOD_DISTANCE_MED = 800
+local LOD_DISTANCE_LOW = 1200
+local MAX_ITEMS_HIGH_LOD = 50
+local MAX_ITEMS_MED_LOD = 20
+local MAX_ITEMS_LOW_LOD = 10
+
 PhantomInteractionMode = false
 PhantomInteractionTarget = nil
 PhantomInteractionAngle = nil
 PanelSizeMultiplier = 1.0
-ScrollOffset = 0
-MaxScrollOffset = 0
 ScrollSpeed = 20
 MaxPanelHeight = 1000
 ScrollPersistence = {}
 ScrollbarWidth = 6
-IsScrolling = false
-ScrollbarGrabbed = false
-ScrollbarGrabOffset = 0
 
+-- Cached calculations
+local fontSizeCache = {}
+local panelSizeCache = {}
 
 function CalculateOptimalPanelSize(categoryContent)
     if type(categoryContent) ~= "table" then
         return 350
+    end
+
+    -- Use cached size if available
+    local cacheKey = #categoryContent
+    if panelSizeCache[cacheKey] then
+        return panelSizeCache[cacheKey]
     end
 
     local baseWidth = 350
@@ -48,17 +60,26 @@ function CalculateOptimalPanelSize(categoryContent)
     local maxWidth = 500
     local contentWidth = baseWidth
 
-    for _, lineData in ipairs(categoryContent) do
+    surface.SetFont("Trebuchet18")
+    for i = 1, math.min(#categoryContent, 10) do -- Sample only first 10 items for performance
+        local lineData = categoryContent[i]
         local label = tostring(lineData[1] or "")
         local value = tostring(lineData[2] or "")
-        surface.SetFont("Trebuchet18")
-        local labelWidth = surface.GetTextSize(label .. ":")
-        local valueWidth = surface.GetTextSize(value)
-        local totalWidth = labelWidth + valueWidth + 140
+
+        if not fontSizeCache[label] then
+            fontSizeCache[label] = surface.GetTextSize(label .. ":")
+        end
+        if not fontSizeCache[value] then
+            fontSizeCache[value] = surface.GetTextSize(value)
+        end
+
+        local totalWidth = fontSizeCache[label] + fontSizeCache[value] + 140
         contentWidth = math.max(contentWidth, totalWidth)
     end
 
-    return math.Clamp(contentWidth, minWidth, maxWidth)
+    local result = math.Clamp(contentWidth, minWidth, maxWidth)
+    panelSizeCache[cacheKey] = result
+    return result
 end
 
 function table.map(tbl, func)
@@ -71,32 +92,9 @@ function table.map(tbl, func)
     return result
 end
 
-local function AngleToString(ang)
-    if not ang then
-        return "N/A"
-    end
+function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
+    lodLevel = lodLevel or 1 -- 1=high, 2=medium, 3=low
 
-    if type(ang) == "string" then
-        -- Handle format "{p y r}" from JSON
-        local p, y, r = ang:match("[{%(]?([%d%.%-]+)%s+([%d%.%-]+)%s+([%d%.%-]+)[%]%)?}")
-        if p and y and r then
-            return string.format("P: %.1f, Y: %.1f, R: %.1f", tonumber(p), tonumber(y), tonumber(r))
-        end
-        return ang
-    elseif type(ang) == "table" then
-        if ang.p and ang.y and ang.r then
-            return string.format("P: %.1f, Y: %.1f, R: %.1f", ang.p, ang.y, ang.r)
-        elseif #ang >= 3 then
-            return string.format("P: %.1f, Y: %.1f, R: %.1f", ang[1] or 0, ang[2] or 0, ang[3] or 0)
-        end
-    elseif type(ang) == "Angle" then
-        return string.format("P: %.1f, Y: %.1f, R: %.1f", ang.p, ang.y, ang.r)
-    end
-
-    return "N/A"
-end
-
-function BuildPhantomInfoData(ply, SavedInfo, mapName)
     local data = {
         basic = {},
         position = {},
@@ -111,43 +109,61 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
         return data
     end
 
-    -- Basic Information
+    -- Basic Information (always full detail)
     table.insert(data.basic, { "Player", ply:Nick(), Color(255, 255, 255) })
     table.insert(data.basic, { "SteamID", ply:SteamID(), Color(200, 200, 200) })
     table.insert(data.basic, { "Model", SavedInfo.playermodel, Color(200, 200, 200) })
     table.insert(data.basic, { "Map", mapName, Color(180, 180, 200) })
 
-    -- Position Information
-    table.insert(data.position, { "Position", (SavedInfo.pos), Color(255, 255, 255) })
-    table.insert(data.position, { "Direction", AngleToString(SavedInfo.ang), Color(220, 220, 220) })
-    table.insert(data.position, { "Movement Type", moveTypeNames[SavedInfo.moveType] or "Unknown", Color(220, 220, 220) })
+    -- Position Information (simplified for lower LOD)
+    if lodLevel <= 2 then
+        table.insert(data.position,
+            { "Position", RARELOAD.DataUtils.FormatVectorDetailed(SavedInfo.pos), Color(255, 255, 255) })
+        table.insert(data.position,
+            { "Direction", RARELOAD.DataUtils.FormatAngleDetailed(SavedInfo.ang), Color(220, 220, 220) })
+    else
+        table.insert(data.position,
+            { "Position", "(" ..
+            math.floor(SavedInfo.pos.x) ..
+            ", " .. math.floor(SavedInfo.pos.y) .. ", " .. math.floor(SavedInfo.pos.z) .. ")", Color(255, 255, 255) })
+    end
 
-    -- Active Weapon
+    if lodLevel <= 1 then
+        table.insert(data.position,
+            { "Movement Type", moveTypeNames[SavedInfo.moveType] or "Unknown", Color(220, 220, 220) })
+    end
+
+    -- Equipment (LOD-based item limits)
+    local maxItems = lodLevel == 1 and MAX_ITEMS_HIGH_LOD or lodLevel == 2 and MAX_ITEMS_MED_LOD or MAX_ITEMS_LOW_LOD
+
     if SavedInfo.activeWeapon then
         local weaponName = SavedInfo.activeWeapon
-        local prettyName = (string.match(weaponName, "weapon_(.+)") or weaponName)
-            :gsub("_", " ")
-            :gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest end)
+        local prettyName = (string.match(weaponName, "weapon_(.+)") or weaponName):gsub("_", " "):gsub("(%a)([%w_']*)",
+            function(first, rest) return first:upper() .. rest end)
         table.insert(data.equipment, { "Active Weapon", prettyName, Color(255, 200, 200) })
     end
 
-    -- Process Inventory
+    -- Process Inventory with LOD
     if SavedInfo.inventory and type(SavedInfo.inventory) == "table" and #SavedInfo.inventory > 0 then
         table.insert(data.equipment, { "══ Inventory ══", #SavedInfo.inventory .. " items total", Color(255, 220, 150) })
 
-        local categories = {
-            Inventory = { items = {}, color = Color(255, 150, 150), icon = "I" }
-        }
+        local categories = { Inventory = { items = {}, color = Color(255, 150, 150), icon = "I" } }
 
-        for _, item in ipairs(SavedInfo.inventory) do
-            table.insert(categories["Inventory"].items, item)
+        for i = 1, math.min(#SavedInfo.inventory, maxItems) do
+            table.insert(categories["Inventory"].items, SavedInfo.inventory[i])
+        end
+
+        if #SavedInfo.inventory > maxItems then
+            table.insert(categories["Inventory"].items, "... and " .. (#SavedInfo.inventory - maxItems) .. " more")
         end
 
         for catName, catData in pairs(categories) do
             if #catData.items > 0 then
                 local counts = {}
                 for _, item in ipairs(catData.items) do
-                    counts[item] = (counts[item] or 0) + 1
+                    if item ~= "... and " .. (#SavedInfo.inventory - maxItems) .. " more" then
+                        counts[item] = (counts[item] or 0) + 1
+                    end
                 end
 
                 local uniqueItems = {}
@@ -156,156 +172,93 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
                 end
 
                 table.sort(uniqueItems, function(a, b) return a.count > b.count end)
-                table.insert(data.equipment, {
-                    "[" .. catData.icon .. "] " .. catName,
-                    #catData.items .. " total",
-                    catData.color
-                })
+                table.insert(data.equipment,
+                    { "[" .. catData.icon .. "] " .. catName, #catData.items .. " total", catData.color })
 
-                for i = 1, #uniqueItems do
+                local displayCount = math.min(#uniqueItems, lodLevel == 1 and 20 or lodLevel == 2 and 10 or 5)
+                for i = 1, displayCount do
                     local itemData = uniqueItems[i]
                     local displayText = (itemData.count > 1 and (" ×" .. itemData.count) or "")
-                    local prefix = (i == #uniqueItems) and "  └─" or "  ├─"
-                    local prettyItemName = itemData.item:gsub("weapon_", ""):gsub("_", " ")
-                    prettyItemName = prettyItemName:gsub("(%a)([%w_']*)",
+                    local prefix = (i == displayCount) and "  └─" or "  ├─"
+                    local prettyItemName = itemData.item:gsub("weapon_", ""):gsub("_", " "):gsub("(%a)([%w_']*)",
                         function(first, rest) return first:upper() .. rest end)
 
-                    table.insert(data.equipment, {
-                        prefix .. " " .. prettyItemName,
-                        displayText,
-                        catData.color,
-                        { noColon = true }
-                    })
+                    table.insert(data.equipment,
+                        { prefix .. " " .. prettyItemName, displayText, catData.color, { noColon = true } })
 
-                    if SavedInfo.ammo and SavedInfo.ammo[itemData.item] then
+                    -- Only show ammo details for high LOD
+                    if lodLevel == 1 and SavedInfo.ammo and SavedInfo.ammo[itemData.item] then
                         local ammoInfo = SavedInfo.ammo[itemData.item]
                         local ammoText = ""
 
                         if ammoInfo.primary and ammoInfo.primary > 0 and ammoInfo.primaryAmmoType and ammoInfo.primaryAmmoType >= 0 then
-                            local ammoName = "Unknown"
-                            if game.GetAmmoName then
-                                ammoName = game.GetAmmoName(ammoInfo.primaryAmmoType) or
-                                    tostring(ammoInfo.primaryAmmoType)
-                            else
-                                ammoName = "Type:" .. tostring(ammoInfo.primaryAmmoType)
-                            end
-
-                            local clipText = ""
-                            if ammoInfo.clip1 and ammoInfo.clip1 >= 0 then
-                                clipText = " (" .. ammoInfo.clip1 .. " in clip)"
-                            end
-
-                            ammoText = ammoText .. " [" .. ammoInfo.primary .. clipText .. " " .. ammoName .. "]"
-                        elseif ammoInfo.clip1 and ammoInfo.clip1 > 0 then
-                            ammoText = ammoText .. " [(" .. ammoInfo.clip1 .. " in clip)]"
-                        end
-
-                        if ammoInfo.secondary and ammoInfo.secondary > 0 and ammoInfo.secondaryAmmoType and ammoInfo.secondaryAmmoType >= 0 then
-                            local ammoName = "Unknown"
-                            if game.GetAmmoName then
-                                ammoName = game.GetAmmoName(ammoInfo.secondaryAmmoType) or
-                                    tostring(ammoInfo.secondaryAmmoType)
-                            else
-                                ammoName = "Type:" .. tostring(ammoInfo.secondaryAmmoType)
-                            end
-
-                            local clipText = ""
-                            if ammoInfo.clip2 and ammoInfo.clip2 >= 0 then
-                                clipText = " (" .. ammoInfo.clip2 .. " in clip)"
-                            end
-
-                            ammoText = ammoText .. " [+" .. ammoInfo.secondary .. clipText .. " " .. ammoName .. "]"
-                        elseif ammoInfo.clip2 and ammoInfo.clip2 > 0 and not (ammoInfo.secondary and ammoInfo.secondary > 0) then
-                            ammoText = ammoText .. " [(+" .. ammoInfo.clip2 .. " in alt clip)]"
+                            local ammoName = game.GetAmmoName and game.GetAmmoName(ammoInfo.primaryAmmoType) or
+                                tostring(ammoInfo.primaryAmmoType)
+                            local clipText = ammoInfo.clip1 and ammoInfo.clip1 >= 0 and
+                                (" (" .. ammoInfo.clip1 .. " in clip)") or ""
+                            ammoText = " [" .. ammoInfo.primary .. clipText .. " " .. ammoName .. "]"
                         end
 
                         if ammoText ~= "" then
-                            local ammoPrefix = (i == #uniqueItems) and "    " or "  │ "
-                            table.insert(data.equipment, {
-                                ammoPrefix .. "    │--> Ammo",
-                                ammoText,
-                                Color(catData.color.r * 0.8, catData.color.g * 0.8, catData.color.b * 0.8),
-                                { noColon = true }
-                            })
+                            local ammoPrefix = (i == displayCount) and "    " or "  │ "
+                            table.insert(data.equipment,
+                                { ammoPrefix .. "    │--> Ammo", ammoText, Color(catData.color.r * 0.8,
+                                    catData.color.g * 0.8, catData.color.b * 0.8), { noColon = true } })
                         end
                     end
+                end
+
+                if #uniqueItems > displayCount then
+                    table.insert(data.equipment,
+                        { "  └─ ...", "+" .. (#uniqueItems - displayCount) .. " more", Color(150, 150, 150), { noColon = true } })
                 end
             end
         end
     end
 
-    local function processGroupedData(group, config)
+    -- Simplified entity processing for lower LOD
+    local function processGroupedDataLOD(group, config)
         if group and type(group) == "table" and #group > 0 then
-            local counts = {}
-            for _, entry in ipairs(group) do
-                local class = entry.class or entry
-                counts[class] = (counts[class] or 0) + 1
-            end
-
             table.insert(data.entities, { config.totalLabel, #group, config.totalColor })
 
-            local sorted = {}
-            for class, count in pairs(counts) do
-                table.insert(sorted, { class = class, count = count })
-            end
-            table.sort(sorted, function(a, b) return a.count > b.count end)
-            for i = 1, #sorted do
-                local entry = sorted[i]
-                local pretty = (string.match(entry.class, config.pattern) or entry.class)
-                    :gsub("_", " ")
-                    :gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest end)
-                table.insert(data.entities, {
-                    config.labelPrefix .. " " .. i,
-                    string.format("%s (%d)", pretty, entry.count),
-                    config.entryColor
-                })
+            if lodLevel <= 2 then
+                local counts = {}
+                local processCount = math.min(#group, maxItems)
+
+                for i = 1, processCount do
+                    local entry = group[i]
+                    local class = entry.class or entry
+                    counts[class] = (counts[class] or 0) + 1
+                end
+
+                local sorted = {}
+                for class, count in pairs(counts) do
+                    table.insert(sorted, { class = class, count = count })
+                end
+                table.sort(sorted, function(a, b) return a.count > b.count end)
+
+                local showCount = math.min(#sorted, lodLevel == 1 and 10 or 5)
+                for i = 1, showCount do
+                    local entry = sorted[i]
+                    local pretty = (string.match(entry.class, config.pattern) or entry.class):gsub("_", " "):gsub(
+                        "(%a)([%w_']*)", function(first, rest) return first:upper() .. rest end)
+                    table.insert(data.entities,
+                        { config.labelPrefix .. " " .. i, string.format("%s (%d)", pretty, entry.count), config
+                            .entryColor })
+                end
+
+                if #sorted > showCount then
+                    table.insert(data.entities,
+                        { "...", "+" .. (#sorted - showCount) .. " more types", Color(150, 150, 150) })
+                end
             end
         else
             table.insert(data.entities, { config.totalLabel, "0", config.totalColor })
         end
     end
 
-    -- Process Vehicles separately
-    if SavedInfo.vehicles and type(SavedInfo.vehicles) == "table" and #SavedInfo.vehicles > 0 then
-        local vehicleCount = #SavedInfo.vehicles
-        table.insert(data.entities, { "Total Vehicles", vehicleCount, Color(200, 200, 255) })
-        if vehicleCount <= 3 then
-            for i, vehicle in ipairs(SavedInfo.vehicles) do
-                local pretty = vehicle
-                    :gsub("_", " ")
-                    :gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest end)
-                table.insert(data.entities, {
-                    "Vehicle " .. i,
-                    pretty,
-                    Color(200 - i * 20, 200 - i * 20, 255 - i * 30)
-                })
-            end
-        else
-            local types = {}
-            for _, vehicle in ipairs(SavedInfo.vehicles) do
-                types[vehicle] = (types[vehicle] or 0) + 1
-            end
-            local sortedTypes = {}
-            for typ, count in pairs(types) do
-                table.insert(sortedTypes, { type = typ, count = count })
-            end
-            table.sort(sortedTypes, function(a, b) return a.count > b.count end)
-            for i = 1, #sortedTypes do
-                local entry = sortedTypes[i]
-                local pretty = entry.type
-                    :gsub("_", " ")
-                    :gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest end)
-                table.insert(data.entities, {
-                    "Vehicle Type " .. i,
-                    string.format("%s (%d)", pretty, entry.count),
-                    Color(200 - i * 20, 200 - i * 20, 255 - i * 30)
-                })
-            end
-        end
-    end
-
-    -- Process Entities
-    processGroupedData(SavedInfo.entities, {
+    -- Process entities with LOD
+    processGroupedDataLOD(SavedInfo.entities, {
         totalLabel = "Total Entities",
         totalColor = Color(255, 180, 180),
         pattern = "[^_]+_(.+)",
@@ -313,8 +266,7 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
         entryColor = Color(255, 180, 180)
     })
 
-    -- Process NPCs
-    processGroupedData(SavedInfo.npcs, {
+    processGroupedDataLOD(SavedInfo.npcs, {
         totalLabel = "Total NPCs",
         totalColor = Color(200, 255, 200),
         pattern = "npc_(.+)",
@@ -322,14 +274,14 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName)
         entryColor = Color(200, 255, 200)
     })
 
-
-    -- Stats
+    -- Stats (always show)
     table.insert(data.stats, { "Health", math.floor(SavedInfo.health or 0), Color(255, 180, 180) })
     table.insert(data.stats, { "Armor", math.floor(SavedInfo.armor or 0), Color(180, 180, 255) })
-    if SavedInfo.npcs and #SavedInfo.npcs > 0 then
+
+    if lodLevel <= 2 and SavedInfo.npcs and #SavedInfo.npcs > 0 then
         local totalHealth = 0
-        for _, npc in ipairs(SavedInfo.npcs) do
-            totalHealth = totalHealth + (npc.health or 0)
+        for i = 1, math.min(#SavedInfo.npcs, 50) do -- Limit calculation for performance
+            totalHealth = totalHealth + (SavedInfo.npcs[i].health or 0)
         end
         table.insert(data.stats, { "Total NPC Health", math.floor(totalHealth), Color(200, 255, 200) })
     end
@@ -357,18 +309,39 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
         return
     end
 
+    -- Determine LOD level based on distance
+    local lodLevel = 1
+    if distanceSqr > LOD_DISTANCE_HIGH * LOD_DISTANCE_HIGH then
+        lodLevel = distanceSqr > LOD_DISTANCE_MED * LOD_DISTANCE_MED and 3 or 2
+    end
+
     local now = CurTime()
-    if not PhantomInfoCache[steamID] or PhantomInfoCache[steamID].expires < now then
+
+    -- Use consistent cache key for LOD-based caching
+    if not PhantomInfoCache[steamID] or PhantomInfoCache[steamID].expires < now or PhantomInfoCache[steamID].lodLevel ~= lodLevel then
         local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][steamID]
         PhantomInfoCache[steamID] = {
-            data = BuildPhantomInfoData(ply, savedInfo, mapName),
+            data = BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel),
             expires = now + CACHE_LIFETIME,
-            activeCategory = (PhantomInfoCache[steamID] and PhantomInfoCache[steamID].activeCategory) or "basic"
+            activeCategory = (PhantomInfoCache[steamID] and PhantomInfoCache[steamID].activeCategory) or "basic",
+            lodLevel = lodLevel,
+            hoverScale = (PhantomInfoCache[steamID] and PhantomInfoCache[steamID].hoverScale) or 1.0,
+            categoryChanged = (PhantomInfoCache[steamID] and PhantomInfoCache[steamID].categoryChanged) or now
         }
     end
 
-    local infoData = PhantomInfoCache[steamID].data
-    local activeCategory = PhantomInfoCache[steamID].activeCategory
+    local cache = PhantomInfoCache[steamID]
+    if not cache then return end -- Additional safety check
+
+    local infoData = cache.data
+    local activeCategory = cache.activeCategory
+
+    -- Performance: Skip rendering if too many items and distance is far
+    if lodLevel >= 3 and #infoData[activeCategory] > 20 then
+        return
+    end
+
+    -- Rest of the drawing code remains largely the same but with optimized calculations
     local drawPos = phantomPos + Vector(0, 0, 80)
     local panelAng = nil
 
@@ -381,6 +354,10 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
         panelAng.y = panelAng.y - 90
         panelAng.p, panelAng.r = 0, 90
     end
+
+    -- Scale down for distant phantoms
+    local distanceScale = isActiveInteraction and 1.5 or math.Clamp(1.0 - (math.sqrt(distanceSqr) / 1500), 0.3, 1.0)
+    local scale = 0.1 * (cache.hoverScale or 1.0) * distanceScale
 
     local theme = {
         background = Color(20, 20, 30, 220),
@@ -401,12 +378,12 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     local panelWidth = math.max(contentWidth, 800)
     local contentHeight = (#infoData[activeCategory]) * lineHeight
     local maxDisplayHeight = math.min(contentHeight + 20,
-        MaxPanelHeight * (0.1 * (PhantomInfoCache[steamID].hoverScale or 1.0) * (isActiveInteraction and 1.5 or 1.0)))
+        MaxPanelHeight * (0.1 * (cache.hoverScale or 1.0) * (isActiveInteraction and 1.5 or 1.0)))
     local needsScrolling = contentHeight >
-        (MaxPanelHeight * 0.1 * (PhantomInfoCache[steamID].hoverScale or 1.0) * (isActiveInteraction and 1.5 or 1.0) - 20)
+        (MaxPanelHeight * 0.1 * (cache.hoverScale or 1.0) * (isActiveInteraction and 1.5 or 1.0) - 20)
     local maxScrollOffset = math.max(0,
         contentHeight -
-        (MaxPanelHeight * 0.1 * (PhantomInfoCache[steamID].hoverScale or 1.0) * (isActiveInteraction and 1.5 or 1.0) - 20))
+        (MaxPanelHeight * 0.1 * (cache.hoverScale or 1.0) * (isActiveInteraction and 1.5 or 1.0) - 20))
 
     ScrollPersistence[steamID] = ScrollPersistence[steamID] or {}
     ScrollPersistence[steamID][activeCategory] = ScrollPersistence[steamID][activeCategory] or 0
@@ -418,7 +395,7 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     local offsetX, offsetY = -panelWidth / 2, -panelHeight / 2
 
     cam.Start3D2D(drawPos, panelAng,
-        0.1 * (PhantomInfoCache[steamID].hoverScale or 1.0) * (isActiveInteraction and 1.5 or 1.0))
+        scale)
 
     ----------------------------
     -- Draw Background & Border
@@ -526,7 +503,7 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
         local yPos = contentY + (i - 1) * lineHeight - scrollOffset + 10
         if yPos + lineHeight >= contentY - lineHeight and yPos <= contentY + maxDisplayHeight + lineHeight then
             local fadeDelay = i * 0.05
-            local alpha = math.min((CurTime() - (PhantomInfoCache[steamID].categoryChanged or 0) - fadeDelay) * 5, 1)
+            local alpha = math.min((CurTime() - (cache.categoryChanged or 0) - fadeDelay) * 5, 1)
             alpha = math.max(alpha, 0)
 
             surface.SetFont("Trebuchet18")
@@ -590,7 +567,7 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
                 Color(255, 255, 255, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
 
-        PhantomInfoCache[steamID].scrollbarInfo = {
+        cache.scrollbarInfo = {
             x = scrollBarX,
             y = scrollBarY,
             width = scrollBarWidth,
@@ -606,7 +583,7 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
             downButtonHeight = btnSize
         }
 
-        PhantomInfoCache[steamID].maxScrollOffset = maxScrollOffset
+        cache.maxScrollOffset = maxScrollOffset
     end
 
     ----------------------------
@@ -648,11 +625,11 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
             Color(255, 255, 255, 230), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
 
-    PhantomInfoCache[steamID].panelInfo = { tabInfo = tabScreenInfo, activeTabIndex = nil, hasScrollbar = needsScrolling }
+    cache.panelInfo = { tabInfo = tabScreenInfo, activeTabIndex = nil, hasScrollbar = needsScrolling }
 
     for i, tab in ipairs(tabScreenInfo) do
         if tab.catID == activeCategory then
-            PhantomInfoCache[steamID].panelInfo.activeTabIndex = i
+            cache.panelInfo.activeTabIndex = i
             break
         end
     end

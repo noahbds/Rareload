@@ -1,9 +1,18 @@
 --[[
-    RARELOAD Vector Serialization Utilities
+    RARELOAD Data Conversion & Serialization Utilities
 
-    This file provides backward compatibility by exposing the centralized
+    This module provides backward compatibility by exposing the centralized
     data conversion functions from rareload_data_utils.lua with the old
     function names that some files expect.
+
+    CONSOLIDATED FROM MULTIPLE DUPLICATE FUNCTIONS:
+    - ParsePosString / ParsePositionString (position string parsing)
+    - PosTableToString / PositionToString (position to string conversion)
+    - ParseAngString / ParseAngleString (angle string parsing)
+    - AngTableToString / AngleToString (angle to string conversion)
+    - Various ExtractVectorComponents functions
+    - Multiple ToVector functions
+    - Format functions for debug display
 
     DEPRECATED: This file exists for compatibility. New code should use
     RARELOAD.DataUtils functions directly from rareload_data_utils.lua
@@ -29,23 +38,24 @@ RARELOAD.ToAngle = RARELOAD.DataUtils.ToAngle
 RARELOAD.ToPositionTable = RARELOAD.DataUtils.ToPositionTable
 RARELOAD.ToAngleTable = RARELOAD.DataUtils.ToAngleTable
 RARELOAD.ExtractVectorComponents = RARELOAD.DataUtils.ExtractVectorComponents
-RARELOAD.ConvertToPositionObject = RARELOAD.DataUtils.ConvertToPositionObject
-RARELOAD.PositionObjectToVector = RARELOAD.DataUtils.PositionObjectToVector
 
 -- Validation functions
 RARELOAD.IsValidPosition = RARELOAD.DataUtils.IsValidPosition
 RARELOAD.IsValidAngle = RARELOAD.DataUtils.IsValidAngle
-RARELOAD.IsEntityLike = RARELOAD.DataUtils.IsEntityLike
 
 -- Formatting functions for display
 RARELOAD.FormatVectorDetailed = RARELOAD.DataUtils.FormatVectorDetailed
 RARELOAD.FormatAngleDetailed = RARELOAD.DataUtils.FormatAngleDetailed
 RARELOAD.FormatVectorCompact = RARELOAD.DataUtils.FormatVectorCompact
 RARELOAD.FormatAngleCompact = RARELOAD.DataUtils.FormatAngleCompact
-RARELOAD.FormatValue = RARELOAD.DataUtils.FormatValue
 
 -- Comparison functions
 RARELOAD.PositionsEqual = RARELOAD.DataUtils.PositionsEqual
+
+-- Legacy compatibility functions for specialized cases
+RARELOAD.ConvertToPositionObject = RARELOAD.DataUtils.ConvertToPositionObject
+RARELOAD.PositionObjectToVector = RARELOAD.DataUtils.PositionObjectToVector
+RARELOAD.FormatValue = RARELOAD.DataUtils.FormatValue
 
 if CLIENT then
     -- Add any client-specific functions if needed

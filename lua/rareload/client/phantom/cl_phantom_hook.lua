@@ -1,5 +1,18 @@
 hook.Remove("GUIMousePressed", "PhantomPanelInteraction")
 
+-- Optimized input handling with debouncing
+local lastKeyPress = {}
+local KEY_DEBOUNCE_TIME = 0.15
+
+local function IsKeyReady(key)
+    local now = CurTime()
+    if not lastKeyPress[key] or (now - lastKeyPress[key]) >= KEY_DEBOUNCE_TIME then
+        lastKeyPress[key] = now
+        return true
+    end
+    return false
+end
+
 hook.Add("Think", "PhantomKeyboardNavigation", function()
     if not PhantomInteractionMode or not PhantomInteractionTarget then return end
 
@@ -8,11 +21,11 @@ hook.Add("Think", "PhantomKeyboardNavigation", function()
 
     local panelInfo = cache.panelInfo
     local activeIndex = panelInfo.activeTabIndex
-    local activeCategory = cache.activeCategory
 
     if not activeIndex then return end
 
-    if input.IsKeyDown(KEY_LEFT) and not cache.keyHeld then
+    -- Optimized navigation with debouncing
+    if input.IsKeyDown(KEY_LEFT) and IsKeyReady(KEY_LEFT) then
         local newIndex = activeIndex - 1
         if newIndex < 1 then newIndex = #PHANTOM_CATEGORIES end
 
@@ -22,14 +35,8 @@ hook.Add("Think", "PhantomKeyboardNavigation", function()
 
         if oldCategory ~= cache.activeCategory then
             surface.PlaySound("ui/buttonrollover.wav")
-
-            local newContent = cache.data[cache.activeCategory]
-            local optimalWidth = CalculateOptimalPanelSize(newContent)
         end
-
-        cache.keyHeld = true
-        timer.Simple(0.2, function() cache.keyHeld = false end)
-    elseif input.IsKeyDown(KEY_RIGHT) and not cache.keyHeld then
+    elseif input.IsKeyDown(KEY_RIGHT) and IsKeyReady(KEY_RIGHT) then
         local newIndex = activeIndex + 1
         if newIndex > #PHANTOM_CATEGORIES then newIndex = 1 end
 
@@ -39,27 +46,22 @@ hook.Add("Think", "PhantomKeyboardNavigation", function()
 
         if oldCategory ~= cache.activeCategory then
             surface.PlaySound("ui/buttonrollover.wav")
-
-            local newContent = cache.data[cache.activeCategory]
-            local optimalWidth = CalculateOptimalPanelSize(newContent)
         end
-
-        cache.keyHeld = true
-        timer.Simple(0.2, function() cache.keyHeld = false end)
     end
 
+    -- Smooth scrolling
+    local scrollDelta = 0
     if input.IsKeyDown(KEY_UP) then
-        if ScrollPersistence[PhantomInteractionTarget] and activeCategory then
-            local newScroll = math.max(0, (ScrollPersistence[PhantomInteractionTarget][activeCategory] or 0) - 5)
-            ScrollPersistence[PhantomInteractionTarget][activeCategory] = newScroll
-        end
+        scrollDelta = -3
     elseif input.IsKeyDown(KEY_DOWN) then
-        if ScrollPersistence[PhantomInteractionTarget] and activeCategory then
-            local maxScroll = (cache.maxScrollOffset or 0)
-            local newScroll = math.min(maxScroll,
-                (ScrollPersistence[PhantomInteractionTarget][activeCategory] or 0) + 5)
-            ScrollPersistence[PhantomInteractionTarget][activeCategory] = newScroll
-        end
+        scrollDelta = 3
+    end
+
+    if scrollDelta ~= 0 and ScrollPersistence[PhantomInteractionTarget] and cache.activeCategory then
+        local currentScroll = ScrollPersistence[PhantomInteractionTarget][cache.activeCategory] or 0
+        local maxScroll = cache.maxScrollOffset or 0
+        local newScroll = math.Clamp(currentScroll + scrollDelta, 0, maxScroll)
+        ScrollPersistence[PhantomInteractionTarget][cache.activeCategory] = newScroll
     end
 end)
 
@@ -135,7 +137,6 @@ hook.Add("KeyPress", "PhantomInteractionToggle", function(ply, key)
     if key ~= IN_USE then return end
 
     local playerPos = ply:GetPos()
-    local mapName = game.GetMap()
 
     if PhantomInteractionMode then
         PhantomInteractionMode = false
@@ -145,20 +146,22 @@ hook.Add("KeyPress", "PhantomInteractionToggle", function(ply, key)
         return
     end
 
+    -- Optimized phantom finding with distance pre-filtering
     local closestPhantom = nil
-    local closestDistance = 10000
+    local closestDistance = math.huge
+    local maxInteractionDistance = 300
 
     for steamID, data in pairs(RARELOAD.Phantom) do
         if IsValid(data.phantom) and IsValid(data.ply) then
-            local distance = playerPos:DistToSqr(data.phantom:GetPos())
-            if distance < closestDistance then
+            local distance = playerPos:Distance(data.phantom:GetPos())
+            if distance < maxInteractionDistance and distance < closestDistance then
                 closestPhantom = steamID
                 closestDistance = distance
             end
         end
     end
 
-    if closestPhantom and closestDistance < 90000 then
+    if closestPhantom then
         PhantomInteractionMode = true
         PhantomInteractionTarget = closestPhantom
 
@@ -168,9 +171,9 @@ hook.Add("KeyPress", "PhantomInteractionToggle", function(ply, key)
 
         local eyeYaw = LocalPlayer():EyeAngles().yaw
         PhantomInteractionAngle = Angle(0, eyeYaw - 90, 90)
-
         surface.PlaySound("ui/buttonclick.wav")
 
+        -- Pre-calculate panel size with safety check
         local cache = PhantomInfoCache[closestPhantom]
         if cache and cache.data and cache.activeCategory then
             local content = cache.data[cache.activeCategory]

@@ -43,7 +43,11 @@ function AntiStuck.TryNodeGraph(pos, ply)
         return nil, AntiStuck.UNSTUCK_METHODS.NONE
     end
 
-    local searchDistances = { 64, 128, 256, 512, 1024, 2048, 4096, 8192 }
+    local nodeSearchRadius = AntiStuck.CONFIG.NODE_SEARCH_RADIUS or 2048
+    local safeDistance = AntiStuck.CONFIG.SAFE_DISTANCE or 64
+    local maxAttempts = AntiStuck.CONFIG.MAX_UNSTUCK_ATTEMPTS or 50
+
+    local searchDistances = { safeDistance, 128, 256, 512, 1024, 2048, 4096, 8192 }
 
     if AntiStuck.mapBounds then
         local mapSize = math.max(AntiStuck.mapBounds.maxs.x - AntiStuck.mapBounds.mins.x,
@@ -89,7 +93,7 @@ function AntiStuck.TryNodeGraph(pos, ply)
                     if center then
                         local safePos = center + Vector(0, 0, 16)
                         if util.IsInWorld(safePos) then
-                            local isStuck, reason = AntiStuck.IsPositionStuck(safePos, ply)
+                            local isStuck, reason = AntiStuck.IsPositionStuck(safePos, ply, false) -- Not original position
                             if not isStuck then
                                 if RARELOAD.settings and RARELOAD.settings.debugEnabled then
                                     print("[RARELOAD ANTI-STUCK] NavMesh found safe center at distance: " .. distance)
@@ -103,7 +107,7 @@ function AntiStuck.TryNodeGraph(pos, ply)
                             if corner then
                                 local cornerPos = corner + Vector(0, 0, 16)
                                 if util.IsInWorld(cornerPos) then
-                                    local isStuck, reason = AntiStuck.IsPositionStuck(cornerPos, ply)
+                                    local isStuck, reason = AntiStuck.IsPositionStuck(cornerPos, ply, false) -- Not original position
                                     if not isStuck then
                                         if RARELOAD.settings and RARELOAD.settings.debugEnabled then
                                             print("[RARELOAD ANTI-STUCK] NavMesh found safe corner at distance: " ..

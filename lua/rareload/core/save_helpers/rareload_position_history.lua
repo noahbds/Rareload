@@ -36,15 +36,37 @@ function RARELOAD.CacheCurrentPositionData(steamID, mapName)
     end
 end
 
+function RARELOAD.GetPreviousPositionData(steamID, mapName)
+    if not steamID or not mapName then return nil end
+
+    if RARELOAD.playerPositionHistory[mapName] and
+        RARELOAD.playerPositionHistory[mapName][steamID] and
+        #RARELOAD.playerPositionHistory[mapName][steamID] > 0 then
+        local lastPos = RARELOAD.playerPositionHistory[mapName][steamID]
+            [#RARELOAD.playerPositionHistory[mapName][steamID]]
+
+        table.remove(RARELOAD.playerPositionHistory[mapName][steamID])
+
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD DEBUG] Retrieved previous position for " .. steamID .. " (Remaining history: " ..
+                #RARELOAD.playerPositionHistory[mapName][steamID] .. ")")
+        end
+
+        return lastPos
+    end
+
+    return nil
+end
+
 function RARELOAD.GetPositionHistory(steamID, mapName)
-    if not steamID or not mapName then return {} end
+    if not steamID or not mapName then return 0 end
 
     if RARELOAD.playerPositionHistory[mapName] and
         RARELOAD.playerPositionHistory[mapName][steamID] then
-        return RARELOAD.playerPositionHistory[mapName][steamID]
+        return #RARELOAD.playerPositionHistory[mapName][steamID]
     end
 
-    return {}
+    return 0
 end
 
 function RARELOAD.ClearPositionHistory(steamID, mapName)

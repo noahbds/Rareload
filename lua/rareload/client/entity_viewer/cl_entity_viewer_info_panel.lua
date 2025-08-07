@@ -161,6 +161,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
 
+    ---@class DModelPanel
     local modelPanel = vgui.Create("DModelPanel", modelSection)
     modelPanel:Dock(FILL)
     modelPanel:DockMargin(2, 2, 2, 2)
@@ -168,19 +169,24 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
     if data.model and util.IsValidModel(data.model) then
         modelPanel:SetModel(data.model)
 
-        local min, max = modelPanel.Entity:GetRenderBounds()
-        local center = (min + max) * 0.5
-        local size = max:Distance(min)
-        modelPanel:SetLookAt(center)
-        modelPanel:SetCamPos(center + Vector(size * 0.8, size * 0.6, size * 0.4))
-        modelPanel:SetFOV(60)
+        local ent = modelPanel:GetEntity()
+        if IsValid(ent) then
+            local min, max = ent:GetRenderBounds()
+            local center = (min + max) * 0.5
+            local size = max:Distance(min)
+            modelPanel:SetLookAt(center)
+            modelPanel:SetCamPos(center + Vector(size * 0.8, size * 0.6, size * 0.4))
+            modelPanel:SetFOV(60)
+        end
 
         local targetAngle, currentAngle = 0, 0
+
         modelPanel.Think = function(self)
             targetAngle = (targetAngle + FrameTime() * 25) % 360
             currentAngle = Lerp(FrameTime() * 4, currentAngle, targetAngle)
-            if self.Entity and IsValid(self.Entity) then
-                self.Entity:SetAngles(Angle(0, currentAngle, 0))
+            local ent = self:GetEntity()
+            if IsValid(ent) then
+                ent:SetAngles(Angle(0, currentAngle, 0))
             end
         end
 
@@ -244,6 +250,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
     scrollPanel:Dock(FILL)
     scrollPanel:DockMargin(0, 8, 0, 8)
 
+    ---@class DVScrollBar
     local scrollbar = scrollPanel:GetVBar()
     scrollbar:SetWide(8)
     scrollbar.Paint = function(_, w, h)
@@ -274,20 +281,13 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
         table.insert(sections[1].items, { "Health", healthText, healthColor })
     end
 
-    local function ParsePosition(pos)
-        if type(pos) == "string" then
-            local x, y, z = pos:match("%[([%d%.%-]+)%s+([%d%.%-]+)%s+([%d%.%-]+)%]")
-            if x and y and z then
-                return { x = tonumber(x), y = tonumber(y), z = tonumber(z) }
-            end
-        elseif type(pos) == "table" and pos.x and pos.y and pos.z then
-            return pos
-        end
-        return nil
+    -- Load centralized conversion functions
+    if not RARELOAD or not RARELOAD.DataUtils then
+        include("rareload/utils/rareload_data_utils.lua")
     end
 
     if data.pos then
-        local parsedPos = ParsePosition(data.pos)
+        local parsedPos = RARELOAD.DataUtils.ToPositionTable(data.pos)
         if parsedPos then
             local posText = string.format("X: %.1f Y: %.1f Z: %.1f", parsedPos.x, parsedPos.y, parsedPos.z)
             table.insert(sections[1].items, { "Position", posText, THEME.textSecondary })
@@ -351,7 +351,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
     end
 
     if data.ang then
-        local angText = tostring(data.ang)
+        local angText = RARELOAD.DataUtils.FormatAngleDetailed(data.ang)
         angText = string.gsub(angText, "[{}]", "")
         table.insert(sections[3].items, { "Angles", angText, THEME.textSecondary })
     end
@@ -398,7 +398,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
     if data.pos then
         local teleportBtn = CreateStyledButton(actionsPanel, "Teleport", "icon16/arrow_right.png", THEME.success,
             function()
-                local parsedPos = ParsePosition(data.pos)
+                local parsedPos = RARELOAD.DataUtils.ToPositionTable(data.pos)
                 if parsedPos then
                     RunConsoleCommand("rareload_teleport_to", parsedPos.x, parsedPos.y, parsedPos.z)
                     if ShowNotification then
@@ -481,12 +481,12 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
                     color = Color(255, 255, 0, 100),
                     lineColor = Color(255, 255, 255, 40)
                 })
-                highlightActive = true
+                HighlightActive = true
                 ShowNotification("Highlighting position! Click again to turn off.", NOTIFY_GENERIC)
             end
 
             HighlightBtn.Paint = function(self, w, h)
-                local baseColor = highlightActive and Color(255, 140, 0) or
+                local baseColor = HighlightActive and Color(255, 140, 0) or
                     Color(255, 220, 80)
                 local btnColor = self:IsHovered() and Color(baseColor.r * 1.2, baseColor.g * 1.2, baseColor.b * 1.2) or
                     baseColor
@@ -497,7 +497,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
                 surface.SetMaterial(Material("icon16/eye.png"))
                 surface.DrawTexturedRect(w / 2 - 8, h / 2 - 8, 16, 16)
 
-                if highlightActive then
+                if HighlightActive then
                     local pulseAlpha = math.sin(CurTime() * 4) * 40 + 60
                     surface.SetDrawColor(255, 255, 255, pulseAlpha)
                     surface.DrawOutlinedRect(0, 0, w, h, 2)
@@ -509,7 +509,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
 
     if data.pos then
         local copyBtn = CreateStyledButton(actionsPanel, "Copy Position", "icon16/page_copy.png", THEME.info, function()
-            local parsedPos = ParsePosition(data.pos)
+            local parsedPos = RARELOAD.DataUtils.ToPositionTable(data.pos)
             if parsedPos then
                 SetClipboardText(string.format("Vector(%.1f, %.1f, %.1f)", parsedPos.x, parsedPos.y, parsedPos.z))
                 if ShowNotification then
@@ -527,7 +527,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
     if data.pos then
         local respawnBtn = CreateStyledButton(actionsPanel, "Respawn", "icon16/arrow_refresh.png", THEME.primary,
             function()
-                local parsedPos = ParsePosition(data.pos)
+                local parsedPos = RARELOAD.DataUtils.ToPositionTable(data.pos)
                 if data.class and parsedPos then
                     local ns = isNPC and "RareloadRespawnNPC" or "RareloadRespawnEntity"
                     net.Start(ns); net.WriteString(data.class); net.WriteVector(Vector(parsedPos.x, parsedPos.y,
@@ -561,6 +561,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
 
     local deleteBtn = CreateStyledButton(actionsPanel, "Delete", "icon16/cross.png", THEME.error, function()
         panel:AlphaTo(100, 0.2, 0, function()
+            ---@class DFrame
             local confirmFrame = vgui.Create("DFrame")
             confirmFrame:SetSize(350, 140)
             confirmFrame:SetTitle("")

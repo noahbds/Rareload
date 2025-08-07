@@ -3,7 +3,6 @@ RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 local AntiStuck = RARELOAD.AntiStuck
 
 AntiStuck.validPositionsCache = AntiStuck.validPositionsCache or {}
-AntiStuck.cacheLifetime = 300
 AntiStuck.lastCachePurge = 0
 
 function AntiStuck.TryWorldBrushes(pos, ply)
@@ -11,9 +10,11 @@ function AntiStuck.TryWorldBrushes(pos, ply)
         return nil, AntiStuck.UNSTUCK_METHODS.NONE
     end
 
+    local cacheLifetime = AntiStuck.CONFIG and AntiStuck.CONFIG.CACHE_DURATION or 300
+
     if CurTime() - AntiStuck.lastCachePurge > 60 then
         for cacheKey, entry in pairs(AntiStuck.validPositionsCache) do
-            if CurTime() - entry.time > AntiStuck.cacheLifetime then
+            if CurTime() - entry.time > cacheLifetime then
                 AntiStuck.validPositionsCache[cacheKey] = nil
             end
         end
@@ -22,10 +23,10 @@ function AntiStuck.TryWorldBrushes(pos, ply)
 
     local candidatePositions = {}
     for cacheKey, entry in pairs(AntiStuck.validPositionsCache) do
-        if CurTime() - entry.time <= AntiStuck.cacheLifetime then
+        if CurTime() - entry.time <= cacheLifetime then
             local dist = entry.pos:DistToSqr(pos)
             if dist < 1000000 then
-                local isStuck, reason = AntiStuck.IsPositionStuck(entry.pos, ply)
+                local isStuck, reason = AntiStuck.IsPositionStuck(entry.pos, ply, false) -- Not original position
                 if not isStuck then
                     table.insert(candidatePositions, { pos = entry.pos, dist = dist })
                 end
@@ -38,13 +39,13 @@ function AntiStuck.TryWorldBrushes(pos, ply)
         return candidatePositions[1].pos, AntiStuck.UNSTUCK_METHODS.WORLD_BRUSHES
     end
 
-    local spiralRings = 10
-    local pointsPerRing = 8
-    local maxDistance = 2000
-    local verticalSteps = 5
-    local verticalRange = 400
+    local spiralRings = AntiStuck.CONFIG.SPIRAL_RINGS or 10
+    local pointsPerRing = AntiStuck.CONFIG.POINTS_PER_RING or 8
+    local maxDistance = AntiStuck.CONFIG.MAX_DISTANCE or 2000
+    local verticalSteps = AntiStuck.CONFIG.VERTICAL_STEPS or 5
+    local verticalRange = AntiStuck.CONFIG.VERTICAL_RANGE or 400
 
-    local searchResolutions = { 64, 128, 256, 512 }
+    local searchResolutions = AntiStuck.CONFIG.SEARCH_RESOLUTIONS or { 64, 128, 256, 512 }
 
     local baseHeight = pos.z
 

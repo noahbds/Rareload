@@ -1,3 +1,4 @@
+---@diagnostic disable: missing-fields
 local RareloadUI = {}
 
 if SERVER then
@@ -12,6 +13,27 @@ end
 
 if SERVER then
     BroadcastSettings()
+end
+
+if CLIENT then
+    RARELOAD = RARELOAD or {}
+
+    -- Client-side permission check fallback
+    -- This function checks if the local player has a specific permission
+    function RARELOAD.CheckPermission(ply, permName)
+        -- If the player is a superadmin, they have all permissions
+        if ply:IsSuperAdmin() then
+            return true
+        end
+
+        -- If the permissions system is initialized with HasPermission function, use it
+        if RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
+            return RARELOAD.Permissions.HasPermission(ply, permName)
+        end
+
+        -- Default fallback to admin check
+        return ply:IsAdmin()
+    end
 end
 
 -- ==============================
@@ -62,46 +84,6 @@ RareloadUI.Theme = {
         Bounce = 0.2
     }
 }
-
--- ==============================
---    FONT REGISTRATION
--- ==============================
-function RareloadUI.RegisterFonts()
-    surface.CreateFont("RareloadUI.Title", {
-        font = "Roboto",
-        size = 28,
-        weight = 600,
-        antialias = true
-    })
-
-    surface.CreateFont("RareloadUI.Heading", {
-        font = "Roboto",
-        size = 22,
-        weight = 600,
-        antialias = true
-    })
-
-    surface.CreateFont("RareloadUI.Text", {
-        font = "Roboto",
-        size = 18,
-        weight = 400,
-        antialias = true
-    })
-
-    surface.CreateFont("RareloadUI.Small", {
-        font = "Roboto",
-        size = 16,
-        weight = 400,
-        antialias = true
-    })
-
-    surface.CreateFont("RareloadUI.Button", {
-        font = "Roboto",
-        size = 18,
-        weight = 600,
-        antialias = true
-    })
-end
 
 -- ==============================
 --    UTILITY FUNCTIONS

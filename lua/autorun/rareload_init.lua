@@ -6,6 +6,13 @@ RARELOAD.version = "2.0"
 if SERVER then
     AddCSLuaFile("rareload/shared/permissions_def.lua")
 
+    -- Client utils (fonts must be loaded first)
+    AddCSLuaFile("rareload/utils/rareload_fonts.lua")
+
+    -- Client UI files
+    AddCSLuaFile("rareload/ui/rareload_ui.lua")
+    AddCSLuaFile("rareload/ui/rareload_toolscreen.lua")
+
     -- Client admin files
     AddCSLuaFile("rareload/client/admin/admin_panel.lua")
     AddCSLuaFile("rareload/client/admin/admin_theme.lua")
@@ -32,7 +39,6 @@ if SERVER then
 
     -- Client anti-stuck files
     AddCSLuaFile("rareload/client/antistuck/cl_rareload_antistuck_init.lua")
-    AddCSLuaFile("rareload/anti_stuck/cl_anti_stuck_debug.lua")
 end
 
 include("rareload/shared/permissions_def.lua")
@@ -98,24 +104,14 @@ if SERVER then
     include("rareload/utils/rareload_reload_data.lua")
     include("rareload/utils/rareload_teleport.lua")
     include("rareload/utils/sv_rareload_commands.lua")
-    include("rareload/utils/vector_serialization.lua")
-
-    -- UI
-    include("rareload/ui/rareload_toolscreen.lua")
-    include("rareload/ui/rareload_ui.lua")
+    include("rareload/utils/data_conversion_utils.lua")
 
     -- Admin system
     include("rareload/admin/rareload_permissions.lua")
-    include("rareload/admin/sv_rareload_admin_utils.lua")
+    include("rareload/admin/sv_rareload_admin_utils.lua")    -- Anti-stuck system - proper loading order is critical
+    include("rareload/anti_stuck/sv_anti_stuck_methods.lua") -- Load method registry first
 
-    -- Anti-stuck system
-    include("rareload/anti_stuck/sv_anti_stuck_core.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_init.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_methods.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_resolver.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_system.lua")
-
-    -- Anti-stuck methods
+    -- Anti-stuck methods - load methods before the core to register them
     include("rareload/anti_stuck/methods/sv_method_cachedpos.lua")
     include("rareload/anti_stuck/methods/sv_method_displacement.lua")
     include("rareload/anti_stuck/methods/sv_method_emergency_teleport.lua")
@@ -125,12 +121,29 @@ if SERVER then
     include("rareload/anti_stuck/methods/sv_method_spawn_points.lua")
     include("rareload/anti_stuck/methods/sv_method_world_brushes.lua")
 
+    -- Now load the core system after methods are registered
+    include("rareload/anti_stuck/sv_anti_stuck_core.lua")
+    include("rareload/anti_stuck/sv_anti_stuck_resolver.lua")
+    include("rareload/anti_stuck/sv_anti_stuck_system.lua")
+    include("rareload/anti_stuck/sv_anti_stuck_init.lua") -- This should be last
+    include("rareload/anti_stuck/methods/sv_method_world_brushes.lua")
+
     -- Tool
     include("weapons/gmod_tool/stools/rareload_tool.lua")
     print("[RARELOAD] Server-side files loaded successfully!")
 elseif CLIENT then
     -- Shared files
     include("rareload/shared/permissions_def.lua")
+
+    -- Load fonts first before any UI components
+    include("rareload/utils/rareload_fonts.lua")
+    if RARELOAD.RegisterFonts then
+        RARELOAD.RegisterFonts()
+    end
+
+    -- UI system
+    include("rareload/ui/rareload_ui.lua")
+    include("rareload/ui/rareload_toolscreen.lua")
 
     -- Client admin files
     include("rareload/client/admin/admin_panel.lua")
@@ -152,7 +165,7 @@ elseif CLIENT then
 
     -- Client anti-stuck files
     include("rareload/client/antistuck/cl_rareload_antistuck_init.lua")
-    include("rareload/anti_stuck/cl_anti_stuck_debug.lua")
+    include("rareload/client/antistuck/cl_anti_stuck_panel_main.lua")
 
     print("[RARELOAD] Client-side files loaded successfully!")
 end

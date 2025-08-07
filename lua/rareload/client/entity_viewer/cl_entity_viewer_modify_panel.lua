@@ -1,53 +1,10 @@
-local function ParsePosString(str)
-    if type(str) ~= "string" then
-        if type(str) == "table" and str.x ~= nil and str.y ~= nil and str.z ~= nil then
-            return str
-        end
-        return nil
-    end
-    local x, y, z = string.match(str, "%[%s*([%-%d%.]+)%s+([%-%d%.]+)%s+([%-%d%.]+)%s*%]")
-    if not (x and y and z) then
-        x, y, z = string.match(str, "^%s*([%-%d%.]+)%s+([%-%d%.]+)%s+([%-%d%.]+)%s*$")
-    end
-    if not (x and y and z) then
-        x, y, z = string.match(str, "^%s*([%-%d%.]+)%s*,%s*([%-%d%.]+)%s*,%s*([%-%d%.]+)%s*$")
-    end
-    if x and y and z then
-        return { x = tonumber(x), y = tonumber(y), z = tonumber(z) }
-    end
-    return nil
-end
+-- Load centralized conversion functions
+include("rareload/utils/data_conversion_utils.lua")
 
-local function PosTableToString(pos)
-    if type(pos) == "table" and pos.x ~= nil and pos.y ~= nil and pos.z ~= nil then
-        return string.format("[%.4f %.4f %.4f]", pos.x, pos.y, pos.z)
-    elseif type(pos) == "string" then
-        if not string.match(pos, "^%[.*%]$") then
-            local x, y, z = string.match(pos, "([%-%d%.]+)%s+([%-%d%.]+)%s+([%-%d%.]+)")
-            if x and y and z then
-                return string.format("[%.4f %.4f %.4f]", tonumber(x), tonumber(y), tonumber(z))
-            end
-        end
-        return pos
-    end
-    return nil
-end
-
-local function AngTableToString(ang)
-    if type(ang) == "table" and ang.p and ang.y and ang.r then
-        return string.format("{%.4f %.4f %.4f}", ang.p, ang.y, ang.r)
-    elseif type(ang) == "string" then
-        if not string.match(ang, "^{.*}$") then
-            local p, y, r = string.match(ang, "([%-%d%.]+)%s+([%-%d%.]+)%s+([%-%d%.]+)")
-            if p and y and r then
-                return string.format("{%.4f %.4f %.4f}", tonumber(p), tonumber(y), tonumber(r))
-            end
-        end
-    elseif type(ang) == "table" and #ang >= 3 then
-        return string.format("{%.4f %.4f %.4f}", ang[1], ang[2], ang[3])
-    end
-    return nil
-end
+-- Use centralized functions with local aliases for compatibility
+local ParsePosString = RARELOAD.ParsePosString
+local PosTableToString = RARELOAD.PosTableToString
+local AngTableToString = RARELOAD.AngTableToString
 
 function CreateModifyDataButton(actionsPanel, data, isNPC, onAction)
     local modifyBtn = CreateStyledButton(actionsPanel, "Modify Data", "icon16/pencil.png", THEME.warning, function()
@@ -497,11 +454,11 @@ function CreateModifyDataButton(actionsPanel, data, isNPC, onAction)
                                             math.abs(entCopy.pos.x - dataCopy.pos.x) < 0.1 and
                                             math.abs(entCopy.pos.y - dataCopy.pos.y) < 0.1 and
                                             math.abs(entCopy.pos.z - dataCopy.pos.z) < 0.1 then
-                                            if newData.pos and type(newData.pos) == "table" then
-                                                newData.pos = PosTableToString(newData.pos)
+                                            if newData.pos then
+                                                newData.pos = RARELOAD.DataUtils.FormatPositionForJSON(newData.pos, 4)
                                             end
-                                            if newData.ang and type(newData.ang) == "table" then
-                                                newData.ang = AngTableToString(newData.ang)
+                                            if newData.ang then
+                                                newData.ang = RARELOAD.DataUtils.FormatAngleForJSON(newData.ang, 4)
                                             end
                                             arr[i] = newData
                                             success = true

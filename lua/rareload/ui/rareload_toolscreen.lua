@@ -51,27 +51,6 @@ local TOOL_UI = UI.TOOL_UI or {
     }
 }
 
-local function RegisterFonts()
-    surface.CreateFont("CTNV", {
-        font = "Roboto",
-        size = 18,
-        weight = 500,
-        antialias = true
-    })
-
-    surface.CreateFont("CTNV2", {
-        font = "Roboto",
-        size = 24,
-        weight = 700,
-        antialias = true,
-        shadow = true
-    })
-end
-
-if CLIENT then
-    RegisterFonts()
-end
-
 local ToolScreen = {}
 
 local function initAnimState(RARELOAD)

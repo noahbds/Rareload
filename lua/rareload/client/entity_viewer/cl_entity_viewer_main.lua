@@ -50,6 +50,7 @@ function OpenEntityViewer(ply)
         return
     end
 
+    ---@class DFrame
     local frame = vgui.Create("DFrame")
     entityViewerFrame = frame
     local w, h = math.Clamp(ScrW() * 0.8, 900, ScrW() - 40), math.Clamp(ScrH() * 0.85, 700, ScrH() - 40)
@@ -112,6 +113,7 @@ function OpenEntityViewer(ply)
     searchContainer:SetTall(40)
     searchContainer:DockMargin(20, 8, 20, 0)
     searchContainer.Paint = function() end
+
 
     local searchPanel, searchBar = CreateModernSearchBar(searchContainer)
     searchPanel:Dock(LEFT)
@@ -204,6 +206,7 @@ function OpenEntityViewer(ply)
         OpenSettingsPanel()
     end
 
+    ---@class DPropertySheet
     local tabs = vgui.Create("DPropertySheet", frame)
     tabs:Dock(FILL)
     tabs:DockMargin(20, 0, 20, 20)
@@ -214,6 +217,8 @@ function OpenEntityViewer(ply)
     local function CreateModernTab(title, icon, isNPCTab)
         local container = vgui.Create("DPanel")
         container.Paint = function() end
+
+        ---@class DScrollPanel
         local scroll = vgui.Create("DScrollPanel", container)
         scroll:Dock(FILL)
         scroll:DockMargin(5, 5, 5, 5)
@@ -271,17 +276,19 @@ function OpenEntityViewer(ply)
                 sheet.Tab.Text:SetFont("RareloadText")
             end
         end
+
         local loadingPanel = vgui.Create("DPanel", container)
         loadingPanel:SetSize(300, 200)
         loadingPanel:SetVisible(false)
         loadingPanel:SetZPos(100)
+        local loadingRotation = 0
         loadingPanel.Paint = function(self, w, h)
-            self.rotation = (self.rotation or 0) + FrameTime() * 360
-            if self.rotation > 360 then self.rotation = self.rotation - 360 end
+            loadingRotation = (loadingRotation or 0) + FrameTime() * 360
+            if loadingRotation > 360 then loadingRotation = loadingRotation - 360 end
             local centerX, centerY = w / 2, h / 2
             local radius = 24
             for i = 0, 7 do
-                local angle = math.rad(self.rotation + (i * 45))
+                local angle = math.rad(loadingRotation + (i * 45))
                 local dotSize = 8 - i
                 if dotSize < 3 then dotSize = 3 end
                 local x = centerX + math.cos(angle) * radius
@@ -299,7 +306,7 @@ function OpenEntityViewer(ply)
         emptyPanel.Paint = function(self, w, h)
             local iconSize = 64
             surface.SetDrawColor(THEME.textSecondary)
-            surface.SetMaterial(Material(isNPC and "icon16/user_delete.png" or "icon16/brick_delete.png"))
+            surface.SetMaterial(Material(isNPCTab and "icon16/user_delete.png" or "icon16/brick_delete.png"))
             surface.DrawTexturedRect(w / 2 - iconSize / 2, h / 2 - iconSize - 10, iconSize, iconSize)
             draw.SimpleText("No " .. title .. " Found", "RareloadSubheading", w / 2, h / 2 + 10,
                 THEME.textSecondary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
@@ -310,6 +317,7 @@ function OpenEntityViewer(ply)
             loadingPanel:SetPos(w / 2 - loadingPanel:GetWide() / 2, h / 2 - loadingPanel:GetTall() / 2)
             emptyPanel:SetPos(w / 2 - emptyPanel:GetWide() / 2, h / 2 - emptyPanel:GetTall() / 2)
         end
+
         function scroll:ShowLoading(show)
             loadingPanel:SetVisible(show)
             emptyPanel:SetVisible(false)
@@ -532,6 +540,8 @@ function OpenSettingsPanel()
     content:Dock(FILL)
     content:DockMargin(20, 70, 20, 20)
     content.Paint = function() end
+
+    ---@class DCheckBoxLabel
     local autoRefreshCheck = vgui.Create("DCheckBoxLabel", content)
     autoRefreshCheck:SetText("Auto-refresh data")
     autoRefreshCheck:SetTextColor(THEME.textPrimary)
@@ -557,6 +567,8 @@ function OpenSettingsPanel()
     intervalLabel:SetTextColor(THEME.textPrimary)
     intervalLabel:Dock(TOP)
     intervalLabel:DockMargin(0, 0, 0, 5)
+
+    ---@class DNumSlider
     local intervalSlider = vgui.Create("DNumSlider", content)
     intervalSlider:SetText("")
     intervalSlider:Dock(TOP)
@@ -570,6 +582,7 @@ function OpenSettingsPanel()
         VIEWER_SETTINGS.refreshInterval = math.Round(val)
         SaveViewerSettings()
     end
+
     local advancedInfoCheck = vgui.Create("DCheckBoxLabel", content)
     advancedInfoCheck:SetText("Show advanced entity information")
     advancedInfoCheck:SetTextColor(THEME.textPrimary)

@@ -30,7 +30,7 @@ if SERVER then
     util.AddNetworkString("RareloadAntiStuckConfig")
     util.AddNetworkString("RareloadUpdateAntiStuckConfig")
 
-    AddCSLuaFile("rareload/anti_stuck/cl_anti_stuck_debug.lua")
+    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_panel_main.lua")
 
     RARELOAD.save_inventory = include("rareload/core/save_helpers/rareload_save_inventory.lua")
     RARELOAD.save_vehicles = include("rareload/core/save_helpers/rareload_save_vehicles.lua")
@@ -39,10 +39,13 @@ if SERVER then
     RARELOAD.save_ammo = include("rareload/core/save_helpers/rareload_save_ammo.lua")
     RARELOAD.save_vehicle_state = include("rareload/core/save_helpers/rareload_save_vehicle_state.lua")
     RARELOAD.position_history = include("rareload/core/save_helpers/rareload_position_history.lua")
+    include("rareload/utils/rareload_data_utils.lua")
 end
 
 if CLIENT then
-    UI.RegisterFonts()
+    include("rareload/utils/rareload_data_utils.lua")
+    include("rareload/utils/rareload_fonts.lua")
+    RARELOAD.RegisterFonts()
     UI.RegisterLanguage()
     net.Receive("RareloadSyncAutoSaveTime", function()
         RARELOAD.serverLastSaveTime = net.ReadFloat()
@@ -104,38 +107,18 @@ local function loadAddonSettings()
     return true, nil
 end
 
+-- Helper functions for data conversion (now using centralized utilities)
+-- Load centralized conversion functions
+if not RARELOAD or not RARELOAD.DataUtils then
+    include("rareload/utils/rareload_data_utils.lua")
+end
+
 local function toVecTable(vec)
-    if type(vec) == "Vector" then
-        return { x = vec.x, y = vec.y, z = vec.z }
-    elseif type(vec) == "table" and vec.x and vec.y and vec.z then
-        return vec
-    elseif type(vec) == "string" then
-        local x, y, z = string.match(vec, "%[([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)%]")
-        if not x then x, y, z = string.match(vec, "([%d%-%.]+),%s*([%d%-%.]+),%s*([%d%-%.]+)") end
-        if not x then x, y, z = string.match(vec, "^([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)$") end
-        if x and y and z then
-            return { x = tonumber(x), y = tonumber(y), z = tonumber(z) }
-        end
-    end
-    return { x = 0, y = 0, z = 0 }
+    return RARELOAD.DataUtils.ToPositionTable(vec) or { x = 0, y = 0, z = 0 }
 end
 
 local function toAngTable(ang)
-    if type(ang) == "Angle" then
-        return { p = ang.p, y = ang.y, r = ang.r }
-    elseif type(ang) == "table" and ang.p and ang.y and ang.r then
-        return ang
-    elseif type(ang) == "table" and #ang == 3 then
-        return { p = ang[1], y = ang[2], r = ang[3] }
-    elseif type(ang) == "string" then
-        local p, y, r = string.match(ang, "{([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)}")
-        if not p then p, y, r = string.match(ang, "([%d%-%.]+),%s*([%d%-%.]+),%s*([%d%-%.]+)") end
-        if not p then p, y, r = string.match(ang, "^([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)$") end
-        if p and y and r then
-            return { p = tonumber(p), y = tonumber(y), r = tonumber(r) }
-        end
-    end
-    return { p = 0, y = 0, r = 0 }
+    return RARELOAD.DataUtils.ToAngleTable(ang) or { p = 0, y = 0, r = 0 }
 end
 
 function TOOL:LeftClick(trace, ply)
@@ -273,7 +256,7 @@ function TOOL:LeftClick(trace, ply)
     if RARELOAD.settings.debugEnabled then
         net.Start("CreatePlayerPhantom")
         net.WriteEntity(ply)
-        net.WriteVector(Vector(newPos.x, newPos.y, newPos.z))
+        net.WriteVector(RARELOAD.DataUtils.ToVector(newPos) or Vector(0, 0, 0))
         local savedAng = Angle(newAng.p, newAng.y, newAng.r)
         net.WriteAngle(savedAng)
         net.Broadcast()
@@ -326,7 +309,7 @@ function TOOL:Reload()
     local steamID = ply:SteamID()
     local mapName = game.GetMap()
 
-    local historySize = RARELOAD.GetPositionHistorySize(steamID, mapName)
+    local historySize = RARELOAD.GetPositionHistory(steamID, mapName)
 
     if historySize > 0 then
         local previousData = RARELOAD.GetPreviousPositionData(steamID, mapName)
@@ -341,7 +324,7 @@ function TOOL:Reload()
             end)
 
             if success then
-                local remaining = RARELOAD.GetPositionHistorySize(steamID, mapName)
+                local remaining = RARELOAD.GetPositionHistory(steamID, mapName)
                 ply:ChatPrint("[RARELOAD] Restored previous position data. (" .. remaining .. " positions in history)")
 
                 if RARELOAD.settings.debugEnabled then

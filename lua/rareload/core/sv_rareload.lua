@@ -157,7 +157,7 @@ if SERVER then
             include("rareload/anti_stuck/sv_anti_stuck_init.lua")
         end
 
-        local isStuck, reason = RARELOAD.AntiStuck.IsPositionStuck(pos, ply)
+        local isStuck, reason = RARELOAD.AntiStuck.IsPositionStuck(pos, ply, true) -- Mark as original position
         return not isStuck, pos
     end
 
@@ -231,10 +231,27 @@ if SERVER then
                 RARELOAD.SavePositionToCache(pos)
             end
 
-            local angTable = type(savedInfo.ang) == "string" and util.JSONToTable(savedInfo.ang) or savedInfo.ang
-            if type(angTable) == "table" and #angTable == 3 then
-                ply:SetEyeAngles(Angle(angTable[1], angTable[2], angTable[3]))
-            end
+            -- Parse and apply saved angle using centralized data utils with slight delay
+            timer.Simple(0.05, function()
+                if not IsValid(ply) then return end
+
+                -- Load centralized conversion functions
+                if not RARELOAD or not RARELOAD.DataUtils then
+                    include("rareload/utils/rareload_data_utils.lua")
+                end
+
+                local parsedAngle = RARELOAD.DataUtils.ToAngle(savedInfo.ang)
+                if parsedAngle then
+                    ply:SetEyeAngles(parsedAngle)
+                    if RARELOAD.settings and RARELOAD.settings.debugEnabled then
+                        print("[RARELOAD] Applied saved angle: " .. tostring(parsedAngle))
+                    end
+                else
+                    if RARELOAD.settings and RARELOAD.settings.debugEnabled then
+                        print("[RARELOAD] Could not parse saved angle: " .. tostring(savedInfo.ang))
+                    end
+                end
+            end)
 
             return
         end
@@ -257,12 +274,27 @@ if SERVER then
             ply:SetPos(safePos)
         end
 
-        local angTable = type(savedInfo.ang) == "string" and util.JSONToTable(savedInfo.ang) or savedInfo.ang
-        if type(angTable) == "table" and #angTable == 3 then
-            ply:SetEyeAngles(Angle(angTable[1], angTable[2], angTable[3]))
-        else
-            print("[RARELOAD] Error: Invalid angle data.")
-        end
+        -- Parse and apply saved angle using centralized data utils with slight delay
+        timer.Simple(0.05, function()
+            if not IsValid(ply) then return end
+
+            -- Load centralized conversion functions
+            if not RARELOAD or not RARELOAD.DataUtils then
+                include("rareload/utils/rareload_data_utils.lua")
+            end
+
+            local parsedAngle = RARELOAD.DataUtils.ToAngle(savedInfo.ang)
+            if parsedAngle then
+                ply:SetEyeAngles(parsedAngle)
+                if RARELOAD.settings and RARELOAD.settings.debugEnabled then
+                    print("[RARELOAD] Applied saved angle after anti-stuck: " .. tostring(parsedAngle))
+                end
+            else
+                if RARELOAD.settings and RARELOAD.settings.debugEnabled then
+                    print("[RARELOAD] Could not parse saved angle after anti-stuck: " .. tostring(savedInfo.ang))
+                end
+            end
+        end)
     end
 
     ------------------------------------------------------------------------------------------------
@@ -276,7 +308,11 @@ if SERVER then
 
     -- This convert the eye angle table to a a single line (used for the 3D2D frame)
     function AngleToString(angle)
-        return string.format("[%.2f, %.2f, %.2f]", angle[1], angle[2], angle[3])
+        -- Use centralized formatting functions for consistency
+        if not RARELOAD or not RARELOAD.DataUtils then
+            include("rareload/utils/rareload_data_utils.lua")
+        end
+        return RARELOAD.DataUtils.FormatAngleCompact(angle)
     end
 
     function SyncData(ply)

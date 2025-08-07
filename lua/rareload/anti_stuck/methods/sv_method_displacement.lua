@@ -2,49 +2,62 @@ RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 local AntiStuck = RARELOAD.AntiStuck
 
+-- Pre-calculated normalized directions for better performance
+local DISPLACEMENT_DIRECTIONS = {
+    Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0),
+    Vector(0.7071, 0.7071, 0), Vector(0.7071, -0.7071, 0),
+    Vector(-0.7071, 0.7071, 0), Vector(-0.7071, -0.7071, 0),
+    Vector(0, 0, 1), Vector(0, 0, -1),
+    Vector(0.7071, 0, 0.7071), Vector(-0.7071, 0, 0.7071),
+    Vector(0, 0.7071, 0.7071), Vector(0, -0.7071, 0.7071)
+}
+
+-- Cache trace structure to avoid table creation overhead
+local groundTrace = {
+    mask = MASK_SOLID_BRUSHONLY,
+    filter = nil,
+    start = Vector(),
+    endpos = Vector()
+}
+
 function AntiStuck.TryDisplacement(pos, ply)
-    local directions = {
-        Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0),
-        Vector(1, 1, 0):GetNormalized(), Vector(1, -1, 0):GetNormalized(),
-        Vector(-1, 1, 0):GetNormalized(), Vector(-1, -1, 0):GetNormalized(),
-        Vector(0, 0, 1), Vector(0, 0, -1),
-        Vector(1, 0, 1):GetNormalized(), Vector(-1, 0, 1):GetNormalized(),
-        Vector(0, 1, 1):GetNormalized(), Vector(0, -1, 1):GetNormalized()
-    }
+    local maxDistance = (AntiStuck.mapBounds and math.max(AntiStuck.mapBounds.maxs.x - AntiStuck.mapBounds.mins.x, AntiStuck.mapBounds.maxs.y - AntiStuck.mapBounds.mins.y) * 0.25) or
+        (AntiStuck.CONFIG.HORIZONTAL_SEARCH_RANGE or 2048)
+    local safeDistance = AntiStuck.CONFIG.SAFE_DISTANCE or 64
+    local stepSize = (AntiStuck.CONFIG.SAFE_DISTANCE or 64) * 2
 
-    local maxDistance = AntiStuck.mapBounds and
-        math.max(AntiStuck.mapBounds.maxs.x - AntiStuck.mapBounds.mins.x,
-            AntiStuck.mapBounds.maxs.y - AntiStuck.mapBounds.mins.y) / 4 or
-        AntiStuck.CONFIG.HORIZONTAL_SEARCH_RANGE
+    groundTrace.filter = ply
 
-    for distance = AntiStuck.CONFIG.SAFE_DISTANCE, maxDistance, AntiStuck.CONFIG.SAFE_DISTANCE * 2 do
-        for _, dir in ipairs(directions) do
+    for distance = safeDistance, maxDistance, stepSize do
+        for i = 1, #DISPLACEMENT_DIRECTIONS do
+            local dir = DISPLACEMENT_DIRECTIONS[i]
             local testPos = pos + (dir * distance)
 
             if dir.z <= 0 then
-                for heightOffset = 200, 1000, 100 do
+                -- Ground-finding logic for horizontal/downward directions
+                for heightOffset = 200, 1000, 200 do -- Larger steps for efficiency
                     local startPos = testPos + Vector(0, 0, heightOffset)
-                    ---@diagnostic disable-next-line: missing-fields
-                    local ground = util.TraceLine({
-                        start = startPos,
-                        endpos = startPos - Vector(0, 0, heightOffset + 500),
-                        filter = ply,
-                        mask = MASK_SOLID_BRUSHONLY
-                    })
+
+                    groundTrace.start:Set(startPos)
+                    groundTrace.endpos:Set(startPos - Vector(0, 0, heightOffset + 500))
+
+                    local ground = util.TraceLine(groundTrace)
 
                     if ground.Hit then
                         local finalPos = ground.HitPos + Vector(0, 0, 16)
                         if util.IsInWorld(finalPos) then
-                            local isStuck, reason = AntiStuck.IsPositionStuck(finalPos, ply)
+                            local isStuck = AntiStuck.IsPositionStuck(finalPos, ply, false) -- Not original position
                             if not isStuck then
                                 return finalPos, AntiStuck.UNSTUCK_METHODS.DISPLACEMENT
                             end
                         end
+                        break -- Found ground, no need to check higher offsets
                     end
                 end
             else
+                -- Direct position check for upward directions
                 if util.IsInWorld(testPos) then
-                    local isStuck, reason = AntiStuck.IsPositionStuck(testPos, ply)
+                    local isStuck = AntiStuck.IsPositionStuck(testPos, ply, false) -- Not original position
                     if not isStuck then
                         return testPos, AntiStuck.UNSTUCK_METHODS.DISPLACEMENT
                     end

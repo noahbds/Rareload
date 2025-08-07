@@ -1,9 +1,15 @@
-RARELOAD                    = RARELOAD or {}
-RARELOAD.playerPositions    = RARELOAD.playerPositions or {}
-RARELOAD.settings           = RARELOAD.settings or {}
-RARELOAD.Phantom            = RARELOAD.Phantom or {}
-RARELOAD.nextDataReload     = RARELOAD.nextDataReload or 0
-RARELOAD.nextPhantomRefresh = RARELOAD.nextPhantomRefresh or 0
+RARELOAD                      = RARELOAD or {}
+RARELOAD.playerPositions      = RARELOAD.playerPositions or {}
+RARELOAD.settings             = RARELOAD.settings or {}
+RARELOAD.Phantom              = RARELOAD.Phantom or {}
+RARELOAD.nextDataReload       = RARELOAD.nextDataReload or 0
+RARELOAD.nextPhantomRefresh   = RARELOAD.nextPhantomRefresh or 0
+
+-- Performance optimization variables
+local PHANTOM_UPDATE_INTERVAL = 1.0
+local DATA_RELOAD_INTERVAL    = 10.0
+local PHANTOM_MAX_DISTANCE    = 2000
+local PHANTOM_CULL_DISTANCE   = 3000
 
 local function HandleNetReceive(event, callback)
     net.Receive(event, function(len, ply)
@@ -33,33 +39,34 @@ local function CreatePhantom(ply, pos, ang)
     end
 
     local phantom = ClientsideModel(modelToUse)
-    phantom:SetPos(pos)
+    if not IsValid(phantom) then return nil end
 
-    local correctedAng = ang and Angle(0, ang.y, 0) or Angle(0, ply:GetAngles().y, 0)
-    phantom:SetAngles(correctedAng)
+    phantom:SetPos(pos)
+    phantom:SetAngles(ang and Angle(0, ang.y, 0) or Angle(0, ply:GetAngles().y, 0))
     phantom.isPhantom = true
     phantom:SetRenderMode(RENDERMODE_TRANSALPHA)
-
     phantom:SetMoveType(MOVETYPE_NONE)
     phantom:SetSolid(SOLID_NONE)
-
-    if RARELOAD.settings.debugEnabled then
-        phantom:SetColor(Color(255, 255, 255, 150))
-        phantom:SetNoDraw(false)
-    else
-        phantom:SetColor(Color(0, 0, 0, 0))
-        phantom:SetNoDraw(true)
-    end
+    phantom:SetNoDraw(true) -- Always start hidden for performance
+    phantom:SetColor(Color(0, 0, 0, 0))
 
     return phantom
 end
 
 local function UpdatePhantomVisibility()
     local isDebugEnabled = RARELOAD.settings.debugEnabled
-    for _, phantomData in pairs(RARELOAD.Phantom) do
+    local playerPos = LocalPlayer():GetPos()
+
+    for steamID, phantomData in pairs(RARELOAD.Phantom) do
         local phantom = phantomData.phantom
         if IsValid(phantom) then
-            if isDebugEnabled then
+            local distance = playerPos:DistToSqr(phantom:GetPos())
+
+            if distance > PHANTOM_CULL_DISTANCE * PHANTOM_CULL_DISTANCE then
+                -- Cull distant phantoms
+                phantom:SetNoDraw(true)
+                phantom:SetColor(Color(0, 0, 0, 0))
+            elseif isDebugEnabled and distance <= PHANTOM_MAX_DISTANCE * PHANTOM_MAX_DISTANCE then
                 phantom:SetColor(Color(255, 255, 255, 150))
                 phantom:SetNoDraw(false)
             else
@@ -174,42 +181,58 @@ function RARELOAD.RefreshPhantoms()
     if not RARELOAD.playerPositions or not RARELOAD.playerPositions[mapName] then return end
     if not RARELOAD.Phantom then RARELOAD.Phantom = {} end
 
+    local playerPos = LocalPlayer():GetPos()
+    local created = 0
+
     for steamID, playerData in pairs(RARELOAD.playerPositions[mapName]) do
         if not RARELOAD.Phantom[steamID] or not IsValid(RARELOAD.Phantom[steamID].phantom) then
-            local ply
-            for _, p in ipairs(player.GetAll()) do
-                if p:SteamID() == steamID then
-                    ply = p
-                    break
-                end
+            -- Ensure playerData.pos is a Vector before distance check
+            local pos = playerData.pos
+            if type(pos) == "table" and not isvector(pos) and pos.x and pos.y and pos.z then
+                pos = Vector(pos.x, pos.y, pos.z)
             end
-
-            if IsValid(ply) and playerData.pos then
-                local ang = Angle(0, 0, 0)
-                if playerData.ang then
-                    if type(playerData.ang) == "table" then
-                        ang = Angle(playerData.ang[1], playerData.ang[2], playerData.ang[3])
-                    else
-                        ang = playerData.ang
+            -- Distance check before creating phantom
+            if pos and playerPos:DistToSqr(pos) <= PHANTOM_CULL_DISTANCE * PHANTOM_CULL_DISTANCE then
+                local ply
+                for _, p in ipairs(player.GetAll()) do
+                    if p:SteamID() == steamID then
+                        ply = p
+                        break
                     end
                 end
 
-                RARELOAD.Phantom[steamID] = {
-                    phantom = CreatePhantom(ply, playerData.pos, ang),
-                    ply = ply
-                }
+                if IsValid(ply) then
+                    local ang = Angle(0, 0, 0)
+                    if playerData.ang then
+                        if type(playerData.ang) == "table" then
+                            ang = Angle(playerData.ang[1], playerData.ang[2], playerData.ang[3])
+                        else
+                            ang = playerData.ang
+                        end
+                    end
 
-                if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                    print("[RARELOAD DEBUG] Created phantom for " .. ply:Nick() .. " at " .. tostring(playerData.pos))
+                    local phantom = CreatePhantom(ply, pos, ang)
+                    if phantom then
+                        RARELOAD.Phantom[steamID] = {
+                            phantom = phantom,
+                            ply = ply,
+                            lastUpdate = CurTime()
+                        }
+                        created = created + 1
+                    end
                 end
             end
         end
+    end
+
+    if created > 0 then
+        UpdatePhantomVisibility()
     end
 end
 
 local function BufferPhantom()
     if CurTime() < RARELOAD.nextDataReload then return end
-    RARELOAD.nextDataReload = CurTime() + 5
+    RARELOAD.nextDataReload = CurTime() + DATA_RELOAD_INTERVAL
 
     local mapName = game.GetMap()
     local filePath = "rareload/player_positions_" .. mapName .. ".json"
@@ -223,33 +246,54 @@ local function BufferPhantom()
     end
 end
 
+-- Optimized phantom management
+local nextPhantomCheck = 0
+local nextVisibilityUpdate = 0
+
 hook.Add("PostDrawOpaqueRenderables", "DrawPlayerPhantomInfo", function()
     BufferPhantom()
 
-    if CurTime() >= RARELOAD.nextPhantomRefresh then
+    local now = CurTime()
+
+    -- Less frequent phantom checks
+    if now >= nextPhantomCheck then
         local map = game.GetMap()
-        local shouldRefresh = false
         local posTbl = RARELOAD.playerPositions[map] or {}
+        local needsRefresh = false
+
         for steamID in pairs(posTbl) do
             if not RARELOAD.Phantom[steamID] or not IsValid(RARELOAD.Phantom[steamID].phantom) then
-                shouldRefresh = true
+                needsRefresh = true
                 break
             end
         end
 
-        if shouldRefresh then
+        if needsRefresh then
             RARELOAD.RefreshPhantoms()
         end
 
-        RARELOAD.nextPhantomRefresh = CurTime() + 2
+        nextPhantomCheck = now + PHANTOM_UPDATE_INTERVAL
     end
 
-    if RARELOAD.settings.debugEnabled then
+    -- Update visibility less frequently
+    if now >= nextVisibilityUpdate then
+        UpdatePhantomVisibility()
+        nextVisibilityUpdate = now + 0.5
+    end
+
+    -- Only draw info if debug enabled and phantoms exist
+    if RARELOAD.settings.debugEnabled and next(RARELOAD.Phantom) then
         local playerPos = LocalPlayer():GetPos()
         local mapName = game.GetMap()
+        local drawnCount = 0
+
         for _, data in pairs(RARELOAD.Phantom) do
-            if IsValid(data.phantom) then
-                DrawPhantomInfo(data, playerPos, mapName)
+            if IsValid(data.phantom) and drawnCount < 10 then -- Limit concurrent draws
+                local distance = playerPos:DistToSqr(data.phantom:GetPos())
+                if distance <= PHANTOM_MAX_DISTANCE * PHANTOM_MAX_DISTANCE then
+                    DrawPhantomInfo(data, playerPos, mapName)
+                    drawnCount = drawnCount + 1
+                end
             end
         end
     end
@@ -263,21 +307,7 @@ hook.Add("Think", "CheckDebugModeChanges", function()
         RARELOAD.lastDebugState = currentDebugState
     end
 
-    if RARELOAD.nextPhantomCheck and RARELOAD.nextPhantomCheck > CurTime() then return end
-
-    local shouldRefresh = false
-    for steamID in pairs(RARELOAD.playerPositions[game.GetMap()] or {}) do
-        if not RARELOAD.Phantom[steamID] or not IsValid(RARELOAD.Phantom[steamID].phantom) then
-            shouldRefresh = true
-            break
-        end
-    end
-
-    if shouldRefresh then
-        RARELOAD.RefreshPhantoms()
-    end
-
-    RARELOAD.nextPhantomCheck = CurTime() + 2
+    -- Remove this redundant phantom check since it's handled in PostDrawOpaqueRenderables
 end)
 
 hook.Add("PlayerDisconnected", "RemovePhantomOnDisconnect", function(ply)

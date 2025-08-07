@@ -16,7 +16,7 @@ function AntiStuck.TryEmergencyTeleport(pos, ply)
                 local randomPos = Vector(randX, randY, height)
 
                 if util.IsInWorld(randomPos) then
-                    local isStuck, reason = AntiStuck.IsPositionStuck(randomPos, ply)
+                    local isStuck, reason = AntiStuck.IsPositionStuck(randomPos, ply, false) -- Not original position
                     if not isStuck then
                         return randomPos, AntiStuck.UNSTUCK_METHODS.EMERGENCY_TELEPORT
                     end
@@ -102,4 +102,9 @@ function AntiStuck.TryEmergencyTeleport(pos, ply)
     return absoluteFallback, AntiStuck.UNSTUCK_METHODS.EMERGENCY_TELEPORT
 end
 
-AntiStuck.RegisterMethod("TryEmergencyTeleport", AntiStuck.TryEmergencyTeleport)
+-- Register method - ensure AntiStuck is properly referenced
+if RARELOAD.AntiStuck and RARELOAD.AntiStuck.RegisterMethod then
+    RARELOAD.AntiStuck.RegisterMethod("TryEmergencyTeleport", AntiStuck.TryEmergencyTeleport)
+else
+    print("[RARELOAD ERROR] Cannot register TryEmergencyTeleport - AntiStuck.RegisterMethod not available")
+end
