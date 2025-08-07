@@ -3,16 +3,72 @@ local RareloadUI = {}
 
 if SERVER then
     util.AddNetworkString("RareloadSettingsSync")
+    util.AddNetworkString("RareloadAntiStuckConfig")
+
+    -- Track active net messages
+    local activeNetMessages = {}
+
+    -- Make these functions globally accessible
+    function SafeNetStart(messageName)
+        -- Check if net library is available
+        if not net then return false end
+        
+        -- If there's an active message, end it first
+        if activeNetMessages[messageName] then
+            if net.End then
+                net.End()
+            end
+            activeNetMessages[messageName] = false
+        end
+        
+        if net.Start then
+            net.Start(messageName)
+            activeNetMessages[messageName] = true
+            return true
+        end
+        return false
+    end
+
+    function SafeNetEnd(messageName)
+        if not net or not net.End then return false end
+        
+        if activeNetMessages[messageName] then
+            net.End()
+            activeNetMessages[messageName] = false
+            return true
+        end
+        return false
+    end
 
     function BroadcastSettings()
-        net.Start("RareloadSettingsSync")
-        net.WriteString(file.Read("rareload/addon_state.json", "DATA") or "{}")
-        net.Broadcast()
+        if not SafeNetStart("RareloadSettingsSync") then return end
+        
+        local settings = file.Read("rareload/addon_state.json", "DATA") or "{}"
+        net.WriteString(settings)
+        
+        if SafeNetEnd("RareloadSettingsSync") then
+            net.Broadcast()
+        end
     end
+
+    -- Hook to ensure all net messages are properly ended
+    hook.Add("Think", "RareloadNetMessageCleanup", function()
+        if not net or not net.End then return end
+        
+        for messageName, isActive in pairs(activeNetMessages) do
+            if isActive then
+                net.End()
+                activeNetMessages[messageName] = false
+            end
+        end
+    end)
 end
 
 if SERVER then
-    BroadcastSettings()
+    -- Delay the initial broadcast to ensure everything is loaded
+    timer.Simple(1, function()
+        BroadcastSettings()
+    end)
 end
 
 if CLIENT then

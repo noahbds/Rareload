@@ -1,4 +1,4 @@
-local UI = include("rareload/ui/rareload_ui.lua")
+local RareloadUI = include("rareload/ui/rareload_ui.lua")
 
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
@@ -6,7 +6,7 @@ RARELOAD.lastMoveTime = RARELOAD.lastMoveTime or 0
 RARELOAD.showAutoSaveMessage = RARELOAD.showAutoSaveMessage or false
 RARELOAD.autoSaveMessageTime = RARELOAD.autoSaveMessageTime or 0
 
-local TOOL_UI = UI.TOOL_UI or {
+local TOOL_UI = {
     COLORS = {
         BG = Color(30, 30, 35),
         ENABLED = Color(40, 210, 40),
@@ -187,12 +187,12 @@ local function drawStatusEmoji(x, y, size, isSuccess, alpha, animProgress)
     draw.NoTexture()
 
     surface.SetDrawColor(bgColor.r, bgColor.g, bgColor.b, alpha * 0.3)
-    UI.DrawCircle(x, y, bgSize + 4, 40)
-    UI.DrawCircle(x, y, bgSize + 4, 40, Color(bgColor.r, bgColor.g, bgColor.b, alpha * 0.3))
+    RareloadUI.DrawCircle(x, y, bgSize + 4, 40)
+    RareloadUI.DrawCircle(x, y, bgSize + 4, 40, Color(bgColor.r, bgColor.g, bgColor.b, alpha * 0.3))
 
     surface.SetDrawColor(bgColor.r, bgColor.g, bgColor.b, alpha)
-    UI.DrawCircle(x, y, bgSize, 40)
-    UI.DrawCircle(x, y, bgSize, 40, Color(bgColor.r, bgColor.g, bgColor.b, alpha))
+    RareloadUI.DrawCircle(x, y, bgSize, 40)
+    RareloadUI.DrawCircle(x, y, bgSize, 40, Color(bgColor.r, bgColor.g, bgColor.b, alpha))
 
     if isSuccess then
         if animProgress < 0.3 then return end
@@ -230,9 +230,9 @@ local function drawStatusEmoji(x, y, size, isSuccess, alpha, animProgress)
 
             surface.SetDrawColor(255, 255, 255, alpha)
             surface.DrawPoly(poly)
-            UI.DrawCircle(startX, startY, thickness / 2, 12, Color(255, 255, 255, alpha))
+            RareloadUI.DrawCircle(startX, startY, thickness / 2, 12, Color(255, 255, 255, alpha))
             if firstSegmentProgress >= 0.95 then
-                UI.DrawCircle(midX, midY, thickness / 2, 12, Color(255, 255, 255, alpha))
+                RareloadUI.DrawCircle(midX, midY, thickness / 2, 12, Color(255, 255, 255, alpha))
             end
         end
 
@@ -257,7 +257,7 @@ local function drawStatusEmoji(x, y, size, isSuccess, alpha, animProgress)
             surface.SetDrawColor(255, 255, 255, alpha)
             surface.DrawPoly(poly)
             if secondSegmentProgress >= 0.95 then
-                UI.DrawCircle(currentEndX, currentEndY, thickness / 2, 12, Color(255, 255, 255, alpha))
+                RareloadUI.DrawCircle(currentEndX, currentEndY, thickness / 2, 12, Color(255, 255, 255, alpha))
             end
         end
     else
@@ -477,7 +477,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
 
                 surface.SetDrawColor(colors.HEADER)
                 draw.NoTexture()
-                UI.DrawCircle(20, y + iconSize / 2, iconSize / 2, 20, colors.HEADER)
+                RareloadUI.DrawCircle(20, y + iconSize / 2, iconSize / 2, 20, colors.HEADER)
 
                 draw.SimpleText(feature.name, "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT, TEXT_ALIGN_LEFT,
                     TEXT_ALIGN_CENTER)
@@ -488,7 +488,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
 
                 surface.SetDrawColor(dotColor)
                 draw.NoTexture()
-                UI.DrawCircle(20, y + iconSize / 2, iconSize / 2, 20, dotColor)
+                RareloadUI.DrawCircle(20, y + iconSize / 2, iconSize / 2, 20, dotColor)
 
                 draw.SimpleText(feature.name, "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT, TEXT_ALIGN_LEFT,
                     TEXT_ALIGN_CENTER)

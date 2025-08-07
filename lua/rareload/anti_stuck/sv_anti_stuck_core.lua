@@ -422,8 +422,22 @@ if SERVER then
     function AntiStuck.SetupNetworking()
         net.Receive("RareloadRequestAntiStuckConfig", function(len, ply)
             if IsValid(ply) and ply:IsAdmin() then
-                net.Start("RareloadAntiStuckConfig")
-                net.WriteTable(AntiStuck.methods)
+                SafeNetStart("RareloadAntiStuckConfig")
+                -- Create a serializable version of the methods table
+                local serializedMethods = {}
+                for name, method in pairs(AntiStuck.methods) do
+                    serializedMethods[name] = {
+                        name = method.name,
+                        description = method.description,
+                        enabled = method.enabled,
+                        priority = method.priority,
+                        settings = method.settings,
+                        -- Don't include the function reference
+                        -- func = method.func
+                    }
+                end
+                net.WriteTable(serializedMethods)
+                SafeNetEnd("RareloadAntiStuckConfig")
                 net.Send(ply)
             end
         end)
@@ -455,24 +469,26 @@ if SERVER then
 
             local newMethods = net.ReadTable()
             if type(newMethods) == "table" and #newMethods > 0 then
-                AntiStuck.methods = newMethods
+                -- Validate and process the received methods
+                local processedMethods = {}
+                for name, method in pairs(newMethods) do
+                    if type(method) == "table" and method.name then
+                        -- Keep the existing function reference if available
+                        local existingMethod = AntiStuck.methods[name]
+                        processedMethods[name] = {
+                            name = method.name,
+                            description = method.description,
+                            enabled = method.enabled,
+                            priority = method.priority,
+                            settings = method.settings,
+                            func = existingMethod and existingMethod.func or nil
+                        }
+                    end
+                end
+                AntiStuck.methods = processedMethods
                 AntiStuck.SaveMethods()
                 LogDebug("Method methods updated by " ..
                 ply:Nick() .. " for profile: " .. serverProfileSystem.currentProfile)
-            end
-        end)
-
-        net.Receive("RareloadAntiStuckConfig", function(len, ply)
-            if not IsValid(ply) or not ply:IsAdmin() then return end
-            local newConfig = net.ReadTable()
-            if type(newConfig) == "table" then
-                for k, v in pairs(newConfig) do
-                    if AntiStuck.CONFIG[k] ~= nil then
-                        AntiStuck.CONFIG[k] = v
-                    end
-                end
-                LogDebug("Anti-Stuck config updated by " .. ply:Nick(), newConfig)
-                -- save to file for persistence (implement this)
             end
         end)
 
@@ -554,8 +570,9 @@ if SERVER then
             end
 
             if #admins > 0 then
-                net.Start("RareloadAntiStuckConfig")
+                SafeNetStart("RareloadAntiStuckConfig")
                 net.WriteTable(AntiStuck.CONFIG)
+                SafeNetEnd("RareloadAntiStuckConfig")
                 net.Send(admins)
 
                 -- Notify other admins

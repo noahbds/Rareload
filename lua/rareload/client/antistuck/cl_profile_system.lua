@@ -1,513 +1,534 @@
 RARELOAD = RARELOAD or {}
+RARELOAD.ProfileSystem = RARELOAD.ProfileSystem or {}
 
--- Core Profile System for managing different anti-stuck configurations
--- This file contains the core functionality and initialization
--- Other functionality is split into separate modules for better organization
+-- Constants
+local PROFILE_DIR = "rareload/anti_stuck_profiles/"
+local SELECTED_PROFILE_FILE = "rareload/anti_stuck_selected_profile.json"
+local DEFAULT_PROFILE_NAME = "default"
+local PROFILE_VERSION = "1.2"
+local CACHE_TTL = 300 -- 5 minutes
+local MAX_CACHE_SIZE = 50
+local PROFILE_REFRESH_INTERVAL = 0.5 -- 0.5 seconds
+local BATCH_OPERATION_SIZE = 5 -- Number of operations to batch together
 
--- Load the deep copy utility module first
-include("cl_profile_deepcopy.lua")
-
--- Use existing profileSystem if present, else create new
-local profileSystem = RARELOAD.profileSystem or _G.profileSystem
-if not profileSystem then
-    profileSystem = {
-        profilesDir = "rareload/anti_stuck_profiles/",
-        currentProfile = "default",
-        selectedProfileFile = "rareload/anti_stuck_selected_profile.json",
-
-        -- Performance optimization caches
-        _profileCache = {},    -- Cache for loaded profiles
-        _validationCache = {}, -- Cache for validation results
-        _fileTimestamps = {},  -- Track file modification times
-        _profileList = nil,    -- Cached profile list
-        _listDirty = true,     -- Flag to refresh profile list
-        _batchOperations = {}, -- Queue for batch file operations
-        _memoryPool = {        -- Pre-allocated data structures
-            tempProfiles = {},
-            tempSettings = {},
-            tempmethods = {}
-        },
-
-        -- Performance counters
-        _stats = {
-            cacheHits = 0,
-            cacheMisses = 0,
-            fileOperations = 0,
-            validationCacheHits = 0
-        }
+-- Profile System Core
+local ProfileSystem = {
+    -- Core state
+    _initialized = false,
+    _currentProfile = nil,
+    _profiles = {},
+    _listDirty = true,
+    
+    -- Cache system with TTL
+    _cache = {
+        profiles = {},
+        timestamps = {},
+        lastAccess = {},
+        validation = {}
+    },
+    
+    -- Performance metrics
+    _metrics = {
+        cacheHits = 0,
+        cacheMisses = 0,
+        fileOperations = 0,
+        validationHits = 0,
+        lastCleanup = 0,
+        batchOperations = 0
+    },
+    
+    -- Memory pools for optimization
+    _pools = {
+        tempProfiles = {},
+        tempSettings = {},
+        tempMethods = {}
+    },
+    
+    -- Batch operations
+    _batchOps = {
+        queue = {},
+        timer = nil,
+        processing = false
+    },
+    
+    -- Event handlers
+    _eventHandlers = {
+        onProfileChanged = {},
+        onProfileDeleted = {},
+        onProfileCreated = {},
+        onProfileUpdated = {}
     }
+}
+
+-- Utility functions
+local function SafeJSONDecode(str)
+    if not str or str == "" then return nil end
+    local success, result = pcall(util.JSONToTable, str)
+    return success and result or nil
 end
 
--- Make profile system globally accessible
-RARELOAD.profileSystem = profileSystem
-_G.profileSystem = profileSystem
-
-print("[RARELOAD] Core profile system loaded with basic functions")
-
-
--- Core file operation functions that must be available immediately
--- These will delegate to the specialized modules when they're loaded
-
-function profileSystem.LoadCurrentProfile()
-    -- Load the currently selected profile
-    if file.Exists(profileSystem.selectedProfileFile, "DATA") then
-        local content = file.Read(profileSystem.selectedProfileFile, "DATA")
-        local success, data = pcall(util.JSONToTable, content)
-        if success and data and data.selectedProfile then
-            profileSystem.currentProfile = data.selectedProfile
-        end
-    end
+local function SafeJSONEncode(tbl)
+    if not tbl then return nil end
+    local success, result = pcall(util.TableToJSON, tbl, true)
+    return success and result or nil
 end
 
-function profileSystem.SaveCurrentProfile()
-    file.CreateDir("rareload")
-    local data = { selectedProfile = profileSystem.currentProfile }
-    file.Write(profileSystem.selectedProfileFile, util.TableToJSON(data, true))
-end
-
-function profileSystem.LoadProfile(profileName)
-    if not profileName then return nil end
-
-    local fileName = profileSystem.profilesDir .. profileName .. ".json"
-    if not file.Exists(fileName, "DATA") then
-        print("[RARELOAD] Profile file does not exist: " .. fileName)
-        return nil
+local function GetFromPool(poolName)
+    local pool = ProfileSystem._pools[poolName]
+    if pool and #pool > 0 then
+        return table.remove(pool)
     end
-
-    local content = file.Read(fileName, "DATA")
-    if not content or content == "" then
-        print("[RARELOAD] Profile file is empty: " .. fileName)
-        return nil
-    end
-
-    local success, data = pcall(util.JSONToTable, content)
-    if success and data then
-        print("[RARELOAD] Successfully loaded profile: " .. profileName)
-        return data
-    else
-        print("[RARELOAD] Failed to parse profile JSON: " .. fileName)
-        return nil
-    end
-end
-
-function profileSystem.GetAvailableProfiles()
-    local profiles = {}
-    local files = file.Find(profileSystem.profilesDir .. "*.json", "DATA") or {}
-    for _, fileName in ipairs(files) do
-        local profileName = string.gsub(fileName, "%.json$", "")
-        table.insert(profiles, profileName)
-    end
-    return profiles
-end
-
-function profileSystem.EnsureDefaultProfile()
-    -- Ensure directories exist
-    file.CreateDir("rareload")
-    file.CreateDir(profileSystem.profilesDir)
-
-    -- Check if default profile exists, create if not
-    local defaultFileName = profileSystem.profilesDir .. "default.json"
-    if not file.Exists(defaultFileName, "DATA") then
-        local defaultProfile = {
-            name = "default",
-            displayName = "Default Settings",
-            description = "Standard anti-stuck configuration",
-            author = "System",
-            created = os.time(),
-            modified = os.time(),
-            shared = false,
-            mapSpecific = false,
-            map = "",
-            version = "1.0",
-            settings = profileSystem.DeepCopySettings(Default_Anti_Stuck_Settings or {}),
-            methods = profileSystem.DeepCopyMethods(Default_Anti_Stuck_Methods or {})
-        }
-
-        file.Write(defaultFileName, util.TableToJSON(defaultProfile, true))
-        print("[RARELOAD] Created default anti-stuck profile")
-    end
-end
-
--- Initialize the profile system
-function profileSystem.Init()
-    if profileSystem._initialized then
-        print("[RARELOAD] Profile system already initialized")
-        return
-    end
-
-    -- Load required modules (they should already be loaded by file order)
-    -- Initialize core functionality
-    profileSystem.LoadCurrentProfile()
-    profileSystem.EnsureDefaultProfile()
-
-    -- Auto-load map-specific profile if exists
-    local mapName = game.GetMap()
-    local profiles = profileSystem.GetAvailableProfiles()
-    for _, profileName in ipairs(profiles or {}) do
-        local profile = profileSystem.LoadProfile(profileName)
-        if profile and profile.autoLoad and profile.mapSpecific and profile.map == mapName then
-            profileSystem.SetCurrentProfile(profileName)
-            break
-        end
-    end
-
-    profileSystem._initialized = true
-    print("[RARELOAD] Profile system initialized with " .. #profiles .. " profiles")
-
-    -- Initialize subsystems
-    if profileSystem.InitCacheTimers then
-        profileSystem.InitCacheTimers()
-    end
-
-    if profileSystem.InitBackupSystem then
-        profileSystem.InitBackupSystem()
-    end
-
-    if profileSystem.InitHooks then
-        profileSystem.InitHooks()
-    end
-end
-
--- Core profile creation function
-function profileSystem.CreateProfile(profileData)
-    local name = profileData.name
-    if not name or name == "" then return false, "Profile name cannot be empty" end
-
-    -- Validate profile data structure
-    local isValid, error = profileSystem.ValidateProfileData(profileData)
-    if not isValid then
-        print("[RARELOAD] Profile validation failed: " .. error)
-        return false, "Invalid profile data: " .. error
-    end
-
-    -- Sanitize profile name
-    name = string.gsub(name, "[^%w%s%-_]", "")
-    name = string.Trim(name)
-
-    if name == "" then return false, "Invalid profile name" end
-
-    -- Check if profile already exists
-    local fileName = profileSystem.profilesDir .. name .. ".json"
-    if file.Exists(fileName, "DATA") then
-        return false, "Profile already exists"
-    end
-
-    -- Add map prefix if map-specific
-    local finalName = name
-    if profileData.mapSpecific then
-        local mapName = game.GetMap()
-        finalName = mapName .. "_" .. name
-    end
-
-    local profile = {
-        name = finalName,
-        displayName = profileData.displayName or name,
-        description = profileData.description or "",
-        author = LocalPlayer():Nick(),
-        created = os.time(),
-        modified = os.time(),
-        shared = profileData.shared or false,
-        mapSpecific = profileData.mapSpecific or false,
-        map = profileData.mapSpecific and game.GetMap() or "",
-        version = "1.0",
-        autoLoad = profileData.autoLoad or false,
-        backup = profileData.backup or false,
-        settings = profileData.settings or profileSystem.DeepCopySettings(Default_Anti_Stuck_Settings or {}),
-        methods = profileData.methods or profileSystem.DeepCopyMethods(Default_Anti_Stuck_Methods or {})
-    }
-
-    file.CreateDir(profileSystem.profilesDir)
-    local finalFileName = profileSystem.profilesDir .. finalName .. ".json"
-    file.Write(finalFileName, util.TableToJSON(profile, true))
-
-    -- If shared, send to server
-    if profile.shared then
-        profileSystem.ShareProfile(finalName)
-    end
-
-    -- Mark the profile list as dirty so UIs can refresh
-    profileSystem._listDirty = true
-
-    return true, finalName
-end
-
-function profileSystem.SetCurrentProfile(profileName)
-    if not profileName then return false end
-
-    -- Verify profile exists
-    if not profileSystem.LoadProfile(profileName) then return false end
-
-    profileSystem.currentProfile = profileName
-    profileSystem.SaveCurrentProfile()
-    return true
-end
-
-function profileSystem.GetCurrentProfile()
-    return profileSystem.currentProfile
-end
-
--- Core profile settings management
-function profileSystem.GetCurrentProfileSettings()
-    local profile = profileSystem.LoadProfile(profileSystem.currentProfile)
-    if profile and profile.settings then -- Return a deep copy to avoid accidental modifications to cached data
-        local settings = {}
-        for k, v in pairs(profile.settings) do
-            if type(v) == "table" then
-                settings[k] = profileSystem.DeepCopy(v)
-            else
-                settings[k] = v
-            end
-        end
-        return settings
-    end
-    -- Always return a copy of defaults to prevent modification of the global defaults
-    return profileSystem.DeepCopySettings(Default_Anti_Stuck_Settings or {})
-end
-
-function profileSystem.GetCurrentProfilemethods()
-    local profile = profileSystem.LoadProfile(profileSystem.currentProfile)
-    if profile and profile.methods then
-        -- Return a deep copy
-        return profileSystem.DeepCopyMethods(profile.methods)
-    end
-    return profileSystem.DeepCopyMethods(Default_Anti_Stuck_Methods or {})
-end
-
--- Update current profile with new settings/methods
-function profileSystem.UpdateCurrentProfile(settings, methods)
-    local profile = profileSystem.LoadProfile(profileSystem.currentProfile)
-    if not profile then
-        print("[RARELOAD] Error: Cannot update current profile - profile not found: " ..
-            tostring(profileSystem.currentProfile))
-        return false
-    end
-
-    -- Validate settings if provided
-    if settings then
-        local isValid, error = profileSystem.ValidateSettings(settings)
-        if not isValid then
-            print("[RARELOAD] Error: Invalid settings data - " .. error)
-            return false
-        end
-        profile.settings = profileSystem.DeepCopySettings(settings)
-    end
-
-    -- Validate methods if provided
-    if methods then
-        local isValid, error = profileSystem.Validatemethods(methods)
-        if not isValid then
-            print("[RARELOAD] Error: Invalid methods data - " .. error)
-            return false
-        end
-        profile.methods = profileSystem.DeepCopyMethods(methods)
-    end
-
-    -- Update modification time
-    profile.modified = os.time()
-
-    -- Save the updated profile
-    local fileName = profileSystem.profilesDir .. profileSystem.currentProfile .. ".json"
-    file.CreateDir(profileSystem.profilesDir)
-    file.Write(fileName, util.TableToJSON(profile, true))
-
-    print("[RARELOAD] Updated profile: " .. (profile.displayName or profileSystem.currentProfile))
-    return true
-end
-
-function profileSystem.ApplyProfile(profileName)
-    local profile = profileSystem.LoadProfile(profileName)
-    if not profile then return false end
-
-    profileSystem.SetCurrentProfile(profileName)
-
-    -- Notify server of profile change immediately
-    if net and net.Start then
-        net.Start("RareloadSyncServerProfile")
-        net.WriteString(profileName)
-        net.SendToServer()
-    end
-
-    -- Apply settings to UI/memory only - do NOT save to disk
-    -- The settings should only be loaded into the current session
-    -- Saving should only happen when user explicitly modifies and saves settings
-    print("[RARELOAD] Applied profile: " .. (profile.displayName or profileName))
-
-    -- Notify other systems that profile has changed
-    hook.Call("RareloadProfileChanged", nil, profileName, profile)
-
-    return true
-end
-
--- Function to load profile settings into UI without saving to disk
-function profileSystem.LoadProfileSettingsToUI(profileName)
-    profileName = profileName or profileSystem.currentProfile
-    local profile = profileSystem.LoadProfile(profileName)
-    if not profile then return false end
-
-    -- Notify UI components that settings and methods have changed (always use the profile's methods table)
-    if RARELOAD and RARELOAD.AntiStuckSettings then
-        hook.Call("RareloadProfileSettingsLoaded", nil, profile.settings, profile.methods)
-    end
-
-    return true
-end
-
--- Function to save current UI settings to current profile (explicit save)
-function profileSystem.SaveCurrentUIToProfile()
-    if not RARELOAD or not RARELOAD.AntiStuckSettings then return false end
-
-    -- Get current settings and methods from UI (UI must provide current method order)
-    local currentSettings = RARELOAD.AntiStuckSettings.LoadSettings()
-    local currentMethods = RARELOAD.AntiStuckSettings.LoadMethods and RARELOAD.AntiStuckSettings.LoadMethods() or
-        profileSystem.GetCurrentProfilemethods()
-
-    -- Save to current profile (ensures method order is saved per profile)
-    return profileSystem.UpdateCurrentProfile(currentSettings, currentMethods)
-end
-
--- Function to get any profile's settings without changing current profile
-function profileSystem.GetProfileSettings(profileName)
-    local profile = profileSystem.LoadProfile(profileName or profileSystem.currentProfile)
-    if not profile then return nil, nil end
-
-    return profile.settings, profile.methods
-end
-
--- Function to safely switch profiles (will prompt to save if current profile has unsaved changes)
-function profileSystem.SafeSwitchProfile(newProfileName, forceSwitch)
-    if not newProfileName then return false end
-
-    -- Check if switching to the same profile
-    if profileSystem.currentProfile == newProfileName then
-        print("[RARELOAD] Already using profile: " .. newProfileName)
-        return true
-    end
-
-    -- TODO: Add dirty checking here if needed
-    -- For now, just switch
-    local success = profileSystem.ApplyProfile(newProfileName)
-    if success then
-        profileSystem.LoadProfileSettingsToUI(newProfileName)
-        print("[RARELOAD] Switched to profile: " .. newProfileName)
-
-        -- Notify other systems that profile has changed
-        local profile = profileSystem.LoadProfile(newProfileName)
-        hook.Call("RareloadProfileChanged", nil, newProfileName, profile)
-    end
-
-    return success
-end
-
--- Essential utility functions that must be available immediately
-function profileSystem.ShareProfile(profileName)
-    local profile = profileSystem.LoadProfile(profileName)
-    if not profile then return false end
-
-    -- Send profile to server for distribution
-    if net and net.Start then
-        net.Start("RareloadShareAntiStuckProfile")
-        net.WriteTable(profile)
-        net.SendToServer()
-    end
-
-    return true
-end
-
-function profileSystem.GetProfilesList()
-    local list = {}
-    local profiles = profileSystem.GetAvailableProfiles()
-
-    for _, profileName in ipairs(profiles) do
-        local profile = profileSystem.LoadProfile(profileName)
-        if profile then
-            table.insert(list, {
-                name = profileName,
-                displayName = profile.displayName,
-                description = profile.description,
-                author = profile.author,
-                shared = profile.shared,
-                mapSpecific = profile.mapSpecific,
-                map = profile.map
-            })
-        end
-    end
-
-    -- Sort by display name
-    table.sort(list, function(a, b) return a.displayName < b.displayName end)
-    return list
-end
-
--- Basic cache and memory management stubs
-function profileSystem.GetFromMemoryPool(poolName)
     return {}
 end
 
-function profileSystem.ReturnToMemoryPool(poolName, obj)
-    -- Stub function
+local function ReturnToPool(poolName, obj)
+    if not obj then return end
+    table.Empty(obj)
+    local pool = ProfileSystem._pools[poolName]
+    if #pool < 20 then -- Increased pool size for better performance
+        table.insert(pool, obj)
+    end
 end
 
--- Basic validation function (more comprehensive version in cl_profile_validation.lua)
-function profileSystem.ValidateProfileData(profileData)
-    if not profileData then return false, "Profile data is nil" end
-
-    -- Basic structure validation
-    if profileData.settings and type(profileData.settings) ~= "table" then
-        return false, "Settings must be a table"
+-- Event handling
+function ProfileSystem.RegisterEventHandler(event, handler)
+    if not ProfileSystem._eventHandlers[event] then
+        ProfileSystem._eventHandlers[event] = {}
     end
-
-    if profileData.methods and type(profileData.methods) ~= "table" then
-        return false, "methods must be a table"
-    end
-
-    return true, "Profile data is valid"
+    table.insert(ProfileSystem._eventHandlers[event], handler)
 end
 
--- Basic validation functions for settings and methods
-function profileSystem.ValidateSettings(data)
-    if type(data) ~= "table" then
-        return false, "Settings must be a table"
-    end
-    return true, "Valid settings"
-end
-
-function profileSystem.Validatemethods(data)
-    if type(data) ~= "table" then
-        return false, "methods must be a table"
-    end
-    return true, "Valid methods"
-end
-
--- Initialize the profile system when the file loads
-timer.Simple(0.5, function()
-    local success, err = pcall(profileSystem.Init)
-    if success then
-        print("[RARELOAD] Profile system initialized successfully")
-    else
-        print("[RARELOAD] Error initializing profile system: " .. tostring(err))
-    end
-end)
-
--- Backup initialization in case the first one fails
-timer.Simple(2, function()
-    if not profileSystem._initialized then
-        print("[RARELOAD] Attempting backup profile system initialization")
-        local success, err = pcall(profileSystem.Init)
-        if success then
-            print("[RARELOAD] Profile system initialized successfully (backup)")
-        else
-            print("[RARELOAD] Error in backup profile system initialization: " .. tostring(err))
+function ProfileSystem.UnregisterEventHandler(event, handler)
+    if not ProfileSystem._eventHandlers[event] then return end
+    for i, h in ipairs(ProfileSystem._eventHandlers[event]) do
+        if h == handler then
+            table.remove(ProfileSystem._eventHandlers[event], i)
+            break
         end
     end
-end)
+end
 
-function profileSystem.SaveProfile(profileName, profileData)
-    if not profileData then
-        profileData = profileSystem.LoadProfile(profileName)
-        if not profileData then return false end
+local function TriggerEvent(event, ...)
+    if not ProfileSystem._eventHandlers[event] then return end
+    for _, handler in ipairs(ProfileSystem._eventHandlers[event]) do
+        handler(...)
     end
+end
 
-    local fileName = profileSystem.profilesDir .. profileName .. ".json"
-    file.CreateDir(profileSystem.profilesDir)
-    file.Write(fileName, util.TableToJSON(profileData, true))
+-- Batch operations
+local function ProcessBatchOperations()
+    if ProfileSystem._batchOps.processing or #ProfileSystem._batchOps.queue == 0 then return end
+    
+    ProfileSystem._batchOps.processing = true
+    local batch = {}
+    
+    -- Get next batch of operations
+    for i = 1, math.min(BATCH_OPERATION_SIZE, #ProfileSystem._batchOps.queue) do
+        table.insert(batch, table.remove(ProfileSystem._batchOps.queue, 1))
+    end
+    
+    -- Process batch
+    for _, op in ipairs(batch) do
+        if op.type == "write" then
+            RARELOAD.ProfileFileOps.WriteProfile(op.profileName, op.data)
+        elseif op.type == "delete" then
+            RARELOAD.ProfileFileOps.DeleteProfile(op.profileName)
+        end
+        ProfileSystem._metrics.batchOperations = ProfileSystem._metrics.batchOperations + 1
+    end
+    
+    ProfileSystem._batchOps.processing = false
+    
+    -- Schedule next batch if queue not empty
+    if #ProfileSystem._batchOps.queue > 0 then
+        timer.Simple(0.1, ProcessBatchOperations)
+    end
+end
+
+local function QueueOperation(opType, profileName, data)
+    table.insert(ProfileSystem._batchOps.queue, {
+        type = opType,
+        profileName = profileName,
+        data = data
+    })
+    
+    -- Start processing if not already running
+    if not ProfileSystem._batchOps.timer then
+        ProfileSystem._batchOps.timer = timer.Create("RareloadProfileBatchOps", 0.1, 1, function()
+            ProcessBatchOperations()
+            ProfileSystem._batchOps.timer = nil
+        end)
+    end
+end
+
+-- Profile validation
+local function ValidateProfileStructure(profile)
+    if not profile or type(profile) ~= "table" then return false end
+    
+    -- Required fields
+    local required = {
+        "name", "displayName", "description", "version",
+        "settings", "methods", "created", "modified"
+    }
+    
+    for _, field in ipairs(required) do
+        if profile[field] == nil then return false end
+    end
+    
+    -- Validate settings and methods
+    if type(profile.settings) ~= "table" or type(profile.methods) ~= "table" then
+        return false
+    end
+    
+    -- Version check
+    if profile.version ~= PROFILE_VERSION then
+        -- Attempt to migrate if possible
+        return ProfileSystem.MigrateProfile(profile)
+    end
+    
     return true
 end
+
+-- Profile migration
+function ProfileSystem.MigrateProfile(profile)
+    if not profile.version then return false end
+    
+    -- Migration path from 1.1 to 1.2
+    if profile.version == "1.1" then
+        -- Add new fields
+        profile.lastUsed = profile.lastUsed or os.time()
+        profile.usageCount = profile.usageCount or 0
+        profile.tags = profile.tags or {}
+        profile.compatibility = profile.compatibility or {
+            minVersion = "1.0",
+            maxVersion = "1.2"
+        }
+        
+        -- Update version
+        profile.version = PROFILE_VERSION
+        
+        return true
+    end
+    
+    return false
+end
+
+-- Core profile system functions
+function ProfileSystem.Initialize()
+    if ProfileSystem._initialized then return end
+    
+    -- Ensure directories exist
+    file.CreateDir("rareload")
+    file.CreateDir(PROFILE_DIR)
+    
+    -- Load current profile
+    ProfileSystem.LoadCurrentProfile()
+    
+    -- Ensure default profile exists
+    ProfileSystem.EnsureDefaultProfile()
+    
+    -- Initialize cache cleanup timer
+    timer.Create("RareloadProfileCacheCleanup", CACHE_TTL, 0, function()
+        ProfileSystem.CleanupCache()
+    end)
+    
+    -- Initialize profile refresh timer
+    timer.Create("RareloadProfileRefresh", PROFILE_REFRESH_INTERVAL, 0, function()
+        if ProfileSystem._listDirty then
+            ProfileSystem.RefreshProfiles()
+        end
+    end)
+    
+    -- Register default event handlers
+    ProfileSystem.RegisterEventHandler("onProfileChanged", function(profileName, profile)
+        if RARELOAD.AntiStuckSettings then
+            RARELOAD.AntiStuckSettings.ApplyProfile(profile)
+        end
+    end)
+    
+    ProfileSystem._initialized = true
+    print("[RARELOAD] Profile system initialized")
+end
+
+function ProfileSystem.LoadCurrentProfile()
+    if not file.Exists(SELECTED_PROFILE_FILE, "DATA") then
+        ProfileSystem._currentProfile = DEFAULT_PROFILE_NAME
+        ProfileSystem.SaveCurrentProfile()
+        return
+    end
+    
+    local content = file.Read(SELECTED_PROFILE_FILE, "DATA")
+    local data = SafeJSONDecode(content)
+    
+    if data and data.selectedProfile then
+        -- Verify the profile still exists
+        if file.Exists(PROFILE_DIR .. data.selectedProfile .. ".json", "DATA") then
+            ProfileSystem._currentProfile = data.selectedProfile
+        else
+            ProfileSystem._currentProfile = DEFAULT_PROFILE_NAME
+            ProfileSystem.SaveCurrentProfile()
+            print("[RARELOAD] Selected profile no longer exists, falling back to default")
+        end
+    end
+end
+
+function ProfileSystem.SaveCurrentProfile()
+    local data = { selectedProfile = ProfileSystem._currentProfile }
+    local json = SafeJSONEncode(data)
+    if json then
+        file.Write(SELECTED_PROFILE_FILE, json)
+    end
+end
+
+function ProfileSystem.EnsureDefaultProfile()
+    local defaultPath = PROFILE_DIR .. DEFAULT_PROFILE_NAME .. ".json"
+    if file.Exists(defaultPath, "DATA") then return end
+    
+    local defaultProfile = {
+        name = DEFAULT_PROFILE_NAME,
+        displayName = "Default Settings",
+        description = "Standard anti-stuck configuration",
+        author = "System",
+        created = os.time(),
+        modified = os.time(),
+        lastUsed = os.time(),
+        usageCount = 0,
+        shared = false,
+        mapSpecific = false,
+        map = "",
+        version = PROFILE_VERSION,
+        tags = {"default", "system"},
+        compatibility = {
+            minVersion = "1.0",
+            maxVersion = PROFILE_VERSION
+        },
+        settings = RARELOAD.DefaultAntiStuckSettings or {},
+        methods = RARELOAD.DefaultAntiStuckMethods or {}
+    }
+    
+    ProfileSystem.SaveProfile(DEFAULT_PROFILE_NAME, defaultProfile)
+    print("[RARELOAD] Created default anti-stuck profile")
+end
+
+function ProfileSystem.LoadProfile(profileName)
+    if not profileName then return nil end
+    
+    -- Check cache first
+    if ProfileSystem._cache.profiles[profileName] and 
+       ProfileSystem.IsCacheValid(profileName) then
+        ProfileSystem._metrics.cacheHits = ProfileSystem._metrics.cacheHits + 1
+        ProfileSystem._cache.lastAccess[profileName] = os.time()
+        return ProfileSystem._cache.profiles[profileName]
+    end
+    
+    ProfileSystem._metrics.cacheMisses = ProfileSystem._metrics.cacheMisses + 1
+    ProfileSystem._metrics.fileOperations = ProfileSystem._metrics.fileOperations + 1
+    
+    local profile = RARELOAD.ProfileFileOps.ReadProfile(profileName)
+    if not profile then return nil end
+    
+    -- Validate profile data
+    if not ValidateProfileStructure(profile) then
+        print("[RARELOAD] Invalid profile data in " .. profileName)
+        return nil
+    end
+    
+    -- Update cache
+    ProfileSystem._cache.profiles[profileName] = profile
+    ProfileSystem._cache.timestamps[profileName] = file.Time(PROFILE_DIR .. profileName .. ".json", "DATA")
+    ProfileSystem._cache.lastAccess[profileName] = os.time()
+    
+    return profile
+end
+
+function ProfileSystem.SaveProfile(profileName, data)
+    if not profileName or not data then return false end
+    
+    -- Validate profile data
+    if not ValidateProfileStructure(data) then
+        return false, "Invalid profile data"
+    end
+    
+    -- Update metadata
+    data.modified = os.time()
+    data.version = PROFILE_VERSION
+    
+    -- Queue write operation
+    QueueOperation("write", profileName, data)
+    
+    -- Update cache
+    ProfileSystem._cache.profiles[profileName] = data
+    ProfileSystem._cache.timestamps[profileName] = os.time()
+    ProfileSystem._cache.lastAccess[profileName] = os.time()
+    
+    -- Mark list as dirty
+    ProfileSystem._listDirty = true
+    
+    -- Trigger event
+    TriggerEvent("onProfileUpdated", profileName, data)
+    
+    return true
+end
+
+function ProfileSystem.DeleteProfile(profileName)
+    if not profileName or profileName == DEFAULT_PROFILE_NAME then
+        return false, "Cannot delete default profile"
+    end
+    
+    -- Queue delete operation
+    QueueOperation("delete", profileName)
+    
+    -- Remove from cache
+    ProfileSystem.InvalidateCache(profileName)
+    
+    -- If this was the current profile, switch to default
+    if ProfileSystem._currentProfile == profileName then
+        ProfileSystem._currentProfile = DEFAULT_PROFILE_NAME
+        ProfileSystem.SaveCurrentProfile()
+        print("[RARELOAD] Deleted current profile, switching to default")
+    end
+    
+    -- Mark list as dirty
+    ProfileSystem._listDirty = true
+    
+    -- Trigger event
+    TriggerEvent("onProfileDeleted", profileName)
+    
+    return true
+end
+
+function ProfileSystem.GetCurrentProfile()
+    return ProfileSystem._currentProfile
+end
+
+function ProfileSystem.SetCurrentProfile(profileName)
+    if not profileName then return false, "Invalid profile name" end
+    
+    local profile = ProfileSystem.LoadProfile(profileName)
+    if not profile then return false, "Profile not found" end
+    
+    ProfileSystem._currentProfile = profileName
+    ProfileSystem.SaveCurrentProfile()
+    
+    -- Update usage statistics
+    profile.lastUsed = os.time()
+    profile.usageCount = (profile.usageCount or 0) + 1
+    ProfileSystem.SaveProfile(profileName, profile)
+    
+    -- Trigger event
+    TriggerEvent("onProfileChanged", profileName, profile)
+    
+    return true
+end
+
+function ProfileSystem.GetProfilesList()
+    local profiles = {}
+    local files = file.Find(PROFILE_DIR .. "*.json", "DATA")
+    
+    for _, fileName in ipairs(files) do
+        local profileName = string.gsub(fileName, ".json$", "")
+        local profile = ProfileSystem.LoadProfile(profileName)
+        
+        if profile then
+            table.insert(profiles, {
+                name = profile.name,
+                displayName = profile.displayName,
+                description = profile.description,
+                author = profile.author,
+                modified = profile.modified,
+                lastUsed = profile.lastUsed,
+                usageCount = profile.usageCount,
+                shared = profile.shared,
+                mapSpecific = profile.mapSpecific,
+                map = profile.map,
+                tags = profile.tags or {}
+            })
+        end
+    end
+    
+    -- Sort profiles by last used time
+    table.sort(profiles, function(a, b)
+        return (a.lastUsed or 0) > (b.lastUsed or 0)
+    end)
+    
+    return profiles
+end
+
+function ProfileSystem.RefreshProfiles()
+    if not ProfileSystem._listDirty then return end
+    
+    ProfileSystem._profiles = ProfileSystem.GetProfilesList()
+    ProfileSystem._listDirty = false
+end
+
+function ProfileSystem.IsCacheValid(profileName)
+    if not ProfileSystem._cache.timestamps[profileName] then return false end
+    
+    local currentTime = os.time()
+    local lastAccess = ProfileSystem._cache.lastAccess[profileName] or 0
+    
+    -- Check if cache entry has expired
+    if currentTime - lastAccess > CACHE_TTL then
+        ProfileSystem.InvalidateCache(profileName)
+        return false
+    end
+    
+    return true
+end
+
+function ProfileSystem.InvalidateCache(profileName)
+    if profileName then
+        ProfileSystem._cache.profiles[profileName] = nil
+        ProfileSystem._cache.timestamps[profileName] = nil
+        ProfileSystem._cache.lastAccess[profileName] = nil
+        ProfileSystem._cache.validation[profileName] = nil
+    else
+        -- Invalidate entire cache
+        table.Empty(ProfileSystem._cache.profiles)
+        table.Empty(ProfileSystem._cache.timestamps)
+        table.Empty(ProfileSystem._cache.lastAccess)
+        table.Empty(ProfileSystem._cache.validation)
+    end
+end
+
+function ProfileSystem.CleanupCache()
+    local currentTime = os.time()
+    local profilesToRemove = {}
+    
+    -- Find expired cache entries
+    for profileName, lastAccess in pairs(ProfileSystem._cache.lastAccess) do
+        if currentTime - lastAccess > CACHE_TTL then
+            table.insert(profilesToRemove, profileName)
+        end
+    end
+    
+    -- Remove expired entries
+    for _, profileName in ipairs(profilesToRemove) do
+        ProfileSystem.InvalidateCache(profileName)
+    end
+    
+    -- Limit cache size
+    local cacheSize = table.Count(ProfileSystem._cache.profiles)
+    if cacheSize > MAX_CACHE_SIZE then
+        local sortedProfiles = {}
+        for profileName, lastAccess in pairs(ProfileSystem._cache.lastAccess) do
+            table.insert(sortedProfiles, {name = profileName, lastAccess = lastAccess})
+        end
+        
+        table.sort(sortedProfiles, function(a, b)
+            return a.lastAccess < b.lastAccess
+        end)
+        
+        local toRemove = cacheSize - MAX_CACHE_SIZE
+        for i = 1, toRemove do
+            if sortedProfiles[i] then
+                ProfileSystem.InvalidateCache(sortedProfiles[i].name)
+            end
+        end
+    end
+    
+    ProfileSystem._metrics.lastCleanup = currentTime
+end
+
+-- Export the profile system
+RARELOAD.ProfileSystem = ProfileSystem

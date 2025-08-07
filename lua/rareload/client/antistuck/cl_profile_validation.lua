@@ -1,104 +1,115 @@
 RARELOAD = RARELOAD or {}
+RARELOAD.ProfileValidation = RARELOAD.ProfileValidation or {}
 
--- Profile Validation Module
--- Handles validation of profile data structures
--- This module extends the basic validation from cl_profile_system.lua
+-- Constants
+local PROFILE_VERSION = "1.1"
+local REQUIRED_FIELDS = {
+    "name",
+    "displayName",
+    "description",
+    "version",
+    "settings",
+    "methods",
+    "created",
+    "modified"
+}
 
-local profileSystem = RARELOAD.profileSystem or _G.profileSystem or {}
-
-print("[RARELOAD] Loading enhanced profile validation module")
-
--- Function to validate profile data structure
-function profileSystem.ValidateProfileData(profileData)
-    if not profileData then return false, "Profile data is nil" end
-
-    -- Check if settings is an object (table with string keys), not an array
-    if profileData.settings then
-        if type(profileData.settings) ~= "table" then
-            return false, "Settings must be a table"
-        end
-
-        -- Check if it's an array (has numeric indices) - this would be wrong
-        local hasNumericKeys = false
-        local hasStringKeys = false
-
-        for k, v in pairs(profileData.settings) do
-            if type(k) == "number" then
-                hasNumericKeys = true
-            elseif type(k) == "string" then
-                hasStringKeys = true
-            end
-        end
-
-        if hasNumericKeys and not hasStringKeys then
-            return false, "Settings contains array data (methods) instead of settings object"
+-- Validation functions
+local function ValidateProfileStructure(profile)
+    if not profile or type(profile) ~= "table" then
+        return false, "Invalid profile structure"
+    end
+    
+    -- Check required fields
+    for _, field in ipairs(REQUIRED_FIELDS) do
+        if profile[field] == nil then
+            return false, "Missing required field: " .. field
         end
     end
-
-    -- Check if methods is an array, not an object
-    if profileData.methods then
-        if type(profileData.methods) ~= "table" then
-            return false, "Methods must be a table"
+    
+    -- Validate settings and methods
+    if type(profile.settings) ~= "table" then
+        return false, "Invalid settings structure"
+    end
+    
+    if type(profile.methods) ~= "table" then
+        return false, "Invalid methods structure"
+    end
+    
+    -- Validate method entries
+    for methodName, methodData in pairs(profile.methods) do
+        if type(methodData) ~= "table" then
+            return false, "Invalid method data for: " .. methodName
         end
-
-        -- Methods should be an array of objects
-        local isArray = true
-        for k, v in pairs(profileData.methods) do
-            if type(k) ~= "number" then
-                isArray = false
-                break
-            end
-            if type(v) ~= "table" or not v.func or not v.name then
-                return false, "Methods array contains invalid method objects"
-            end
-        end
-
-        if not isArray then
-            return false, "Methods should be an array, not an object"
+        
+        if methodData.enabled == nil then
+            return false, "Method missing enabled state: " .. methodName
         end
     end
-
-    return true, "Profile data is valid"
+    
+    return true
 end
 
--- Validate settings data structure
-function profileSystem.ValidateSettings(data)
-    if type(data) ~= "table" then
-        return false, "Settings must be a table"
+local function ValidateProfileVersion(profile)
+    if not profile.version then
+        return false, "Missing profile version"
     end
-
-    -- Check for methods data in settings
-    for k, v in pairs(data) do
-        if type(k) == "number" and type(v) == "table" and v.func and v.name then
-            return false, "Settings contains methods data (array structure)"
-        end
-        if type(k) ~= "string" then
-            return false, "Settings keys must be strings"
-        end
+    
+    -- Version check
+    if profile.version ~= PROFILE_VERSION then
+        -- Attempt to migrate if possible
+        return MigrateProfile(profile)
     end
-
-    return true, "Valid settings"
+    
+    return true
 end
 
--- Validate methods data structure
-function profileSystem.ValidateMethods(data)
-    if type(data) ~= "table" then
-        return false, "Methods must be a table"
+-- Migration functions
+local function MigrateProfile(profile)
+    if not profile.version then
+        return false, "Cannot migrate profile without version"
     end
-
-    -- Check if it's an array of method objects
-    for k, v in pairs(data) do
-        if type(k) ~= "number" then
-            return false, "Methods must be an array (numeric keys)"
-        end
-        if type(v) ~= "table" or not v.func or not v.name then
-            return false, "Each method must have 'func' and 'name' fields"
-        end
+    
+    local version = profile.version
+    
+    -- Migration path from 1.0 to 1.1
+    if version == "1.0" then
+        -- Add new fields
+        profile.displayName = profile.displayName or profile.name
+        profile.description = profile.description or ""
+        profile.author = profile.author or "Unknown"
+        profile.shared = profile.shared or false
+        profile.mapSpecific = profile.mapSpecific or false
+        profile.map = profile.map or ""
+        
+        -- Update version
+        profile.version = PROFILE_VERSION
+        
+        return true
     end
-
-    return true, "Valid methods"
+    
+    return false, "Unsupported profile version: " .. version
 end
 
--- Make sure the profile system reference is available globally
-RARELOAD.profileSystem = profileSystem
-_G.profileSystem = profileSystem
+-- Export functions
+function RARELOAD.ProfileValidation.ValidateProfile(profile)
+    local valid, error = ValidateProfileStructure(profile)
+    if not valid then
+        return false, error
+    end
+    
+    valid, error = ValidateProfileVersion(profile)
+    if not valid then
+        return false, error
+    end
+    
+    return true
+end
+
+function RARELOAD.ProfileValidation.GetCurrentVersion()
+    return PROFILE_VERSION
+end
+
+function RARELOAD.ProfileValidation.GetRequiredFields()
+    return table.Copy(REQUIRED_FIELDS)
+end
