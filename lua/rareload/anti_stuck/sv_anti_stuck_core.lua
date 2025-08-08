@@ -48,17 +48,17 @@ if SERVER then
         SEARCH_RESOLUTIONS = { 64, 128, 256, 512 }
     }
 
-    -- Default methods configuration matching client-side structure
+    -- Default methods configuration with priorities for better ordering
     local Default_Anti_Stuck_Methods = {
-        { name = "Cached Positions",   func = "TryCachedPositions",   enabled = true, description = "Use previously saved safe positions from successful unstuck attempts" },
-        { name = "Smart Displacement", func = "TryDisplacement",      enabled = true, description = "Intelligently move player using physics-based displacement in optimal directions" },
-        { name = "3D Space Scan",      func = "Try3DSpaceScan",       enabled = true, description = "Comprehensive volumetric scan in all directions with collision detection" },
-        { name = "Navigation Mesh",    func = "TryNodeGraph",         enabled = true, description = "Use Source engine navigation mesh and node graph for optimal pathfinding" },
-        { name = "Map Entities",       func = "TryMapEntities",       enabled = true, description = "Analyze positions near functional map entities and spawn points" },
-        { name = "Systematic Grid",    func = "TrySystematicGrid",    enabled = true, description = "Methodical grid-based search with adaptive resolution and bounds checking" },
-        { name = "World Brushes",      func = "TryWorldBrushes",      enabled = true, description = "Advanced world geometry analysis using brush entities and surface normals" },
-        { name = "Spawn Points",       func = "TrySpawnPoints",       enabled = true, description = "Fallback to map-defined spawn points with validity checking" },
-        { name = "Emergency Teleport", func = "TryEmergencyTeleport", enabled = true, description = "Last resort emergency positioning with map boundary detection" }
+        { name = "Cached Positions",   func = "TryCachedPositions",   enabled = true, priority = 10, description = "Use previously saved safe positions from successful unstuck attempts" },
+        { name = "Smart Displacement", func = "TryDisplacement",      enabled = true, priority = 20, description = "Intelligently move player using physics-based displacement in optimal directions" },
+        { name = "3D Space Scan",      func = "Try3DSpaceScan",       enabled = true, priority = 30, description = "Comprehensive volumetric scan in all directions with collision detection" },
+        { name = "Navigation Mesh",    func = "TryNodeGraph",         enabled = true, priority = 40, description = "Use Source engine navigation mesh and node graph for optimal pathfinding" },
+        { name = "Map Entities",       func = "TryMapEntities",       enabled = true, priority = 50, description = "Analyze positions near functional map entities and spawn points" },
+        { name = "Systematic Grid",    func = "TrySystematicGrid",    enabled = true, priority = 60, description = "Methodical grid-based search with adaptive resolution and bounds checking" },
+        { name = "World Brushes",      func = "TryWorldBrushes",      enabled = true, priority = 65, description = "Advanced world geometry analysis using brush entities and surface normals" },
+        { name = "Spawn Points",       func = "TrySpawnPoints",       enabled = true, priority = 70, description = "Fallback to map-defined spawn points with validity checking" },
+        { name = "Emergency Teleport", func = "TryEmergencyTeleport", enabled = true, priority = 90, description = "Last resort emergency positioning with map boundary detection" }
     }
 
     -- Ensure CONFIG is initialized before any access
@@ -318,6 +318,13 @@ if SERVER then
     AntiStuck.mapBounds = AntiStuck.mapBounds or nil
     AntiStuck.mapCenter = AntiStuck.mapCenter or Vector(0, 0, 0)
     AntiStuck.methods = AntiStuck.methods or {}
+    -- Helper: centralized debug toggle honoring config DEBUG_LOGGING as fallback
+    function AntiStuck.DebugEnabled()
+        if RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled ~= nil then
+            return RARELOAD.settings.debugEnabled
+        end
+        return AntiStuck.CONFIG and AntiStuck.CONFIG.DEBUG_LOGGING or false
+    end
 
     -- Unstuck method enums
     AntiStuck.UNSTUCK_METHODS = {
@@ -384,17 +391,6 @@ if SERVER then
     end
 
     -- Core functions
-    function AntiStuck.RegisterMethod(name, func)
-        if not name or type(name) ~= "string" or not func or type(func) ~= "function" then
-            LogDebug("Invalid method registration: " .. tostring(name), nil, nil, "ERROR")
-            return false
-        end
-
-        AntiStuck.methods[name] = func
-        LogDebug("Registered method: " .. name)
-        return true
-    end
-
     function AntiStuck.Initialize()
         -- Initialize all subsystems
         AntiStuck.LoadMethods()
@@ -422,7 +418,7 @@ if SERVER then
     function AntiStuck.SetupNetworking()
         net.Receive("RareloadRequestAntiStuckConfig", function(len, ply)
             if IsValid(ply) and ply:IsAdmin() then
-                SafeNetStart("RareloadAntiStuckConfig")
+                net.Start("RareloadAntiStuckConfig")
                 -- Create a serializable version of the methods table
                 local serializedMethods = {}
                 for name, method in pairs(AntiStuck.methods) do
@@ -437,7 +433,6 @@ if SERVER then
                     }
                 end
                 net.WriteTable(serializedMethods)
-                SafeNetEnd("RareloadAntiStuckConfig")
                 net.Send(ply)
             end
         end)
@@ -488,7 +483,7 @@ if SERVER then
                 AntiStuck.methods = processedMethods
                 AntiStuck.SaveMethods()
                 LogDebug("Method methods updated by " ..
-                ply:Nick() .. " for profile: " .. serverProfileSystem.currentProfile)
+                    ply:Nick() .. " for profile: " .. serverProfileSystem.currentProfile)
             end
         end)
 
@@ -535,6 +530,11 @@ if SERVER then
                 end
             end
 
+            -- Recalculate map bounds when padding or other spatial params change
+            if AntiStuck.CalculateMapBounds then
+                AntiStuck.CalculateMapBounds()
+            end
+
             -- Make sure offset Z values are properly updated in vectors used by systems
             if AntiStuck.spawnPoints and #AntiStuck.spawnPoints > 0 then
                 -- Recollect spawn points with new offset
@@ -570,9 +570,8 @@ if SERVER then
             end
 
             if #admins > 0 then
-                SafeNetStart("RareloadAntiStuckConfig")
+                net.Start("RareloadAntiStuckConfig")
                 net.WriteTable(AntiStuck.CONFIG)
-                SafeNetEnd("RareloadAntiStuckConfig")
                 net.Send(admins)
 
                 -- Notify other admins
@@ -623,6 +622,13 @@ if SERVER then
         if IsValid(world) then
             local mins, maxs = world:GetCollisionBounds()
             if mins and maxs then
+                -- Apply optional padding inside map bounds to avoid edges
+                local padding = tonumber(AntiStuck.CONFIG and AntiStuck.CONFIG.MAP_BOUNDS_PADDING) or 0
+                if padding > 0 then
+                    mins = Vector(mins.x + padding, mins.y + padding, mins.z + padding)
+                    maxs = Vector(maxs.x - padding, maxs.y - padding, maxs.z - padding)
+                end
+
                 AntiStuck.mapBounds = { mins = mins, maxs = maxs }
                 AntiStuck.mapCenter = (mins + maxs) / 2
                 LogDebug("Map bounds calculated from world entity", {
@@ -651,6 +657,13 @@ if SERVER then
                         math.max(maxPos.z, entMax.z))
                 end
             end
+        end
+
+        -- Apply optional padding inside map bounds
+        local padding = tonumber(AntiStuck.CONFIG and AntiStuck.CONFIG.MAP_BOUNDS_PADDING) or 0
+        if padding > 0 then
+            minPos = Vector(minPos.x + padding, minPos.y + padding, minPos.z + padding)
+            maxPos = Vector(maxPos.x - padding, maxPos.y - padding, maxPos.z - padding)
         end
 
         AntiStuck.mapBounds = { mins = minPos, maxs = maxPos }
@@ -778,6 +791,11 @@ if SERVER then
     end
 
     function AntiStuck.CleanupCache()
+        if AntiStuck.CONFIG and AntiStuck.CONFIG.ENABLE_CACHE == false then
+            -- Caching disabled; clear and skip maintenance
+            AntiStuck.safePositionCache = {}
+            return
+        end
         local currentTime = CurTime()
         local cleaned = 0
 
@@ -888,6 +906,10 @@ if SERVER then
     function AntiStuck.CacheSafePosition(pos)
         if not pos then return end
 
+        if AntiStuck.CONFIG and AntiStuck.CONFIG.ENABLE_CACHE == false then
+            return
+        end
+
         local cacheKey = string.format("%s_%.0f_%.0f_%.0f", game.GetMap(), pos.x, pos.y, pos.z)
         AntiStuck.safePositionCache[cacheKey] = {
             position = Vector(pos.x, pos.y, pos.z),
@@ -900,37 +922,77 @@ if SERVER then
         end
     end
 
+    -- Improved method loading with better error handling and validation
     function AntiStuck.LoadMethods(forceReload)
-        -- Always reload from selected profile
+        -- Don't reload if not forced and methods are already loaded recently
+        if not forceReload and AntiStuck.methods and #AntiStuck.methods > 0 and
+            AntiStuck._lastMethodLoad and (CurTime() - AntiStuck._lastMethodLoad) < 30 then
+            return true
+        end
+
+        AntiStuck._lastMethodLoad = CurTime()
+
+        -- Get methods from profile system
         local profilemethods = serverProfileSystem.GetCurrentProfileMethods()
         if profilemethods and #profilemethods > 0 then
-            -- Ensure all methods have enabled field and only keep enabled methods for execution order
             local validMethods = {}
+            local enabledCount = 0
+
             for _, m in ipairs(profilemethods) do
+                -- Validate method configuration
+                if not m.func or not m.name then
+                    if RARELOAD.settings and RARELOAD.settings.debugEnabled then
+                        print("[RARELOAD ANTI-STUCK] Warning: Invalid method configuration (missing func or name)")
+                    end
+                    goto continue
+                end
+
                 -- Default to enabled if not specified
                 if m.enabled == nil then
                     m.enabled = true
                 end
-                -- Keep all methods in the order list (enabled and disabled)
+
+                -- Validate that the method function is registered
+                local methodObj = AntiStuck.methodRegistry[m.func]
+                if not methodObj then
+                    if RARELOAD.settings and RARELOAD.settings.debugEnabled then
+                        print("[RARELOAD ANTI-STUCK] Warning: Method function '" .. m.func .. "' not registered")
+                    end
+                    goto continue
+                end
+
+                -- Set priority from registered method if not specified in profile
+                if not m.priority then
+                    m.priority = methodObj.priority or 50
+                end
+
                 table.insert(validMethods, m)
+                if m.enabled then
+                    enabledCount = enabledCount + 1
+                end
+
+                ::continue::
             end
+
+            -- Sort methods by priority
+            table.sort(validMethods, function(a, b) return (a.priority or 50) < (b.priority or 50) end)
+
             AntiStuck.methods = validMethods
 
-            -- Debug: Show registered methods vs ordered methods
+            -- Comprehensive debug output
             if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                print("[RARELOAD ANTI-STUCK] Method loading debug:")
-                print("  Registered method functions: " .. table.Count(AntiStuck.methodRegistry or {}))
-                print("  Method order from profile: " .. #AntiStuck.methods)
+                print("[RARELOAD ANTI-STUCK] Method loading summary:")
+                print("  Profile: " .. (serverProfileSystem.currentProfile or "unknown"))
+                print("  Total methods loaded: " .. #validMethods)
+                print("  Enabled methods: " .. enabledCount)
+                print("  Registered functions: " .. table.Count(AntiStuck.methodRegistry or {}))
+                print("  Method execution order:")
 
-                -- Check which methods are missing functions
-                for _, method in ipairs(AntiStuck.methods) do
-                    local hasFunc = AntiStuck.methodRegistry and AntiStuck.methodRegistry[method.func] ~= nil
-                    local status = hasFunc and "✓" or "✗"
-                    print("    " ..
-                        status ..
-                        " " ..
-                        (method.name or "unnamed") ..
-                        " (" .. (method.func or "no func") .. ") - enabled: " .. tostring(method.enabled))
+                for i, method in ipairs(validMethods) do
+                    local status = method.enabled and "✓" or "✗"
+                    local regStatus = AntiStuck.methodRegistry[method.func] and "REG" or "MISSING"
+                    print(string.format("    %s [%s] %d: %s (%s) - priority: %d",
+                        status, regStatus, i, method.name, method.func, method.priority or 50))
                 end
             end
 
@@ -938,25 +1000,30 @@ if SERVER then
                 methodName = "LoadMethods",
                 source = "Profile system",
                 profileName = serverProfileSystem.currentProfile,
-                totalMethods = #profilemethods,
-                enabledMethods = #validMethods,
+                totalMethods = #validMethods,
+                enabledMethods = enabledCount,
                 registeredFunctions = table.Count(AntiStuck.methodRegistry or {})
             })
-            return
+            return true
         end
 
         -- Fallback to default methods if profile system fails
         local defaultMethods = RareloadDeepCopyMethods(Default_Anti_Stuck_Methods)
-        -- Ensure all default methods are enabled
         for _, method in ipairs(defaultMethods) do
             method.enabled = true
+            method.priority = method.priority or 50
         end
+
+        -- Sort by priority
+        table.sort(defaultMethods, function(a, b) return (a.priority or 50) < (b.priority or 50) end)
+
         AntiStuck.methods = defaultMethods
         LogDebug("Initialized with default methods", {
             methodName = "LoadMethods",
             source = "Defaults",
             methodCount = #AntiStuck.methods
         })
+        return true
     end
 
     function AntiStuck.SaveMethods()
@@ -976,10 +1043,100 @@ if SERVER then
         end
     end
 
-    concommand.Add("rareload_debug_antistuck_server", function(ply, cmd, args)
-        if not IsValid(ply) or not ply:IsAdmin() then return end
-        net.Start("RareloadOpenAntiStuckDebug")
-        net.Send(ply)
+    -- Console command to view method statistics
+    concommand.Add("rareload_antistuck_stats", function(ply, cmd, args)
+        if IsValid(ply) and not ply:IsAdmin() then
+            ply:ChatPrint("[RARELOAD] You must be an admin to use this command.")
+            return
+        end
+
+        local stats = AntiStuck.GetMethodStats()
+        print("[RARELOAD] Anti-Stuck Method Statistics:")
+        print("==========================================")
+
+        local sortedMethods = {}
+        for name, stat in pairs(stats) do
+            table.insert(sortedMethods, { name = name, stat = stat })
+        end
+
+        -- Sort by usage (calls)
+        table.sort(sortedMethods, function(a, b) return a.stat.calls > b.stat.calls end)
+
+        for _, methodInfo in ipairs(sortedMethods) do
+            local name = methodInfo.name
+            local stat = methodInfo.stat
+            local successRate = stat.calls > 0 and (stat.successes / stat.calls * 100) or 0
+
+            print(string.format("Method: %s", name))
+            print(string.format("  Calls: %d | Successes: %d | Failures: %d",
+                stat.calls, stat.successes, stat.failures))
+            print(string.format("  Success Rate: %.1f%% | Avg Time: %.3fs",
+                successRate, stat.avgTime))
+            print(string.format("  Last Used: %s",
+                stat.lastUsed > 0 and os.date("%H:%M:%S", stat.lastUsed) or "Never"))
+            print("  ---")
+        end
+
+        if IsValid(ply) then
+            ply:ChatPrint("[RARELOAD] Method statistics printed to console")
+        end
+    end)
+
+    -- Console command to reset method statistics
+    concommand.Add("rareload_antistuck_reset_stats", function(ply, cmd, args)
+        if IsValid(ply) and not ply:IsAdmin() then
+            ply:ChatPrint("[RARELOAD] You must be an admin to use this command.")
+            return
+        end
+
+        AntiStuck.ResetMethodStats()
+        print("[RARELOAD] Method statistics reset")
+        if IsValid(ply) then
+            ply:ChatPrint("[RARELOAD] Method statistics reset")
+        end
+    end)
+
+    -- Console command to list all registered methods
+    concommand.Add("rareload_antistuck_methods", function(ply, cmd, args)
+        if IsValid(ply) and not ply:IsAdmin() then
+            ply:ChatPrint("[RARELOAD] You must be an admin to use this command.")
+            return
+        end
+
+        print("[RARELOAD] Registered Anti-Stuck Methods:")
+        print("==========================================")
+
+        if not AntiStuck.methodRegistry or table.Count(AntiStuck.methodRegistry) == 0 then
+            print("No methods registered!")
+            return
+        end
+
+        local sortedMethods = {}
+        for name, methodObj in pairs(AntiStuck.methodRegistry) do
+            table.insert(sortedMethods, { name = name, obj = methodObj })
+        end
+
+        -- Sort by priority
+        table.sort(sortedMethods, function(a, b) return a.obj.priority < b.obj.priority end)
+
+        for _, methodInfo in ipairs(sortedMethods) do
+            local name = methodInfo.name
+            local obj = methodInfo.obj
+            local stats = AntiStuck.methodStats[name] or {}
+
+            print(string.format("Method: %s (Priority: %d)", name, obj.priority))
+            print(string.format("  Description: %s", obj.description))
+            print(string.format("  Enabled: %s | Timeout: %.1fs | Retries: %d",
+                tostring(obj.enabled), obj.timeout, obj.retries))
+            print(string.format("  Stats: %d calls, %d successes (%.1f%%)",
+                stats.calls or 0, stats.successes or 0,
+                (stats.calls and stats.calls > 0) and (stats.successes / stats.calls * 100) or 0))
+            print("  ---")
+        end
+
+        if IsValid(ply) then
+            ply:ChatPrint("[RARELOAD] Method list printed to console")
+        end
     end)
 
     -- Console command to validate and fix corrupted profiles on server
@@ -1134,18 +1291,24 @@ if SERVER then
             return
         end
 
-        AntiStuck.testingPlayers[targetPlayer:SteamID()] = CurTime() + duration
+        local steamID = (targetPlayer.SteamID and targetPlayer:SteamID()) or nil
+        if steamID then
+            AntiStuck.testingPlayers[steamID] = CurTime() + duration
+        end
 
+        local targetNameSafe = (targetPlayer.Nick and targetPlayer:Nick()) or tostring(targetPlayer)
         local message = string.format("[RARELOAD] Anti-stuck testing enabled for %s for %d seconds.",
-            targetPlayer:Nick(), duration)
+            targetNameSafe, duration)
         print(message)
 
         if IsValid(ply) then
             ply:ChatPrint(message)
         end
 
-        targetPlayer:ChatPrint(
-            "[RARELOAD] Anti-stuck testing mode enabled for you. Your next respawn will trigger the anti-stuck system.")
+        if IsValid(targetPlayer) and targetPlayer.ChatPrint then
+            targetPlayer:ChatPrint(
+                "[RARELOAD] Anti-stuck testing mode enabled for you. Your next respawn will trigger the anti-stuck system.")
+        end
     end)
 
     -- Console command to check testing mode status
@@ -1170,7 +1333,8 @@ if SERVER then
             if expireTime > currentTime then
                 activePlayerTests = activePlayerTests + 1
                 local targetPlayer = player.GetBySteamID(steamID)
-                local playerName = IsValid(targetPlayer) and targetPlayer:Nick() or "Offline (" .. steamID .. ")"
+                local playerName = (IsValid(targetPlayer) and targetPlayer.Nick and targetPlayer:Nick()) or
+                    ("Offline (" .. steamID .. ")")
                 local timeLeft = math.ceil(expireTime - currentTime)
 
                 local playerStatus = string.format("  Player testing: %s (%d seconds left)", playerName, timeLeft)

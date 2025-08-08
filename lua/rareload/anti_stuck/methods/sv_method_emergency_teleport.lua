@@ -2,15 +2,16 @@ local AntiStuck = RARELOAD.AntiStuck
 
 function AntiStuck.TryEmergencyTeleport(pos, ply)
     local testPositions = {}
-    local randomAttempts = 50
+    local randomAttempts = (AntiStuck.CONFIG and AntiStuck.CONFIG.RANDOM_ATTEMPTS) or 50
+    local safeRadius = (AntiStuck.CONFIG and AntiStuck.CONFIG.EMERGENCY_SAFE_RADIUS) or 200
 
     if AntiStuck.mapBounds then
         local mapMin = AntiStuck.mapBounds.mins
         local mapMax = AntiStuck.mapBounds.maxs
 
         for i = 1, randomAttempts do
-            local randX = math.random(mapMin.x + 256, mapMax.x - 256)
-            local randY = math.random(mapMin.y + 256, mapMax.y - 256)
+            local randX = math.random(mapMin.x + safeRadius, mapMax.x - safeRadius)
+            local randY = math.random(mapMin.y + safeRadius, mapMax.y - safeRadius)
 
             for height = 100, 2000, 200 do
                 local randomPos = Vector(randX, randY, height)
@@ -49,10 +50,12 @@ function AntiStuck.TryEmergencyTeleport(pos, ply)
         end
 
         local corners = {
-            AntiStuck.mapBounds.mins + Vector(100, 100, 0),
-            Vector(AntiStuck.mapBounds.maxs.x - 100, AntiStuck.mapBounds.mins.y + 100, AntiStuck.mapBounds.mins.z),
-            Vector(AntiStuck.mapBounds.mins.x + 100, AntiStuck.mapBounds.maxs.y - 100, AntiStuck.mapBounds.mins.z),
-            AntiStuck.mapBounds.maxs - Vector(100, 100, 0)
+            AntiStuck.mapBounds.mins + Vector(safeRadius, safeRadius, 0),
+            Vector(AntiStuck.mapBounds.maxs.x - safeRadius, AntiStuck.mapBounds.mins.y + safeRadius,
+                AntiStuck.mapBounds.mins.z),
+            Vector(AntiStuck.mapBounds.mins.x + safeRadius, AntiStuck.mapBounds.maxs.y - safeRadius,
+                AntiStuck.mapBounds.mins.z),
+            AntiStuck.mapBounds.maxs - Vector(safeRadius, safeRadius, 0)
         }
 
         for _, corner in ipairs(corners) do
@@ -98,13 +101,19 @@ function AntiStuck.TryEmergencyTeleport(pos, ply)
         end
     end
 
-    local absoluteFallback = Vector(0, 0, 16384)
+    local fallbackHeight = (AntiStuck.CONFIG and AntiStuck.CONFIG.FALLBACK_HEIGHT) or 16384
+    local absoluteFallback = Vector(0, 0, fallbackHeight)
     return absoluteFallback, AntiStuck.UNSTUCK_METHODS.EMERGENCY_TELEPORT
 end
 
--- Register method - ensure AntiStuck is properly referenced
+-- Register method with proper configuration
 if RARELOAD.AntiStuck and RARELOAD.AntiStuck.RegisterMethod then
-    RARELOAD.AntiStuck.RegisterMethod("TryEmergencyTeleport", AntiStuck.TryEmergencyTeleport)
+    RARELOAD.AntiStuck.RegisterMethod("TryEmergencyTeleport", AntiStuck.TryEmergencyTeleport, {
+        description = "Last resort emergency positioning with map boundary detection",
+        priority = 90, -- Low priority - only used when other methods fail
+        timeout = 5.0, -- Longer timeout since this is the emergency method
+        retries = 2
+    })
 else
     print("[RARELOAD ERROR] Cannot register TryEmergencyTeleport - AntiStuck.RegisterMethod not available")
 end

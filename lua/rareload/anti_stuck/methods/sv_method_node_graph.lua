@@ -46,6 +46,7 @@ function AntiStuck.TryNodeGraph(pos, ply)
     local nodeSearchRadius = AntiStuck.CONFIG.NODE_SEARCH_RADIUS or 2048
     local safeDistance = AntiStuck.CONFIG.SAFE_DISTANCE or 64
     local maxAttempts = AntiStuck.CONFIG.MAX_UNSTUCK_ATTEMPTS or 50
+    local heightOffset = (AntiStuck.CONFIG and AntiStuck.CONFIG.NAVMESH_HEIGHT_OFFSET) or 16
 
     local searchDistances = { safeDistance, 128, 256, 512, 1024, 2048, 4096, 8192 }
 
@@ -86,12 +87,12 @@ function AntiStuck.TryNodeGraph(pos, ply)
             for _, searchPos in ipairs(searchPositions) do
                 local testPos = searchPos + Vector(0, 0, heightOffset)
 
-                local area = navmesh.GetNearestNavArea(testPos, false, distance, false, true)
+                local area = navmesh.GetNearestNavArea(testPos, false, math.min(distance, nodeSearchRadius), false, true)
 
                 if area and IsValid(area) then
                     local center = area:GetCenter()
                     if center then
-                        local safePos = center + Vector(0, 0, 16)
+                        local safePos = center + Vector(0, 0, heightOffset)
                         if util.IsInWorld(safePos) then
                             local isStuck, reason = AntiStuck.IsPositionStuck(safePos, ply, false) -- Not original position
                             if not isStuck then
@@ -105,7 +106,7 @@ function AntiStuck.TryNodeGraph(pos, ply)
                         for i = 0, 3 do
                             local corner = area:GetCorner(i)
                             if corner then
-                                local cornerPos = corner + Vector(0, 0, 16)
+                                local cornerPos = corner + Vector(0, 0, heightOffset)
                                 if util.IsInWorld(cornerPos) then
                                     local isStuck, reason = AntiStuck.IsPositionStuck(cornerPos, ply, false) -- Not original position
                                     if not isStuck then

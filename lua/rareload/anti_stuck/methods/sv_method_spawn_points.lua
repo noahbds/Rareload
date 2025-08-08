@@ -39,4 +39,14 @@ function AntiStuck.TrySpawnPoints(pos, ply)
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
 end
 
-AntiStuck.RegisterMethod("TrySpawnPoints", AntiStuck.TrySpawnPoints)
+-- Register method with proper configuration
+if RARELOAD.AntiStuck and RARELOAD.AntiStuck.RegisterMethod then
+    RARELOAD.AntiStuck.RegisterMethod("TrySpawnPoints", AntiStuck.TrySpawnPoints, {
+        description = "Fallback to map-defined spawn points with validity checking",
+        priority = 70, -- Lower priority - fallback method
+        timeout = 2.0,
+        retries = 1
+    })
+else
+    print("[RARELOAD ERROR] Cannot register TrySpawnPoints - AntiStuck.RegisterMethod not available")
+end

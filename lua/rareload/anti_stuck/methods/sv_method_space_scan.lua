@@ -13,7 +13,6 @@ local mathHuge = math.huge
 
 -- Pre-create common vectors
 local vector_up = Vector(0, 0, 100)
-local vector_down = Vector(0, 0, -500)
 local vector_zero = Vector(0, 0, 0)
 local vector_z16 = Vector(0, 0, 16)
 
@@ -35,6 +34,8 @@ function AntiStuck.Try3DSpaceScan(pos, ply)
     local gridRes = AntiStuck.CONFIG.GRID_RESOLUTION or 64
     local minGroundDist = AntiStuck.CONFIG.MIN_GROUND_DISTANCE or 8
     local retryDelay = AntiStuck.CONFIG.RETRY_DELAY or 0.1
+    local maxTrace = (AntiStuck.CONFIG and AntiStuck.CONFIG.MAX_TRACE_DISTANCE) or 1000
+    local accuracy = (AntiStuck.CONFIG and AntiStuck.CONFIG.SPACE_SCAN_ACCURACY) or 2
 
     local debugEnabled = RARELOAD.settings and RARELOAD.settings.debugEnabled
 
@@ -43,7 +44,7 @@ function AntiStuck.Try3DSpaceScan(pos, ply)
         if not util.IsInWorld(testPos) then return nil end
 
         traceStructure.start = testPos + vector_up
-        traceStructure.endpos = testPos + vector_down
+        traceStructure.endpos = testPos - Vector(0, 0, maxTrace)
         traceStructure.filter = ply
 
         local ground = util.TraceLine(traceStructure)
@@ -61,8 +62,21 @@ function AntiStuck.Try3DSpaceScan(pos, ply)
         return nil
     end
 
-    -- Try vertical offsets with optimized trace count
+    -- Adjust search parameters based on accuracy setting
     local verticalOffsets = { 64, 128, 256, 512, 1024 }
+    local offsetMultiplier = { 32, 0, -32 }
+
+    if accuracy >= 3 then
+        -- Higher accuracy: more offsets and positions
+        table.insert(verticalOffsets, 2048)
+        offsetMultiplier = { 64, 32, 0, -32, -64 }
+    elseif accuracy <= 2 then
+        -- Lower accuracy: fewer checks for speed
+        verticalOffsets = { 128, 256, 512 }
+        offsetMultiplier = { 0, 32, -32 }
+    end
+
+    -- Try vertical offsets with accuracy-based trace count
     for _, zOffset in ipairs(verticalOffsets) do
         local testPos = Vector(pos.x, pos.y, pos.z + zOffset)
 
@@ -75,16 +89,9 @@ function AntiStuck.Try3DSpaceScan(pos, ply)
                 return groundPos, AntiStuck.UNSTUCK_METHODS.VERTICAL_SCAN
             end
 
-            -- Check a few offset positions at this height
-            local offsets = {
-                Vector(32, 0, 0),
-                Vector(-32, 0, 0),
-                Vector(0, 32, 0),
-                Vector(0, -32, 0)
-            }
-
-            for _, offset in ipairs(offsets) do
-                local offsetPos = testPos + offset
+            -- Check offset positions at this height based on accuracy
+            for _, offset in ipairs(offsetMultiplier) do
+                local offsetPos = testPos + Vector(offset, offset, 0)
                 local offsetGroundPos = checkGroundPosition(offsetPos)
                 if offsetGroundPos then
                     if debugEnabled then

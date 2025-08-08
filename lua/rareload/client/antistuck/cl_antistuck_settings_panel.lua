@@ -4,12 +4,8 @@ RARELOAD.AntiStuckSettings = RARELOAD.AntiStuckSettings or {}
 
 -- Include the necessary files
 include("rareload/client/entity_viewer/cl_entity_viewer_theme.lua")
-include("rareload/client/antistuck/cl_profile_config.lua")
 include("rareload/client/antistuck/cl_profile_system.lua")
-include("rareload/client/antistuck/cl_profile_creator.lua")
 include("rareload/client/antistuck/cl_profile_manager.lua")
-include("rareload/client/antistuck/cl_profile_performance.lua")
-include("rareload/client/antistuck/cl_profile_init.lua")
 
 local THEME = THEME or {}
 
@@ -36,13 +32,17 @@ Default_Anti_Stuck_Settings = {
     ENTITY_SEARCH_RADIUS = 512, -- Radius for searching map entities
     NAVMESH_HEIGHT_OFFSET = 16, -- Height offset for navmesh node graph
     FALLBACK_HEIGHT = 16384,    -- Height for absolute fallback position
-    METHOD_ENABLE_FLAGS = {},   -- Per-method enable/disable flags
     SPIRAL_RINGS = 10,
     POINTS_PER_RING = 8,
     MAX_DISTANCE = 2000,
     VERTICAL_STEPS = 5,
     VERTICAL_RANGE = 400,
-    SEARCH_RESOLUTIONS = { 64, 128, 256, 512 }
+    SEARCH_RESOLUTIONS = { 64, 128, 256, 512 },
+    -- Method-specific settings
+    DISPLACEMENT_STEP_SIZE = 128,   -- Step size for displacement method
+    DISPLACEMENT_MAX_HEIGHT = 1000, -- Maximum height check for displacement
+    SPACE_SCAN_ACCURACY = 2,        -- Accuracy level for 3D space scan (1-5)
+    EMERGENCY_SAFE_RADIUS = 200     -- Safe radius for emergency teleport
 }
 
 
@@ -79,14 +79,18 @@ local settingDescriptions = {
     ENTITY_SEARCH_RADIUS = "Radius for searching map entities",
     NAVMESH_HEIGHT_OFFSET = "Height offset for navmesh node graph",
     FALLBACK_HEIGHT = "Height for absolute fallback position",
-    METHOD_ENABLE_FLAGS = "Per-method enable/disable flags (advanced)",
     SPIRAL_RINGS = "Number of rings in spiral search pattern",
     POINTS_PER_RING = "Number of points to check per spiral ring",
     MAX_DISTANCE = "Maximum distance for searching safe positions",
     VERTICAL_STEPS = "Number of vertical steps when searching",
     VERTICAL_RANGE = "Maximum vertical range for step-based searches",
     SEARCH_RESOLUTIONS = "Grid resolutions to try sequentially (smallest to largest)",
-    DEBUG_LOGGING = "Enable/disable detailed debug logging"
+    DEBUG_LOGGING = "Enable/disable detailed debug logging",
+    -- Method-specific descriptions
+    DISPLACEMENT_STEP_SIZE = "Step size between displacement attempts",
+    DISPLACEMENT_MAX_HEIGHT = "Maximum height to check for displacement method",
+    SPACE_SCAN_ACCURACY = "Accuracy level for 3D space scan (higher = more thorough)",
+    EMERGENCY_SAFE_RADIUS = "Safe radius around emergency teleport positions"
 }
 -- Define value ranges for numeric settings
 local settingRanges = {
@@ -104,7 +108,7 @@ local settingRanges = {
     SPAWN_POINT_OFFSET_Z = { min = 0, max = 128, step = 2 },
     MAP_ENTITY_OFFSET_Z = { min = 0, max = 128, step = 2 },
     NAV_AREA_OFFSET_Z = { min = 0, max = 128, step = 2 },
-    RETRY_DELAY = { min = 0.05, max = 2.0, step = 0.05 },
+    RETRY_DELAY = { min = 0.0, max = 2.0, step = 0.05 },
     MAX_SEARCH_TIME = { min = 0.5, max = 10.0, step = 0.1 },
     RANDOM_ATTEMPTS = { min = 10, max = 200, step = 5 },
     ENTITY_SEARCH_RADIUS = { min = 128, max = 2048, step = 32 },
@@ -115,6 +119,11 @@ local settingRanges = {
     MAX_DISTANCE = { min = 500, max = 5000, step = 100 },
     VERTICAL_STEPS = { min = 1, max = 20, step = 1 },
     VERTICAL_RANGE = { min = 50, max = 1000, step = 25 },
+    -- Method-specific ranges
+    DISPLACEMENT_STEP_SIZE = { min = 32, max = 512, step = 16 },
+    DISPLACEMENT_MAX_HEIGHT = { min = 200, max = 2000, step = 100 },
+    SPACE_SCAN_ACCURACY = { min = 1, max = 5, step = 1 },
+    EMERGENCY_SAFE_RADIUS = { min = 50, max = 500, step = 25 }
 }
 
 -- Group settings for better UI organization
@@ -142,7 +151,10 @@ local settingGroups = {
         "SPAWN_POINT_OFFSET_Z", "MAP_ENTITY_OFFSET_Z", "NAV_AREA_OFFSET_Z", "NAVMESH_HEIGHT_OFFSET", "FALLBACK_HEIGHT"
     },
     Methods = {
-        "RANDOM_ATTEMPTS", "METHOD_ENABLE_FLAGS"
+        "RANDOM_ATTEMPTS"
+    },
+    ["Method Specific"] = {
+        "DISPLACEMENT_STEP_SIZE", "DISPLACEMENT_MAX_HEIGHT", "SPACE_SCAN_ACCURACY", "EMERGENCY_SAFE_RADIUS"
     }
 }
 
@@ -201,9 +213,9 @@ end
 
 -- Optimized settings loading with caching
 function RARELOAD.AntiStuckSettings.LoadSettings()
-    if profileSystem and profileSystem.GetCurrentProfileSettings then
+    if RARELOAD.AntiStuck.ProfileSystem and RARELOAD.AntiStuck.ProfileSystem.GetCurrentProfileSettings then
         -- Use the optimized cached loading
-        local settings = profileSystem.GetCurrentProfileSettings()
+        local settings = RARELOAD.AntiStuck.ProfileSystem.GetCurrentProfileSettings()
         if settings then
             -- Ensure all default settings are present for forward compatibility
             for key, defaultValue in pairs(Default_Anti_Stuck_Settings) do
@@ -214,8 +226,9 @@ function RARELOAD.AntiStuckSettings.LoadSettings()
             return settings
         end
     end -- Fallback to defaults if profile system not available
-    if _G.profileSystem and _G.profileSystem.DeepCopySettings then
-        return _G.profileSystem.DeepCopySettings(Default_Anti_Stuck_Settings)
+    if RARELOAD.AntiStuck.ProfileSystem and RARELOAD.AntiStuck.ProfileSystem.DeepCopySettings then
+        -- Use table.Copy instead of removed DeepCopySettings
+        return table.Copy(Default_Anti_Stuck_Settings)
     else
         -- Fallback manual deep copy for METHOD_ENABLE_FLAGS
         local settings = {}
@@ -269,12 +282,12 @@ function RARELOAD.AntiStuckSettings.SaveSettings(settings)
     end
 
     -- Use optimized profile system if available
-    if profileSystem and profileSystem.UpdateCurrentProfile then
-        local currentProfileName = profileSystem.GetCurrentProfile()
+    if RARELOAD.AntiStuck.ProfileSystem and RARELOAD.AntiStuck.ProfileSystem.UpdateCurrentProfile then
+        local currentProfileName = RARELOAD.AntiStuck.ProfileSystem.GetCurrentProfile()
         print("[RARELOAD] Saving settings to profile: " .. (currentProfileName or "unknown"))
 
         -- Use the optimized update function with batch operations
-        local success = profileSystem.UpdateCurrentProfile(settings, nil)
+        local success = RARELOAD.AntiStuck.ProfileSystem.UpdateCurrentProfile(settings, nil)
         if success then
             -- Send ONLY settings to server (never methods via this path)
             net.Start("RareloadAntiStuckSettings")
@@ -472,8 +485,8 @@ function RARELOAD.AntiStuckSettings._CreateSettingsPanel()
     profileCombo:SetFont("RareloadText")
 
     -- Populate profiles
-    if profileSystem and profileSystem.GetProfilesList then
-        local profiles = profileSystem.GetProfilesList()
+    if RARELOAD.AntiStuck.ProfileSystem and RARELOAD.AntiStuck.ProfileSystem.GetProfilesList then
+        local profiles = RARELOAD.AntiStuck.ProfileSystem.GetProfilesList()
         for _, profile in ipairs(profiles) do
             local displayText = profile.displayName
             if profile.mapSpecific then
@@ -484,16 +497,17 @@ function RARELOAD.AntiStuckSettings._CreateSettingsPanel()
             end
             profileCombo:AddChoice(displayText, profile.name)
         end -- Set current profile
-        if profileSystem and profileSystem.currentProfile then
-            local currentProfile = profileSystem.LoadProfile(profileSystem.currentProfile)
+        if RARELOAD.AntiStuck.ProfileSystem and RARELOAD.AntiStuck.ProfileSystem.currentProfile then
+            local currentProfile = RARELOAD.AntiStuck.ProfileSystem.LoadProfile(RARELOAD.AntiStuck.ProfileSystem
+                .currentProfile)
             if currentProfile then
                 profileCombo:SetValue(currentProfile.displayName or "Default Settings")
             end
         end
 
         profileCombo.OnSelect = function(self, index, value, data)
-            if data and profileSystem and profileSystem.ApplyProfile then
-                local success = profileSystem.ApplyProfile(data)
+            if data and RARELOAD.AntiStuck.ProfileSystem and RARELOAD.AntiStuck.ProfileSystem.ApplyProfile then
+                local success = RARELOAD.AntiStuck.ProfileSystem.ApplyProfile(data)
                 if success then
                     chat.AddText(Color(100, 255, 100), "[RARELOAD] ", Color(255, 255, 255), "Applied profile: " .. value)
                     timer.Simple(0.1, function()
@@ -506,6 +520,7 @@ function RARELOAD.AntiStuckSettings._CreateSettingsPanel()
             end
         end
     end -- Action buttons with proper spacing
+
     local buttonData = {
         {
             text = "New Profile",
@@ -924,8 +939,8 @@ net.Receive("RareloadAntiStuckConfig", function()
     if not isEditingSettings then
         -- Only auto-save server settings if explicitly enabled
         if RARELOAD.AntiStuckSettings.autoSaveServerSettings then
-            if profileSystem and profileSystem.UpdateCurrentProfile then
-                profileSystem.UpdateCurrentProfile(serverSettings, nil)
+            if RARELOAD.AntiStuck.ProfileSystem and RARELOAD.AntiStuck.ProfileSystem.UpdateCurrentProfile then
+                RARELOAD.AntiStuck.ProfileSystem.UpdateCurrentProfile(serverSettings, nil)
                 print("[RARELOAD] Anti-Stuck settings updated from server and saved to current profile")
             end
         else
@@ -945,8 +960,8 @@ net.Receive("RareloadReceiveSharedProfile", function()
     sharedProfile.shared = true
 
     -- Import the shared profile
-    if profileSystem and profileSystem.ImportProfile then
-        local success, msg = profileSystem.ImportProfile(sharedProfile)
+    if RARELOAD.AntiStuck.ProfileSystem and RARELOAD.AntiStuck.ProfileSystem.ImportProfile then
+        local success, msg = RARELOAD.AntiStuck.ProfileSystem.ImportProfile(sharedProfile)
         if success then
             chat.AddText(Color(100, 255, 100), "[RARELOAD] ", Color(255, 255, 255),
                 "Received shared profile: " .. sharedProfile.displayName)
@@ -1012,9 +1027,7 @@ local originalLoadSettings = RARELOAD.AntiStuckSettings.LoadSettings
 function RARELOAD.AntiStuckSettings.LoadSettings()
     -- If we have loaded settings from profile switch, use those
     if RARELOAD.AntiStuckSettings._loadedSettings then
-        local settings = (_G.profileSystem and _G.profileSystem.DeepCopySettings) and
-            _G.profileSystem.DeepCopySettings(RARELOAD.AntiStuckSettings._loadedSettings) or
-            RARELOAD.AntiStuckSettings._loadedSettings
+        local settings = table.Copy(RARELOAD.AntiStuckSettings._loadedSettings)
         -- Clear the loaded settings to prevent reuse
         RARELOAD.AntiStuckSettings._loadedSettings = nil
         return settings
@@ -1026,11 +1039,11 @@ end
 
 -- Console command to test profile system
 concommand.Add("rareload_test_profile_system", function()
-    if profileSystem then
+    if RARELOAD.AntiStuck.ProfileSystem then
         print("[RARELOAD] Profile system is available!")
-        print("  Current profile: " .. tostring(profileSystem.currentProfile))
+        print("  Current profile: " .. tostring(RARELOAD.AntiStuck.ProfileSystem.currentProfile))
         print("  Available profiles:")
-        local profiles = profileSystem.GetAvailableProfiles()
+        local profiles = RARELOAD.AntiStuck.ProfileSystem.GetAvailableProfiles()
         for i, name in ipairs(profiles) do
             print("    " .. i .. ". " .. name)
         end

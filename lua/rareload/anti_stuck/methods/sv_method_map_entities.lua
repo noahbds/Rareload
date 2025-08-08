@@ -35,13 +35,18 @@ function AntiStuck.TryMapEntities(pos, ply)
     local safeDistance = math.max(playerRadius + 32, 64) -- Minimum safe distance from entities
 
     local sortedEntities = {}
+    local maxEntityDist = (AntiStuck.CONFIG and AntiStuck.CONFIG.ENTITY_SEARCH_RADIUS or 512)
+    local maxEntityDistSqr = maxEntityDist * maxEntityDist
     for _, entityPos in ipairs(AntiStuck.mapEntities) do
         local vpos = AntiStuck.ToVector and AntiStuck.ToVector(entityPos) or entityPos
         if vpos then
-            table.insert(sortedEntities, {
-                pos = vpos,
-                distance = pos:Distance(vpos)
-            })
+            local distSqr = pos:DistToSqr(vpos)
+            if distSqr <= maxEntityDistSqr then
+                table.insert(sortedEntities, {
+                    pos = vpos,
+                    distance = math.sqrt(distSqr)
+                })
+            end
         end
     end
 

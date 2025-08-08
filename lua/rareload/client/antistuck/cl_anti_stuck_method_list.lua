@@ -21,10 +21,25 @@ function RARELOAD.AntiStuckDebug.RefreshMethodList()
     local parent = RARELOAD.AntiStuckDebug.methodContainer
     local searchBox = RARELOAD.AntiStuckDebug.searchBox
 
-    if not parent or not IsValid(parent) then return end
+    if not parent or not IsValid(parent) then
+        print("[RARELOAD] Error: Method container not valid")
+        return
+    end
+
+    -- Clean up any existing panels to prevent memory leaks
+    for _, child in ipairs(parent:GetChildren()) do
+        if IsValid(child) then
+            child:Remove()
+        end
+    end
     parent:Clear()
 
     local methods = RARELOAD.AntiStuckData and RARELOAD.AntiStuckData.GetMethods() or {}
+    if #methods == 0 then
+        print("[RARELOAD] Warning: No methods available")
+        return
+    end
+
     local search = searchBox and IsValid(searchBox) and searchBox:GetValue():lower() or ""
 
     -- Filter methods based on search
@@ -125,23 +140,34 @@ function RARELOAD.AntiStuckMethodList.SetupDragDrop(pnl, visIndex, visible, drag
 
                     local movedMethod = table.remove(methods, globalOld)
                     -- Ensure the moved method retains its enabled state
-                    if movedMethod.enabled == nil then
+                    if movedMethod and movedMethod.enabled == nil then
                         movedMethod.enabled = true
                     end
-                    table.insert(methods, globalNew, movedMethod)
 
-                    -- Save the reordered methods to the profile
-                    RARELOAD.AntiStuckData.SetMethods(methods)
-                    RARELOAD.AntiStuckData.SaveMethods()
+                    if movedMethod then
+                        table.insert(methods, globalNew, movedMethod)
 
-                    RARELOAD.AntiStuckDebug.RefreshMethodList()
-                    surface.PlaySound("ui/buttonclickrelease.wav")
+                        -- Save the reordered methods to the profile
+                        RARELOAD.AntiStuckData.SetMethods(methods)
+                        local saveSuccess = RARELOAD.AntiStuckData.SaveMethods()
+
+                        if saveSuccess then
+                            RARELOAD.AntiStuckDebug.RefreshMethodList()
+                            surface.PlaySound("ui/buttonclickrelease.wav")
+                        else
+                            print("[RARELOAD] Error: Failed to save method reorder")
+                        end
+                    else
+                        print("[RARELOAD] Error: Could not move method - method was nil")
+                    end
                 end
             end
 
+            -- Clean up drag state
             dragState.dragging = nil
             dragState.dragIndex = nil
             dragState.dropIndicator = nil
+            dragState.startTime = 0
         end
     end
 

@@ -5,6 +5,7 @@
 ---@class RareloadToggle : DButton
 ---@field initialized boolean
 ---@field animValue number
+---@field OnRemove function
 
 ---@class RareloadMethodPanel : DPanel
 ---@field UserData table
@@ -12,20 +13,40 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuckComponents = RARELOAD.AntiStuckComponents or {}
 
--- Ensure fonts are loaded
-if not RARELOAD._fontsLoaded then
+-- Ensure fonts are loaded with proper error handling
+local function ensureFontsLoaded()
+    if RARELOAD._fontsLoaded then
+        return true
+    end
+
     if RARELOAD.RegisterFonts then
-        RARELOAD.RegisterFonts()
-        RARELOAD._fontsLoaded = true
-    else
-        -- Load fonts if function exists
-        include("rareload/utils/rareload_fonts.lua")
-        if RARELOAD.RegisterFonts then
-            RARELOAD.RegisterFonts()
+        local success, err = pcall(RARELOAD.RegisterFonts)
+        if success then
             RARELOAD._fontsLoaded = true
+            return true
+        else
+            print("[RARELOAD] Warning: Font loading failed: " .. tostring(err))
+        end
+    else
+        -- Try to load fonts manually
+        local success, err = pcall(function()
+            include("rareload/utils/rareload_fonts.lua")
+            if RARELOAD.RegisterFonts then
+                RARELOAD.RegisterFonts()
+                RARELOAD._fontsLoaded = true
+            end
+        end)
+
+        if not success then
+            print("[RARELOAD] Warning: Could not load fonts: " .. tostring(err))
         end
     end
+
+    return RARELOAD._fontsLoaded or false
 end
+
+-- Initialize fonts on module load
+ensureFontsLoaded()
 
 local THEME = RARELOAD.AntiStuckTheme and RARELOAD.AntiStuckTheme.GetTheme() or {}
 
@@ -87,14 +108,20 @@ function RARELOAD.AntiStuckComponents.CreateToggleSwitch(parent, method)
     toggle:SetTooltip("Toggle this method on/off")
 
     -- Initialize animation value
-    if not toggle.initialized then
-        toggle.initialized = true
-        toggle.animValue = method.enabled and 1 or 0
+    toggle.initialized = true
+    toggle.animValue = method.enabled and 1 or 0
+
+    -- Clean up animation when panel is removed
+    toggle.OnRemove = function()
+        toggle.animValue = nil
+        toggle.initialized = nil
     end
 
     toggle.Paint = function(btn, w, h)
+        if not toggle.animValue then return end -- Safety check
+
         local targetAnim = method.enabled and 1 or 0
-        toggle.animValue = Lerp(FrameTime() * 10, toggle.animValue or 0, targetAnim)
+        toggle.animValue = Lerp(FrameTime() * 10, toggle.animValue, targetAnim)
 
         local thumbX = 3 + toggle.animValue * (w - h + 3 - 3)
         local bgColor = Color(
@@ -109,14 +136,19 @@ function RARELOAD.AntiStuckComponents.CreateToggleSwitch(parent, method)
         local text = method.enabled and "ON" or "OFF"
         draw.SimpleText(text, "RareloadSmall", w / 2, h / 2, THEME.textHighlight, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
+
     toggle.DoClick = function()
         method.enabled = not method.enabled
 
-        -- Save the change to the profile
+        -- Save the change to the profile with error handling
         if RARELOAD.AntiStuckData then
             local methods = RARELOAD.AntiStuckData.GetMethods()
             RARELOAD.AntiStuckData.SetMethods(methods)
-            RARELOAD.AntiStuckData.SaveMethods()
+            local saveSuccess = RARELOAD.AntiStuckData.SaveMethods()
+
+            if not saveSuccess then
+                print("[RARELOAD] Warning: Failed to save method toggle state")
+            end
         end
 
         surface.PlaySound("ui/buttonclick.wav")
@@ -185,7 +217,7 @@ function RARELOAD.AntiStuckComponents.CreateMethodPanel(parent, method, methodIn
 
     -- Add toggle switch
     local toggle = RARELOAD.AntiStuckComponents.CreateToggleSwitch(pnl, method)
-    toggle:SetPos(pnl:GetWide() + 550, 29)
+    toggle:SetPos(pnl:GetWide() - 150, 29)
 
     return pnl
 end

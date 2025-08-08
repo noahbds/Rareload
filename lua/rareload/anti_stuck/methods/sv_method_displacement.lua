@@ -24,7 +24,9 @@ function AntiStuck.TryDisplacement(pos, ply)
     local maxDistance = (AntiStuck.mapBounds and math.max(AntiStuck.mapBounds.maxs.x - AntiStuck.mapBounds.mins.x, AntiStuck.mapBounds.maxs.y - AntiStuck.mapBounds.mins.y) * 0.25) or
         (AntiStuck.CONFIG.HORIZONTAL_SEARCH_RANGE or 2048)
     local safeDistance = AntiStuck.CONFIG.SAFE_DISTANCE or 64
-    local stepSize = (AntiStuck.CONFIG.SAFE_DISTANCE or 64) * 2
+    local stepSize = (AntiStuck.CONFIG and AntiStuck.CONFIG.DISPLACEMENT_STEP_SIZE) or
+    ((AntiStuck.CONFIG.SAFE_DISTANCE or 64) * 2)
+    local maxHeight = (AntiStuck.CONFIG and AntiStuck.CONFIG.DISPLACEMENT_MAX_HEIGHT) or 1000
 
     groundTrace.filter = ply
 
@@ -35,11 +37,13 @@ function AntiStuck.TryDisplacement(pos, ply)
 
             if dir.z <= 0 then
                 -- Ground-finding logic for horizontal/downward directions
-                for heightOffset = 200, 1000, 200 do -- Larger steps for efficiency
+                local maxTrace = (AntiStuck.CONFIG and AntiStuck.CONFIG.MAX_TRACE_DISTANCE) or 1000
+                local heightStep = math.max(100, stepSize)
+                for heightOffset = heightStep * 2, math.min(maxHeight, maxTrace), heightStep do
                     local startPos = testPos + Vector(0, 0, heightOffset)
 
                     groundTrace.start:Set(startPos)
-                    groundTrace.endpos:Set(startPos - Vector(0, 0, heightOffset + 500))
+                    groundTrace.endpos:Set(startPos - Vector(0, 0, math.min(heightOffset + 500, maxTrace)))
 
                     local ground = util.TraceLine(groundTrace)
 
@@ -69,4 +73,14 @@ function AntiStuck.TryDisplacement(pos, ply)
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
 end
 
-AntiStuck.RegisterMethod("TryDisplacement", AntiStuck.TryDisplacement)
+-- Register method with proper configuration
+if RARELOAD.AntiStuck and RARELOAD.AntiStuck.RegisterMethod then
+    RARELOAD.AntiStuck.RegisterMethod("TryDisplacement", AntiStuck.TryDisplacement, {
+        description = "Intelligently move player using physics-based displacement in optimal directions",
+        priority = 20, -- High priority, but after cached positions
+        timeout = 3.0, -- Moderate timeout since this does spatial search
+        retries = 1
+    })
+else
+    print("[RARELOAD ERROR] Cannot register TryDisplacement - AntiStuck.RegisterMethod not available")
+end

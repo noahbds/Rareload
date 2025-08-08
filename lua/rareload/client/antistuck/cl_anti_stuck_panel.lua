@@ -19,26 +19,15 @@
 ---@class RareloadButton : DButton
 ---@field _anim number
 
+---@class RareloadTextEntry : DTextEntry
+---@field OnValueChange function
+
+---@class RareloadScrollBar : DVScrollBar
+---@field Paint function
+
 -- Initialize RARELOAD namespace
 RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuckDebug = RARELOAD.AntiStuckDebug or {}
-
--- Legacy compatibility - redirect to data module
-function RARELOAD.AntiStuckDebug.LoadMethods()
-    if RARELOAD.AntiStuckData and RARELOAD.AntiStuckData.LoadMethods then
-        return RARELOAD.AntiStuckData.LoadMethods()
-    end
-    print("[RARELOAD] Warning: AntiStuckData module not loaded yet")
-    return {}
-end
-
-function RARELOAD.AntiStuckDebug.SaveMethods()
-    if RARELOAD.AntiStuckData and RARELOAD.AntiStuckData.SaveMethods then
-        return RARELOAD.AntiStuckData.SaveMethods()
-    end
-    print("[RARELOAD] Warning: AntiStuckData module not loaded yet")
-    return false
-end
 
 -- Settings panel opening function - delegates to settings module
 function RARELOAD.AntiStuckDebug.OpenSettingsPanel()

@@ -20,12 +20,25 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
         return
     end
 
+    -- Validate dependencies before creating panel
+    if not RARELOAD.AntiStuckData then
+        print("[RARELOAD] Error: AntiStuckData not loaded")
+        notification.AddLegacy("Anti-Stuck Data module not loaded", NOTIFY_ERROR, 3)
+        return
+    end
+
+    if not RARELOAD.AntiStuckComponents then
+        print("[RARELOAD] Error: AntiStuckComponents not loaded")
+        notification.AddLegacy("Anti-Stuck Components module not loaded", NOTIFY_ERROR, 3)
+        return
+    end
+
     -- Initialize dependencies
     if RARELOAD.RegisterFonts then
         RARELOAD.RegisterFonts()
     end
 
-    if RARELOAD.AntiStuckData and RARELOAD.AntiStuckData.LoadMethods then
+    if RARELOAD.AntiStuckData.LoadMethods then
         RARELOAD.AntiStuckData.LoadMethods()
     end
 
@@ -86,7 +99,7 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
     topPanel.Paint = nil
 
     -- Create search box
-    local searchBox = nil
+    local searchBox = nil --[[@as RareloadTextEntry]]
     if RARELOAD.AntiStuckComponents and RARELOAD.AntiStuckComponents.CreateSearchBox then
         searchBox = RARELOAD.AntiStuckComponents.CreateSearchBox(topPanel)
     end
@@ -110,17 +123,31 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
     local scroll = vgui.Create("DScrollPanel", debugFrame)
     scroll:Dock(FILL)
     scroll:DockMargin(0, 34, 0, 52)
-    local vbar = scroll:GetVBar()
+    local vbar = scroll:GetVBar() --[[@as RareloadScrollBar]]
     vbar:SetWide(8)
-    vbar.Paint = function(_, w, h) draw.RoundedBox(4, 0, 0, w, h, THEME.panelLight) end -- Store references globally for the refresh function
+    vbar.Paint = function(_, w, h) draw.RoundedBox(4, 0, 0, w, h, THEME.panelLight) end
+
+    -- Store references globally for the refresh function
     RARELOAD.AntiStuckDebug.currentFrame = debugFrame
     RARELOAD.AntiStuckDebug.methodContainer = scroll
     RARELOAD.AntiStuckDebug.searchBox = searchBox
 
-    -- Initial method list population
+    -- Initial method list population with dependency checking
     timer.Simple(0.1, function()
+        if not IsValid(debugFrame) then
+            print("[RARELOAD] Error: Debug frame was destroyed before initialization")
+            return
+        end
+
         if RARELOAD.AntiStuckDebug.RefreshMethodList then
             RARELOAD.AntiStuckDebug.RefreshMethodList()
+        else
+            print("[RARELOAD] Error: RefreshMethodList function not available")
+            timer.Simple(0.5, function() -- Retry after a longer delay
+                if IsValid(debugFrame) and RARELOAD.AntiStuckDebug.RefreshMethodList then
+                    RARELOAD.AntiStuckDebug.RefreshMethodList()
+                end
+            end)
         end
     end)
 

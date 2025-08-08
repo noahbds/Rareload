@@ -34,12 +34,13 @@ if SERVER then
 
     LoadMethodFiles()
     include("rareload/anti_stuck/sv_anti_stuck_resolver.lua")
+
     RARELOAD.AntiStuck.Initialized = false
     function RARELOAD.AntiStuck.Initialize()
         if RARELOAD.AntiStuck.Initialized then return end
         -- Always reload selected profile and methods
-        if serverProfileSystem and serverProfileSystem.LoadCurrentProfile then
-            serverProfileSystem.LoadCurrentProfile()
+        if RARELOAD.AntiStuck.ProfileSystem and RARELOAD.AntiStuck.ProfileSystem.LoadCurrentProfile then
+            RARELOAD.AntiStuck.ProfileSystem.LoadCurrentProfile()
         end
 
         -- Initialize method order AFTER method functions are registered
@@ -50,16 +51,16 @@ if SERVER then
             if RARELOAD.settings and RARELOAD.settings.debugEnabled then
                 print("[RARELOAD] Anti-Stuck method loading debug:")
                 print("  Profile methods count: " ..
-                    #((serverProfileSystem and serverProfileSystem.GetCurrentProfileMethods() or {})))
+                    #((RARELOAD.AntiStuck.ProfileSystem and RARELOAD.AntiStuck.ProfileSystem.GetCurrentProfileMethods() or {})))
                 print("  Method order count: " .. #(RARELOAD.AntiStuck.methods or {}))
                 print("  Registered functions count: " .. table.Count(RARELOAD.AntiStuck.methodRegistry or {}))
 
-                if serverProfileSystem then
-                    local profileMethods = serverProfileSystem.GetCurrentProfileMethods()
+                if RARELOAD.AntiStuck.ProfileSystem then
+                    local profileMethods = RARELOAD.AntiStuck.ProfileSystem.GetCurrentProfileMethods()
                     if profileMethods then
                         for i, method in ipairs(profileMethods) do
                             local hasFunc = RARELOAD.AntiStuck.methodRegistry and
-                            RARELOAD.AntiStuck.methodRegistry[method.func] ~= nil
+                                RARELOAD.AntiStuck.methodRegistry[method.func] ~= nil
                             local status = hasFunc and "✓" or "✗"
                             print("    " .. status .. " " ..
                                 i ..
@@ -88,7 +89,5 @@ if SERVER then
         timer.Simple(2, RARELOAD.AntiStuck.Initialize)
     end)
     RARELOAD.AntiStuck.Initialize()
-    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_panel_main.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_antistuck_settings_panel.lua")
 end
 print("[RARELOAD] Anti-Stuck system loaded")

@@ -9,6 +9,9 @@ local lastCacheLoad = 0
 
 -- Optimized function to load cached positions
 function AntiStuck.LoadCachedPositions()
+    if AntiStuck.CONFIG and AntiStuck.CONFIG.ENABLE_CACHE == false then
+        return false
+    end
     local currentTime = CurTime()
     local cacheRefreshInterval = AntiStuck.CONFIG and AntiStuck.CONFIG.CACHE_DURATION or 300
 
@@ -68,6 +71,9 @@ end
 -- Function to cache a safe position
 function AntiStuck.CacheSafePosition(pos)
     if not pos then return end
+    if AntiStuck.CONFIG and AntiStuck.CONFIG.ENABLE_CACHE == false then
+        return
+    end
 
     -- Use the common position saving system if available
     if RARELOAD.SavePositionToCache then
@@ -83,6 +89,9 @@ end
 
 -- Main method to try cached positions
 function AntiStuck.TryCachedPositions(pos, ply)
+    if AntiStuck.CONFIG and AntiStuck.CONFIG.ENABLE_CACHE == false then
+        return nil, AntiStuck.UNSTUCK_METHODS.NONE
+    end
     -- Refresh cache if empty or stale
     if cachedPositionCount == 0 then
         local loaded = AntiStuck.LoadCachedPositions()
@@ -154,9 +163,14 @@ function AntiStuck.TryCachedPositions(pos, ply)
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
 end
 
--- Register method - ensure AntiStuck is properly referenced
+-- Register method with proper configuration
 if RARELOAD.AntiStuck and RARELOAD.AntiStuck.RegisterMethod then
-    RARELOAD.AntiStuck.RegisterMethod("TryCachedPositions", AntiStuck.TryCachedPositions)
+    RARELOAD.AntiStuck.RegisterMethod("TryCachedPositions", AntiStuck.TryCachedPositions, {
+        description = "Use previously saved safe positions from successful unstuck attempts",
+        priority = 10, -- High priority since cached positions are fast and reliable
+        timeout = 1.0, -- Quick timeout since this should be fast
+        retries = 1
+    })
 else
     print("[RARELOAD ERROR] Cannot register TryCachedPositions - AntiStuck.RegisterMethod not available")
 end
