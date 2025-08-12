@@ -1,3 +1,15 @@
+-- Enhanced Anti-Stuck Settings Panel with Type Safety and Performance Optimizations
+-- @author RARELOAD Team
+-- @version 2.0 Enhanced
+
+-- Type annotations for lint compatibility
+---@class EnhancedDButton : DButton
+---@field hoverAnim number
+---@field slideAnim number
+
+---@class EnhancedDFrame : DFrame
+---@field OnKeyCodePressed function
+
 RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 RARELOAD.AntiStuckSettings = RARELOAD.AntiStuckSettings or {}
@@ -9,88 +21,128 @@ include("rareload/client/antistuck/cl_profile_manager.lua")
 
 local THEME = THEME or {}
 
+-- Enhanced Anti-Stuck Settings with Intelligent Defaults and Adaptive Configuration
 Default_Anti_Stuck_Settings = {
-    SPAWN_POINT_OFFSET_Z = 16,
-    MAP_ENTITY_OFFSET_Z = 32,
-    NAV_AREA_OFFSET_Z = 16,
-    PLAYER_HULL_TOLERANCE = 4,
-    MIN_GROUND_DISTANCE = 8,
-    CACHE_DURATION = 600,
-    VERTICAL_SEARCH_RANGE = 4096,
-    HORIZONTAL_SEARCH_RANGE = 2048,
-    GRID_RESOLUTION = 64,
-    SAFE_DISTANCE = 64,
-    MAX_UNSTUCK_ATTEMPTS = 50,  -- Maximum attempts to find a safe position
-    NODE_SEARCH_RADIUS = 2048,  -- Search radius for navigation nodes
-    MAP_BOUNDS_PADDING = 256,   -- Padding from map boundaries
-    MAX_TRACE_DISTANCE = 4096,  -- Max trace distance for collision checks
-    DEBUG_LOGGING = true,       -- Enable/disable debug logs
-    ENABLE_CACHE = true,        -- Toggle caching of safe positions
-    RETRY_DELAY = 0.1,          -- Delay (seconds) between unstuck attempts
-    MAX_SEARCH_TIME = 2.0,      -- Maximum time (seconds) to spend per unstuck attempt
-    RANDOM_ATTEMPTS = 50,       -- Number of random attempts for emergency/random methods
-    ENTITY_SEARCH_RADIUS = 512, -- Radius for searching map entities
-    NAVMESH_HEIGHT_OFFSET = 16, -- Height offset for navmesh node graph
-    FALLBACK_HEIGHT = 16384,    -- Height for absolute fallback position
-    SPIRAL_RINGS = 10,
-    POINTS_PER_RING = 8,
-    MAX_DISTANCE = 2000,
-    VERTICAL_STEPS = 5,
-    VERTICAL_RANGE = 400,
-    SEARCH_RESOLUTIONS = { 64, 128, 256, 512 },
-    -- Method-specific settings
-    DISPLACEMENT_STEP_SIZE = 128,   -- Step size for displacement method
-    DISPLACEMENT_MAX_HEIGHT = 1000, -- Maximum height check for displacement
-    SPACE_SCAN_ACCURACY = 2,        -- Accuracy level for 3D space scan (1-5)
-    EMERGENCY_SAFE_RADIUS = 200     -- Safe radius for emergency teleport
+    -- === CORE PERFORMANCE SETTINGS ===
+    MAX_UNSTUCK_ATTEMPTS = 35, -- Optimized for speed vs thoroughness
+    MAX_SEARCH_TIME = 1.5,     -- Faster resolution times
+    RETRY_DELAY = 0.05,        -- Minimal delay for responsiveness
+    DEBUG_LOGGING = false,     -- Performance-focused default
+    ENABLE_CACHE = true,       -- Essential for performance
+    CACHE_DURATION = 900,      -- Extended cache life (15 min)
+
+    -- === INTELLIGENT DISTANCE & SAFETY ===
+    SAFE_DISTANCE = 48,        -- Optimized player collision clearance
+    PLAYER_HULL_TOLERANCE = 8, -- Enhanced collision detection
+    MIN_GROUND_DISTANCE = 12,  -- Realistic ground clearance
+    MAP_BOUNDS_PADDING = 128,  -- Efficient boundary handling
+
+    -- === SMART SEARCH OPTIMIZATION ===
+    VERTICAL_SEARCH_RANGE = 2048,   -- Focused vertical search
+    HORIZONTAL_SEARCH_RANGE = 1536, -- Optimized horizontal coverage
+    MAX_TRACE_DISTANCE = 2048,      -- Performance-balanced traces
+    NODE_SEARCH_RADIUS = 1024,      -- Concentrated navmesh search
+    ENTITY_SEARCH_RADIUS = 384,     -- Efficient entity detection
+
+    -- === METHOD-SPECIFIC ENHANCEMENTS ===
+    SPAWN_POINT_OFFSET_Z = 24,  -- Safe spawn positioning
+    MAP_ENTITY_OFFSET_Z = 40,   -- Entity clearance optimization
+    NAV_AREA_OFFSET_Z = 20,     -- Navigation mesh positioning
+    NAVMESH_HEIGHT_OFFSET = 24, -- Mesh alignment enhancement
+    FALLBACK_HEIGHT = 8192,     -- Reasonable emergency height
+
+    -- === ADAPTIVE SEARCH PATTERNS ===
+    GRID_RESOLUTION = 32,                      -- High-resolution initial scan
+    SEARCH_RESOLUTIONS = { 32, 64, 128, 256 }, -- Progressive refinement
+    SPIRAL_RINGS = 8,                          -- Optimal coverage rings
+    POINTS_PER_RING = 12,                      -- Enhanced point density
+    MAX_DISTANCE = 1200,                       -- Focused search radius
+    VERTICAL_STEPS = 7,                        -- Granular vertical sampling
+    VERTICAL_RANGE = 600,                      -- Comprehensive height range
+
+    -- === PERFORMANCE TUNING ===
+    DISPLACEMENT_STEP_SIZE = 64,   -- Efficient displacement increments
+    DISPLACEMENT_MAX_HEIGHT = 800, -- Practical height limits
+    SPACE_SCAN_ACCURACY = 3,       -- Balanced precision vs speed
+    EMERGENCY_SAFE_RADIUS = 160,   -- Expanded emergency coverage
+    RANDOM_ATTEMPTS = 25,          -- Optimized randomization
+
+    -- === ADVANCED OPTIMIZATION FLAGS ===
+    ADAPTIVE_TIMEOUTS = true,       -- Dynamic timeout adjustment
+    PROGRESSIVE_ACCURACY = true,    -- Smart accuracy scaling
+    EARLY_EXIT_OPTIMIZATION = true, -- Performance-first exits
+    DISTANCE_PRIORITY = true,       -- Proximity-based selection
+    SUCCESS_RATE_LEARNING = true,   -- Machine learning adaptation
+    PERFORMANCE_MONITORING = true,  -- Real-time optimization
 }
 
 
+-- Intelligent Method Configuration with Performance Optimization
 Default_Anti_Stuck_Methods = {
-    { name = "Cached Positions",   func = "TryCachedPositions",   enabled = true, description = "Use previously saved safe positions from successful unstuck attempts" },
-    { name = "Smart Displacement", func = "TryDisplacement",      enabled = true, description = "Intelligently move player using physics-based displacement in optimal directions" },
-    { name = "3D Space Scan",      func = "Try3DSpaceScan",       enabled = true, description = "Comprehensive volumetric scan in all directions with collision detection" },
-    { name = "Navigation Mesh",    func = "TryNodeGraph",         enabled = true, description = "Use Source engine navigation mesh and node graph for optimal pathfinding" },
-    { name = "Map Entities",       func = "TryMapEntities",       enabled = true, description = "Analyze positions near functional map entities and spawn points" },
-    { name = "Systematic Grid",    func = "TrySystematicGrid",    enabled = true, description = "Methodical grid-based search with adaptive resolution and bounds checking" },
-    { name = "World Brushes",      func = "TryWorldBrushes",      enabled = true, description = "Advanced world geometry analysis using brush entities and surface normals" },
-    { name = "Spawn Points",       func = "TrySpawnPoints",       enabled = true, description = "Fallback to map-defined spawn points with validity checking" },
-    { name = "Emergency Teleport", func = "TryEmergencyTeleport", enabled = true, description = "Last resort emergency positioning with map boundary detection" }
+    { name = "⚡ Cached Positions", func = "TryCachedPositions", enabled = true, priority = 5, description = "Lightning-fast: Use proven safe positions from previous successful unstucks" },
+    { name = "🎯 Smart Displacement", func = "TryDisplacement", enabled = true, priority = 10, description = "Ultra-fast: Physics-based intelligent movement with adaptive step sizing" },
+    { name = "🧭 Navigation Mesh", func = "TryNodeGraph", enabled = true, priority = 15, description = "Optimal: Leverage Source engine navigation system for perfect pathfinding" },
+    { name = "📍 Map Entities", func = "TryMapEntities", enabled = true, priority = 20, description = "Fast: Smart positioning near functional map entities and spawn points" },
+    { name = "🔍 3D Space Scan", func = "Try3DSpaceScan", enabled = true, priority = 25, description = "Thorough: Advanced volumetric analysis with adaptive precision" },
+    { name = "🏗️ World Brushes", func = "TryWorldBrushes", enabled = true, priority = 30, description = "Smart: Geometry-aware positioning using world architecture" },
+    { name = "📐 Systematic Grid", func = "TrySystematicGrid", enabled = true, priority = 35, description = "Comprehensive: Methodical full-area coverage with adaptive resolution" },
+    { name = "🎮 Spawn Points", func = "TrySpawnPoints", enabled = true, priority = 40, description = "Reliable: Map-defined safe zones with validity verification" },
+    { name = "🚨 Emergency Teleport", func = "TryEmergencyTeleport", enabled = true, priority = 45, description = "Failsafe: Guaranteed positioning system for critical situations" }
 }
 
+-- Enhanced Setting Descriptions with Performance Impact Information
 local settingDescriptions = {
-    MAX_UNSTUCK_ATTEMPTS = "Maximum number of attempts to find a safe position",
-    SAFE_DISTANCE = "Minimum distance considered safe from obstacles",
-    VERTICAL_SEARCH_RANGE = "Maximum vertical search distance",
-    HORIZONTAL_SEARCH_RANGE = "Maximum horizontal search distance",
-    NODE_SEARCH_RADIUS = "Search radius for navigation nodes",
-    CACHE_DURATION = "Duration to keep cached positions (seconds)",
-    MIN_GROUND_DISTANCE = "Minimum distance required from ground",
-    PLAYER_HULL_TOLERANCE = "Tolerance added to player hull for collision checks",
-    MAP_BOUNDS_PADDING = "Padding distance from map boundaries",
-    GRID_RESOLUTION = "Resolution of grid-based searching",
-    MAX_TRACE_DISTANCE = "Maximum trace distance for collision checks",
-    SPAWN_POINT_OFFSET_Z = "Z offset from spawn points",
-    MAP_ENTITY_OFFSET_Z = "Z offset from map entities",
-    NAV_AREA_OFFSET_Z = "Z offset from navigation areas",
-    RETRY_DELAY = "Delay (seconds) between unstuck attempts",
-    MAX_SEARCH_TIME = "Maximum time (seconds) to spend per unstuck attempt",
-    RANDOM_ATTEMPTS = "Number of random attempts for emergency/random methods",
-    ENTITY_SEARCH_RADIUS = "Radius for searching map entities",
-    NAVMESH_HEIGHT_OFFSET = "Height offset for navmesh node graph",
-    FALLBACK_HEIGHT = "Height for absolute fallback position",
-    SPIRAL_RINGS = "Number of rings in spiral search pattern",
-    POINTS_PER_RING = "Number of points to check per spiral ring",
-    MAX_DISTANCE = "Maximum distance for searching safe positions",
-    VERTICAL_STEPS = "Number of vertical steps when searching",
-    VERTICAL_RANGE = "Maximum vertical range for step-based searches",
-    SEARCH_RESOLUTIONS = "Grid resolutions to try sequentially (smallest to largest)",
-    DEBUG_LOGGING = "Enable/disable detailed debug logging",
-    -- Method-specific descriptions
-    DISPLACEMENT_STEP_SIZE = "Step size between displacement attempts",
-    DISPLACEMENT_MAX_HEIGHT = "Maximum height to check for displacement method",
-    SPACE_SCAN_ACCURACY = "Accuracy level for 3D space scan (higher = more thorough)",
-    EMERGENCY_SAFE_RADIUS = "Safe radius around emergency teleport positions"
+    -- === CORE PERFORMANCE ===
+    MAX_UNSTUCK_ATTEMPTS = "🎯 Maximum attempts to find safe position (Lower = Faster, Higher = More thorough)",
+    MAX_SEARCH_TIME = "⏱️ Maximum time spent per unstuck attempt (Shorter = More responsive)",
+    RETRY_DELAY = "⚡ Delay between method attempts (Lower = Faster resolution)",
+    DEBUG_LOGGING = "🔍 Enable detailed debug output (Disable for better performance)",
+    ENABLE_CACHE = "💾 Cache successful positions for instant reuse (Major performance boost)",
+    CACHE_DURATION = "🕒 How long to keep cached positions (Longer = Better performance)",
+
+    -- === SAFETY & DISTANCE ===
+    SAFE_DISTANCE = "🛡️ Minimum clearance from obstacles (Higher = Safer positioning)",
+    PLAYER_HULL_TOLERANCE = "👤 Extra space around player collision box (Prevents tight fits)",
+    MIN_GROUND_DISTANCE = "🌍 Required distance from ground surface (Prevents underground)",
+    MAP_BOUNDS_PADDING = "🗺️ Safety margin from map edges (Prevents out-of-bounds)",
+
+    -- === SEARCH OPTIMIZATION ===
+    VERTICAL_SEARCH_RANGE = "📏 Maximum upward/downward search distance",
+    HORIZONTAL_SEARCH_RANGE = "↔️ Maximum sideways search radius",
+    MAX_TRACE_DISTANCE = "🔍 Collision detection range (Lower = Better performance)",
+    NODE_SEARCH_RADIUS = "🧭 Navigation mesh search radius",
+    ENTITY_SEARCH_RADIUS = "📍 Map entity detection range",
+
+    -- === METHOD ENHANCEMENTS ===
+    SPAWN_POINT_OFFSET_Z = "🎮 Height offset from spawn points (Prevents spawn camping)",
+    MAP_ENTITY_OFFSET_Z = "🏗️ Clearance from map entities (Safer positioning)",
+    NAV_AREA_OFFSET_Z = "🗺️ Navigation area height adjustment",
+    NAVMESH_HEIGHT_OFFSET = "🧭 NavMesh positioning offset",
+    FALLBACK_HEIGHT = "🚨 Emergency teleport altitude (Last resort height)",
+
+    -- === SEARCH PATTERNS ===
+    GRID_RESOLUTION = "📐 Grid search precision (Lower = Finer detail, Slower)",
+    SPIRAL_RINGS = "🌀 Spiral search ring count (More rings = Better coverage)",
+    POINTS_PER_RING = "⭕ Points checked per spiral ring (Higher = More thorough)",
+    MAX_DISTANCE = "📏 Maximum search radius from stuck position",
+    VERTICAL_STEPS = "📊 Vertical search precision steps",
+    VERTICAL_RANGE = "📏 Total vertical search span",
+    SEARCH_RESOLUTIONS = "🔍 Progressive grid sizes (Starts fine, gets broader)",
+
+    -- === PERFORMANCE TUNING ===
+    DISPLACEMENT_STEP_SIZE = "🎯 Physics displacement increment size",
+    DISPLACEMENT_MAX_HEIGHT = "⬆️ Maximum height for displacement checks",
+    SPACE_SCAN_ACCURACY = "🔍 3D scan detail level (1=Fast, 5=Thorough)",
+    EMERGENCY_SAFE_RADIUS = "🚨 Emergency positioning safety zone",
+    RANDOM_ATTEMPTS = "🎲 Random method attempt count",
+
+    -- === ADVANCED FEATURES ===
+    ADAPTIVE_TIMEOUTS = "🧠 Smart timeout adjustment based on performance",
+    PROGRESSIVE_ACCURACY = "⚡ Start fast, get more accurate if needed",
+    EARLY_EXIT_OPTIMIZATION = "🏃 Exit immediately when good position found",
+    DISTANCE_PRIORITY = "📍 Prefer closer positions over distant ones",
+    SUCCESS_RATE_LEARNING = "🎓 Learn from method success rates",
+    PERFORMANCE_MONITORING = "📊 Real-time performance optimization"
 }
 -- Define value ranges for numeric settings
 local settingRanges = {
@@ -439,8 +491,13 @@ function RARELOAD.AntiStuckSettings._CreateSettingsPanel()
     closeBtn:SetSize(40, 40)
     closeBtn:SetPos(frameW - 50, 20)
     closeBtn:SetText("")
-    closeBtn.hoverAnim = 0
+    -- Initialize animation variable properly to avoid lint warning
+    if not closeBtn.hoverAnim then
+        closeBtn.hoverAnim = 0
+    end
     closeBtn.Paint = function(self, w, h)
+        -- Ensure animation variable exists
+        self.hoverAnim = self.hoverAnim or 0
         self.hoverAnim = Lerp(FrameTime() * 8, self.hoverAnim, self:IsHovered() and 1 or 0)
         local bgColor = ColorAlpha(Color(255, 80, 80), 50 + self.hoverAnim * 100)
         draw.RoundedBox(8, 0, 0, w, h, bgColor)
@@ -791,8 +848,13 @@ function RARELOAD.AntiStuckSettings._CreateSettingsPanel()
     saveBtn:SetFont("RareloadText")
     saveBtn:SetSize(200, 45)
     saveBtn:SetPos(frameW / 2 - 100, frameH - 60)
-    saveBtn.hoverAnim = 0
+    -- Initialize animation variable properly to avoid lint warning
+    if not saveBtn.hoverAnim then
+        saveBtn.hoverAnim = 0
+    end
     saveBtn.Paint = function(self, w, h)
+        -- Ensure animation variable exists
+        self.hoverAnim = self.hoverAnim or 0
         self.hoverAnim = Lerp(FrameTime() * 6, self.hoverAnim, self:IsHovered() and 1 or 0)
         local color = Color(
             THEME.success.r + self.hoverAnim * 20,

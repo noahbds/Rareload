@@ -121,12 +121,11 @@ if SERVER then
     include("rareload/anti_stuck/methods/sv_method_spawn_points.lua")
     include("rareload/anti_stuck/methods/sv_method_world_brushes.lua")
 
-    -- Now load the core system after methods are registered
+    -- Core anti-stuck system (modular core, resolver, and bootstrap)
     include("rareload/anti_stuck/sv_anti_stuck_core.lua")
     include("rareload/anti_stuck/sv_anti_stuck_resolver.lua")
     include("rareload/anti_stuck/sv_anti_stuck_system.lua")
     include("rareload/anti_stuck/sv_anti_stuck_init.lua") -- This should be last
-    include("rareload/anti_stuck/methods/sv_method_world_brushes.lua")
 
     -- Tool
     include("weapons/gmod_tool/stools/rareload_tool.lua")

@@ -87,11 +87,12 @@ function AntiStuck.CacheSafePosition(pos)
     end
 end
 
--- Main method to try cached positions
+-- Lightning-fast cached position retrieval with smart optimization
 function AntiStuck.TryCachedPositions(pos, ply)
     if AntiStuck.CONFIG and AntiStuck.CONFIG.ENABLE_CACHE == false then
         return nil, AntiStuck.UNSTUCK_METHODS.NONE
     end
+
     -- Refresh cache if empty or stale
     if cachedPositionCount == 0 then
         local loaded = AntiStuck.LoadCachedPositions()
@@ -100,64 +101,83 @@ function AntiStuck.TryCachedPositions(pos, ply)
         end
     end
 
-    -- Enforce minimum cache size
+    -- Early exit if no positions
     if cachedPositionCount == 0 then
         return nil, AntiStuck.UNSTUCK_METHODS.NONE
     end
 
     local debugEnabled = RARELOAD.settings and RARELOAD.settings.debugEnabled
     if debugEnabled then
-        print("[RARELOAD ANTI-STUCK] Trying " .. cachedPositionCount .. " cached positions")
+        print(string.format("[RARELOAD ANTI-STUCK] ⚡ Checking %d cached positions", cachedPositionCount))
     end
 
-    -- Calculate positions once
-    local searchPos = AntiStuck.ToVector(pos)
+    -- Calculate search position once
+    local searchPos = AntiStuck.ToVector and AntiStuck.ToVector(pos) or pos
     if not searchPos then return nil, AntiStuck.UNSTUCK_METHODS.NONE end
 
-    -- More efficient candidate storage
+    -- High-performance candidate tracking
+    local excellentCandidates = {} -- < 100 units
+    local goodCandidates = {}      -- < 400 units
     local bestPos = nil
-    local bestDist = math.huge
-    local maxCheckPositions = math.min(cachedPositionCount, 30) -- Limit checks for very large caches
-    local totalFailed = 0
+    local bestDistance = math.huge
+    local maxChecks = math.min(cachedPositionCount, 25) -- Performance limit
 
-    -- First check positions closest to target (by index for performance)
-    for i = 1, maxCheckPositions do
-        local vectorPos = AntiStuck.ToVector(AntiStuck.cachedPositions[i])
+    -- Ultra-fast distance-based pre-screening
+    for i = 1, maxChecks do
+        local vectorPos = AntiStuck.ToVector and AntiStuck.ToVector(AntiStuck.cachedPositions[i]) or
+        AntiStuck.cachedPositions[i]
         if not vectorPos then continue end
 
-        local dist = vectorPos:DistToSqr(searchPos)
-        local isStuck, reason = AntiStuck.IsPositionStuck(vectorPos, ply, false) -- Not original position
+        local distanceSqr = vectorPos:DistToSqr(searchPos)
 
-        if not isStuck then
-            if dist < bestDist then
-                bestDist = dist
-                bestPos = vectorPos
-
-                -- Early return for close positions
-                if dist < 10000 then -- 100 units squared
-                    if debugEnabled then
-                        print("[RARELOAD ANTI-STUCK] Found excellent cached position at distance: " ..
-                            math.sqrt(dist) .. " units")
-                    end
-                    return vectorPos, AntiStuck.UNSTUCK_METHODS.CACHED_POSITION
-                end
-            end
-        else
-            totalFailed = totalFailed + 1
+        if distanceSqr < 10000 then      -- 100 units squared - excellent
+            table.insert(excellentCandidates, { pos = vectorPos, dist = distanceSqr })
+        elseif distanceSqr < 160000 then -- 400 units squared - good
+            table.insert(goodCandidates, { pos = vectorPos, dist = distanceSqr })
+        elseif distanceSqr < bestDistance then
+            bestPos = vectorPos
+            bestDistance = distanceSqr
         end
     end
 
-    -- Return best position if any was found
-    if bestPos then
-        if debugEnabled then
-            print("[RARELOAD ANTI-STUCK] Found safe cached position at distance: " ..
-                math.sqrt(bestDist) .. " units")
+    -- Try excellent candidates first (immediate success)
+    for _, candidate in ipairs(excellentCandidates) do
+        local isStuck, reason = AntiStuck.IsPositionStuck(candidate.pos, ply, false)
+        if not isStuck then
+            if debugEnabled then
+                print(string.format("[RARELOAD ANTI-STUCK] ⭐ Excellent cached position: %.1f units",
+                    math.sqrt(candidate.dist)))
+            end
+            return candidate.pos, AntiStuck.UNSTUCK_METHODS.SUCCESS
         end
-        return bestPos, AntiStuck.UNSTUCK_METHODS.CACHED_POSITION
+    end
+
+    -- Try good candidates
+    for _, candidate in ipairs(goodCandidates) do
+        local isStuck, reason = AntiStuck.IsPositionStuck(candidate.pos, ply, false)
+        if not isStuck then
+            if debugEnabled then
+                print(string.format("[RARELOAD ANTI-STUCK] ✓ Good cached position: %.1f units",
+                    math.sqrt(candidate.dist)))
+            end
+            return candidate.pos, AntiStuck.UNSTUCK_METHODS.SUCCESS
+        end
+    end
+
+    -- Last resort: try best available
+    if bestPos then
+        local isStuck, reason = AntiStuck.IsPositionStuck(bestPos, ply, false)
+        if not isStuck then
+            if debugEnabled then
+                print(string.format("[RARELOAD ANTI-STUCK] ○ Best cached position: %.1f units",
+                    math.sqrt(bestDistance)))
+            end
+            return bestPos, AntiStuck.UNSTUCK_METHODS.SUCCESS
+        end
     end
 
     if debugEnabled then
-        print("[RARELOAD ANTI-STUCK] No safe cached positions found")
+        print("[RARELOAD ANTI-STUCK] ✗ No valid cached positions found")
     end
 
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
