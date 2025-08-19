@@ -156,8 +156,8 @@ function AntiStuck.TryDisplacement(pos, ply)
                     -- Immediate return for close, excellent positions
                     if actualDistance < safeDistance * safeDistance * 4 then
                         if debugEnabled then
-                            print(string.format("[RARELOAD ANTI-STUCK] Excellent displacement found: distance %.1f",
-                                math.sqrt(actualDistance)))
+                            AntiStuck.LogStep("ok", "Smart Displacement",
+                                string.format("Excellent displacement: %.1f units", math.sqrt(actualDistance)))
                         end
                         return validPos, AntiStuck.UNSTUCK_METHODS.SUCCESS
                     end
@@ -171,8 +171,8 @@ function AntiStuck.TryDisplacement(pos, ply)
                     -- Return good positions early for performance
                     if actualDistance < (safeDistance * 6) * (safeDistance * 6) then
                         if debugEnabled then
-                            print(string.format("[RARELOAD ANTI-STUCK] Good displacement found: distance %.1f",
-                                math.sqrt(actualDistance)))
+                            AntiStuck.LogStep("ok", "Smart Displacement",
+                                string.format("Good displacement: %.1f units", math.sqrt(actualDistance)))
                         end
                         return validPos, AntiStuck.UNSTUCK_METHODS.SUCCESS
                     end
@@ -191,22 +191,23 @@ function AntiStuck.TryDisplacement(pos, ply)
     -- Use best candidate if available
     if bestCandidate then
         if debugEnabled then
-            print(string.format("[RARELOAD ANTI-STUCK] Using best displacement candidate: distance %.1f, attempts %d",
-                math.sqrt(bestDistance), attemptCount))
+            AntiStuck.LogStep("ok", "Smart Displacement",
+                string.format("Using best candidate: %.1f units, attempts %d", math.sqrt(bestDistance), attemptCount))
         end
         return bestCandidate, AntiStuck.UNSTUCK_METHODS.SUCCESS
     end
 
     if debugEnabled then
-        print(string.format("[RARELOAD ANTI-STUCK] Displacement failed after %d attempts", attemptCount))
+        AntiStuck.LogStep("fail", "Smart Displacement",
+            string.format("Displacement failed after %d attempts", attemptCount))
     end
 
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
 end
 
 -- Register method with optimized configuration
-if RARELOAD.AntiStuck and RARELOAD.AntiStuck.RegisterMethod then
-    RARELOAD.AntiStuck.RegisterMethod("TryDisplacement", AntiStuck.TryDisplacement, {
+if AntiStuck.RegisterMethod then
+    AntiStuck.RegisterMethod("TryDisplacement", AntiStuck.TryDisplacement, {
         description = "Ultra-fast: Physics-based intelligent displacement with adaptive step sizing",
         priority = 10, -- High priority - fast and effective
         timeout = 0.8, -- Quick timeout
@@ -275,16 +276,4 @@ function AntiStuck.TryDisplacement(pos, ply)
     end
 
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
-end
-
--- Register method with proper configuration
-if RARELOAD.AntiStuck and RARELOAD.AntiStuck.RegisterMethod then
-    RARELOAD.AntiStuck.RegisterMethod("TryDisplacement", AntiStuck.TryDisplacement, {
-        description = "Intelligently move player using physics-based displacement in optimal directions",
-        priority = 20, -- High priority, but after cached positions
-        timeout = 3.0, -- Moderate timeout since this does spatial search
-        retries = 1
-    })
-else
-    print("[RARELOAD ERROR] Cannot register TryDisplacement - AntiStuck.RegisterMethod not available")
 end

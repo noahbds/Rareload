@@ -1,3 +1,4 @@
+---@diagnostic disable: inject-field, undefined-field
 -- Load centralized conversion functions
 if not RARELOAD or not RARELOAD.DataUtils then
     include("rareload/utils/rareload_data_utils.lua")
@@ -33,8 +34,10 @@ function RARELOAD.HandlePlayerSpawn(ply)
     if not SavedInfo then return end
 
     if DebugEnabled and SavedInfo.ang then
-        print("[RARELOAD DEBUG] Saved angle data type: " .. type(SavedInfo.ang))
-        print("[RARELOAD DEBUG] Saved angle data: " .. tostring(SavedInfo.ang))
+        RARELOAD.Debug.Log("VERBOSE", "Saved angle data", {
+            "Type: " .. type(SavedInfo.ang),
+            "Value: " .. tostring(SavedInfo.ang)
+        }, ply)
     end
     if not Settings then return end
     ply.lastSpawnPosition = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
@@ -91,8 +94,9 @@ function RARELOAD.HandlePlayerSpawn(ply)
             or SavedInfo.pos, ply, true) -- Mark as original position
 
         if isStuck then
-            if RARELOAD.settings.debugEnabled then
-                print("[RARELOAD DEBUG] Position is stuck (" .. stuckReason .. "), using anti-stuck system")
+            if RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+                RARELOAD.Debug.AntiStuck("IsPositionStuck",
+                    { methodName = "IsPositionStuck", position = SavedInfo.pos, reason = stuckReason }, ply)
             end
             local safePos, success = RARELOAD.AntiStuck.ResolveStuckPosition(
                 (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
@@ -113,7 +117,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
                     if parsedAngle then
                         ply:SetEyeAngles(parsedAngle)
                         if DebugEnabled then
-                            print("[RARELOAD DEBUG] Applied saved angle after anti-stuck: " .. tostring(parsedAngle))
+                            RARELOAD.Debug.Log("INFO", "Applied saved angle after anti-stuck", tostring(parsedAngle), ply)
                         end
                     else
                         if DebugEnabled then
@@ -124,7 +128,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
 
                 ply:SetMoveType(MOVETYPE_WALK)
                 if safePos ~= SavedInfo.pos and DebugEnabled then
-                    print("[RARELOAD DEBUG] Player position adjusted by anti-stuck system")
+                    RARELOAD.Debug.Log("INFO", "Player position adjusted by anti-stuck system", tostring(safePos), ply)
                 end
             else
                 ply:ChatPrint("[RARELOAD] Warning: Emergency positioning was required.")
@@ -132,7 +136,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
             end
         else
             if DebugEnabled then
-                print("[RARELOAD DEBUG] Position is not stuck, using directly")
+                RARELOAD.Debug.Log("VERBOSE", "Position status", "Not stuck, using saved position", ply)
             end
             local pos = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
                 and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
@@ -171,7 +175,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
             if IsValid(ply) then
                 RARELOAD.RestoreGlobalInventory(ply)
                 if RARELOAD.settings.debugEnabled then
-                    print("[RARELOAD DEBUG] Attempting to restore global inventory (priority)")
+                    RARELOAD.Debug.Log("INFO", "Global inventory", "Attempting to restore (priority)", ply)
                 end
             end
         end)

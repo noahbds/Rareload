@@ -1,3 +1,4 @@
+---@diagnostic disable: param-type-mismatch, assign-type-mismatch, inject-field, undefined-field
 ---@class RARELOAD
 local RARELOAD              = RARELOAD or {}
 RARELOAD.settings           = RARELOAD.settings or {}
@@ -39,6 +40,7 @@ if SERVER then
     RARELOAD.save_ammo = include("rareload/core/save_helpers/rareload_save_ammo.lua")
     RARELOAD.save_vehicle_state = include("rareload/core/save_helpers/rareload_save_vehicle_state.lua")
     RARELOAD.position_history = include("rareload/core/save_helpers/rareload_position_history.lua")
+    include("rareload/core/save_helpers/rareload_save_point.lua")
     include("rareload/utils/rareload_data_utils.lua")
 end
 
@@ -80,7 +82,13 @@ if CLIENT then
         if settings then
             RARELOAD.settings = settings
             if IsValid(RareloadUI.LastPanel) then
-                RareloadUI.LastPanel:InvalidateChildren(true)
+                local pnl = RareloadUI.LastPanel
+                timer.Simple(0, function()
+                    if IsValid(pnl) then
+                        pnl:InvalidateChildren(false)
+                        pnl:InvalidateLayout(true)
+                    end
+                end)
             end
         end
     end)
@@ -136,134 +144,9 @@ function TOOL:LeftClick(trace, ply)
         ply:EmitSound("buttons/button10.wav")
         return false
     end
-
-    EnsureFolderExists()
-    local mapName = game.GetMap()
-    RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
-
-    local newPos = toVecTable(trace.HitPos)
-    local newAng = toAngTable(ply:EyeAngles())
-    local newActiveWeapon = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or "None"
-
-    local newInventory = RARELOAD.save_inventory(ply)
-
-    if RARELOAD.settings.retainGlobalInventory then
-        local globalInventory = {}
-        for _, weapon in ipairs(ply:GetWeapons()) do
-            table.insert(globalInventory, weapon:GetClass())
-        end
-
-        RARELOAD.globalInventory[ply:SteamID()] = {
-            weapons = globalInventory,
-            activeWeapon = newActiveWeapon
-        }
-
-        SaveGlobalInventory()
-
-        if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD DEBUG] Saved " ..
-                #globalInventory .. " weapons to global inventory for player " .. ply:Nick() ..
-                " (Active weapon: " .. newActiveWeapon .. ")")
-        end
-    end
-
-    local function tablesAreEqual(t1, t2)
-        if #t1 ~= #t2 then return false end
-
-        local lookup = {}
-        for _, v in ipairs(t1) do
-            lookup[v] = true
-        end
-
-        for _, v in ipairs(t2) do
-            if not lookup[v] then return false end
-        end
-
-        return true
-    end
-
-    local oldData = RARELOAD.playerPositions[mapName][ply:SteamID()]
-    if oldData and not RARELOAD.settings.autoSaveEnabled then
-        local inventoryUnchanged = not RARELOAD.settings.retainInventory or
-            tablesAreEqual(oldData.inventory or {}, newInventory)
-        if oldData.pos == newPos and oldData.activeWeapon == newActiveWeapon and inventoryUnchanged then
-            return
-        else
-            local message = "[RARELOAD] Overwriting previous save: Position, Camera"
-            if RARELOAD.settings.retainInventory then
-                message = message .. ", Inventory"
-            end
-            print(message .. " updated.")
-        end
-    else
-        local message = "[RARELOAD] Player position and camera"
-        if RARELOAD.settings.retainInventory then
-            message = message .. " and inventory"
-        end
-        print(message .. " saved.")
-    end
-
-    local playerData = {
-        pos = newPos,
-        ang = newAng,
-        moveType = ply:GetMoveType(),
-        playermodel = ply:GetModel(),
-        activeWeapon = newActiveWeapon,
-        inventory = newInventory,
-    }
-
-    if RARELOAD.settings.retainHealthArmor then
-        playerData.health = ply:Health()
-        playerData.armor = ply:Armor()
-    end
-
-    if RARELOAD.settings.retainAmmo then
-        playerData.ammo = RARELOAD.save_ammo(ply, newInventory)
-    end
-
-    if RARELOAD.settings.retainVehicles then
-        playerData.vehicles = RARELOAD.save_vehicles(ply)
-    end
-
-    if RARELOAD.settings.retainVehicleState and ply:InVehicle() then
-        playerData.vehicleState = RARELOAD.save_vehicle_state(ply)
-    end
-
-    if RARELOAD.settings.retainMapEntities then
-        playerData.entities = RARELOAD.save_entities(ply)
-    end
-
-    if RARELOAD.settings.retainMapNPCs then
-        playerData.npcs = RARELOAD.save_npcs(ply)
-    end
-
-    RARELOAD.CacheCurrentPositionData(ply:SteamID(), mapName)
-
-
-    RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
-    local success, err = pcall(function()
-        file.Write("rareload/player_positions_" .. mapName .. ".json", util.TableToJSON(RARELOAD.playerPositions, true))
-    end)
-
-    if not success then
-        print("[RARELOAD] Failed to save position data: " .. err)
-    else
-        print("[RARELOAD] Player position successfully saved.")
-    end
-
-    ply:ChatPrint("[Rareload] Saved respawn position at targeted location")
-
-    if RARELOAD.settings.debugEnabled then
-        net.Start("CreatePlayerPhantom")
-        net.WriteEntity(ply)
-        net.WriteVector(RARELOAD.DataUtils.ToVector(newPos) or Vector(0, 0, 0))
-        local savedAng = Angle(newAng.p, newAng.y, newAng.r)
-        net.WriteAngle(savedAng)
-        net.Broadcast()
-    end
-
-    RARELOAD.UpdateClientPhantoms(ply, newPos, newAng)
-    return true
+    local hitPos = (trace and trace.HitPos) or ply:GetPos()
+    local ok = RARELOAD.SaveRespawnPoint(ply, hitPos, ply:EyeAngles(), { whereMsg = "targeted location" })
+    return ok and true or false
 end
 
 function TOOL:RightClick()
@@ -513,6 +396,7 @@ function TOOL.BuildCPanel(panel)
     panel:AddItem(entv)
 end
 
+---@diagnostic disable: param-type-mismatch, assign-type-mismatch, inject-field, undefined-field
 local screenTool = include("rareload/ui/rareload_toolscreen.lua")
 
 function TOOL:DrawToolScreen()

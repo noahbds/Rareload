@@ -14,7 +14,14 @@ if CLIENT then
         "rareload/client/antistuck/cl_anti_stuck_panel_main.lua",  -- Load main panel logic
         "rareload/client/antistuck/cl_anti_stuck_method_list.lua", -- Load method list after main panel
         "rareload/client/antistuck/cl_anti_stuck_events.lua",
-        "rareload/client/antistuck/cl_antistuck_settings_panel.lua"
+        -- Settings panel modules (replacing old bootstrap)
+        "rareload/client/entity_viewer/cl_entity_viewer_theme.lua",
+        "rareload/client/antistuck/cl_profile_manager.lua",
+        "rareload/client/antistuck/settings/cl_settings_defaults.lua",
+        "rareload/client/antistuck/settings/cl_settings_utils.lua",
+        "rareload/client/antistuck/settings/cl_profile_dialog.lua",
+        "rareload/client/antistuck/settings/cl_settings_panel.lua",
+        "rareload/client/antistuck/settings/cl_settings_net.lua",
     }
 
     local loadedCount = 0
@@ -58,8 +65,7 @@ if CLIENT then
         end
     end)
 
-    -- AddCSLuaFile for the settings panel
-    AddCSLuaFile("rareload/client/antistuck/cl_antistuck_settings_panel.lua")
+    -- Old bootstrap removed; settings modules are included above
 
     -- Add test command
     concommand.Add("rareload_antistuck_test", function()

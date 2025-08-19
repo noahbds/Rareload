@@ -12,93 +12,96 @@ end
 
 -- Method list refresh function
 function RARELOAD.AntiStuckDebug.RefreshMethodList()
-    -- Safety check for namespace
-    if not RARELOAD or not RARELOAD.AntiStuckDebug then
-        print("[RARELOAD] Error: AntiStuckDebug namespace not initialized")
-        return
-    end
+    -- Debounce and defer rebuild to avoid clearing during active layout
+    if RARELOAD.AntiStuckDebug._refreshScheduled then return end
+    RARELOAD.AntiStuckDebug._refreshScheduled = true
 
-    local parent = RARELOAD.AntiStuckDebug.methodContainer
-    local searchBox = RARELOAD.AntiStuckDebug.searchBox
+    timer.Simple(0, function()
+        RARELOAD.AntiStuckDebug._refreshScheduled = nil
 
-    if not parent or not IsValid(parent) then
-        print("[RARELOAD] Error: Method container not valid")
-        return
-    end
-
-    -- Clean up any existing panels to prevent memory leaks
-    for _, child in ipairs(parent:GetChildren()) do
-        if IsValid(child) then
-            child:Remove()
+        -- Safety check for namespace
+        if not RARELOAD or not RARELOAD.AntiStuckDebug then
+            print("[RARELOAD] Error: AntiStuckDebug namespace not initialized")
+            return
         end
-    end
-    parent:Clear()
 
-    local methods = RARELOAD.AntiStuckData and RARELOAD.AntiStuckData.GetMethods() or {}
-    if #methods == 0 then
-        print("[RARELOAD] Warning: No methods available")
-        return
-    end
+        local parent = RARELOAD.AntiStuckDebug.methodContainer
+        local searchBox = RARELOAD.AntiStuckDebug.searchBox
 
-    local search = searchBox and IsValid(searchBox) and searchBox:GetValue():lower() or ""
+        if not parent or not IsValid(parent) then
+            print("[RARELOAD] Error: Method container not valid")
+            return
+        end
 
-    -- Filter methods based on search
-    local function matchesSearch(method)
-        if search == "" then return true end
-        local searchTerms = string.Split(search, " ")
-        local content = (method.name .. " " .. (method.description or "")):lower()
+        -- Clear once; don't Remove() each child to avoid transient NULL panels during layout
+        parent:Clear()
 
-        for _, term in ipairs(searchTerms) do
-            if term ~= "" and not content:find(term, 1, true) then
-                return false
+        local methods = RARELOAD.AntiStuckData and RARELOAD.AntiStuckData.GetMethods() or {}
+        if #methods == 0 then
+            print("[RARELOAD] Warning: No methods available")
+            return
+        end
+
+        local search = searchBox and IsValid(searchBox) and searchBox:GetValue():lower() or ""
+
+        -- Filter methods based on search
+        local function matchesSearch(method)
+            if search == "" then return true end
+            local searchTerms = string.Split(search, " ")
+            local content = (method.name .. " " .. (method.description or "")):lower()
+
+            for _, term in ipairs(searchTerms) do
+                if term ~= "" and not content:find(term, 1, true) then
+                    return false
+                end
+            end
+            return true
+        end
+
+        local visible = {}
+        for i, method in ipairs(methods) do
+            if matchesSearch(method) then
+                table.insert(visible, { method = method, origIndex = i })
             end
         end
-        return true
-    end
 
-    local visible = {}
-    for i, method in ipairs(methods) do
-        if matchesSearch(method) then
-            table.insert(visible, { method = method, origIndex = i })
+        -- Drag state for reordering
+        local dragState = {
+            dragging = nil,
+            dragIndex = nil,
+            dragOffsetY = 0,
+            dropIndicator = nil,
+            startTime = 0
+        }
+
+        local panels = {}
+
+        -- Create method panels
+        for visIndex, entry in ipairs(visible) do
+            local method, i = entry.method, entry.origIndex
+
+            if RARELOAD.AntiStuckComponents and RARELOAD.AntiStuckComponents.CreateMethodPanel then
+                local pnl = RARELOAD.AntiStuckComponents.CreateMethodPanel(parent, method, i, dragState)
+                panels[visIndex] = pnl
+
+                -- Add drag and drop functionality
+                RARELOAD.AntiStuckMethodList.SetupDragDrop(pnl, visIndex, visible, dragState, panels, parent)
+            end
         end
-    end
 
-    -- Drag state for reordering
-    local dragState = {
-        dragging = nil,
-        dragIndex = nil,
-        dragOffsetY = 0,
-        dropIndicator = nil,
-        startTime = 0
-    }
-
-    local panels = {}
-
-    -- Create method panels
-    for visIndex, entry in ipairs(visible) do
-        local method, i = entry.method, entry.origIndex
-
-        if RARELOAD.AntiStuckComponents and RARELOAD.AntiStuckComponents.CreateMethodPanel then
-            local pnl = RARELOAD.AntiStuckComponents.CreateMethodPanel(parent, method, i, dragState)
-            panels[visIndex] = pnl
-
-            -- Add drag and drop functionality
-            RARELOAD.AntiStuckMethodList.SetupDragDrop(pnl, visIndex, visible, dragState, panels, parent)
+        -- Show "no results" message if search yielded nothing
+        if #visible == 0 and search ~= "" then
+            local THEME = getTheme()
+            local noResults = vgui.Create("DLabel", parent)
+            noResults:SetText("No methods match your search")
+            noResults:SetFont("RareloadText")
+            noResults:SetTextColor(THEME.textSecondary)
+            noResults:SetContentAlignment(5)
+            noResults:SetTall(60)
+            noResults:Dock(TOP)
+            noResults:DockMargin(20, 20, 20, 0)
         end
-    end
-
-    -- Show "no results" message if search yielded nothing
-    if #visible == 0 and search ~= "" then
-        local THEME = getTheme()
-        local noResults = vgui.Create("DLabel", parent)
-        noResults:SetText("No methods match your search")
-        noResults:SetFont("RareloadText")
-        noResults:SetTextColor(THEME.textSecondary)
-        noResults:SetContentAlignment(5)
-        noResults:SetTall(60)
-        noResults:Dock(TOP)
-        noResults:DockMargin(20, 20, 20, 0)
-    end
+    end)
 end
 
 -- Setup drag and drop functionality for method panels
@@ -146,6 +149,11 @@ function RARELOAD.AntiStuckMethodList.SetupDragDrop(pnl, visIndex, visible, drag
 
                     if movedMethod then
                         table.insert(methods, globalNew, movedMethod)
+
+                        -- Normalize priorities to 10,20,... based on new order
+                        for idx, m in ipairs(methods) do
+                            m.priority = idx * 10
+                        end
 
                         -- Save the reordered methods to the profile
                         RARELOAD.AntiStuckData.SetMethods(methods)

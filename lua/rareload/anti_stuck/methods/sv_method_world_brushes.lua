@@ -125,4 +125,14 @@ function AntiStuck.TryWorldBrushes(pos, ply)
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
 end
 
-AntiStuck.RegisterMethod("TryWorldBrushes", AntiStuck.TryWorldBrushes)
+-- Register method with proper configuration
+if AntiStuck.RegisterMethod then
+    AntiStuck.RegisterMethod("TryWorldBrushes", AntiStuck.TryWorldBrushes, {
+        description = "Analyze world geometry and brush surfaces for safe positioning",
+        priority = 60, -- Medium priority
+        timeout = 2.5,
+        retries = 1
+    })
+else
+    print("[RARELOAD ERROR] Cannot register TryWorldBrushes - AntiStuck.RegisterMethod not available")
+end

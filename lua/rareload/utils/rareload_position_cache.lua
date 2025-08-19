@@ -39,6 +39,17 @@ local function LoadCachedPositions()
 end
 
 local function SavePositionToCache(pos)
+    if not pos then return false end
+    local v = RARELOAD.DataUtils.PositionObjectToVector and RARELOAD.DataUtils.PositionObjectToVector(pos) or pos
+    if v and v.x and not v.IsZero then v = Vector(v.x, v.y, v.z) end
+    if v and v.x and v.y and v.z then
+        if not util.IsInWorld(v) then
+            if RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled then
+                print("[RARELOAD] Skipping cache of out-of-world position: " .. tostring(v))
+            end
+            return false
+        end
+    end
     local cachedData = LoadCachedPositions()
     local posObj = RARELOAD.DataUtils.ConvertToPositionObject(pos)
     if not posObj then

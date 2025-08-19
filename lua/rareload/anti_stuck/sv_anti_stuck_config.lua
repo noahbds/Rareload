@@ -58,6 +58,9 @@ AntiStuck.DefaultSettings = AntiStuck.DefaultSettings or {
     DISTANCE_PRIORITY = true,
     SUCCESS_RATE_LEARNING = true,
     PERFORMANCE_MONITORING = true,
+    -- If true, always use the profile-defined order of methods (drag & drop order in UI),
+    -- ignoring dynamic reordering by success rates. Keeps priorities predictable.
+    RESPECT_PROFILE_ORDER = true,
 
     METHOD_TIMEOUT_MULTIPLIERS = {
         TryCachedPositions = 0.3,
@@ -107,6 +110,14 @@ function AntiStuck.LogDebug(message, data, player, level)
     end
 end
 
+-- Lightweight helper for methods to push steps into the active anti-stuck session
+function AntiStuck.LogStep(status, title, details)
+    if not (RARELOAD and RARELOAD.Debug) then return end
+    local sess = AntiStuck._currentSession
+    if not sess or not RARELOAD.Debug.AntiStuckStep then return end
+    RARELOAD.Debug.AntiStuckStep(sess, status, title, details)
+end
+
 -- Performance stats and optimizer
 AntiStuck.performanceStats = AntiStuck.performanceStats or {
     totalCalls = 0,
@@ -149,6 +160,6 @@ function AntiStuck.OptimizePerformance()
         print("[RARELOAD ANTI-STUCK] Performance optimization completed")
         print("  Average resolution time: " .. string.format("%.3f", avgTime) .. "s")
         print("  Success rate: " ..
-        string.format("%.1f", (stats.successfulCalls / math.max(stats.totalCalls, 1)) * 100) .. "%")
+            string.format("%.1f", (stats.successfulCalls / math.max(stats.totalCalls, 1)) * 100) .. "%")
     end
 end

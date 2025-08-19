@@ -67,9 +67,21 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
 
         surface.SetDrawColor(THEME.header)
         draw.RoundedBoxEx(18, 0, 0, w, 64, THEME.header, true, true, false, false)
-        surface.SetMaterial(Material("vgui/gradient-u"))
-        surface.SetDrawColor(0, 0, 0, 60)
-        surface.DrawTexturedRect(0, 0, w, 64)
+        local gradMat = RARELOAD and RARELOAD.GradientU
+        if not gradMat then
+            gradMat = Material("vgui/gradient-u")
+            RARELOAD = RARELOAD or {}
+            RARELOAD.GradientU = gradMat
+        end
+        if gradMat and gradMat:IsError() then
+            -- fallback: simple translucent bar
+            surface.SetDrawColor(0, 0, 0, 60)
+            surface.DrawRect(0, 0, w, 64)
+        else
+            surface.SetMaterial(gradMat)
+            surface.SetDrawColor(0, 0, 0, 60)
+            surface.DrawTexturedRect(0, 0, w, 64)
+        end
 
         surface.SetDrawColor(THEME.accent)
         surface.DrawRect(0, 64, w, 2)
@@ -120,12 +132,42 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
     infoLabel:DockMargin(32, 0, 32, 0)
 
     -- Create scroll panel
-    local scroll = vgui.Create("DScrollPanel", debugFrame)
+    ---@class Rareload_DScrollPanel: DScrollPanel
+    local scroll = vgui.Create("DScrollPanel", debugFrame) --[[@as Rareload_DScrollPanel]]
     scroll:Dock(FILL)
     scroll:DockMargin(0, 34, 0, 52)
     local vbar = scroll:GetVBar() --[[@as RareloadScrollBar]]
     vbar:SetWide(8)
     vbar.Paint = function(_, w, h) draw.RoundedBox(4, 0, 0, w, h, THEME.panelLight) end
+
+    -- Defensive: ensure mouse wheel events are handled to avoid nil method errors
+    if not scroll.OnMouseWheeled then
+        function scroll:OnMouseWheeled(delta)
+            local bar = self:GetVBar()
+            if IsValid(bar) then
+                bar:AddScroll(delta)
+                return true
+            end
+        end
+    end
+    ---@class Rareload_Panel: Panel
+    local canvas = scroll.GetCanvas and scroll:GetCanvas() or nil --[[@as Rareload_Panel]]
+    if IsValid(canvas) and not canvas.OnMouseWheeled then
+        function canvas:OnMouseWheeled(delta)
+            local parent = self:GetParent()
+            local bar = nil
+            ---@diagnostic disable-next-line: undefined-field
+            if IsValid(parent) and parent.GetVBar then
+                ---@diagnostic disable-next-line: undefined-field
+                bar = parent:GetVBar()
+            end
+            if bar ~= nil and IsValid(bar) then
+                ---@diagnostic disable-next-line: undefined-field
+                bar:AddScroll(delta)
+                return true
+            end
+        end
+    end
 
     -- Store references globally for the refresh function
     RARELOAD.AntiStuckDebug.currentFrame = debugFrame

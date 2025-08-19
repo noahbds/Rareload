@@ -340,6 +340,26 @@ function RARELOAD.RegisterFonts()
         scanlines = 0,
         extended = true
     })
+
+    -- Provide a fallback for addons requesting the non-standard 'Bandal' font
+    -- This suppresses engine warnings by aliasing to a common UI font.
+    surface.CreateFont("Bandal", {
+        font = "Segoe UI",
+        size = 18,
+        weight = 500,
+        antialias = true,
+        outline = false,
+        underline = false,
+        italic = false,
+        strikeout = false,
+        symbol = false,
+        rotary = false,
+        shadow = false,
+        additive = false,
+        blursize = 0,
+        scanlines = 0,
+        extended = true
+    })
 end
 
 -- To use: Call RARELOAD.RegisterFonts() once on the client (e.g., in an init or main UI file)

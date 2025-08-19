@@ -61,34 +61,69 @@ RARELOAD.AntiStuck.ProfileSystem = {
 
 -- Utility functions
 local function SafeJSONDecode(str)
-    if not str or str == "" then return nil end
-    local success, result = pcall(util.JSONToTable, str)
-    if not success then
-        print("[ProfileSystem] JSON decode error:", result)
+    if not str or str == "" then
+        print("[ProfileSystem] SafeJSONDecode: Input string is empty or nil")
         return nil
     end
+
+    local success, result = pcall(util.JSONToTable, str)
+    if not success then
+        print("[ProfileSystem] JSON decode error:", tostring(result))
+        print("[ProfileSystem] Failed string length:", string.len(str))
+        return nil
+    end
+
+    if not result then
+        print("[ProfileSystem] JSON decode returned nil result")
+        return nil
+    end
+
     return result
 end
 
 local function SafeJSONEncode(tbl)
-    if not tbl then return "" end
-    local success, result = pcall(util.TableToJSON, tbl, true)
-    if not success then
-        print("[ProfileSystem] JSON encode error:", result)
+    if not tbl then
+        print("[ProfileSystem] SafeJSONEncode: Input table is nil")
         return ""
     end
+
+    local success, result = pcall(util.TableToJSON, tbl, true)
+    if not success then
+        print("[ProfileSystem] JSON encode error:", tostring(result))
+        print("[ProfileSystem] Failed table content:", tostring(tbl))
+        return ""
+    end
+
+    if not result or result == "" then
+        print("[ProfileSystem] JSON encode returned empty result")
+        return ""
+    end
+
     return result
 end
 
 local function EnsureDirectoryExists()
-    if not file.Exists(PROFILE_DIR, "DATA") then
-        local success = pcall(file.CreateDir, PROFILE_DIR)
+    -- Normalize directory (remove trailing slashes for checks/creation)
+    local dir = string.gsub(PROFILE_DIR, "/+$", "")
+
+    if not file.IsDir(dir, "DATA") then
+        print("[ProfileSystem] Directory does not exist, creating: " .. dir)
+        local success, err = pcall(file.CreateDir, dir)
         if not success then
-            print("[ProfileSystem] Failed to create profile directory")
+            print("[ProfileSystem] Failed to create profile directory: " .. tostring(err))
             return false
         end
+
+        -- Double-check creation
+        if not file.IsDir(dir, "DATA") then
+            print("[ProfileSystem] Directory creation appeared successful but directory still doesn't exist")
+            return false
+        end
+
+        print("[ProfileSystem] Successfully created directory: " .. dir)
     end
-    return true
+
+    return file.IsDir(dir, "DATA")
 end
 
 -- Thread-safe operation wrapper
@@ -127,30 +162,45 @@ end
 -- Profile validation with caching
 local function ValidateProfileData(profile)
     if not profile or type(profile) ~= "table" then
-        return false, "Profile must be a table"
+        local errorMsg = "Profile must be a table, got: " .. type(profile)
+        print("[ProfileSystem] Validation error: " .. errorMsg)
+        return false, errorMsg
     end
 
     -- Check required fields
-    if not profile.name or not IsValidProfileName(profile.name) then
-        return false, "Invalid profile name"
+    if not profile.name then
+        print("[ProfileSystem] Validation error: Profile missing name field")
+        return false, "Profile must have a name field"
+    end
+
+    if not IsValidProfileName(profile.name) then
+        local errorMsg = "Invalid profile name: '" .. tostring(profile.name) .. "'"
+        print("[ProfileSystem] Validation error: " .. errorMsg)
+        return false, errorMsg
     end
 
     if not profile.version then
         profile.version = PROFILE_VERSION
+        print("[ProfileSystem] Added missing version to profile: " .. profile.name)
     end
 
     -- Validate methods
     if profile.methods then
         if type(profile.methods) ~= "table" then
+            print("[ProfileSystem] Validation error: Methods must be a table for profile: " .. profile.name)
             return false, "Methods must be a table"
         end
 
         for i, method in ipairs(profile.methods) do
             if type(method) ~= "table" then
-                return false, "Method " .. i .. " must be a table"
+                local errorMsg = "Method " .. i .. " must be a table"
+                print("[ProfileSystem] Validation error: " .. errorMsg .. " for profile: " .. profile.name)
+                return false, errorMsg
             end
             if not method.name or type(method.name) ~= "string" then
-                return false, "Method " .. i .. " must have a valid name"
+                local errorMsg = "Method " .. i .. " must have a valid name"
+                print("[ProfileSystem] Validation error: " .. errorMsg .. " for profile: " .. profile.name)
+                return false, errorMsg
             end
             if method.enabled == nil then
                 method.enabled = true
@@ -161,11 +211,13 @@ local function ValidateProfileData(profile)
         end
     else
         profile.methods = {}
+        print("[ProfileSystem] Added empty methods array to profile: " .. profile.name)
     end
 
     -- Validate settings
     if profile.settings then
         if type(profile.settings) ~= "table" then
+            print("[ProfileSystem] Validation error: Settings must be a table for profile: " .. profile.name)
             return false, "Settings must be a table"
         end
 
@@ -178,6 +230,7 @@ local function ValidateProfileData(profile)
         end
     else
         profile.settings = {}
+        print("[ProfileSystem] Added empty settings to profile: " .. profile.name)
     end
 
     -- Set metadata with safe values
@@ -193,6 +246,7 @@ local function ValidateProfileData(profile)
         profile.description = string.sub(profile.description, 1, 497) .. "..."
     end
 
+    print("[ProfileSystem] Profile validation successful for: " .. profile.name)
     return true, profile
 end
 
@@ -347,25 +401,47 @@ end
 
 -- Core profile operations
 function RARELOAD.AntiStuck.ProfileSystem.Initialize()
-    if RARELOAD.AntiStuck.ProfileSystem._initialized then return end
+    if RARELOAD.AntiStuck.ProfileSystem._initialized then
+        print("[ProfileSystem] Already initialized")
+        return
+    end
 
-    EnsureDirectoryExists()
+    print("[ProfileSystem] Starting initialization...")
+
+    local dirSuccess = EnsureDirectoryExists()
+    if not dirSuccess then
+        print("[ProfileSystem] Failed to ensure directory exists during initialization")
+        return false
+    end
+
     RARELOAD.AntiStuck.ProfileSystem._initialized = true
+    print("[ProfileSystem] Marked as initialized")
 
     -- Load current profile
     RARELOAD.AntiStuck.ProfileSystem.LoadCurrentProfile()
 
     -- Create default profile if it doesn't exist
     if not RARELOAD.AntiStuck.ProfileSystem.ProfileExists(DEFAULT_PROFILE_NAME) then
-        RARELOAD.AntiStuck.ProfileSystem.CreateDefaultProfile()
+        print("[ProfileSystem] Creating default profile...")
+        local success, err = RARELOAD.AntiStuck.ProfileSystem.CreateDefaultProfile()
+        if not success then
+            print("[ProfileSystem] Failed to create default profile: " .. tostring(err))
+        else
+            print("[ProfileSystem] Default profile created successfully")
+        end
     end
 
     -- Set current profile to default if none set
     if not RARELOAD.AntiStuck.ProfileSystem._currentProfile then
+        print("[ProfileSystem] Setting current profile to default")
         RARELOAD.AntiStuck.ProfileSystem.SetCurrentProfile(DEFAULT_PROFILE_NAME)
+    else
+        -- Ensure backward compatibility property is set
+        RARELOAD.AntiStuck.ProfileSystem.currentProfile = RARELOAD.AntiStuck.ProfileSystem._currentProfile
     end
 
     print("[ProfileSystem] Initialized successfully")
+    return true
 end
 
 function RARELOAD.AntiStuck.ProfileSystem.LoadProfile(profileName)
@@ -431,8 +507,15 @@ end
 
 function RARELOAD.AntiStuck.ProfileSystem.SaveProfile(profileName, profileData)
     if not profileName or not profileData or not RARELOAD.AntiStuck.ProfileSystem._initialized then
-        return false, "Invalid parameters"
+        local errorMsg = "Invalid parameters: " ..
+            "profileName=" .. tostring(profileName) ..
+            ", profileData=" .. tostring(profileData ~= nil) ..
+            ", initialized=" .. tostring(RARELOAD.AntiStuck.ProfileSystem._initialized)
+        print("[ProfileSystem] " .. errorMsg)
+        return false, errorMsg
     end
+
+    print("[ProfileSystem] Attempting to save profile: " .. profileName)
 
     -- Create a copy to avoid modifying original data
     local profile = table.Copy(profileData)
@@ -440,6 +523,7 @@ function RARELOAD.AntiStuck.ProfileSystem.SaveProfile(profileName, profileData)
     -- Validate profile data
     local valid, result = ValidateProfileData(profile)
     if not valid then
+        print("[ProfileSystem] Profile validation failed: " .. tostring(result))
         return false, result
     end
 
@@ -447,38 +531,79 @@ function RARELOAD.AntiStuck.ProfileSystem.SaveProfile(profileName, profileData)
         profile = result
         profile.modified = os.time()
     else
+        print("[ProfileSystem] Validation failed - unexpected result type: " .. type(result))
         return false, "Validation failed"
     end
 
     -- Ensure directory exists
     if not EnsureDirectoryExists() then
-        return false, "Failed to create profile directory"
+        local errorMsg = "Failed to create profile directory: " .. PROFILE_DIR
+        print("[ProfileSystem] " .. errorMsg)
+        return false, errorMsg
     end
 
     -- Save to file
     local fileName = PROFILE_DIR .. profileName .. ".json"
+    print("[ProfileSystem] Saving to file: " .. fileName)
+
     local content = SafeJSONEncode(profile)
-
     if content == "" then
-        return false, "Failed to encode profile data"
+        local errorMsg = "Failed to encode profile data for: " .. profileName
+        print("[ProfileSystem] " .. errorMsg)
+        return false, errorMsg
     end
 
-    -- Atomic write operation
-    local tempFileName = fileName .. ".tmp"
-    local success = pcall(file.Write, tempFileName, content)
-    if not success then
-        return false, "Failed to write profile file"
+    print("[ProfileSystem] Encoded content length: " .. string.len(content))
+
+    -- Direct write approach (simpler and more reliable than atomic write)
+    print("[ProfileSystem] Attempting direct write to: " .. fileName)
+
+    -- Write the file directly
+    local writeSuccess, writeError = pcall(file.Write, fileName, content)
+    if not writeSuccess then
+        local errorMsg = "Failed to write profile file: " .. tostring(writeError)
+        print("[ProfileSystem] " .. errorMsg)
+        return false, errorMsg
     end
 
-    -- Move temp file to final location
-    if file.Exists(tempFileName, "DATA") then
-        if file.Exists(fileName, "DATA") then
-            file.Delete(fileName)
+    -- Add a small delay to ensure file system has time to update
+    timer.Simple(0, function() end)
+
+    -- Verify the file was created and has the correct content
+    if not file.Exists(fileName, "DATA") then
+        -- Try one more time with a different approach
+        print("[ProfileSystem] File not found after first write, retrying...")
+
+        -- Ensure directory still exists
+        if not EnsureDirectoryExists() then
+            return false, "Directory disappeared during save"
         end
-        file.Rename(tempFileName, fileName:match("([^/]+)$"))
-    else
-        return false, "Failed to save profile"
+
+        -- Try writing again
+        local retrySuccess = pcall(file.Write, fileName, content)
+        if not retrySuccess or not file.Exists(fileName, "DATA") then
+            local errorMsg = "File was not created after write operation: " .. fileName
+            print("[ProfileSystem] " .. errorMsg)
+            return false, errorMsg
+        end
     end
+
+    -- Verify content
+    local savedContent = file.Read(fileName, "DATA")
+    if not savedContent or savedContent == "" then
+        local errorMsg = "File was created but is empty: " .. fileName
+        print("[ProfileSystem] " .. errorMsg)
+        return false, errorMsg
+    end
+
+    if string.len(savedContent) < string.len(content) * 0.9 then -- Allow some variance
+        local errorMsg = "File content appears corrupted (too short): " .. fileName
+        print("[ProfileSystem] " ..
+            errorMsg .. " (expected ~" .. string.len(content) .. ", got " .. string.len(savedContent) .. ")")
+        return false, errorMsg
+    end
+
+    print("[ProfileSystem] Profile saved successfully: " .. profileName .. " (" .. string.len(savedContent) .. " bytes)")
 
     -- Update cache
     RARELOAD.AntiStuck.ProfileSystem.AddToCache(profileName, profile)
@@ -531,6 +656,9 @@ function RARELOAD.AntiStuck.ProfileSystem.GetCurrentProfile()
     return RARELOAD.AntiStuck.ProfileSystem._currentProfile
 end
 
+-- Backward compatibility property
+RARELOAD.AntiStuck.ProfileSystem.currentProfile = RARELOAD.AntiStuck.ProfileSystem._currentProfile
+
 function RARELOAD.AntiStuck.ProfileSystem.SetCurrentProfile(profileName)
     if not profileName or not RARELOAD.AntiStuck.ProfileSystem.ProfileExists(profileName) then
         return false, "Profile does not exist"
@@ -542,6 +670,9 @@ function RARELOAD.AntiStuck.ProfileSystem.SetCurrentProfile(profileName)
 
     local oldProfile = RARELOAD.AntiStuck.ProfileSystem._currentProfile
     RARELOAD.AntiStuck.ProfileSystem._currentProfile = profileName
+
+    -- Update backward compatibility property
+    RARELOAD.AntiStuck.ProfileSystem.currentProfile = profileName
 
     -- Save current profile setting
     file.Write(CURRENT_PROFILE_FILE, SafeJSONEncode({
@@ -568,6 +699,7 @@ function RARELOAD.AntiStuck.ProfileSystem.LoadCurrentProfile()
         local data = SafeJSONDecode(content)
         if data and data.current and RARELOAD.AntiStuck.ProfileSystem.ProfileExists(data.current) then
             RARELOAD.AntiStuck.ProfileSystem._currentProfile = data.current
+            RARELOAD.AntiStuck.ProfileSystem.currentProfile = data.current
             return
         end
     end
@@ -575,6 +707,7 @@ function RARELOAD.AntiStuck.ProfileSystem.LoadCurrentProfile()
     -- Fallback to default
     if RARELOAD.AntiStuck.ProfileSystem.ProfileExists(DEFAULT_PROFILE_NAME) then
         RARELOAD.AntiStuck.ProfileSystem._currentProfile = DEFAULT_PROFILE_NAME
+        RARELOAD.AntiStuck.ProfileSystem.currentProfile = DEFAULT_PROFILE_NAME
     end
 end
 
@@ -633,6 +766,30 @@ function RARELOAD.AntiStuck.ProfileSystem.GetProfileList()
     end)
 
     return profiles
+end
+
+-- Alias for compatibility with settings panel
+function RARELOAD.AntiStuck.ProfileSystem.GetProfilesList()
+    return RARELOAD.AntiStuck.ProfileSystem.GetProfileList()
+end
+
+-- Apply/activate a profile (for dropdown selection)
+function RARELOAD.AntiStuck.ProfileSystem.ApplyProfile(profileName)
+    if not profileName then
+        print("[ProfileSystem] ApplyProfile: profileName is nil")
+        return false
+    end
+
+    print("[ProfileSystem] Applying profile: " .. profileName)
+
+    local success, err = RARELOAD.AntiStuck.ProfileSystem.SetCurrentProfile(profileName)
+    if success then
+        print("[ProfileSystem] Successfully applied profile: " .. profileName)
+        return true
+    else
+        print("[ProfileSystem] Failed to apply profile: " .. profileName .. " - " .. tostring(err))
+        return false
+    end
 end
 
 function RARELOAD.AntiStuck.ProfileSystem.GetStats()
@@ -720,6 +877,20 @@ concommand.Add("rareload_profile_clear_cache", function()
     print("Profile cache cleared")
 end)
 
+concommand.Add("rareload_profile_reinit", function()
+    print("Reinitializing profile system...")
+    RARELOAD.AntiStuck.ProfileSystem._initialized = false
+    RARELOAD.AntiStuck.ProfileSystem._currentProfile = nil
+    RARELOAD.AntiStuck.ProfileSystem.ClearCache()
+
+    local success, err = pcall(RARELOAD.AntiStuck.ProfileSystem.Initialize)
+    if success then
+        print("Profile system reinitialized successfully")
+    else
+        print("Profile system reinitialization failed: " .. tostring(err))
+    end
+end)
+
 concommand.Add("rareload_profile_list", function()
     local profiles = RARELOAD.AntiStuck.ProfileSystem.GetProfileList()
     print("=== Available Profiles ===")
@@ -728,3 +899,167 @@ concommand.Add("rareload_profile_list", function()
         print(string.format("%s - %s%s", profile.name, profile.description, status))
     end
 end)
+
+-- Debug function for development
+if CLIENT then
+    function DebugProfileSystem()
+        return {
+            ProfileSystem = RARELOAD.AntiStuck.ProfileSystem,
+            stats = RARELOAD.AntiStuck.ProfileSystem.GetStats(),
+            cache = RARELOAD.AntiStuck.ProfileSystem._cache,
+            currentProfile = RARELOAD.AntiStuck.ProfileSystem._currentProfile,
+            initialized = RARELOAD.AntiStuck.ProfileSystem._initialized
+        }
+    end
+
+    -- Diagnostic function to help troubleshoot profile save issues
+    function DiagnoseProfileSystem()
+        print("=== Profile System Diagnostic ===")
+        print("Initialized: " .. tostring(RARELOAD.AntiStuck.ProfileSystem._initialized))
+        print("Current Profile: " .. tostring(RARELOAD.AntiStuck.ProfileSystem._currentProfile))
+        print("Profile Directory: " .. PROFILE_DIR)
+
+        -- Check directory
+        local dir = string.gsub(PROFILE_DIR, "/+$", "")
+        local dirExists = file.IsDir(dir, "DATA")
+        print("Directory Exists: " .. tostring(dirExists))
+
+        if dirExists then
+            local files = file.Find(PROFILE_DIR .. "*.json", "DATA")
+            print("Profile Files Found: " .. #files)
+            for i, fileName in ipairs(files) do
+                print("  " .. i .. ". " .. fileName)
+            end
+        else
+            print("Directory does not exist, attempting to create...")
+            local success = EnsureDirectoryExists()
+            print("Directory creation result: " .. tostring(success))
+        end
+
+        -- Test basic file operations using the same pattern as SaveProfile
+        local testFile = PROFILE_DIR .. "test_write_profile.json"
+        local testProfile = {
+            name = "test_diagnostic",
+            version = "1.0",
+            methods = {},
+            settings = {},
+            created = os.time()
+        }
+        local testContent = SafeJSONEncode(testProfile)
+
+        print("Testing profile-style write operations...")
+        print("Test file path: " .. testFile)
+        print("Test content length: " .. string.len(testContent))
+
+        local writeSuccess, writeError = pcall(file.Write, testFile, testContent)
+        print("Write test result: " .. tostring(writeSuccess))
+
+        if not writeSuccess then
+            print("Write error: " .. tostring(writeError))
+        else
+            -- Check if file was actually created
+            if file.Exists(testFile, "DATA") then
+                local readContent = file.Read(testFile, "DATA")
+                if readContent and string.len(readContent) > 0 then
+                    print("File verification: SUCCESS (" .. string.len(readContent) .. " bytes)")
+                    file.Delete(testFile) -- Cleanup
+                    print("Test file cleaned up")
+                else
+                    print("File verification: FAILED - file exists but is empty")
+                end
+            else
+                print("File verification: FAILED - file was not created")
+            end
+        end
+
+        -- Check JSON encoding
+        local testTable = { name = "test", version = "1.0" }
+        local jsonResult = SafeJSONEncode(testTable)
+        print("JSON encoding test: " .. (jsonResult ~= "" and "SUCCESS" or "FAILED"))
+        if jsonResult == "" then
+            print("JSON encoding failed for test table")
+        end
+
+        print("=== End Diagnostic ===")
+    end
+
+    -- Console command for diagnostic
+    concommand.Add("rareload_profile_diagnose", function()
+        DiagnoseProfileSystem()
+    end)
+
+    -- Console command for testing profile save
+    concommand.Add("rareload_profile_test_save", function(ply, cmd, args)
+        local testName = args[1] or ("test_save_" .. os.time())
+        print("Testing profile save with name: " .. testName)
+
+        local testProfile = {
+            name = testName,
+            displayName = "Test Profile",
+            description = "Test profile for debugging save issues",
+            author = "System Test",
+            version = PROFILE_VERSION,
+            created = os.time(),
+            modified = os.time(),
+            methods = {
+                { name = "test_method", enabled = true, priority = 10 }
+            },
+            settings = {
+                maxAttempts = 5,
+                timeout = 3,
+                debug = true
+            }
+        }
+
+        local success, err = RARELOAD.AntiStuck.ProfileSystem.SaveProfile(testName, testProfile)
+        if success then
+            print("✓ Test profile save SUCCESSFUL")
+
+            -- Verify by loading it back
+            local loaded = RARELOAD.AntiStuck.ProfileSystem.LoadProfile(testName)
+            if loaded then
+                print("✓ Test profile load verification SUCCESSFUL")
+
+                -- Clean up test profile
+                RARELOAD.AntiStuck.ProfileSystem.DeleteProfile(testName)
+                print("✓ Test profile cleanup SUCCESSFUL")
+            else
+                print("✗ Test profile load verification FAILED")
+            end
+        else
+            print("✗ Test profile save FAILED: " .. tostring(err))
+        end
+    end)
+
+    -- Console command for testing dropdown functionality
+    concommand.Add("rareload_profile_test_dropdown", function()
+        print("=== Testing Dropdown Functions ===")
+
+        -- Test GetProfilesList
+        if RARELOAD.AntiStuck.ProfileSystem.GetProfilesList then
+            local profiles = RARELOAD.AntiStuck.ProfileSystem.GetProfilesList()
+            print("✓ GetProfilesList available, found " .. #profiles .. " profiles:")
+            for i, profile in ipairs(profiles) do
+                print("  " .. i .. ". " .. profile.name .. " (" .. (profile.displayName or "N/A") .. ")")
+            end
+        else
+            print("✗ GetProfilesList not available")
+        end
+
+        -- Test current profile access
+        local current1 = RARELOAD.AntiStuck.ProfileSystem.GetCurrentProfile()
+        local current2 = RARELOAD.AntiStuck.ProfileSystem.currentProfile
+        print("Current profile (function): " .. tostring(current1))
+        print("Current profile (property): " .. tostring(current2))
+        print("Match: " .. tostring(current1 == current2))
+
+        -- Test ApplyProfile
+        if RARELOAD.AntiStuck.ProfileSystem.ApplyProfile then
+            print("✓ ApplyProfile function available")
+        else
+            print("✗ ApplyProfile function not available")
+        end
+
+        print("=== End Dropdown Test ===")
+    end)
+end

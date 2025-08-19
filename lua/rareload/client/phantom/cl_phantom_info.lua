@@ -44,6 +44,16 @@ ScrollbarWidth = 6
 local fontSizeCache = {}
 local panelSizeCache = {}
 
+-- Static theme (avoid re-allocating Color objects every frame)
+local THEME = {
+    background = Color(20, 20, 30, 220),
+    header = Color(30, 30, 45, 255),
+    border = Color(70, 130, 180, 255),
+    text = Color(220, 220, 255),
+    scrollbar = Color(40, 40, 50, 120),
+    scrollbarHandle = Color(160, 180, 200, 200)
+}
+
 function CalculateOptimalPanelSize(categoryContent)
     if type(categoryContent) ~= "table" then
         return 350
@@ -359,14 +369,7 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     local distanceScale = isActiveInteraction and 1.5 or math.Clamp(1.0 - (math.sqrt(distanceSqr) / 1500), 0.3, 1.0)
     local scale = 0.1 * (cache.hoverScale or 1.0) * distanceScale
 
-    local theme = {
-        background = Color(20, 20, 30, 220),
-        header = Color(30, 30, 45, 255),
-        border = Color(70, 130, 180, 255),
-        text = Color(220, 220, 255),
-        scrollbar = Color(40, 40, 50, 120),
-        scrollbarHandle = Color(160, 180, 200, 200)
-    }
+    local theme = THEME
 
     local lineHeight = 22
     local titleHeight = 40
@@ -423,8 +426,8 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     -- Draw Tabs
     ----------------------------
     local minTabWidth = 0
+    surface.SetFont("Trebuchet18")
     for _, cat in ipairs(PHANTOM_CATEGORIES) do
-        surface.SetFont("Trebuchet18")
         local textWidth = surface.GetTextSize(cat[2])
         minTabWidth = math.max(minTabWidth, textWidth + 20)
     end
@@ -461,7 +464,6 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
         end
 
         local textColor = isActive and Color(255, 255, 255) or Color(180, 180, 180)
-        surface.SetFont("Trebuchet18")
         draw.SimpleText(catName, "Trebuchet18", tabX + tabWidth / 2, tabY + tabHeight / 2,
             textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         table.insert(tabScreenInfo,
@@ -498,15 +500,23 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     ---@diagnostic disable-next-line: param-type-mismatch
     render.SetStencilPassOperation(STENCIL_KEEP)
 
-    for i, line in ipairs(infoData[activeCategory]) do
-        local label, value, valueColor = line[1], tostring(line[2]), line[3] or Color(255, 255, 255)
-        local yPos = contentY + (i - 1) * lineHeight - scrollOffset + 10
-        if yPos + lineHeight >= contentY - lineHeight and yPos <= contentY + maxDisplayHeight + lineHeight then
+    do
+        local lines = infoData[activeCategory]
+        local total = #lines
+        surface.SetFont("Trebuchet18")
+
+        -- Compute visible index range to avoid iterating off-screen lines
+        local firstVisible = math.max(1, math.floor((scrollOffset - 10) / lineHeight))
+        local lastVisible = math.min(total, math.ceil((scrollOffset + maxDisplayHeight + lineHeight) / lineHeight))
+
+        for i = firstVisible, lastVisible do
+            local line = lines[i]
+            local label, value, valueColor = line[1], tostring(line[2]), line[3] or Color(255, 255, 255)
+            local yPos = contentY + (i - 1) * lineHeight - scrollOffset + 10
+
             local fadeDelay = i * 0.05
             local alpha = math.min((CurTime() - (cache.categoryChanged or 0) - fadeDelay) * 5, 1)
             alpha = math.max(alpha, 0)
-
-            surface.SetFont("Trebuchet18")
 
             local colonSuffix = (line[4] and line[4].noColon) and "" or ":"
             draw.SimpleText(label .. colonSuffix, "Trebuchet18", offsetX + textPadding, yPos,
@@ -514,7 +524,7 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
             local valueX = offsetX + textPadding + 120
             local maxValueWidth = panelWidth - (textPadding * 2) - 130 -
                 (needsScrolling and (5 + scrollbarPadding * 2) or 0)
-            surface.SetFont("Trebuchet18")
+
             local textWidth = surface.GetTextSize(value)
             if textWidth > maxValueWidth then
                 local low, high = 1, #value

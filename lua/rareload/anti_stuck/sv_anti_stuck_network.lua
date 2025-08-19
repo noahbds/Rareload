@@ -46,7 +46,7 @@ function AntiStuck.SetupNetworking()
         file.Write(PS.selectedProfileFile, util.TableToJSON({ selectedProfile = profileName }, true))
 
         AntiStuck.LogDebug(
-        "Server profile synchronized to: " .. profileName .. " (was: " .. (oldProfile or "none") .. ")", nil, ply)
+            "Server profile synchronized to: " .. profileName .. " (was: " .. (oldProfile or "none") .. ")", nil, ply)
         AntiStuck.LoadMethods(true)
     end)
 
@@ -56,13 +56,14 @@ function AntiStuck.SetupNetworking()
         if type(newMethods) ~= "table" or #newMethods == 0 then return end
 
         local processed = {}
-        for _, method in ipairs(newMethods) do
+        for i, method in ipairs(newMethods) do
             if type(method) == "table" and method.func and method.name then
                 table.insert(processed, {
                     name = method.name,
                     description = method.description,
                     enabled = method.enabled ~= false,
-                    priority = tonumber(method.priority) or 50,
+                    -- Renumber priorities strictly by order (first=10, last=10*n)
+                    priority = (i * 10),
                     timeout = tonumber(method.timeout) or 1.0,
                     func = method.func
                 })
@@ -70,6 +71,7 @@ function AntiStuck.SetupNetworking()
         end
         AntiStuck.methods = processed
         AntiStuck.SaveMethods()
+        if AntiStuck.InvalidateResolverCache then AntiStuck.InvalidateResolverCache() end
         AntiStuck.LogDebug("Anti-Stuck methods updated by " .. ply:Nick() .. " for profile: " .. PS.currentProfile)
     end)
 
@@ -154,7 +156,7 @@ function AntiStuck.SetupNetworking()
             net.WriteTable(profileData)
             net.Send(recipients)
             AntiStuck.LogDebug("Profile '" ..
-            profileData.name .. "' shared by " .. ply:Nick() .. " to " .. #recipients .. " players")
+                profileData.name .. "' shared by " .. ply:Nick() .. " to " .. #recipients .. " players")
             ply:ChatPrint("[RARELOAD] Profile shared with " .. #recipients .. " players.")
         end
     end)

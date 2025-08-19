@@ -40,8 +40,8 @@ function AntiStuck.TrySpawnPoints(pos, ply)
 end
 
 -- Register method with proper configuration
-if RARELOAD.AntiStuck and RARELOAD.AntiStuck.RegisterMethod then
-    RARELOAD.AntiStuck.RegisterMethod("TrySpawnPoints", AntiStuck.TrySpawnPoints, {
+if AntiStuck.RegisterMethod then
+    AntiStuck.RegisterMethod("TrySpawnPoints", AntiStuck.TrySpawnPoints, {
         description = "Fallback to map-defined spawn points with validity checking",
         priority = 70, -- Lower priority - fallback method
         timeout = 2.0,

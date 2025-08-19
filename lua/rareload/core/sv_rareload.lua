@@ -225,6 +225,27 @@ if SERVER then
             if type(pos) == "table" and pos.x and pos.y and pos.z then
                 pos = Vector(pos.x, pos.y, pos.z)
             end
+            -- Ground and validate position before teleporting player
+            if not util.IsInWorld(pos) then
+                -- Try to recover by grounding near center
+                local fallback = Vector(0, 0, 256)
+                local tr = util.TraceLine({
+                    start = fallback,
+                    endpos = fallback - Vector(0, 0, 32768),
+                    mask =
+                        MASK_SOLID_BRUSHONLY
+                })
+                pos = (tr.Hit and tr.HitPos + Vector(0, 0, 16)) or fallback
+            else
+                -- Ground to nearest surface below to avoid inside-skybox Z
+                local tr = util.TraceLine({
+                    start = pos + Vector(0, 0, 64),
+                    endpos = pos - Vector(0, 0, 32768),
+                    mask =
+                        MASK_SOLID_BRUSHONLY
+                })
+                if tr.Hit then pos = tr.HitPos + Vector(0, 0, 16) end
+            end
             ply:SetPos(pos)
 
             if RARELOAD.SavePositionToCache then
@@ -256,13 +277,23 @@ if SERVER then
             return
         end
 
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-            print("[RARELOAD] Position is stuck (" .. stuckReason .. "), using anti-stuck system")
+        if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.StartAntiStuckSession then
+            RARELOAD.Debug.AntiStuck("IsPositionStuck", nil,
+                { position = testPos, reason = stuckReason, methodName = "IsPositionStuck" }, ply)
         end
 
         local safePos, success = RARELOAD.AntiStuck.ResolveStuckPosition(testPos, ply)
 
         if success then
+            if util.IsInWorld(safePos) then
+                local tr = util.TraceLine({
+                    start = safePos + Vector(0, 0, 64),
+                    endpos = safePos - Vector(0, 0, 32768),
+                    mask =
+                        MASK_SOLID_BRUSHONLY
+                })
+                if tr.Hit then safePos = tr.HitPos + Vector(0, 0, 16) end
+            end
             ply:SetPos(safePos)
 
             if RARELOAD.SavePositionToCache then
@@ -271,6 +302,15 @@ if SERVER then
         else
             ply:ChatPrint("[RARELOAD] Warning: Had to use emergency positioning due to stuck position.")
             ply:EmitSound("buttons/button10.wav")
+            if util.IsInWorld(safePos) then
+                local tr2 = util.TraceLine({
+                    start = safePos + Vector(0, 0, 64),
+                    endpos = safePos - Vector(0, 0, 32768),
+                    mask =
+                        MASK_SOLID_BRUSHONLY
+                })
+                if tr2.Hit then safePos = tr2.HitPos + Vector(0, 0, 16) end
+            end
             ply:SetPos(safePos)
         end
 
@@ -287,11 +327,12 @@ if SERVER then
             if parsedAngle then
                 ply:SetEyeAngles(parsedAngle)
                 if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                    print("[RARELOAD] Applied saved angle after anti-stuck: " .. tostring(parsedAngle))
+                    RARELOAD.Debug.Log("INFO", "Applied saved angle after anti-stuck", tostring(parsedAngle), ply)
                 end
             else
                 if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                    print("[RARELOAD] Could not parse saved angle after anti-stuck: " .. tostring(savedInfo.ang))
+                    RARELOAD.Debug.Log("WARNING", "Could not parse saved angle after anti-stuck", tostring(savedInfo.ang),
+                        ply)
                 end
             end
         end)

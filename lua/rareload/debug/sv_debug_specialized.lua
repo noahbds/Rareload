@@ -77,6 +77,15 @@ function RARELOAD.Debug.LogInventory(ply)
 end
 
 function RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
+    -- Prevent duplicate weapon logs within a short time window per player
+    RARELOAD._weaponLogCooldown = RARELOAD._weaponLogCooldown or {}
+    local key = "global"
+    local now = CurTime()
+    if RARELOAD._weaponLogCooldown[key] and (now - RARELOAD._weaponLogCooldown[key]) < 2.0 then
+        return
+    end
+    RARELOAD._weaponLogCooldown[key] = now
+
     if not DEBUG_CONFIG.ENABLED() then return end
 
     local hasMessages = false
@@ -462,4 +471,58 @@ function RARELOAD.Debug.LogAntiStuck(operation, methodName, data, ply)
     else
         RARELOAD.Debug.Log(level, header, mainMessage, ply)
     end
+end
+
+-- Session-style Anti-Stuck logging helpers for clear, grouped output
+-- Usage:
+--   local sess = RARELOAD.Debug.StartAntiStuckSession(ply, originalPos)
+--   RARELOAD.Debug.AntiStuckStep(sess, "info", "Method 1/3: Cached Positions", "success 68%, timeout 0.3s")
+--   RARELOAD.Debug.AntiStuckStep(sess, "fail", "Cached Positions", "no valid cached positions")
+--   RARELOAD.Debug.AntiStuckStep(sess, "ok", "Smart Displacement", "found position in 0.018s (attempt 4)")
+--   RARELOAD.Debug.FinishAntiStuckSession(sess, { success = true, attempts = 4, totalTime = 0.018, finalPos = pos })
+
+local function _fmtVec(v)
+    if not v then return "nil" end
+    return string.format("[%.2f %.2f %.2f]", v.x, v.y, v.z)
+end
+
+function RARELOAD.Debug.StartAntiStuckSession(ply, originalPos)
+    return {
+        ply = ply,
+        originalPos = originalPos,
+        entries = { string.format("Player: %s (%s)", IsValid(ply) and ply:Nick() or "Unknown",
+            IsValid(ply) and ply:SteamID() or "N/A"),
+            "Original position: " .. _fmtVec(originalPos) },
+        startedAt = SysTime()
+    }
+end
+
+function RARELOAD.Debug.AntiStuckStep(session, status, title, details)
+    if not session then return end
+    local icon = "•"
+    if status == "ok" then icon = "✓" elseif status == "fail" then icon = "✗" elseif status == "start" then icon = "⚡" end
+    local line = string.format("%s %s", icon, title or "")
+    if details and details ~= "" then
+        line = line .. " — " .. tostring(details)
+    end
+    table.insert(session.entries, line)
+end
+
+function RARELOAD.Debug.FinishAntiStuckSession(session, outcome)
+    if not session then return end
+    local elapsed = SysTime() - (session.startedAt or SysTime())
+    outcome = outcome or {}
+    local summary = string.format("Result: %s | Attempts: %s | Time: %.3fs",
+        outcome.success and "SUCCESS" or "FAILURE",
+        tostring(outcome.attempts or "-"),
+        outcome.totalTime or elapsed)
+    table.insert(session.entries, "")
+    table.insert(session.entries, summary)
+    if outcome.finalPos then
+        table.insert(session.entries, "Final position: " .. _fmtVec(outcome.finalPos))
+    end
+    if outcome.reason then
+        table.insert(session.entries, "Reason: " .. tostring(outcome.reason))
+    end
+    RARELOAD.Debug.LogGroup("Anti-Stuck Resolution", outcome.success and "INFO" or "WARNING", session.entries)
 end

@@ -1,6 +1,6 @@
-local RARELOAD = RARELOAD or {}
-local AntiStuck = RARELOAD.AntiStuck or {}
-RARELOAD.AntiStuck = AntiStuck
+RARELOAD = RARELOAD or {}
+RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
+local AntiStuck = RARELOAD.AntiStuck
 
 -- Pre-calculated optimization constants
 local mathSqrt = math.sqrt
@@ -133,10 +133,12 @@ function AntiStuck.Try3DSpaceScan(pos, ply)
                 local distance = groundPos:DistToSqr(pos)
                 if distance < safeDistance * safeDistance * 4 then
                     -- Found excellent position - return immediately
-                    if debugEnabled then
-                        print(string.format(
-                            "[RARELOAD ANTI-STUCK] Found excellent 3D position at height +%.0f (distance: %.1f)",
-                            zOffset, mathSqrt(distance)))
+                    if debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+                        RARELOAD.Debug.AntiStuck("3D Space Scan", {
+                            methodName = "Try3DSpaceScan",
+                            message = string.format("Found excellent position at +%.0f", zOffset),
+                            distance = string.format("%.1f", mathSqrt(distance))
+                        })
                     end
                     return groundPos, AntiStuck.UNSTUCK_METHODS.SUCCESS
                 elseif distance < bestDistance then
@@ -173,10 +175,12 @@ function AntiStuck.Try3DSpaceScan(pos, ply)
                         local distance = groundPos:DistToSqr(pos)
                         if distance < safeDistance * safeDistance * 9 then
                             -- Good position found - return it
-                            if debugEnabled then
-                                print(string.format(
-                                    "[RARELOAD ANTI-STUCK] Found good 3D position at radius %.0f (distance: %.1f)",
-                                    currentRadius, mathSqrt(distance)))
+                            if debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+                                RARELOAD.Debug.AntiStuck("3D Space Scan", {
+                                    methodName = "Try3DSpaceScan",
+                                    message = string.format("Found good position at radius %.0f", currentRadius),
+                                    distance = string.format("%.1f", mathSqrt(distance))
+                                })
                             end
                             return groundPos, AntiStuck.UNSTUCK_METHODS.SUCCESS
                         elseif distance < bestDistance then
@@ -203,23 +207,28 @@ function AntiStuck.Try3DSpaceScan(pos, ply)
 
     -- Return best candidate if found, otherwise nil
     if bestCandidate then
-        if debugEnabled then
-            print(string.format("[RARELOAD ANTI-STUCK] Using best 3D candidate (distance: %.1f, attempts: %d)",
-                mathSqrt(bestDistance), attemptCount))
+        if debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+            RARELOAD.Debug.AntiStuck("3D Space Scan", {
+                methodName = "Try3DSpaceScan",
+                message = "Using best 3D candidate",
+                distance = string.format("%.1f", mathSqrt(bestDistance)),
+                attempts = attemptCount
+            })
         end
         return bestCandidate, AntiStuck.UNSTUCK_METHODS.SUCCESS
     end
 
-    if debugEnabled then
-        print(string.format("[RARELOAD ANTI-STUCK] 3D Space Scan failed after %d attempts", attemptCount))
+    if debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+        RARELOAD.Debug.AntiStuck("3D Space Scan failed", { methodName = "Try3DSpaceScan", attempts = attemptCount }, nil,
+            "WARNING")
     end
 
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
 end
 
 -- Register method with enhanced configuration
-if RARELOAD.AntiStuck and RARELOAD.AntiStuck.RegisterMethod then
-    RARELOAD.AntiStuck.RegisterMethod("Try3DSpaceScan", AntiStuck.Try3DSpaceScan, {
+if AntiStuck.RegisterMethod then
+    AntiStuck.RegisterMethod("Try3DSpaceScan", AntiStuck.Try3DSpaceScan, {
         description = "Ultra-fast: Advanced volumetric analysis with adaptive precision",
         priority = 25, -- Medium priority - balanced speed vs thoroughness
         timeout = 1.0, -- Optimized timeout

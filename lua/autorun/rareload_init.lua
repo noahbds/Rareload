@@ -39,6 +39,14 @@ if SERVER then
 
     -- Client anti-stuck files
     AddCSLuaFile("rareload/client/antistuck/cl_rareload_antistuck_init.lua")
+    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_components.lua")
+    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_data.lua")
+    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_events.lua")
+    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_method_list.lua")
+    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_panel.lua")
+    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_panel_main.lua")
+    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_theme.lua")
+    AddCSLuaFile("rareload/client/antistuck/cl_profile_manager.lua")
 end
 
 include("rareload/shared/permissions_def.lua")
@@ -108,10 +116,19 @@ if SERVER then
 
     -- Admin system
     include("rareload/admin/rareload_permissions.lua")
-    include("rareload/admin/sv_rareload_admin_utils.lua")    -- Anti-stuck system - proper loading order is critical
-    include("rareload/anti_stuck/sv_anti_stuck_methods.lua") -- Load method registry first
+    include("rareload/admin/sv_rareload_admin_utils.lua")
 
-    -- Anti-stuck methods - load methods before the core to register them
+    -- Anti-stuck system - proper loading order is critical
+    include("rareload/anti_stuck/sv_deepcopy_utils.lua")        -- Load deep copy utilities first
+    include("rareload/anti_stuck/sv_anti_stuck_config.lua")     -- Load config and defaults first
+    include("rareload/anti_stuck/sv_anti_stuck_methods.lua")    -- Load method registry system
+    include("rareload/anti_stuck/sv_anti_stuck_cache.lua")      -- Load cache system
+    include("rareload/anti_stuck/sv_anti_stuck_validation.lua") -- Load validation system
+    include("rareload/anti_stuck/sv_anti_stuck_profile.lua")    -- Load profile system
+    include("rareload/anti_stuck/sv_anti_stuck_map.lua")        -- Load map analysis
+    include("rareload/anti_stuck/sv_anti_stuck_nav.lua")        -- Load navigation system
+
+    -- Load method implementations (must load after method registry)
     include("rareload/anti_stuck/methods/sv_method_cachedpos.lua")
     include("rareload/anti_stuck/methods/sv_method_displacement.lua")
     include("rareload/anti_stuck/methods/sv_method_emergency_teleport.lua")
@@ -120,12 +137,16 @@ if SERVER then
     include("rareload/anti_stuck/methods/sv_method_space_scan.lua")
     include("rareload/anti_stuck/methods/sv_method_spawn_points.lua")
     include("rareload/anti_stuck/methods/sv_method_world_brushes.lua")
+    include("rareload/anti_stuck/methods/sv_method_systematic_grid.lua")
 
-    -- Core anti-stuck system (modular core, resolver, and bootstrap)
-    include("rareload/anti_stuck/sv_anti_stuck_core.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_resolver.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_system.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_init.lua") -- This should be last
+    -- Load core systems (must load after methods are registered)
+    include("rareload/anti_stuck/sv_anti_stuck_methods_loader.lua") -- Load methods loader
+    include("rareload/anti_stuck/sv_anti_stuck_core.lua")           -- Load core functionality
+    include("rareload/anti_stuck/sv_anti_stuck_resolver.lua")       -- Load resolver system
+    include("rareload/anti_stuck/sv_anti_stuck_network.lua")        -- Load network system
+    include("rareload/anti_stuck/sv_anti_stuck_commands.lua")       -- Load commands
+    include("rareload/anti_stuck/sv_anti_stuck_system.lua")         -- Load main system
+    include("rareload/anti_stuck/sv_anti_stuck_init.lua")           -- Initialize everything
 
     -- Tool
     include("weapons/gmod_tool/stools/rareload_tool.lua")
@@ -164,7 +185,14 @@ elseif CLIENT then
 
     -- Client anti-stuck files
     include("rareload/client/antistuck/cl_rareload_antistuck_init.lua")
+    include("rareload/client/antistuck/cl_anti_stuck_components.lua")
+    include("rareload/client/antistuck/cl_anti_stuck_data.lua")
+    include("rareload/client/antistuck/cl_anti_stuck_events.lua")
+    include("rareload/client/antistuck/cl_anti_stuck_method_list.lua")
+    include("rareload/client/antistuck/cl_anti_stuck_panel.lua")
     include("rareload/client/antistuck/cl_anti_stuck_panel_main.lua")
+    include("rareload/client/antistuck/cl_anti_stuck_theme.lua")
+    include("rareload/client/antistuck/cl_profile_manager.lua")
 
     print("[RARELOAD] Client-side files loaded successfully!")
 end
@@ -184,3 +212,13 @@ if SERVER then
 end
 
 print("[RARELOAD] Initialization complete - Version " .. RARELOAD.version)
+
+if SERVER then
+    -- Optional: command to manually broadcast settings without overlapping net messages
+    concommand.Add("rareload_broadcast_settings", function(ply)
+        if IsValid(ply) and not ply:IsAdmin() then return end
+        if RareloadUI and RareloadUI.BroadcastSettings then
+            RareloadUI.BroadcastSettings()
+        end
+    end)
+end

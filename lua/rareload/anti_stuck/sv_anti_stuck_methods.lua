@@ -24,9 +24,15 @@ local function ValidateMethodInterface(func)
     local ok, result1, result2 = pcall(func, testPos, nil)
 
     if not ok then return false, "Function call failed: " .. tostring(result1) end
-    if not result1 then return false, "Must return position" end
-    if type(result1) ~= "Vector" then return false, "First return must be Vector" end
-    if result2 ~= nil and type(result2) ~= "number" then return false, "Second return must be number or nil" end
+
+    -- Methods can return nil when they fail to find a position, that's valid
+    if result1 ~= nil and type(result1) ~= "Vector" then
+        return false, "First return must be Vector or nil"
+    end
+
+    if result2 ~= nil and type(result2) ~= "number" then
+        return false, "Second return must be number or nil"
+    end
 
     return true, "Valid"
 end
@@ -99,8 +105,9 @@ end
 function AntiStuck.ExecuteMethod(methodName, originalPos, ply)
     local method = AntiStuck.methodRegistry[methodName]
     if not method then
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-            print("[RARELOAD ANTI-STUCK] Method not found: " .. tostring(methodName))
+        -- Keep a minimal, clear log for missing method, but avoid noisy prints
+        if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+            RARELOAD.Debug.AntiStuck("Method not found", { methodName = tostring(methodName) })
         end
         return nil, AntiStuck.UNSTUCK_METHODS.FAILED
     end
@@ -122,10 +129,10 @@ function AntiStuck.ExecuteMethod(methodName, originalPos, ply)
         return pos, methodResult or AntiStuck.UNSTUCK_METHODS.SUCCESS
     else
         stats.failures = stats.failures + 1
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-            print("[RARELOAD ANTI-STUCK] Method '" .. methodName .. "' failed: " .. tostring(pos))
-        end
-        return nil, AntiStuck.UNSTUCK_METHODS.FAILED
+        -- Do not emit a second failure log here; the resolver/session already logs per-method failures.
+        -- Still propagate a meaningful result code when available.
+        local resultCode = methodResult or AntiStuck.UNSTUCK_METHODS.FAILED
+        return nil, resultCode
     end
 end
 

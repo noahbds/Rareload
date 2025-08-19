@@ -1,6 +1,6 @@
 RARELOAD = RARELOAD or {}
-local AntiStuck = RARELOAD.AntiStuck or {}
-RARELOAD.AntiStuck = AntiStuck
+RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
+local AntiStuck = RARELOAD.AntiStuck
 
 -- Store cached positions
 AntiStuck.cachedPositions = AntiStuck.cachedPositions or {}
@@ -108,7 +108,7 @@ function AntiStuck.TryCachedPositions(pos, ply)
 
     local debugEnabled = RARELOAD.settings and RARELOAD.settings.debugEnabled
     if debugEnabled then
-        print(string.format("[RARELOAD ANTI-STUCK] ⚡ Checking %d cached positions", cachedPositionCount))
+        AntiStuck.LogStep("start", "Cached Positions", string.format("Checking %d cached positions", cachedPositionCount))
     end
 
     -- Calculate search position once
@@ -125,7 +125,7 @@ function AntiStuck.TryCachedPositions(pos, ply)
     -- Ultra-fast distance-based pre-screening
     for i = 1, maxChecks do
         local vectorPos = AntiStuck.ToVector and AntiStuck.ToVector(AntiStuck.cachedPositions[i]) or
-        AntiStuck.cachedPositions[i]
+            AntiStuck.cachedPositions[i]
         if not vectorPos then continue end
 
         local distanceSqr = vectorPos:DistToSqr(searchPos)
@@ -145,8 +145,8 @@ function AntiStuck.TryCachedPositions(pos, ply)
         local isStuck, reason = AntiStuck.IsPositionStuck(candidate.pos, ply, false)
         if not isStuck then
             if debugEnabled then
-                print(string.format("[RARELOAD ANTI-STUCK] ⭐ Excellent cached position: %.1f units",
-                    math.sqrt(candidate.dist)))
+                AntiStuck.LogStep("ok", "Cached Positions",
+                    string.format("Excellent cached position: %.1f units", math.sqrt(candidate.dist)))
             end
             return candidate.pos, AntiStuck.UNSTUCK_METHODS.SUCCESS
         end
@@ -157,8 +157,8 @@ function AntiStuck.TryCachedPositions(pos, ply)
         local isStuck, reason = AntiStuck.IsPositionStuck(candidate.pos, ply, false)
         if not isStuck then
             if debugEnabled then
-                print(string.format("[RARELOAD ANTI-STUCK] ✓ Good cached position: %.1f units",
-                    math.sqrt(candidate.dist)))
+                AntiStuck.LogStep("ok", "Cached Positions",
+                    string.format("Good cached position: %.1f units", math.sqrt(candidate.dist)))
             end
             return candidate.pos, AntiStuck.UNSTUCK_METHODS.SUCCESS
         end
@@ -169,23 +169,23 @@ function AntiStuck.TryCachedPositions(pos, ply)
         local isStuck, reason = AntiStuck.IsPositionStuck(bestPos, ply, false)
         if not isStuck then
             if debugEnabled then
-                print(string.format("[RARELOAD ANTI-STUCK] ○ Best cached position: %.1f units",
-                    math.sqrt(bestDistance)))
+                AntiStuck.LogStep("ok", "Cached Positions",
+                    string.format("Best cached position: %.1f units", math.sqrt(bestDistance)))
             end
             return bestPos, AntiStuck.UNSTUCK_METHODS.SUCCESS
         end
     end
 
     if debugEnabled then
-        print("[RARELOAD ANTI-STUCK] ✗ No valid cached positions found")
+        AntiStuck.LogStep("fail", "Cached Positions", "No valid cached positions found")
     end
 
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
 end
 
 -- Register method with proper configuration
-if RARELOAD.AntiStuck and RARELOAD.AntiStuck.RegisterMethod then
-    RARELOAD.AntiStuck.RegisterMethod("TryCachedPositions", AntiStuck.TryCachedPositions, {
+if AntiStuck.RegisterMethod then
+    AntiStuck.RegisterMethod("TryCachedPositions", AntiStuck.TryCachedPositions, {
         description = "Use previously saved safe positions from successful unstuck attempts",
         priority = 10, -- High priority since cached positions are fast and reliable
         timeout = 1.0, -- Quick timeout since this should be fast

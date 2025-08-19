@@ -5,69 +5,24 @@ if SERVER then
     util.AddNetworkString("RareloadSettingsSync")
     util.AddNetworkString("RareloadAntiStuckConfig")
 
-    -- Track active net messages
-    local activeNetMessages = {}
-
-    -- Make these functions globally accessible
-    function SafeNetStart(messageName)
-        -- Check if net library is available
-        if not net then return false end
-        
-        -- If there's an active message, end it first
-        if activeNetMessages[messageName] then
-            if net.End then
-                net.End()
-            end
-            activeNetMessages[messageName] = false
-        end
-        
-        if net.Start then
-            net.Start(messageName)
-            activeNetMessages[messageName] = true
-            return true
-        end
-        return false
-    end
-
-    function SafeNetEnd(messageName)
-        if not net or not net.End then return false end
-        
-        if activeNetMessages[messageName] then
-            net.End()
-            activeNetMessages[messageName] = false
-            return true
-        end
-        return false
-    end
-
-    function BroadcastSettings()
-        if not SafeNetStart("RareloadSettingsSync") then return end
-        
+    -- Broadcast addon settings to all clients (proper net usage)
+    local function BroadcastSettings()
         local settings = file.Read("rareload/addon_state.json", "DATA") or "{}"
+        net.Start("RareloadSettingsSync")
         net.WriteString(settings)
-        
-        if SafeNetEnd("RareloadSettingsSync") then
-            net.Broadcast()
-        end
+        net.Broadcast()
     end
 
-    -- Hook to ensure all net messages are properly ended
-    hook.Add("Think", "RareloadNetMessageCleanup", function()
-        if not net or not net.End then return end
-        
-        for messageName, isActive in pairs(activeNetMessages) do
-            if isActive then
-                net.End()
-                activeNetMessages[messageName] = false
-            end
-        end
-    end)
+    -- Expose for other server files if needed
+    RareloadUI.BroadcastSettings = BroadcastSettings
 end
 
 if SERVER then
     -- Delay the initial broadcast to ensure everything is loaded
     timer.Simple(1, function()
-        BroadcastSettings()
+        if RareloadUI and RareloadUI.BroadcastSettings then
+            RareloadUI.BroadcastSettings()
+        end
     end)
 end
 
@@ -535,7 +490,7 @@ function RareloadUI.CreateButton(parent, text, command, description, settingKey,
 
             if not RareloadUI.CreatedDynamicFonts[fontName] then
                 surface.CreateFont(fontName, {
-                    font = "Roboto",
+                    font = "Segoe UI",
                     size = newSize,
                     weight = 600,
                     antialias = true
@@ -697,7 +652,12 @@ function RareloadUI.CreateHeader(parent, text)
 end
 
 function RareloadUI.CreatePanel(title)
-    RareloadUI.RegisterFonts()
+    if RARELOAD and RARELOAD.RegisterFonts then
+        local ok = pcall(RARELOAD.RegisterFonts)
+        if not ok then
+            -- continue without fonts
+        end
+    end
 
     local theme = RareloadUI.Theme
     local frame = vgui.Create("DFrame")
@@ -752,20 +712,28 @@ function RareloadUI.CreatePanel(title)
     scroll:Dock(FILL)
     scroll:DockMargin(0, 50, 0, 50)
 
-    ---@class DScrollBar
-    local scrollbar = scroll:GetVBar() --[[@as DScrollBar]]
-    ---@diagnostic disable-next-line: undefined-field
-    scrollbar:SetWide(8)
-    ---@diagnostic disable-next-line: undefined-field
-    scrollbar:SetHideButtons(true)
-
-    function scrollbar:Paint(w, h)
-        RareloadUI.DrawRoundedBox(0, 0, w, h, w / 2, theme.Colors.Button.Normal)
+    -- Safely style the scrollbar if it exists
+    local scrollbar = scroll:GetVBar()
+    if IsValid(scrollbar) then
+        if scrollbar.SetWide then scrollbar:SetWide(8) end
+        if scrollbar.SetHideButtons then scrollbar:SetHideButtons(true) end
+        function scrollbar:Paint(w, h)
+            RareloadUI.DrawRoundedBox(0, 0, w, h, w / 2, theme.Colors.Button.Normal)
+        end
     end
 
-    ---@diagnostic disable-next-line: undefined-field
-    function scrollbar.btnGrip:Paint(w, h)
-        RareloadUI.DrawRoundedBox(0, 0, w, h, w / 2, theme.Colors.Accent)
+    -- Ensure a safe mouse wheel handler exists
+    local canvas = scroll.GetCanvas and scroll:GetCanvas() or nil
+    if IsValid(canvas) and not canvas.OnMouseWheeled then
+        ---@diagnostic disable-next-line: inject-field
+        canvas.OnMouseWheeled = function(self, delta)
+            local parent = self:GetParent()
+            ---@diagnostic disable-next-line: undefined-field
+            if IsValid(parent) and parent.OnMouseWheeled then
+                ---@diagnostic disable-next-line: undefined-field
+                return parent:OnMouseWheeled(delta)
+            end
+        end
     end
 
     RareloadUI.LastPanel = frame

@@ -13,6 +13,16 @@ function RARELOAD.HandleTeleportRequest(ply)
     if type(pos) == "table" and pos.x and pos.y and pos.z then
         pos = Vector(pos.x, pos.y, pos.z)
     end
+    if not util.IsInWorld(pos) then
+        local fallback = Vector(0, 0, 256)
+        local tr = util.TraceLine({ start = fallback, endpos = fallback - Vector(0, 0, 32768), mask =
+        MASK_SOLID_BRUSHONLY })
+        pos = (tr.Hit and tr.HitPos + Vector(0, 0, 16)) or fallback
+    else
+        local tr = util.TraceLine({ start = pos + Vector(0, 0, 64), endpos = pos - Vector(0, 0, 32768), mask =
+        MASK_SOLID_BRUSHONLY })
+        if tr.Hit then pos = tr.HitPos + Vector(0, 0, 16) end
+    end
     ply:SetPos(pos)
     ply:SetEyeAngles(Angle(0, ply:EyeAngles().yaw, 0))
     ply:SetVelocity(Vector(0, 0, 0))

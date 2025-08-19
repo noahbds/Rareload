@@ -57,13 +57,13 @@ function AntiStuck.TryNodeGraph(pos, ply)
         table.insert(searchDistances, mapSize / 2)
     end
 
-    if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-        print("[RARELOAD ANTI-STUCK] Starting NavMesh search (includes both node graph and navmesh areas)")
+    if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+        RARELOAD.Debug.AntiStuck("NavMesh search start", { methodName = "TryNodeGraph" }, ply)
     end
 
     for _, distance in ipairs(searchDistances) do
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-            print("[RARELOAD ANTI-STUCK] Searching navmesh at distance: " .. distance)
+        if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+            RARELOAD.Debug.AntiStuck("Searching navmesh", { methodName = "TryNodeGraph", distance = distance }, ply)
         end
 
         local searchPositions = {
@@ -96,8 +96,9 @@ function AntiStuck.TryNodeGraph(pos, ply)
                         if util.IsInWorld(safePos) then
                             local isStuck, reason = AntiStuck.IsPositionStuck(safePos, ply, false) -- Not original position
                             if not isStuck then
-                                if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                                    print("[RARELOAD ANTI-STUCK] NavMesh found safe center at distance: " .. distance)
+                                if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+                                    RARELOAD.Debug.AntiStuck("NavMesh found safe center",
+                                        { methodName = "TryNodeGraph", distance = distance }, ply)
                                 end
                                 return safePos, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH
                             end
@@ -110,9 +111,9 @@ function AntiStuck.TryNodeGraph(pos, ply)
                                 if util.IsInWorld(cornerPos) then
                                     local isStuck, reason = AntiStuck.IsPositionStuck(cornerPos, ply, false) -- Not original position
                                     if not isStuck then
-                                        if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                                            print("[RARELOAD ANTI-STUCK] NavMesh found safe corner at distance: " ..
-                                                distance)
+                                        if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+                                            RARELOAD.Debug.AntiStuck("NavMesh found safe corner",
+                                                { methodName = "TryNodeGraph", distance = distance }, ply)
                                         end
                                         return cornerPos, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH
                                     end
@@ -126,8 +127,9 @@ function AntiStuck.TryNodeGraph(pos, ply)
     end
 
     if AntiStuck.navAreas and #AntiStuck.navAreas > 0 then
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-            print("[RARELOAD ANTI-STUCK] Trying cached nav areas (" .. #AntiStuck.navAreas .. " areas)")
+        if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+            RARELOAD.Debug.AntiStuck("Trying cached nav areas",
+                { methodName = "TryNodeGraph", areaCount = #AntiStuck.navAreas }, ply)
         end
 
         local sortedAreas = {}
@@ -145,8 +147,8 @@ function AntiStuck.TryNodeGraph(pos, ply)
 
             local isStuck, reason = AntiStuck.IsPositionStuck(areaData.center, ply)
             if not isStuck then
-                if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                    print("[RARELOAD ANTI-STUCK] Found safe cached nav area center")
+                if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+                    RARELOAD.Debug.AntiStuck("Found safe cached nav area center", { methodName = "TryNodeGraph" }, ply)
                 end
                 return areaData.center, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH
             end
@@ -155,8 +157,9 @@ function AntiStuck.TryNodeGraph(pos, ply)
                 local cornerPos = corner + Vector(0, 0, 16)
                 local isStuck, reason = AntiStuck.IsPositionStuck(cornerPos, ply)
                 if not isStuck then
-                    if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                        print("[RARELOAD ANTI-STUCK] Found safe cached nav area corner")
+                    if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+                        RARELOAD.Debug.AntiStuck("Found safe cached nav area corner", { methodName = "TryNodeGraph" },
+                            ply)
                     end
                     return cornerPos, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH
                 end
@@ -164,11 +167,21 @@ function AntiStuck.TryNodeGraph(pos, ply)
         end
     end
 
-    if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-        print("[RARELOAD ANTI-STUCK] NavMesh method exhausted all options")
+    if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+        RARELOAD.Debug.AntiStuck("NavMesh exhausted options", { methodName = "TryNodeGraph" }, ply)
     end
 
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
 end
 
-AntiStuck.RegisterMethod("TryNodeGraph", AntiStuck.TryNodeGraph)
+-- Register method with proper configuration
+if AntiStuck.RegisterMethod then
+    AntiStuck.RegisterMethod("TryNodeGraph", AntiStuck.TryNodeGraph, {
+        description = "Use navigation mesh nodes for pathfinding-based positioning",
+        priority = 40, -- Medium-high priority
+        timeout = 3.0,
+        retries = 1
+    })
+else
+    print("[RARELOAD ERROR] Cannot register TryNodeGraph - AntiStuck.RegisterMethod not available")
+end

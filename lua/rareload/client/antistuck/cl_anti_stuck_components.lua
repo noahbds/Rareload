@@ -120,31 +120,55 @@ function RARELOAD.AntiStuckComponents.CreateToggleSwitch(parent, method)
     toggle.Paint = function(btn, w, h)
         if not toggle.animValue then return end -- Safety check
 
+        -- Resolve theme at paint time with safe fallbacks
+        local t = (RARELOAD.AntiStuckTheme and RARELOAD.AntiStuckTheme.GetTheme()) or {}
+        local danger = t.danger or Color(245, 85, 85)
+        local success = t.success or Color(80, 210, 145)
+        local textHl = t.textHighlight or Color(255, 255, 255)
+
         local targetAnim = method.enabled and 1 or 0
         toggle.animValue = Lerp(FrameTime() * 10, toggle.animValue, targetAnim)
 
         local thumbX = 3 + toggle.animValue * (w - h + 3 - 3)
         local bgColor = Color(
-            Lerp(toggle.animValue, THEME.danger.r, THEME.success.r),
-            Lerp(toggle.animValue, THEME.danger.g, THEME.success.g),
-            Lerp(toggle.animValue, THEME.danger.b, THEME.success.b)
+            Lerp(toggle.animValue, danger.r, success.r),
+            Lerp(toggle.animValue, danger.g, success.g),
+            Lerp(toggle.animValue, danger.b, success.b)
         )
 
         draw.RoundedBox(h / 2, 0, 0, w, h, bgColor)
-        draw.RoundedBox((h - 6) / 2, thumbX, 3, h - 6, h - 6, THEME.textHighlight)
+        draw.RoundedBox((h - 6) / 2, thumbX, 3, h - 6, h - 6, textHl)
 
         local text = method.enabled and "ON" or "OFF"
-        draw.SimpleText(text, "RareloadSmall", w / 2, h / 2, THEME.textHighlight, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        draw.SimpleText(text, "RareloadSmall", w / 2, h / 2, textHl, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
 
     toggle.DoClick = function()
+        -- Flip state on this method object
         method.enabled = not method.enabled
 
-        -- Save the change to the profile with error handling
+        -- Persist: reflect the change into the current profile's methods and save
         if RARELOAD.AntiStuckData then
             local methods = RARELOAD.AntiStuckData.GetMethods()
+
+            -- Find and update the matching entry by name or func id
+            local function sameMethod(a, b)
+                if not a or not b then return false end
+                if a.func and b.func then return a.func == b.func end
+                if a.name and b.name then return a.name == b.name end
+                return false
+            end
+
+            for i, m in ipairs(methods) do
+                if sameMethod(m, method) then
+                    methods[i].enabled = method.enabled
+                    break
+                end
+            end
+
+            -- Update profile and save, passing the updated list
             RARELOAD.AntiStuckData.SetMethods(methods)
-            local saveSuccess = RARELOAD.AntiStuckData.SaveMethods()
+            local saveSuccess = RARELOAD.AntiStuckData.SaveMethods(methods)
 
             if not saveSuccess then
                 print("[RARELOAD] Warning: Failed to save method toggle state")
@@ -215,9 +239,24 @@ function RARELOAD.AntiStuckComponents.CreateMethodPanel(parent, method, methodIn
         end
     end
 
-    -- Add toggle switch
+    -- Add toggle switch and keep it anchored visually near the right side
     local toggle = RARELOAD.AntiStuckComponents.CreateToggleSwitch(pnl, method)
-    toggle:SetPos(pnl:GetWide() - 150, 29)
+    if IsValid(toggle) then
+        toggle:SetZPos(1)
+    end
+
+    -- Position the toggle reliably whenever the panel lays out/sizes
+    function pnl:PerformLayout(w, h)
+        if not IsValid(toggle) then return end
+        w = w or self:GetWide()
+        h = h or self:GetTall()
+        -- Keep clear of the drag handle (right ~35px), place around -150px
+        local y = math.floor((h - toggle:GetTall()) / 2)
+        toggle:SetPos(math.max(20, w - 150), math.max(8, y))
+    end
+
+    -- Force an initial layout so toggle gets positioned even on first frame
+    pnl:InvalidateLayout(true)
 
     return pnl
 end

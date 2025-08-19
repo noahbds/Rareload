@@ -101,14 +101,25 @@ function AntiStuck.TryEmergencyTeleport(pos, ply)
         end
     end
 
-    local fallbackHeight = (AntiStuck.CONFIG and AntiStuck.CONFIG.FALLBACK_HEIGHT) or 16384
-    local absoluteFallback = Vector(0, 0, fallbackHeight)
-    return absoluteFallback, AntiStuck.UNSTUCK_METHODS.EMERGENCY_TELEPORT
+    -- Grounded fallback near map center to avoid invalid high-Z placements
+    local fallbackHeight = (AntiStuck.CONFIG and AntiStuck.CONFIG.FALLBACK_HEIGHT) or 256
+    local center = AntiStuck.mapCenter or Vector(0, 0, 0)
+    local startPos = center + Vector(0, 0, math.max(256, fallbackHeight))
+    local tr = util.TraceLine({
+        start = startPos,
+        endpos = startPos - Vector(0, 0, 32768),
+        mask = MASK_SOLID_BRUSHONLY
+    })
+    local grounded = tr.Hit and tr.HitPos + Vector(0, 0, 16) or startPos
+    if not util.IsInWorld(grounded) then
+        grounded = Vector(0, 0, 64)
+    end
+    return grounded, AntiStuck.UNSTUCK_METHODS.EMERGENCY_TELEPORT
 end
 
 -- Register method with proper configuration
-if RARELOAD.AntiStuck and RARELOAD.AntiStuck.RegisterMethod then
-    RARELOAD.AntiStuck.RegisterMethod("TryEmergencyTeleport", AntiStuck.TryEmergencyTeleport, {
+if AntiStuck.RegisterMethod then
+    AntiStuck.RegisterMethod("TryEmergencyTeleport", AntiStuck.TryEmergencyTeleport, {
         description = "Last resort emergency positioning with map boundary detection",
         priority = 90, -- Low priority - only used when other methods fail
         timeout = 5.0, -- Longer timeout since this is the emergency method

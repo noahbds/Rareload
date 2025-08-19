@@ -192,4 +192,14 @@ function AntiStuck.TryMapEntities(pos, ply)
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
 end
 
-AntiStuck.RegisterMethod("TryMapEntities", AntiStuck.TryMapEntities)
+-- Register method with proper configuration
+if AntiStuck.RegisterMethod then
+    AntiStuck.RegisterMethod("TryMapEntities", AntiStuck.TryMapEntities, {
+        description = "Find safe positions near map entities and structures",
+        priority = 50, -- Medium priority
+        timeout = 2.0,
+        retries = 1
+    })
+else
+    print("[RARELOAD ERROR] Cannot register TryMapEntities - AntiStuck.RegisterMethod not available")
+end

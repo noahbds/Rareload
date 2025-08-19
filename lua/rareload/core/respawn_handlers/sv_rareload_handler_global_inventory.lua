@@ -115,9 +115,15 @@ end
 
 hook.Add("PlayerSpawn", "RARELOAD_RestoreGlobalInventory", function(ply)
     timer.Simple(0.5, function()
-        if IsValid(ply) and RARELOAD.settings.retainGlobalInventory then
-            RARELOAD.RestoreGlobalInventory(ply)
+        if not IsValid(ply) or not RARELOAD.settings.retainGlobalInventory then return end
+        RARELOAD._lastGlobalRestore = RARELOAD._lastGlobalRestore or {}
+        local sid = ply:SteamID()
+        local now = CurTime()
+        if RARELOAD._lastGlobalRestore[sid] and (now - RARELOAD._lastGlobalRestore[sid]) < 1.0 then
+            return
         end
+        RARELOAD._lastGlobalRestore[sid] = now
+        RARELOAD.RestoreGlobalInventory(ply)
     end)
 end)
 

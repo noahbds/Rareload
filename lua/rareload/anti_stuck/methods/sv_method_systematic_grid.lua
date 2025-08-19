@@ -15,14 +15,15 @@ function AntiStuck.TrySystematicGrid(pos, ply)
 
     local debugEnabled = RARELOAD.settings and RARELOAD.settings.debugEnabled
 
-    if debugEnabled then
-        print("[RARELOAD ANTI-STUCK] Starting systematic grid search with " .. #searchResolutions .. " resolutions")
+    if debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+        RARELOAD.Debug.AntiStuck("Starting systematic grid search",
+            { methodName = "TrySystematicGrid", resolutions = #searchResolutions }, ply)
     end
 
     -- Grid search with adaptive resolution
     for _, gridRes in ipairs(searchResolutions) do
-        if debugEnabled then
-            print("[RARELOAD ANTI-STUCK] Grid search at resolution: " .. gridRes)
+        if debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+            RARELOAD.Debug.AntiStuck("Grid search pass", { methodName = "TrySystematicGrid", resolution = gridRes }, ply)
         end
 
         -- Calculate grid bounds
@@ -95,9 +96,10 @@ function AntiStuck.TrySystematicGrid(pos, ply)
                     -- Check if position is safe
                     local isStuck, reason = AntiStuck.IsPositionStuck(testPos, ply, false) -- Not original position
                     if not isStuck then
-                        if debugEnabled then
-                            print("[RARELOAD ANTI-STUCK] Found safe grid position at resolution " .. gridRes ..
-                                ", distance: " .. math.floor(point.dist))
+                        if debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+                            RARELOAD.Debug.AntiStuck("Found safe grid position",
+                                { methodName = "TrySystematicGrid", resolution = gridRes, distance = math.floor(point
+                                .dist) }, ply)
                         end
                         return testPos, AntiStuck.UNSTUCK_METHODS.SYSTEMATIC_GRID
                     end
@@ -115,9 +117,9 @@ function AntiStuck.TrySystematicGrid(pos, ply)
                         if util.IsInWorld(groundPos) then
                             local isStuck, reason = AntiStuck.IsPositionStuck(groundPos, ply, false) -- Not original position
                             if not isStuck then
-                                if debugEnabled then
-                                    print("[RARELOAD ANTI-STUCK] Found safe ground position at grid resolution " ..
-                                    gridRes)
+                                if debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+                                    RARELOAD.Debug.AntiStuck("Found safe ground position (grid)",
+                                        { methodName = "TrySystematicGrid", resolution = gridRes }, ply)
                                 end
                                 return groundPos, AntiStuck.UNSTUCK_METHODS.SYSTEMATIC_GRID
                             end
@@ -133,12 +135,22 @@ function AntiStuck.TrySystematicGrid(pos, ply)
         end
     end
 
-    if debugEnabled then
-        print("[RARELOAD ANTI-STUCK] Systematic grid search exhausted all resolutions")
+    if debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+        RARELOAD.Debug.AntiStuck("Systematic grid search exhausted all resolutions", { methodName = "TrySystematicGrid" },
+            ply)
     end
 
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
 end
 
--- Register method
-AntiStuck.RegisterMethod("TrySystematicGrid", AntiStuck.TrySystematicGrid)
+-- Register method with proper configuration
+if AntiStuck.RegisterMethod then
+    AntiStuck.RegisterMethod("TrySystematicGrid", AntiStuck.TrySystematicGrid, {
+        description = "Systematic grid-based search with comprehensive coverage",
+        priority = 80, -- Lower priority - thorough but slower
+        timeout = 4.0,
+        retries = 1
+    })
+else
+    print("[RARELOAD ERROR] Cannot register TrySystematicGrid - AntiStuck.RegisterMethod not available")
+end

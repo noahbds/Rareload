@@ -17,6 +17,12 @@ if SERVER then
     local METHODS_CACHE_TTL = 45 -- Longer cache for stability
     local positionMemory = {}    -- Remember bad positions to avoid retrying
 
+    -- Public cache invalidation so other modules can refresh method order immediately
+    function AntiStuck.InvalidateResolverCache()
+        methodsCache = {}
+        lastMethodsLoad = 0
+    end
+
     -- Intelligent method selection with performance optimization
     local function GetOptimizedMethods()
         local currentTime = CurTime()
@@ -38,14 +44,14 @@ if SERVER then
         end
 
         if not AntiStuck.methods then
-            if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                print("[RARELOAD ANTI-STUCK] WARNING: No methods available")
+            if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+                RARELOAD.Debug.AntiStuck("WARNING: No methods available")
             end
             return {}
         end
 
-        -- Filter enabled methods and apply intelligent sorting
-        for _, method in ipairs(AntiStuck.methods) do
+        -- Filter enabled methods and apply intelligent sorting (optional)
+        for idx, method in ipairs(AntiStuck.methods) do
             if method.enabled and AntiStuck.methodRegistry and AntiStuck.methodRegistry[method.func] then
                 -- Add performance-based timeout adjustment
                 local baseTimeout = method.timeout or 1.0
@@ -58,25 +64,35 @@ if SERVER then
                     priority = method.priority or 50,
                     timeout = baseTimeout * perfMultiplier,
                     enabled = method.enabled,
-                    successRate = AntiStuck.performanceStats.methodSuccessRates[method.func] or 0.5
+                    successRate = AntiStuck.performanceStats.methodSuccessRates[method.func] or 0.5,
+                    originalIndex = idx
                 })
             end
         end
 
-        -- Smart sorting: success rate first, then priority
-        table.sort(methodsCache, function(a, b)
-            if math.abs(a.successRate - b.successRate) > 0.1 then
-                return a.successRate > b.successRate -- Higher success rate first
-            end
-            return a.priority < b.priority           -- Lower priority number = higher priority
-        end)
+        local respectProfileOrder = (AntiStuck.CONFIG and AntiStuck.CONFIG.RESPECT_PROFILE_ORDER ~= false)
+        if not respectProfileOrder then
+            -- Smart sorting: success rate first, then priority, with stable tiebreaker on original index
+            table.sort(methodsCache, function(a, b)
+                if math.abs(a.successRate - b.successRate) > 0.1 then
+                    return a.successRate > b.successRate -- Higher success rate first
+                end
+                if a.priority ~= b.priority then
+                    return a.priority < b.priority       -- Lower priority number = higher priority
+                end
+                return a.originalIndex < b.originalIndex -- Stable order
+            end)
+        end
 
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-            print("[RARELOAD ANTI-STUCK] Optimized " .. #methodsCache .. " methods for performance:")
+        if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+            local respectProfileOrder = (AntiStuck.CONFIG and AntiStuck.CONFIG.RESPECT_PROFILE_ORDER ~= false)
+            local header = respectProfileOrder and "Using profile-defined order" or "Optimized methods for performance"
+            local lines = {}
             for i, method in ipairs(methodsCache) do
-                print(string.format("  %d: %s (success: %.1f%%, timeout: %.1fs)",
-                    i, method.name, method.successRate * 100, method.timeout))
+                table.insert(lines, string.format("%d: %s (priority: %d, success: %.1f%%, timeout: %.1fs)",
+                    i, method.name, method.priority or -1, (method.successRate or 0.5) * 100, method.timeout or 1.0))
             end
+            RARELOAD.Debug.LogGroup("Anti-Stuck Methods", "VERBOSE", { header, unpack(lines) })
         end
 
         return methodsCache
@@ -85,19 +101,27 @@ if SERVER then
     -- Main resolver for stuck positions - Ultra-optimized with smart caching
     function AntiStuck.ResolveStuckPosition(originalPos, ply)
         if not originalPos or not IsValid(ply) then
-            print("[RARELOAD ANTI-STUCK] ERROR: Invalid parameters")
+            if RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+                RARELOAD.Debug.AntiStuck("ERROR: Invalid parameters", { methodName = "ResolveStuckPosition" }, ply)
+            end
             return Vector(0, 0, 8192), false
         end
 
         -- Ensure ExecuteMethod is available
         if not AntiStuck.ExecuteMethod or type(AntiStuck.ExecuteMethod) ~= "function" then
-            if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                print("[RARELOAD ANTI-STUCK] ERROR: ExecuteMethod not available; using fallback")
+            if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+                RARELOAD.Debug.AntiStuck("ERROR: ExecuteMethod not available; using fallback",
+                    { methodName = "ResolveStuckPosition" }, ply)
             end
             return AntiStuck.EmergencyFallback(originalPos, ply)
         end
 
         local startTime = SysTime()
+        local session = nil
+        if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.StartAntiStuckSession and DEBUG_CONFIG and DEBUG_CONFIG.ENABLED() then
+            session = RARELOAD.Debug.StartAntiStuckSession(ply, originalPos)
+        end
+        AntiStuck._currentSession = session
 
         -- Restore stats reference and increment totalCalls
         local stats = AntiStuck.performanceStats
@@ -113,8 +137,19 @@ if SERVER then
         local enabledMethods = GetOptimizedMethods()
 
         if #enabledMethods == 0 then
-            print("[RARELOAD ANTI-STUCK] CRITICAL: No optimized methods available!")
+            if session then
+                RARELOAD.Debug.AntiStuckStep(session, "fail", "No methods available",
+                    "Check profile and registry")
+            end
             return AntiStuck.EmergencyFallback(originalPos, ply)
+        end
+
+        if session then
+            local names = {}
+            for i, m in ipairs(enabledMethods) do
+                table.insert(names, string.format("%d:%s", i, m.name))
+            end
+            RARELOAD.Debug.AntiStuckStep(session, "start", "Method order", table.concat(names, ", "))
         end
 
         local maxSearchTime = math.min((AntiStuck.CONFIG and AntiStuck.CONFIG.MAX_SEARCH_TIME) or 1.5, 2.0)
@@ -132,9 +167,11 @@ if SERVER then
 
             local methodStartTime = SysTime()
 
-            if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                print(string.format("[RARELOAD ANTI-STUCK] Method %d/%d: %s (%.1f%% success rate)",
-                    i, #enabledMethods, methodInfo.name, (methodInfo.successRate or 0.5) * 100))
+            if session then
+                RARELOAD.Debug.AntiStuckStep(session, "start",
+                    string.format("Method %d/%d: %s", i, #enabledMethods, methodInfo.name),
+                    string.format("success %.1f%%, timeout %.1fs", (methodInfo.successRate or 0.5) * 100,
+                        methodInfo.timeout or 1.0))
             end
 
             local pos, result = AntiStuck.ExecuteMethod(methodInfo.func, originalPos, ply)
@@ -160,9 +197,29 @@ if SERVER then
                 local totalTime = SysTime() - startTime
                 stats.averageTime = stats.averageTime * 0.9 + totalTime * 0.1
 
-                if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                    print(string.format("[RARELOAD ANTI-STUCK] ✓ SUCCESS: %s found position in %.3fs (attempt %d)",
-                        methodInfo.name, totalTime, attemptCount))
+                if session then
+                    RARELOAD.Debug.AntiStuckStep(session, "ok",
+                        string.format("%s", methodInfo.name),
+                        string.format("found position in %.3fs (attempt %d)", SysTime() - startTime, attemptCount))
+                end
+
+                -- Structured log for successful anti-stuck resolution
+                if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.LogAntiStuck and RARELOAD.settings and
+                    RARELOAD.settings.debugEnabled then
+                    RARELOAD.Debug.LogAntiStuck("Method success", methodInfo.name, {
+                        originalPos = originalPos,
+                        finalPos = pos,
+                        attempts = attemptCount,
+                        index = i,
+                        totalMethods = #enabledMethods,
+                        elapsed = SysTime() - startTime,
+                        methodTime = methodTime,
+                        timeout = methodInfo.timeout,
+                        priority = methodInfo.priority,
+                        func = methodInfo.func,
+                        success = true,
+                        distance = originalPos:Distance(pos)
+                    }, ply)
                 end
 
                 -- Trigger performance optimization periodically
@@ -177,6 +234,24 @@ if SERVER then
                     bestPartialResult = { pos = pos, method = methodInfo.name }
                 end
 
+                -- Structured log for partial result
+                if RARELOAD.settings.debugEnabled then
+                    RARELOAD.Debug.LogAntiStuck("Method partial", methodInfo.name, {
+                        originalPos = originalPos,
+                        partialPos = pos,
+                        attempts = attemptCount,
+                        index = i,
+                        totalMethods = #enabledMethods,
+                        methodTime = methodTime,
+                        timeout = methodInfo.timeout,
+                        priority = methodInfo.priority,
+                        func = methodInfo.func,
+                        success = false,
+                        distance = originalPos:Distance(pos)
+
+                    }, ply)
+                end
+
                 -- Continue trying for full success but update partial success rate
                 local oldRate = stats.methodSuccessRates[methodInfo.func]
                 stats.methodSuccessRates[methodInfo.func] = oldRate * 0.9 + 0.1
@@ -185,16 +260,18 @@ if SERVER then
                 local oldRate = stats.methodSuccessRates[methodInfo.func]
                 stats.methodSuccessRates[methodInfo.func] = oldRate * 0.95
 
-                if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                    print(string.format("[RARELOAD ANTI-STUCK] ✗ FAILED: %s (%.3fs)",
-                        methodInfo.name, methodTime))
+                if session then
+                    RARELOAD.Debug.AntiStuckStep(session, "fail",
+                        string.format("%s", methodInfo.name),
+                        string.format("failed in %.3fs", methodTime))
                 end
             end
 
             -- Early exit if method took too long
             if methodTime > (methodInfo.timeout or 1.0) * 1.2 then
-                if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                    print("[RARELOAD ANTI-STUCK] Method timeout exceeded, skipping to next")
+                if session then
+                    RARELOAD.Debug.AntiStuckStep(session, "fail", "Timeout",
+                        string.format("%s exceeded %.2fs", methodInfo.name, methodInfo.timeout or 1.0))
                 end
                 -- continue to next method (no break)
             end
@@ -205,24 +282,46 @@ if SERVER then
 
         -- Use partial result if available
         if bestPartialResult then
-            if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                print("[RARELOAD ANTI-STUCK] Using partial result from: " .. bestPartialResult.method)
+            if session then RARELOAD.Debug.AntiStuckStep(session, "ok", "Using partial result", bestPartialResult.method) end
+            if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.LogAntiStuck and RARELOAD.settings and
+                RARELOAD.settings.debugEnabled then
+                RARELOAD.Debug.LogAntiStuck("Using partial result", bestPartialResult.method, {
+                    originalPos = originalPos,
+                    finalPos = bestPartialResult.pos,
+                    attempts = attemptCount,
+                    success = true,
+                    reason = "All full methods failed; best partial used",
+                    distance = originalPos:Distance(bestPartialResult.pos)
+                }, ply)
             end
+            if session then
+                RARELOAD.Debug.FinishAntiStuckSession(session,
+                    {
+                        success = true,
+                        attempts = attemptCount,
+                        totalTime = SysTime() - startTime,
+                        finalPos =
+                            bestPartialResult.pos
+                    })
+            end
+            AntiStuck._currentSession = nil
             return bestPartialResult.pos, true
         end
 
         -- All methods failed
         local totalTime = SysTime() - startTime
-        print(string.format("[RARELOAD ANTI-STUCK] FAILURE: All %d methods failed in %.3fs for %s",
-            #enabledMethods, totalTime, ply:Nick()))
-
+        if session then
+            RARELOAD.Debug.FinishAntiStuckSession(session,
+                { success = false, attempts = attemptCount, totalTime = totalTime, reason = "All methods failed" })
+        end
+        AntiStuck._currentSession = nil
         return AntiStuck.EmergencyFallback(originalPos, ply)
     end
 
     -- Enhanced emergency fallback with smart positioning
     function AntiStuck.EmergencyFallback(originalPos, ply)
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-            print("[RARELOAD ANTI-STUCK] Using enhanced emergency fallback")
+        if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+            RARELOAD.Debug.AntiStuck("Using enhanced emergency fallback", { methodName = "EmergencyFallback" }, ply)
         end
 
         -- Try the emergency method first if available
@@ -250,7 +349,19 @@ if SERVER then
             fallbackPos = Vector(0, 0, fallbackHeight)
         end
 
-        print("[RARELOAD ANTI-STUCK] Using calculated emergency fallback position")
+        if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+            RARELOAD.Debug.AntiStuck("Using calculated emergency fallback position",
+                { methodName = "EmergencyFallback" }, ply)
+        end
+        if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.LogAntiStuck and RARELOAD.settings and
+            RARELOAD.settings.debugEnabled then
+            RARELOAD.Debug.LogAntiStuck("EmergencyFallback used", "EmergencyFallback", {
+                originalPos = originalPos,
+                finalPos = fallbackPos,
+                success = false,
+                reason = "Resolver exhausted or invalid params"
+            }, ply)
+        end
         return fallbackPos, false
     end
 
@@ -266,8 +377,8 @@ if SERVER then
             end
         end
 
-        if cleaned > 0 and RARELOAD.settings and RARELOAD.settings.debugEnabled then
-            print("[RARELOAD ANTI-STUCK] Cleaned " .. cleaned .. " position memory entries")
+        if cleaned > 0 and RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+            RARELOAD.Debug.AntiStuck("Cleaned position memory entries", { cleaned = cleaned })
         end
     end)
 
