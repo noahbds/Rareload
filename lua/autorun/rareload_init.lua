@@ -46,7 +46,16 @@ if SERVER then
     AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_panel.lua")
     AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_panel_main.lua")
     AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_theme.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_profile_manager.lua")
+    -- Profile subsystem (client)
+    AddCSLuaFile("rareload/client/antistuck/profile/cl_profile_system.lua")
+    AddCSLuaFile("rareload/client/antistuck/profile/cl_profile_manager.lua")
+    AddCSLuaFile("rareload/client/antistuck/profile/cl_profile_dialog.lua")
+    AddCSLuaFile("rareload/client/antistuck/profile/cl_profile_test.lua")
+    -- Settings UI (client)
+    AddCSLuaFile("rareload/client/antistuck/settings/cl_settings_defaults.lua")
+    AddCSLuaFile("rareload/client/antistuck/settings/cl_settings_utils.lua")
+    AddCSLuaFile("rareload/client/antistuck/settings/cl_settings_panel.lua")
+    AddCSLuaFile("rareload/client/antistuck/settings/cl_settings_net.lua")
 end
 
 include("rareload/shared/permissions_def.lua")
@@ -192,7 +201,7 @@ elseif CLIENT then
     include("rareload/client/antistuck/cl_anti_stuck_panel.lua")
     include("rareload/client/antistuck/cl_anti_stuck_panel_main.lua")
     include("rareload/client/antistuck/cl_anti_stuck_theme.lua")
-    include("rareload/client/antistuck/cl_profile_manager.lua")
+    include("rareload/client/antistuck/profile/cl_profile_manager.lua")
 
     print("[RARELOAD] Client-side files loaded successfully!")
 end

@@ -3,6 +3,11 @@ RARELOAD.settings = RARELOAD.settings or {}
 local npcLogs = {}
 util.AddNetworkString("RareloadRespawnNPC")
 
+-- Ensure vector/angle conversion utilities are available
+if not RARELOAD or not RARELOAD.DataUtils then
+    include("rareload/utils/rareload_data_utils.lua")
+end
+
 function RARELOAD.RestoreNPCs()
     if not SavedInfo or not SavedInfo.npcs or #SavedInfo.npcs == 0 then return end
 
@@ -44,7 +49,10 @@ function RARELOAD.RestoreNPCs()
                     continue
                 end
 
-                local entityKey = npcData.class .. "|" .. (npcData.model or "") .. "|" .. tostring(npcData.pos)
+                -- Build a stable key for de-duplication using a normalized position string
+                local posKey = (RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.PositionToString(npcData.pos, 2))
+                    or tostring(npcData.pos)
+                local entityKey = npcData.class .. "|" .. (npcData.model or "") .. "|" .. posKey
 
                 if (npcData.id and spawnedNPCsByID[npcData.id]) or existingNpcs[entityKey] then
                     stats.skipped = stats.skipped + 1
@@ -108,7 +116,9 @@ function RARELOAD.CollectExistingNPCs(spawnedNPCsByID, npcLogs)
     local existingNpcs = {}
     for _, npc in ipairs(ents.GetAll()) do
         if npc.SpawnedByRareload or npc.SavedByRareload then
-            local key = npc:GetClass() .. "|" .. npc:GetModel() .. "|" .. tostring(npc:GetPos())
+            local posStr = (RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.PositionToString(npc:GetPos(), 2))
+                or tostring(npc:GetPos())
+            local key = npc:GetClass() .. "|" .. (npc:GetModel() or "") .. "|" .. posStr
             existingNpcs[key] = true
 
             if npc.RareloadUniqueID then
@@ -134,21 +144,52 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
         local npc = ents.Create(npcData.class)
         if not IsValid(npc) then return nil, "Failed to create NPC" end
 
-        npc:SetPos(npcData.pos)
+        -- Normalize position to a Vector to satisfy any SetPos wrappers
+        local pos = npcData.pos
+        if isvector and isvector(pos) then
+            -- ok
+        elseif istable(pos) and pos.x and pos.y and pos.z then
+            pos = Vector(pos.x, pos.y, pos.z)
+        elseif isstring(pos) and RARELOAD and RARELOAD.DataUtils then
+            pos = RARELOAD.DataUtils.ToVector(pos)
+        end
+        if not (isvector and isvector(pos)) then
+            pos = Vector(0, 0, 0)
+        end
+        npcData.pos = pos
+        npc:SetPos(pos)
+
         if npcData.model and util.IsValidModel(npcData.model) then
             npc:SetModel(npcData.model)
         end
-        npc:SetAngles(npcData.ang)
+
+        -- Normalize angles if present
+        if npcData.ang ~= nil then
+            local ang = npcData.ang
+            if isangle and isangle(ang) then
+                -- ok
+            elseif istable(ang) then
+                if ang.p and ang.y and ang.r then
+                    ang = Angle(ang.p, ang.y, ang.r)
+                elseif #ang >= 3 then
+                    ang = Angle(ang[1], ang[2], ang[3])
+                end
+            elseif isstring(ang) and RARELOAD and RARELOAD.DataUtils then
+                ang = RARELOAD.DataUtils.ToAngle(ang)
+            end
+            if isangle and isangle(ang) then
+                npcData.ang = ang
+                npc:SetAngles(ang)
+            end
+        end
 
         if npcData.keyValues then
             local keyValuesCopy = table.Copy(npcData.keyValues)
             local originalSquad = keyValuesCopy.squadname
             keyValuesCopy.squadname = nil
-
             for key, value in pairs(keyValuesCopy) do
                 npc:SetKeyValue(key, value)
             end
-
             if originalSquad then
                 npcData.originalSquad = originalSquad
             end
@@ -161,18 +202,29 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
             spawnedNPCsByID[npcData.id] = npc
         end
 
-        npc:SetHealth(npcData.health or npc:GetMaxHealth())
-        if npcData.maxHealth then
-            npc:SetMaxHealth(npcData.maxHealth)
+        -- Fidelity restore
+        if npcData.modelScale then
+            pcall(function() npc:SetModelScale(npcData.modelScale, 0) end)
         end
 
-        npc:SetSkin(npcData.skin or 0)
+        if npcData.skin then
+            npc:SetSkin(npcData.skin or 0)
+        end
 
         if npcData.bodygroups then
             for id, value in pairs(npcData.bodygroups) do
                 local bodygroupID = tonumber(id)
                 if bodygroupID then
                     npc:SetBodygroup(bodygroupID, value)
+                end
+            end
+        end
+
+        if npcData.submaterials then
+            for idx, mat in pairs(npcData.submaterials) do
+                local i = tonumber(idx) or idx
+                if i ~= nil and isstring(mat) then
+                    pcall(function() npc:SetSubMaterial(i, mat) end)
                 end
             end
         end
@@ -193,14 +245,22 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
         if npcData.renderMode then npc:SetRenderMode(npcData.renderMode) end
         if npcData.renderFX then npc:SetRenderFX(npcData.renderFX) end
 
+        if npcData.collisionGroup then
+            pcall(function() npc:SetCollisionGroup(npcData.collisionGroup) end)
+        end
+
+        if npcData.health or npcData.maxHealth then
+            if npcData.maxHealth then
+                npc:SetMaxHealth(npcData.maxHealth)
+            end
+            npc:SetHealth(npcData.health or npc:GetMaxHealth())
+        end
+
         if npcData.weapons and #npcData.weapons > 0 then
             for _, weaponData in ipairs(npcData.weapons) do
                 if weaponData.class then
-                    local success, weapon = pcall(function()
-                        return npc:Give(weaponData.class)
-                    end)
-
-                    if success and IsValid(weapon) and weaponData.clipAmmo then
+                    local okGive, weapon = pcall(function() return npc:Give(weaponData.class) end)
+                    if okGive and IsValid(weapon) and weaponData.clipAmmo then
                         pcall(function() weapon:SetClip1(weaponData.clipAmmo) end)
                     end
                 end
@@ -212,11 +272,9 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
             if npcData.frozen or (npcData.physics and npcData.physics.frozen) then
                 phys:EnableMotion(false)
             end
-
             if npcData.physics and npcData.physics.mass then
                 pcall(function() phys:SetMass(npcData.physics.mass) end)
             end
-
             if npcData.physics and npcData.physics.gravityEnabled ~= nil then
                 pcall(function() phys:EnableGravity(npcData.physics.gravityEnabled) end)
             end
@@ -232,6 +290,21 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
 
         if npcData.vjBaseData and string.find(npc:GetClass() or "", "npc_vj_") == 1 then
             RARELOAD.RestoreVJBaseProperties(npc, npcData.vjBaseData)
+        end
+
+        if npcData.sequence and npc.SetSequence then
+            pcall(function() npc:SetSequence(npcData.sequence) end)
+        end
+        if npcData.cycle and npc.SetCycle then
+            pcall(function() npc:SetCycle(npcData.cycle) end)
+        end
+        if npcData.playbackRate and npc.SetPlaybackRate then
+            pcall(function() npc:SetPlaybackRate(npcData.playbackRate) end)
+        end
+
+        if npcData.ownerSteamID and npc.CPPISetOwner then
+            local owner = RARELOAD.FindPlayerBySteamID(npcData.ownerSteamID)
+            if IsValid(owner) then pcall(function() npc:CPPISetOwner(owner) end) end
         end
 
         npc.RareloadData = npcData
@@ -318,8 +391,11 @@ function RARELOAD.RestoreVJBaseProperties(npc, vjData)
 end
 
 function RARELOAD.FindPlayerBySteamID(steamID)
+    if not steamID then return nil end
+    steamID = tostring(steamID)
     for _, p in ipairs(player.GetAll()) do
-        if p:SteamID() == steamID then return p end
+        if p.SteamID64 and tostring(p:SteamID64()) == steamID then return p end
+        if p.SteamID and p:SteamID() == steamID then return p end
     end
     return nil
 end
@@ -373,7 +449,6 @@ function RARELOAD.RestoreNPCTargetsAndSchedules(spawnedNPCsByID, stats)
             elseif npcData.target.type == "npc" then
                 target = spawnedNPCsByID[npcData.target.id]
             end
-
             if IsValid(target) then
                 npc:SetEnemy(target)
                 stats.targetsSet = stats.targetsSet + 1
@@ -383,7 +458,6 @@ function RARELOAD.RestoreNPCTargetsAndSchedules(spawnedNPCsByID, stats)
         if npcData.schedule and npc.SetSchedule then
             npc:SetSchedule(npcData.schedule.id)
             stats.schedulesRestored = stats.schedulesRestored + 1
-
             if npcData.schedule.target and npc.SetTarget then
                 local target
                 if npcData.schedule.target.type == "player" then
@@ -391,19 +465,25 @@ function RARELOAD.RestoreNPCTargetsAndSchedules(spawnedNPCsByID, stats)
                 elseif npcData.schedule.target.type == "npc" or npcData.schedule.target.type == "entity" then
                     target = spawnedNPCsByID[npcData.schedule.target.id]
                 end
-
                 if IsValid(target) then npc:SetTarget(target) end
             end
         end
 
-        if npcData.aiProperties and npc.SetNPCState then
-            if npcData.aiProperties.weaponProficiency then
-                pcall(function() npc:SetCurrentWeaponProficiency(npcData.aiProperties.weaponProficiency) end)
-            end
+        if npcData.weaponProficiency and npc.SetCurrentWeaponProficiency then
+            pcall(function() npc:SetCurrentWeaponProficiency(npcData.weaponProficiency) end)
+        end
+        if npcData.npcState and npc.SetNPCState then
+            pcall(function() npc:SetNPCState(npcData.npcState) end)
+        end
 
-            if npcData.npcState then
-                pcall(function() npc:SetNPCState(npcData.npcState) end)
-            end
+        if npcData.sequence and npc.SetSequence then
+            pcall(function() npc:SetSequence(npcData.sequence) end)
+        end
+        if npcData.cycle and npc.SetCycle then
+            pcall(function() npc:SetCycle(npcData.cycle) end)
+        end
+        if npcData.playbackRate and npc.SetPlaybackRate then
+            pcall(function() npc:SetPlaybackRate(npcData.playbackRate) end)
         end
     end
 end
@@ -548,7 +628,8 @@ net.Receive("RareloadRespawnNPC", function(len, ply)
     print("[Rareload] Admin " .. ply:Nick() .. " respawning " .. entityClass .. " at " .. tostring(position))
 
     local matchedData = nil
-    local isNPC = list.Get("NPC")[entityClass] ~= nil
+    local isNPC = (isstring(entityClass) and string.sub(entityClass, 1, 4) == "npc_") or
+    (list.Get("NPC")[entityClass] ~= nil)
     local savedList = isNPC and (SavedInfo and SavedInfo.npcs or {}) or (SavedInfo and SavedInfo.entities or {})
 
     if savedList then
@@ -613,9 +694,22 @@ net.Receive("RareloadRespawnNPC", function(len, ply)
                     end
                 end
 
+                if matchedData.submaterials then
+                    for idx, mat in pairs(matchedData.submaterials) do
+                        local i = tonumber(idx) or idx
+                        if i ~= nil and isstring(mat) then
+                            pcall(function() entity:SetSubMaterial(i, mat) end)
+                        end
+                    end
+                end
+
                 if matchedData.frozen then
                     local phys = entity:GetPhysicsObject()
                     if IsValid(phys) then phys:EnableMotion(false) end
+                end
+
+                if matchedData.collisionGroup then
+                    pcall(function() entity:SetCollisionGroup(matchedData.collisionGroup) end)
                 end
 
                 if matchedData.color then
