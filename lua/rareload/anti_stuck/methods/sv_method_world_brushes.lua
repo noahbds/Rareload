@@ -10,108 +10,147 @@ function AntiStuck.TryWorldBrushes(pos, ply)
         return nil, AntiStuck.UNSTUCK_METHODS.NONE
     end
 
-    local cacheLifetime = AntiStuck.CONFIG and AntiStuck.CONFIG.CACHE_DURATION or 300
+    local now = CurTime()
+    local startTime = SysTime()
+    local cfg = AntiStuck.CONFIG or {}
+    local cacheLifetime = cfg.CACHE_DURATION or 300
+    local timeBudget = cfg.TIME_BUDGET or 0.004
+    local spiralRings = cfg.SPIRAL_RINGS or 10
+    local maxDistance = cfg.MAX_DISTANCE or 2000
+    local verticalRange = cfg.VERTICAL_RANGE or 400
+    local baseHeight = pos.z
+    local searchResolutions = cfg.SEARCH_RESOLUTIONS or { 64, 128, 256, 512 }
 
-    if CurTime() - AntiStuck.lastCachePurge > 60 then
+    if now - AntiStuck.lastCachePurge > 60 then
         for cacheKey, entry in pairs(AntiStuck.validPositionsCache) do
-            if CurTime() - entry.time > cacheLifetime then
+            if now - entry.time > cacheLifetime then
                 AntiStuck.validPositionsCache[cacheKey] = nil
             end
         end
-        AntiStuck.lastCachePurge = CurTime()
+        AntiStuck.lastCachePurge = now
     end
 
-    local candidatePositions = {}
-    for cacheKey, entry in pairs(AntiStuck.validPositionsCache) do
-        if CurTime() - entry.time <= cacheLifetime then
-            local dist = entry.pos:DistToSqr(pos)
-            if dist < 1000000 then
-                local isStuck, reason = AntiStuck.IsPositionStuck(entry.pos, ply, false) -- Not original position
-                if not isStuck then
-                    table.insert(candidatePositions, { pos = entry.pos, dist = dist })
+    local mapMins, mapMaxs = AntiStuck.mapBounds.mins, AntiStuck.mapBounds.maxs
+    local function InMapBounds(v)
+        return v.x >= mapMins.x and v.x <= mapMaxs.x and v.y >= mapMins.y and v.y <= mapMaxs.y and v.z >= mapMins.z and
+        v.z <= mapMaxs.z
+    end
+
+    local hullMins, hullMaxs = ply:GetHull()
+    if ply:Crouching() then
+        hullMins, hullMaxs = ply:GetHullDuck()
+    end
+
+    local function IsClearAt(p)
+        if not InMapBounds(p) or not util.IsInWorld(p) then return false end
+        local th = util.TraceHull({
+            start = p,
+            endpos = p,
+            mins = hullMins,
+            maxs = hullMaxs,
+            mask = MASK_PLAYERSOLID,
+            filter = ply
+        })
+        return not th.Hit
+    end
+
+    local function quant(v)
+        return string.format("%d_%d_%d", math.floor(v.x * 0.0625), math.floor(v.y * 0.0625), math.floor(v.z * 0.0625))
+    end
+
+    local bestPos, bestDistSqr = nil, math.huge
+
+    do
+        local nearest, nearestDist = nil, math.huge
+        for _, entry in pairs(AntiStuck.validPositionsCache) do
+            if now - entry.time <= cacheLifetime then
+                local d = entry.pos:DistToSqr(pos)
+                if d < 1000000 then
+                    local stuck = AntiStuck.IsPositionStuck(entry.pos, ply, false)
+                    if not stuck and d < nearestDist then
+                        nearest = entry.pos
+                        nearestDist = d
+                    end
                 end
             end
         end
+        if nearest then
+            return nearest, AntiStuck.UNSTUCK_METHODS.WORLD_BRUSHES
+        end
     end
 
-    table.sort(candidatePositions, function(a, b) return a.dist < b.dist end)
-    if #candidatePositions > 0 then
-        return candidatePositions[1].pos, AntiStuck.UNSTUCK_METHODS.WORLD_BRUSHES
+    local function consider(p)
+        if not p then return false end
+        if not IsClearAt(p) then return false end
+        local stuck = AntiStuck.IsPositionStuck(p, ply, false)
+        if stuck then return false end
+        local d = p:DistToSqr(pos)
+        AntiStuck.validPositionsCache[quant(p)] = { pos = p, time = now }
+        if d < bestDistSqr then
+            bestDistSqr = d
+            bestPos = p
+        end
+        return d < 10000
     end
 
-    local spiralRings = AntiStuck.CONFIG.SPIRAL_RINGS or 10
-    local pointsPerRing = AntiStuck.CONFIG.POINTS_PER_RING or 8
-    local maxDistance = AntiStuck.CONFIG.MAX_DISTANCE or 2000
-    local verticalSteps = AntiStuck.CONFIG.VERTICAL_STEPS or 5
-    local verticalRange = AntiStuck.CONFIG.VERTICAL_RANGE or 400
+    local function findStandAtXY(x, y)
+        local step = math.max(16, math.floor(verticalRange / 5))
+        local offsets = {}
+        offsets[1] = 0
+        local i = 2
+        for s = step, verticalRange, step do
+            offsets[i] = s; i = i + 1
+            offsets[i] = -s; i = i + 1
+        end
+        for _, off in ipairs(offsets) do
+            local startPos = Vector(x, y, baseHeight + off + 1024)
+            if not InMapBounds(startPos) then goto continue end
+            local endPos = Vector(x, y, baseHeight + off - 1024)
+            local tr = util.TraceLine({
+                start = startPos,
+                endpos = endPos,
+                mask = MASK_PLAYERSOLID_BRUSHONLY
+            })
+            if tr.Hit and tr.HitNormal.z > 0.7 then
+                local p = tr.HitPos + Vector(0, 0, 8)
+                if consider(p) then
+                    return p
+                end
+            end
+            ::continue::
+            if SysTime() - startTime > timeBudget then return nil end
+        end
+        return nil
+    end
 
-    local searchResolutions = AntiStuck.CONFIG.SEARCH_RESOLUTIONS or { 64, 128, 256, 512 }
+    local function pointsForRadius(radius, baseRes)
+        return math.max(8, math.floor((6.2831853071796 * radius) / baseRes))
+    end
 
-    local baseHeight = pos.z
-
-    local bestPos = nil
-    local bestDist = math.huge
-
-    for _, resolution in ipairs(searchResolutions) do
+    for _, res in ipairs(searchResolutions) do
         for ring = 1, spiralRings do
-            local ringRadius = ring * resolution
+            local ringRadius = ring * res
             if ringRadius > maxDistance then break end
-
-            for point = 0, pointsPerRing * ring - 1 do
-                local angle = math.rad(point * (360 / (pointsPerRing * ring)))
-                local xOffset = math.cos(angle) * ringRadius
-                local yOffset = math.sin(angle) * ringRadius
-
-                local searchPos = Vector(pos.x + xOffset, pos.y + yOffset, pos.z)
-
-                for vStep = -verticalSteps, verticalSteps do
-                    local vOffset = vStep * (verticalRange / verticalSteps)
-                    local startPos = Vector(searchPos.x, searchPos.y, baseHeight + vOffset + 500)
-                    local endPos = Vector(searchPos.x, searchPos.y, baseHeight + vOffset - 500)
-
-                    if startPos.x < AntiStuck.mapBounds.mins.x or startPos.x > AntiStuck.mapBounds.maxs.x or
-                        startPos.y < AntiStuck.mapBounds.mins.y or startPos.y > AntiStuck.mapBounds.maxs.y then
-                        continue
+            local points = pointsForRadius(ringRadius, res)
+            local stepAng = 6.2831853071796 / points
+            for i = 0, points - 1 do
+                local ang = i * stepAng
+                local x = pos.x + math.cos(ang) * ringRadius
+                local y = pos.y + math.sin(ang) * ringRadius
+                if x >= mapMins.x and x <= mapMaxs.x and y >= mapMins.y and y <= mapMaxs.y then
+                    local p = findStandAtXY(x, y)
+                    if p then
+                        return p, AntiStuck.UNSTUCK_METHODS.WORLD_BRUSHES
                     end
-
-                    local trace = util.TraceLine({
-                        start = startPos,
-                        endpos = endPos,
-                        mask = MASK_SOLID_BRUSHONLY
-                    })
-
-                    if trace.Hit and trace.HitNormal.z > 0.7 then
-                        local testPos = trace.HitPos + Vector(0, 0, 16)
-                        if util.IsInWorld(testPos) then
-                            local isStuck, reason = AntiStuck.IsPositionStuck(testPos, ply)
-
-                            if not isStuck then
-                                local dist = testPos:DistToSqr(pos)
-
-                                local cacheKey = string.format("%d_%d_%d",
-                                    math.floor(testPos.x / 10),
-                                    math.floor(testPos.y / 10),
-                                    math.floor(testPos.z / 10))
-
-                                AntiStuck.validPositionsCache[cacheKey] = {
-                                    pos = testPos,
-                                    time = CurTime()
-                                }
-
-                                if dist < bestDist then
-                                    bestDist = dist
-                                    bestPos = testPos
-
-                                    if dist < 10000 then
-                                        return testPos, AntiStuck.UNSTUCK_METHODS.WORLD_BRUSHES
-                                    end
-                                end
-                            end
-                        end
+                end
+                if SysTime() - startTime > timeBudget then
+                    if bestPos then
+                        return bestPos, AntiStuck.UNSTUCK_METHODS.WORLD_BRUSHES
+                    else
+                        return nil, AntiStuck.UNSTUCK_METHODS.NONE
                     end
                 end
             end
-
             if bestPos then
                 return bestPos, AntiStuck.UNSTUCK_METHODS.WORLD_BRUSHES
             end
@@ -125,11 +164,10 @@ function AntiStuck.TryWorldBrushes(pos, ply)
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
 end
 
--- Register method with proper configuration
 if AntiStuck.RegisterMethod then
     AntiStuck.RegisterMethod("TryWorldBrushes", AntiStuck.TryWorldBrushes, {
         description = "Analyze world geometry and brush surfaces for safe positioning",
-        priority = 60, -- Medium priority
+        priority = 60,
         timeout = 2.5,
         retries = 1
     })

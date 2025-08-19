@@ -1,7 +1,7 @@
 -- Anti-Stuck Panel UI Components
 -- Reusable UI components for the anti-stuck panel system
 
--- Type definitions to avoid field injection errors
+-- Type definitions to avoid field injection errors (for IDEs)
 ---@class RareloadToggle : DButton
 ---@field initialized boolean
 ---@field animValue number
@@ -13,7 +13,6 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuckComponents = RARELOAD.AntiStuckComponents or {}
 
--- Ensure fonts are loaded with proper error handling
 local function ensureFontsLoaded()
     if RARELOAD._fontsLoaded then
         return true
@@ -28,7 +27,6 @@ local function ensureFontsLoaded()
             print("[RARELOAD] Warning: Font loading failed: " .. tostring(err))
         end
     else
-        -- Try to load fonts manually
         local success, err = pcall(function()
             include("rareload/utils/rareload_fonts.lua")
             if RARELOAD.RegisterFonts then
@@ -45,12 +43,10 @@ local function ensureFontsLoaded()
     return RARELOAD._fontsLoaded or false
 end
 
--- Initialize fonts on module load
 ensureFontsLoaded()
 
 local THEME = RARELOAD.AntiStuckTheme and RARELOAD.AntiStuckTheme.GetTheme() or {}
 
--- Create styled button with theme
 function RARELOAD.AntiStuckComponents.CreateThemedButton(parent, text, color, tooltip)
     local btn = vgui.Create("DButton", parent)
     btn:SetText(text)
@@ -68,7 +64,6 @@ function RARELOAD.AntiStuckComponents.CreateThemedButton(parent, text, color, to
     return btn
 end
 
--- Create close button
 function RARELOAD.AntiStuckComponents.CreateCloseButton(parent, frameW, frameH)
     local closeBtn = vgui.Create("DButton", parent)
     closeBtn:SetSize(36, 36)
@@ -87,7 +82,6 @@ function RARELOAD.AntiStuckComponents.CreateCloseButton(parent, frameW, frameH)
     return closeBtn
 end
 
--- Create search box
 function RARELOAD.AntiStuckComponents.CreateSearchBox(parent)
     local searchBox = vgui.Create("DTextEntry", parent)
     searchBox:SetSize(260, 34)
@@ -100,27 +94,23 @@ function RARELOAD.AntiStuckComponents.CreateSearchBox(parent)
     return searchBox
 end
 
--- Create toggle switch component
 function RARELOAD.AntiStuckComponents.CreateToggleSwitch(parent, method)
     local toggle = vgui.Create("DButton", parent) --[[@as RareloadToggle]]
     toggle:SetSize(70, 28)
     toggle:SetText("")
     toggle:SetTooltip("Toggle this method on/off")
 
-    -- Initialize animation value
     toggle.initialized = true
     toggle.animValue = method.enabled and 1 or 0
 
-    -- Clean up animation when panel is removed
     toggle.OnRemove = function()
         toggle.animValue = nil
         toggle.initialized = nil
     end
 
     toggle.Paint = function(btn, w, h)
-        if not toggle.animValue then return end -- Safety check
+        if not toggle.animValue then return end
 
-        -- Resolve theme at paint time with safe fallbacks
         local t = (RARELOAD.AntiStuckTheme and RARELOAD.AntiStuckTheme.GetTheme()) or {}
         local danger = t.danger or Color(245, 85, 85)
         local success = t.success or Color(80, 210, 145)
@@ -144,14 +134,11 @@ function RARELOAD.AntiStuckComponents.CreateToggleSwitch(parent, method)
     end
 
     toggle.DoClick = function()
-        -- Flip state on this method object
         method.enabled = not method.enabled
 
-        -- Persist: reflect the change into the current profile's methods and save
         if RARELOAD.AntiStuckData then
             local methods = RARELOAD.AntiStuckData.GetMethods()
 
-            -- Find and update the matching entry by name or func id
             local function sameMethod(a, b)
                 if not a or not b then return false end
                 if a.func and b.func then return a.func == b.func end
@@ -166,7 +153,6 @@ function RARELOAD.AntiStuckComponents.CreateToggleSwitch(parent, method)
                 end
             end
 
-            -- Update profile and save, passing the updated list
             RARELOAD.AntiStuckData.SetMethods(methods)
             local saveSuccess = RARELOAD.AntiStuckData.SaveMethods(methods)
 
@@ -181,7 +167,6 @@ function RARELOAD.AntiStuckComponents.CreateToggleSwitch(parent, method)
     return toggle
 end
 
--- Create method list item panel
 function RARELOAD.AntiStuckComponents.CreateMethodPanel(parent, method, methodIndex, dragState, onRefresh)
     local pnl = vgui.Create("DPanel", parent) --[[@as RareloadMethodPanel]]
     pnl:SetTall(85)
@@ -239,29 +224,24 @@ function RARELOAD.AntiStuckComponents.CreateMethodPanel(parent, method, methodIn
         end
     end
 
-    -- Add toggle switch and keep it anchored visually near the right side
     local toggle = RARELOAD.AntiStuckComponents.CreateToggleSwitch(pnl, method)
     if IsValid(toggle) then
         toggle:SetZPos(1)
     end
 
-    -- Position the toggle reliably whenever the panel lays out/sizes
     function pnl:PerformLayout(w, h)
         if not IsValid(toggle) then return end
         w = w or self:GetWide()
         h = h or self:GetTall()
-        -- Keep clear of the drag handle (right ~35px), place around -150px
         local y = math.floor((h - toggle:GetTall()) / 2)
         toggle:SetPos(math.max(20, w - 150), math.max(8, y))
     end
 
-    -- Force an initial layout so toggle gets positioned even on first frame
     pnl:InvalidateLayout(true)
 
     return pnl
 end
 
--- Create notification popup
 function RARELOAD.AntiStuckComponents.CreateNotification(parent, text, color, duration)
     local frameW, frameH = parent:GetSize()
     local notif = vgui.Create("DPanel", parent)
@@ -288,7 +268,6 @@ function RARELOAD.AntiStuckComponents.CreateNotification(parent, text, color, du
     return notif
 end
 
--- Create profile change notification
 function RARELOAD.AntiStuckComponents.CreateProfileNotification(parent, profileName, displayName)
     local frameW = parent:GetWide()
     local notif = vgui.Create("DPanel", parent)

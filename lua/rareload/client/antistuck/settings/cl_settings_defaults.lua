@@ -1,4 +1,3 @@
--- Defaults, methods and metadata for Anti-Stuck Settings (extracted)
 ---@diagnostic disable: inject-field, undefined-field, param-type-mismatch, assign-type-mismatch
 
 RARELOAD = RARELOAD or {}

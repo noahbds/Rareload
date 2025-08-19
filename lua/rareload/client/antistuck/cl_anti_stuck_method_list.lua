@@ -1,25 +1,18 @@
--- Anti-Stuck Panel Method List Management
--- Handles the dynamic method list rendering and drag-and-drop functionality
-
 RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuckDebug = RARELOAD.AntiStuckDebug or {}
 RARELOAD.AntiStuckMethodList = RARELOAD.AntiStuckMethodList or {}
 
--- Get theme reference
 local function getTheme()
     return RARELOAD.AntiStuckTheme and RARELOAD.AntiStuckTheme.GetTheme() or {}
 end
 
--- Method list refresh function
 function RARELOAD.AntiStuckDebug.RefreshMethodList()
-    -- Debounce and defer rebuild to avoid clearing during active layout
     if RARELOAD.AntiStuckDebug._refreshScheduled then return end
     RARELOAD.AntiStuckDebug._refreshScheduled = true
 
     timer.Simple(0, function()
         RARELOAD.AntiStuckDebug._refreshScheduled = nil
 
-        -- Safety check for namespace
         if not RARELOAD or not RARELOAD.AntiStuckDebug then
             print("[RARELOAD] Error: AntiStuckDebug namespace not initialized")
             return
@@ -33,7 +26,6 @@ function RARELOAD.AntiStuckDebug.RefreshMethodList()
             return
         end
 
-        -- Clear once; don't Remove() each child to avoid transient NULL panels during layout
         parent:Clear()
 
         local methods = RARELOAD.AntiStuckData and RARELOAD.AntiStuckData.GetMethods() or {}
@@ -44,7 +36,6 @@ function RARELOAD.AntiStuckDebug.RefreshMethodList()
 
         local search = searchBox and IsValid(searchBox) and searchBox:GetValue():lower() or ""
 
-        -- Filter methods based on search
         local function matchesSearch(method)
             if search == "" then return true end
             local searchTerms = string.Split(search, " ")
@@ -65,7 +56,6 @@ function RARELOAD.AntiStuckDebug.RefreshMethodList()
             end
         end
 
-        -- Drag state for reordering
         local dragState = {
             dragging = nil,
             dragIndex = nil,
@@ -76,7 +66,6 @@ function RARELOAD.AntiStuckDebug.RefreshMethodList()
 
         local panels = {}
 
-        -- Create method panels
         for visIndex, entry in ipairs(visible) do
             local method, i = entry.method, entry.origIndex
 
@@ -84,12 +73,10 @@ function RARELOAD.AntiStuckDebug.RefreshMethodList()
                 local pnl = RARELOAD.AntiStuckComponents.CreateMethodPanel(parent, method, i, dragState)
                 panels[visIndex] = pnl
 
-                -- Add drag and drop functionality
                 RARELOAD.AntiStuckMethodList.SetupDragDrop(pnl, visIndex, visible, dragState, panels, parent)
             end
         end
 
-        -- Show "no results" message if search yielded nothing
         if #visible == 0 and search ~= "" then
             local THEME = getTheme()
             local noResults = vgui.Create("DLabel", parent)
@@ -104,9 +91,8 @@ function RARELOAD.AntiStuckDebug.RefreshMethodList()
     end)
 end
 
--- Setup drag and drop functionality for method panels
+-- Drag and drop functionality for method panels
 function RARELOAD.AntiStuckMethodList.SetupDragDrop(pnl, visIndex, visible, dragState, panels, parent)
-    -- Mouse press handler for drag initiation
     pnl.OnMousePressed = function(self, mc)
         if mc == MOUSE_LEFT then
             local mx, my = self:CursorPos()
@@ -122,7 +108,6 @@ function RARELOAD.AntiStuckMethodList.SetupDragDrop(pnl, visIndex, visible, drag
         end
     end
 
-    -- Mouse release handler for drop
     pnl.OnMouseReleased = function(self, mc)
         if dragState.dragging == self and mc == MOUSE_LEFT then
             self:MouseCapture(false)
@@ -135,14 +120,12 @@ function RARELOAD.AntiStuckMethodList.SetupDragDrop(pnl, visIndex, visible, drag
             local itemH = self:GetTall() + 8
             local newIndex = math.Clamp(math.floor((relY - dragState.dragOffsetY + itemH / 2) / itemH) + 1, 1, #visible)
             if newIndex ~= dragState.dragIndex and SysTime() - dragState.startTime > 0.1 then
-                -- Reorder the methods
                 if RARELOAD.AntiStuckData then
                     local methods = RARELOAD.AntiStuckData.GetMethods()
                     local globalOld = visible[dragState.dragIndex].origIndex
                     local globalNew = visible[newIndex].origIndex
 
                     local movedMethod = table.remove(methods, globalOld)
-                    -- Ensure the moved method retains its enabled state
                     if movedMethod and movedMethod.enabled == nil then
                         movedMethod.enabled = true
                     end
@@ -150,12 +133,10 @@ function RARELOAD.AntiStuckMethodList.SetupDragDrop(pnl, visIndex, visible, drag
                     if movedMethod then
                         table.insert(methods, globalNew, movedMethod)
 
-                        -- Normalize priorities to 10,20,... based on new order
                         for idx, m in ipairs(methods) do
                             m.priority = idx * 10
                         end
 
-                        -- Save the reordered methods to the profile
                         RARELOAD.AntiStuckData.SetMethods(methods)
                         local saveSuccess = RARELOAD.AntiStuckData.SaveMethods()
 
@@ -171,7 +152,6 @@ function RARELOAD.AntiStuckMethodList.SetupDragDrop(pnl, visIndex, visible, drag
                 end
             end
 
-            -- Clean up drag state
             dragState.dragging = nil
             dragState.dragIndex = nil
             dragState.dropIndicator = nil
@@ -179,7 +159,7 @@ function RARELOAD.AntiStuckMethodList.SetupDragDrop(pnl, visIndex, visible, drag
         end
     end
 
-    -- Think function for drag animation
+    -- function for drag animation
     pnl.Think = function(self)
         if dragState.dragging == self then
             local x, y = parent:ScreenToLocal(gui.MouseX(), gui.MouseY())
@@ -190,14 +170,12 @@ function RARELOAD.AntiStuckMethodList.SetupDragDrop(pnl, visIndex, visible, drag
             local relY = y - dragState.dragOffsetY + itemH / 2 + scrollOffset
             dragState.dropIndicator = math.Clamp(math.floor(relY / itemH) + 1, 1, #visible)
 
-            -- Animate other panels
             for k, p in ipairs(panels) do
                 if p ~= self then
                     local targetY = (k - 1) * itemH
                     if dragState.dropIndicator and k >= dragState.dropIndicator and dragState.dragIndex and dragState.dropIndicator <= dragState.dragIndex then
                         targetY = targetY + itemH
                     elseif dragState.dropIndicator and k > dragState.dropIndicator and dragState.dragIndex and dragState.dropIndicator > dragState.dragIndex then
-                        -- No additional offset needed
                     end
                     p:MoveTo(20, targetY, 0.15, 0, 1)
                 end

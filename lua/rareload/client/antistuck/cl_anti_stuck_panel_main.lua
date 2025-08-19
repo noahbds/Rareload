@@ -1,18 +1,12 @@
--- Anti-Stuck Main Panel Logic
--- Orchestrates the main panel creation and method list management
-
 RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuckDebug = RARELOAD.AntiStuckDebug or {}
 
--- Get theme reference
 local function getTheme()
     return RARELOAD.AntiStuckTheme and RARELOAD.AntiStuckTheme.GetTheme() or {}
 end
 
--- Panel state variables
 local debugFrame = nil
 
--- Create the main anti-stuck debug panel
 function RARELOAD.AntiStuckDebug.OpenPanel()
     if debugFrame and IsValid(debugFrame) then
         debugFrame:MakePopup()
@@ -20,7 +14,6 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
         return
     end
 
-    -- Validate dependencies before creating panel
     if not RARELOAD.AntiStuckData then
         print("[RARELOAD] Error: AntiStuckData not loaded")
         notification.AddLegacy("Anti-Stuck Data module not loaded", NOTIFY_ERROR, 3)
@@ -33,7 +26,6 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
         return
     end
 
-    -- Initialize dependencies
     if RARELOAD.RegisterFonts then
         RARELOAD.RegisterFonts()
     end
@@ -56,10 +48,8 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
     debugFrame:SetBackgroundBlur(true)
     debugFrame:SetDeleteOnClose(true)
 
-    -- Store start time for blur effect
     local frameStartTime = SysTime()
 
-    -- Frame paint function
     debugFrame.Paint = function(self, w, h)
         Derma_DrawBackgroundBlur(self, frameStartTime)
 
@@ -74,7 +64,6 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
             RARELOAD.GradientU = gradMat
         end
         if gradMat and gradMat:IsError() then
-            -- fallback: simple translucent bar
             surface.SetDrawColor(0, 0, 0, 60)
             surface.DrawRect(0, 0, w, 64)
         else
@@ -94,7 +83,6 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
             h - 22, THEME.textSecondary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
 
-    -- Create close button
     if RARELOAD.AntiStuckComponents and RARELOAD.AntiStuckComponents.CreateCloseButton then
         local closeBtn = RARELOAD.AntiStuckComponents.CreateCloseButton(debugFrame, frameW, frameH)
         closeBtn.DoClick = function()
@@ -103,23 +91,19 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
         end
     end
 
-    -- Create top panel with search and buttons
     local topPanel = vgui.Create("DPanel", debugFrame)
     topPanel:SetTall(90)
     topPanel:Dock(TOP)
     topPanel:DockMargin(0, 72, 0, 0)
     topPanel.Paint = nil
 
-    -- Create search box
-    local searchBox = nil --[[@as RareloadTextEntry]]
+    local searchBox = nil
     if RARELOAD.AntiStuckComponents and RARELOAD.AntiStuckComponents.CreateSearchBox then
         searchBox = RARELOAD.AntiStuckComponents.CreateSearchBox(topPanel)
     end
 
-    -- Create button bar
     RARELOAD.AntiStuckDebug.CreateButtonBar(topPanel, debugFrame, frameW, frameH)
 
-    -- Create info label
     local infoLabel = vgui.Create("DLabel", debugFrame)
     infoLabel:SetText(
         "Configure the order and enable/disable state of each anti-stuck method below. Drag to reorder. Use the toggle or disable button for each method.")
@@ -131,16 +115,13 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
     infoLabel:Dock(TOP)
     infoLabel:DockMargin(32, 0, 32, 0)
 
-    -- Create scroll panel
-    ---@class Rareload_DScrollPanel: DScrollPanel
-    local scroll = vgui.Create("DScrollPanel", debugFrame) --[[@as Rareload_DScrollPanel]]
+    local scroll = vgui.Create("DScrollPanel", debugFrame)
     scroll:Dock(FILL)
     scroll:DockMargin(0, 34, 0, 52)
-    local vbar = scroll:GetVBar() --[[@as RareloadScrollBar]]
+    local vbar = scroll:GetVBar()
     vbar:SetWide(8)
     vbar.Paint = function(_, w, h) draw.RoundedBox(4, 0, 0, w, h, THEME.panelLight) end
 
-    -- Defensive: ensure mouse wheel events are handled to avoid nil method errors
     if not scroll.OnMouseWheeled then
         function scroll:OnMouseWheeled(delta)
             local bar = self:GetVBar()
@@ -150,31 +131,28 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
             end
         end
     end
-    ---@class Rareload_Panel: Panel
-    local canvas = scroll.GetCanvas and scroll:GetCanvas() or nil --[[@as Rareload_Panel]]
+
+    ---@class DScrollPanel
+    local canvas = scroll.GetCanvas and scroll:GetCanvas() or nil
+
     if IsValid(canvas) and not canvas.OnMouseWheeled then
         function canvas:OnMouseWheeled(delta)
             local parent = self:GetParent()
             local bar = nil
-            ---@diagnostic disable-next-line: undefined-field
             if IsValid(parent) and parent.GetVBar then
-                ---@diagnostic disable-next-line: undefined-field
                 bar = parent:GetVBar()
             end
             if bar ~= nil and IsValid(bar) then
-                ---@diagnostic disable-next-line: undefined-field
                 bar:AddScroll(delta)
                 return true
             end
         end
     end
 
-    -- Store references globally for the refresh function
     RARELOAD.AntiStuckDebug.currentFrame = debugFrame
     RARELOAD.AntiStuckDebug.methodContainer = scroll
     RARELOAD.AntiStuckDebug.searchBox = searchBox
 
-    -- Initial method list population with dependency checking
     timer.Simple(0.1, function()
         if not IsValid(debugFrame) then
             print("[RARELOAD] Error: Debug frame was destroyed before initialization")
@@ -185,7 +163,7 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
             RARELOAD.AntiStuckDebug.RefreshMethodList()
         else
             print("[RARELOAD] Error: RefreshMethodList function not available")
-            timer.Simple(0.5, function() -- Retry after a longer delay
+            timer.Simple(0.5, function()
                 if IsValid(debugFrame) and RARELOAD.AntiStuckDebug.RefreshMethodList then
                     RARELOAD.AntiStuckDebug.RefreshMethodList()
                 end
@@ -193,7 +171,6 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
         end
     end)
 
-    -- Set up search functionality
     if searchBox then
         searchBox.OnValueChange = function()
             if RARELOAD.AntiStuckDebug.RefreshMethodList then
@@ -203,14 +180,12 @@ function RARELOAD.AntiStuckDebug.OpenPanel()
     end
 end
 
--- Create button bar with all action buttons
 function RARELOAD.AntiStuckDebug.CreateButtonBar(parent, frame, frameW, frameH)
     local THEME = getTheme()
     local btnBar = vgui.Create("Panel", parent)
     btnBar:SetSize(600, 36)
     btnBar:SetPos(24, 48)
 
-    -- Reset button
     if RARELOAD.AntiStuckComponents and RARELOAD.AntiStuckComponents.CreateThemedButton then
         local resetBtn = RARELOAD.AntiStuckComponents.CreateThemedButton(btnBar, "Reset to Defaults", THEME.warning,
             "Restore to default methods and enabled states")
@@ -227,7 +202,6 @@ function RARELOAD.AntiStuckDebug.CreateButtonBar(parent, frame, frameW, frameH)
         end
     end
 
-    -- Enable all button
     if RARELOAD.AntiStuckComponents and RARELOAD.AntiStuckComponents.CreateThemedButton then
         local enableAllBtn = RARELOAD.AntiStuckComponents.CreateThemedButton(btnBar, "Enable All", THEME.success,
             "Enable all anti-stuck methods")
@@ -242,7 +216,6 @@ function RARELOAD.AntiStuckDebug.CreateButtonBar(parent, frame, frameW, frameH)
         end
     end
 
-    -- Disable all button
     if RARELOAD.AntiStuckComponents and RARELOAD.AntiStuckComponents.CreateThemedButton then
         local disableAllBtn = RARELOAD.AntiStuckComponents.CreateThemedButton(btnBar, "Disable All", THEME.danger,
             "Disable all anti-stuck methods")
@@ -257,7 +230,6 @@ function RARELOAD.AntiStuckDebug.CreateButtonBar(parent, frame, frameW, frameH)
         end
     end
 
-    -- Settings button
     if RARELOAD.AntiStuckComponents and RARELOAD.AntiStuckComponents.CreateThemedButton then
         local settingsBtn = RARELOAD.AntiStuckComponents.CreateThemedButton(btnBar, "Settings", THEME.info,
             "Edit Anti-Stuck System Settings")
@@ -269,7 +241,6 @@ function RARELOAD.AntiStuckDebug.CreateButtonBar(parent, frame, frameW, frameH)
         end
     end
 
-    -- Save button
     if RARELOAD.AntiStuckComponents and RARELOAD.AntiStuckComponents.CreateThemedButton then
         local saveBtn = RARELOAD.AntiStuckComponents.CreateThemedButton(btnBar, "Save Configuration", THEME.accent,
             "Save your configuration")
@@ -287,13 +258,10 @@ function RARELOAD.AntiStuckDebug.CreateButtonBar(parent, frame, frameW, frameH)
     end
 end
 
--- Settings panel delegation
 function RARELOAD.AntiStuckDebug.OpenSettingsPanel()
-    -- Delegate to the dedicated settings panel implementation
     if RARELOAD.AntiStuckSettings and RARELOAD.AntiStuckSettings.OpenSettingsPanel then
         RARELOAD.AntiStuckSettings.OpenSettingsPanel()
     else
-        -- Fallback in case the panel wasn't loaded
         RunConsoleCommand("rareload_antistuck_settings")
     end
 end

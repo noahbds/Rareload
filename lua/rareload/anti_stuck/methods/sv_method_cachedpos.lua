@@ -2,193 +2,188 @@ RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 local AntiStuck = RARELOAD.AntiStuck
 
--- Store cached positions
 AntiStuck.cachedPositions = AntiStuck.cachedPositions or {}
-local cachedPositionCount = 0
-local lastCacheLoad = 0
+AntiStuck._posSet = AntiStuck._posSet or {}
+local cachedPositionCount = #AntiStuck.cachedPositions
+local lastCacheLoad = lastCacheLoad or 0
 
--- Optimized function to load cached positions
+local CurTime = CurTime
+local JSONToTable = util.JSONToTable
+local Vector = Vector
+local isvector = isvector
+local istable = istable
+local min = math.min
+local sqrt = math.sqrt
+local huge = math.huge
+local floor = math.floor
+
+local function vkey(v)
+    return string.format("%.2f,%.2f,%.2f", v.x, v.y, v.z)
+end
+
+local function tovec(v)
+    if isvector(v) then return v end
+    if istable(v) and v.x and v.y and v.z then return Vector(v.x, v.y, v.z) end
+    return nil
+end
+
 function AntiStuck.LoadCachedPositions()
-    if AntiStuck.CONFIG and AntiStuck.CONFIG.ENABLE_CACHE == false then
-        return false
-    end
-    local currentTime = CurTime()
-    local cacheRefreshInterval = AntiStuck.CONFIG and AntiStuck.CONFIG.CACHE_DURATION or 300
+    if AntiStuck.CONFIG and AntiStuck.CONFIG.ENABLE_CACHE == false then return false end
+    local t = CurTime()
+    local interval = (AntiStuck.CONFIG and AntiStuck.CONFIG.CACHE_DURATION) or 300
+    if cachedPositionCount > 0 and (t - lastCacheLoad) < interval then return true end
 
-    -- Don't reload cache if it was recently loaded
-    if #AntiStuck.cachedPositions > 0 and (currentTime - lastCacheLoad) < cacheRefreshInterval then
-        return true
-    end
-
-    lastCacheLoad = currentTime
+    lastCacheLoad = t
     local mapName = game.GetMap()
     local cacheFile = "rareload/cached_pos_" .. mapName .. ".json"
-
     if not file.Exists(cacheFile, "DATA") then
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-            print("[RARELOAD ANTI-STUCK] No cached positions file found for " .. mapName)
-        end
+        AntiStuck.cachedPositions = AntiStuck.cachedPositions or {}
+        AntiStuck._posSet = {}
+        cachedPositionCount = #AntiStuck.cachedPositions
         return false
     end
 
     local data = file.Read(cacheFile, "DATA")
     if not data or data == "" then return false end
 
-    local success, cachedData = pcall(util.JSONToTable, data)
-    if not success or not cachedData then
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-            print("[RARELOAD ANTI-STUCK] Failed to parse cached positions file")
+    local ok, tbl = pcall(JSONToTable, data)
+    if not ok or not tbl then return false end
+
+    local positions
+    if type(tbl) == "table" then
+        if tbl.version and tbl.positions then
+            positions = tbl.positions
+        elseif #tbl > 0 then
+            positions = tbl
         end
-        return false
     end
+    if not positions then return false end
 
-    -- Process the loaded data based on format
-    if type(cachedData) == "table" then
-        if cachedData.version and cachedData.positions then
-            AntiStuck.cachedPositions = cachedData.positions
-            cachedPositionCount = #AntiStuck.cachedPositions
-
-            if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                print(string.format("[RARELOAD ANTI-STUCK] Loaded %d cached positions for %s (format v%d)",
-                    cachedPositionCount, mapName, cachedData.version))
+    local out = {}
+    local set = {}
+    for i = 1, #positions do
+        local v = tovec(positions[i])
+        if v then
+            local k = vkey(v)
+            if not set[k] then
+                out[#out + 1] = v
+                set[k] = true
             end
-            return true
-        elseif #cachedData > 0 then
-            AntiStuck.cachedPositions = cachedData
-            cachedPositionCount = #AntiStuck.cachedPositions
-
-            if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                print(string.format("[RARELOAD ANTI-STUCK] Loaded %d cached positions for %s (legacy format)",
-                    cachedPositionCount, mapName))
-            end
-            return true
         end
     end
 
-    return false
+    AntiStuck.cachedPositions = out
+    AntiStuck._posSet = set
+    cachedPositionCount = #out
+    return cachedPositionCount > 0
 end
 
--- Function to cache a safe position
 function AntiStuck.CacheSafePosition(pos)
     if not pos then return end
-    if AntiStuck.CONFIG and AntiStuck.CONFIG.ENABLE_CACHE == false then
-        return
+    if AntiStuck.CONFIG and AntiStuck.CONFIG.ENABLE_CACHE == false then return end
+
+    local v = tovec(pos)
+    if not v then return end
+    local k = vkey(v)
+
+    if not AntiStuck._posSet[k] then
+        AntiStuck.cachedPositions[#AntiStuck.cachedPositions + 1] = v
+        AntiStuck._posSet[k] = true
+        cachedPositionCount = cachedPositionCount + 1
     end
 
-    -- Use the common position saving system if available
     if RARELOAD.SavePositionToCache then
-        RARELOAD.SavePositionToCache(pos)
-
-        -- Also add to local cache for immediate use
-        if not table.HasValue(AntiStuck.cachedPositions, pos) then
-            table.insert(AntiStuck.cachedPositions, pos)
-            cachedPositionCount = cachedPositionCount + 1
-        end
+        RARELOAD.SavePositionToCache(v)
     end
 end
 
--- Lightning-fast cached position retrieval with smart optimization
 function AntiStuck.TryCachedPositions(pos, ply)
     if AntiStuck.CONFIG and AntiStuck.CONFIG.ENABLE_CACHE == false then
         return nil, AntiStuck.UNSTUCK_METHODS.NONE
     end
 
-    -- Refresh cache if empty or stale
     if cachedPositionCount == 0 then
-        local loaded = AntiStuck.LoadCachedPositions()
-        if not loaded then
+        if not AntiStuck.LoadCachedPositions() then
             return nil, AntiStuck.UNSTUCK_METHODS.NONE
         end
     end
-
-    -- Early exit if no positions
     if cachedPositionCount == 0 then
         return nil, AntiStuck.UNSTUCK_METHODS.NONE
     end
 
-    local debugEnabled = RARELOAD.settings and RARELOAD.settings.debugEnabled
-    if debugEnabled then
-        AntiStuck.LogStep("start", "Cached Positions", string.format("Checking %d cached positions", cachedPositionCount))
-    end
-
-    -- Calculate search position once
-    local searchPos = AntiStuck.ToVector and AntiStuck.ToVector(pos) or pos
+    local searchPos = tovec(pos) or pos
     if not searchPos then return nil, AntiStuck.UNSTUCK_METHODS.NONE end
 
-    -- High-performance candidate tracking
-    local excellentCandidates = {} -- < 100 units
-    local goodCandidates = {}      -- < 400 units
-    local bestPos = nil
-    local bestDistance = math.huge
-    local maxChecks = math.min(cachedPositionCount, 25) -- Performance limit
+    local limit = (AntiStuck.CONFIG and AntiStuck.CONFIG.CACHE_CHECK_LIMIT) or 64
+    local maxChecks = min(cachedPositionCount, limit)
 
-    -- Ultra-fast distance-based pre-screening
-    for i = 1, maxChecks do
-        local vectorPos = AntiStuck.ToVector and AntiStuck.ToVector(AntiStuck.cachedPositions[i]) or
-            AntiStuck.cachedPositions[i]
-        if not vectorPos then continue end
+    local exCap = 6
+    local goodCap = 10
+    local ex = {}
+    local good = {}
+    local bestPos, bestDist = nil, huge
 
-        local distanceSqr = vectorPos:DistToSqr(searchPos)
-
-        if distanceSqr < 10000 then      -- 100 units squared - excellent
-            table.insert(excellentCandidates, { pos = vectorPos, dist = distanceSqr })
-        elseif distanceSqr < 160000 then -- 400 units squared - good
-            table.insert(goodCandidates, { pos = vectorPos, dist = distanceSqr })
-        elseif distanceSqr < bestDistance then
-            bestPos = vectorPos
-            bestDistance = distanceSqr
+    local function insertSortedLimited(arr, cap, v, d)
+        local n = #arr
+        if n < cap then
+            arr[n + 1] = { pos = v, dist = d }
+        elseif d < arr[n].dist then
+            arr[n] = { pos = v, dist = d }
+        else
+            return
+        end
+        local i = #arr
+        while i > 1 and arr[i - 1].dist > arr[i].dist do
+            arr[i], arr[i - 1] = arr[i - 1], arr[i]
+            i = i - 1
         end
     end
 
-    -- Try excellent candidates first (immediate success)
-    for _, candidate in ipairs(excellentCandidates) do
-        local isStuck, reason = AntiStuck.IsPositionStuck(candidate.pos, ply, false)
-        if not isStuck then
-            if debugEnabled then
-                AntiStuck.LogStep("ok", "Cached Positions",
-                    string.format("Excellent cached position: %.1f units", math.sqrt(candidate.dist)))
+    local cp = AntiStuck.cachedPositions
+    local stride = floor(cachedPositionCount / maxChecks)
+    if stride < 1 then stride = 1 end
+    local i, checked = 1, 0
+
+    while i <= cachedPositionCount and checked < maxChecks do
+        local v = cp[i]
+        if v then
+            local d = v:DistToSqr(searchPos)
+            if d < 10000 then
+                insertSortedLimited(ex, exCap, v, d)
+            elseif d < 160000 then
+                insertSortedLimited(good, goodCap, v, d)
+            elseif d < bestDist then
+                bestPos, bestDist = v, d
             end
-            return candidate.pos, AntiStuck.UNSTUCK_METHODS.SUCCESS
+        end
+        i = i + stride
+        checked = checked + 1
+    end
+
+    for j = 1, #ex do
+        if not AntiStuck.IsPositionStuck(ex[j].pos, ply, false) then
+            return ex[j].pos, AntiStuck.UNSTUCK_METHODS.SUCCESS
         end
     end
 
-    -- Try good candidates
-    for _, candidate in ipairs(goodCandidates) do
-        local isStuck, reason = AntiStuck.IsPositionStuck(candidate.pos, ply, false)
-        if not isStuck then
-            if debugEnabled then
-                AntiStuck.LogStep("ok", "Cached Positions",
-                    string.format("Good cached position: %.1f units", math.sqrt(candidate.dist)))
-            end
-            return candidate.pos, AntiStuck.UNSTUCK_METHODS.SUCCESS
+    for j = 1, #good do
+        if not AntiStuck.IsPositionStuck(good[j].pos, ply, false) then
+            return good[j].pos, AntiStuck.UNSTUCK_METHODS.SUCCESS
         end
     end
 
-    -- Last resort: try best available
-    if bestPos then
-        local isStuck, reason = AntiStuck.IsPositionStuck(bestPos, ply, false)
-        if not isStuck then
-            if debugEnabled then
-                AntiStuck.LogStep("ok", "Cached Positions",
-                    string.format("Best cached position: %.1f units", math.sqrt(bestDistance)))
-            end
-            return bestPos, AntiStuck.UNSTUCK_METHODS.SUCCESS
-        end
-    end
-
-    if debugEnabled then
-        AntiStuck.LogStep("fail", "Cached Positions", "No valid cached positions found")
+    if bestPos and not AntiStuck.IsPositionStuck(bestPos, ply, false) then
+        return bestPos, AntiStuck.UNSTUCK_METHODS.SUCCESS
     end
 
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
 end
 
--- Register method with proper configuration
 if AntiStuck.RegisterMethod then
     AntiStuck.RegisterMethod("TryCachedPositions", AntiStuck.TryCachedPositions, {
         description = "Use previously saved safe positions from successful unstuck attempts",
-        priority = 10, -- High priority since cached positions are fast and reliable
-        timeout = 1.0, -- Quick timeout since this should be fast
+        priority = 10,
+        timeout = 1.0,
         retries = 1
     })
 else

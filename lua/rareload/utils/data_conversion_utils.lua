@@ -56,11 +56,3 @@ RARELOAD.PositionsEqual = RARELOAD.DataUtils.PositionsEqual
 RARELOAD.ConvertToPositionObject = RARELOAD.DataUtils.ConvertToPositionObject
 RARELOAD.PositionObjectToVector = RARELOAD.DataUtils.PositionObjectToVector
 RARELOAD.FormatValue = RARELOAD.DataUtils.FormatValue
-
-if CLIENT then
-    -- Add any client-specific functions if needed
-end
-
-if SERVER then
-    -- Add any server-specific functions if needed
-end

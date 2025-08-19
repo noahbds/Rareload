@@ -31,15 +31,15 @@ function RARELOAD.AntiStuck.TestPerformanceImprovements()
     local methods = RARELOAD.AntiStuck.methods or {}
 
     print("  Method execution order (optimized for performance):")
-    print("  1. ⚡ Cached Positions (Priority 5) - Lightning fast")
-    print("  2. 🎯 Smart Displacement (Priority 10) - Physics-based")
-    print("  3. 🧭 Navigation Mesh (Priority 15) - Source engine optimal")
-    print("  4. 📍 Map Entities (Priority 20) - Smart positioning")
-    print("  5. 🔍 3D Space Scan (Priority 25) - Advanced analysis")
-    print("  6. 🏗️ World Brushes (Priority 30) - Geometry-aware")
-    print("  7. 📐 Systematic Grid (Priority 35) - Comprehensive coverage")
-    print("  8. 🎮 Spawn Points (Priority 40) - Reliable fallback")
-    print("  9. 🚨 Emergency Teleport (Priority 45) - Guaranteed success")
+    print("  1. Cached Positions (Priority 5) - Lightning fast")
+    print("  2. Smart Displacement (Priority 10) - Physics-based")
+    print("  3. Navigation Mesh (Priority 15) - Source engine optimal")
+    print("  4. Map Entities (Priority 20) - Smart positioning")
+    print("  5. 3D Space Scan (Priority 25) - Advanced analysis")
+    print("  6. World Brushes (Priority 30) - Geometry-aware")
+    print("  7. Systematic Grid (Priority 35) - Comprehensive coverage")
+    print("  8. Spawn Points (Priority 40) - Reliable fallback")
+    print("  9. Emergency Teleport (Priority 45) - Guaranteed success")
 
     -- Test 3: Performance monitoring
     print("\n3. Testing performance monitoring system...")
@@ -68,20 +68,20 @@ function RARELOAD.AntiStuck.TestPerformanceImprovements()
     end
 
     print("\n=== PERFORMANCE IMPROVEMENT SUMMARY ===")
-    print("🚀 Expected 40-60% faster resolution times")
-    print("🎯 Improved success rates through smart method ordering")
-    print("🧠 Self-learning system adapts to map-specific performance")
-    print("⚡ Optimized algorithms reduce CPU usage")
-    print("💾 Enhanced caching provides instant results for repeated positions")
-    print("🔧 Adaptive settings automatically tune for optimal performance")
+    print("Expected 40-60% faster resolution times")
+    print("Improved success rates through smart method ordering")
+    print("Self-learning system adapts to map-specific performance")
+    print("Optimized algorithms reduce CPU usage")
+    print("Enhanced caching provides instant results for repeated positions")
+    print("Adaptive settings automatically tune for optimal performance")
 
     print("\n=== IN-GAME IMPROVEMENTS ===")
-    print("👤 Players experience much faster unstuck resolution")
-    print("🎮 Reduced lag and stuttering during unstuck operations")
-    print("🏆 Higher success rates mean fewer emergency teleports")
-    print("🎨 Better positioning leads to more natural player placement")
-    print("📊 Performance monitoring provides admin insights")
-    print("⚙️ Settings panel offers intelligent defaults and descriptions")
+    print("Players experience much faster unstuck resolution")
+    print("Reduced lag and stuttering during unstuck operations")
+    print("Higher success rates mean fewer emergency teleports")
+    print("Better positioning leads to more natural player placement")
+    print("Performance monitoring provides admin insights")
+    print("Settings panel offers intelligent defaults and descriptions")
 end
 
 -- Auto-run test when file is loaded (only once)
@@ -91,7 +91,7 @@ if not RARELOAD.AntiStuck.TestRun then
         if RARELOAD.settings and RARELOAD.settings.debugEnabled then
             RARELOAD.AntiStuck.TestPerformanceImprovements()
         else
-            print("[RARELOAD ANTI-STUCK] ✅ Enhanced anti-stuck system loaded with major performance improvements!")
+            print("[RARELOAD ANTI-STUCK] Enhanced anti-stuck system loaded with major performance improvements!")
             print("Enable debug mode to see detailed improvement test results.")
         end
     end)

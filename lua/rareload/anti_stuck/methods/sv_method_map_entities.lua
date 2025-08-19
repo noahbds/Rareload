@@ -1,202 +1,169 @@
 local AntiStuck = RARELOAD.AntiStuck
 
+include("lua/rareload/anti_stuck/sv_anti_stuck_map.lua")
+
 function AntiStuck.TryMapEntities(pos, ply)
-    if not IsValid(ply) then
-        return nil
-    end
+    if not IsValid(ply) then return nil end
+    pos = AntiStuck.ToVector and AntiStuck.ToVector(pos or ply:GetPos()) or (pos or ply:GetPos())
 
-    -- Add debug statement to show method is starting
-    if RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-        RARELOAD.Debug.AntiStuck("Starting Map Entities method", {
-            methodName = "TryMapEntities",
-            playerPosition = pos,
-            mapEntitiesCount = AntiStuck.mapEntities and #AntiStuck.mapEntities or 0
-        }, ply)
-    elseif RARELOAD.settings and RARELOAD.settings.debugEnabled then
-        print("[RARELOAD ANTI-STUCK] Starting Map Entities method with " ..
-            (AntiStuck.mapEntities and #AntiStuck.mapEntities or 0) .. " entity positions")
-    end
+    local hullMins, hullMaxs = ply:OBBMins(), ply:OBBMaxs()
+    local hullSize = hullMaxs - hullMins
+    local playerRadius = math.max(math.abs(hullSize.x), math.abs(hullSize.y)) * 0.5
+    local baseSafe = math.max(playerRadius + 32, 64)
 
-    if not AntiStuck.mapEntities or #AntiStuck.mapEntities == 0 then
-        if AntiStuck.CollectMapEntities then
-            AntiStuck.CollectMapEntities()
-        end
-
-        if not AntiStuck.mapEntities or #AntiStuck.mapEntities == 0 then
-            return nil
-        end
-    end
-
-    pos = AntiStuck.ToVector and AntiStuck.ToVector(pos) or pos
-    if not pos then return nil end
-
-    local mins, maxs = ply:OBBMins(), ply:OBBMaxs()
-    local playerRadius = math.max(math.abs(maxs.x - mins.x), math.abs(maxs.y - mins.y)) * 0.5
-    local safeDistance = math.max(playerRadius + 32, 64) -- Minimum safe distance from entities
-
-    local sortedEntities = {}
-    local maxEntityDist = (AntiStuck.CONFIG and AntiStuck.CONFIG.ENTITY_SEARCH_RADIUS or 512)
+    local maxEntityDist = (AntiStuck.CONFIG and AntiStuck.CONFIG.ENTITY_SEARCH_RADIUS or 768)
     local maxEntityDistSqr = maxEntityDist * maxEntityDist
-    for _, entityPos in ipairs(AntiStuck.mapEntities) do
-        local vpos = AntiStuck.ToVector and AntiStuck.ToVector(entityPos) or entityPos
-        if vpos then
-            local distSqr = pos:DistToSqr(vpos)
-            if distSqr <= maxEntityDistSqr then
-                table.insert(sortedEntities, {
-                    pos = vpos,
-                    distance = math.sqrt(distSqr)
-                })
+
+    local candidateMap = {}
+    local candidates = {}
+
+    local function addCandidate(v, r)
+        if not v then return end
+        local d2 = pos:DistToSqr(v)
+        if d2 > maxEntityDistSqr then return end
+        local k = math.floor(v.x / 16) .. ":" .. math.floor(v.y / 16) .. ":" .. math.floor(v.z / 16)
+        if candidateMap[k] then
+            if r and r > candidateMap[k].radius then
+                candidateMap[k].radius = r
+            end
+            return
+        end
+        local rad = r or 0
+        local entry = { pos = v, dist2 = d2, radius = rad }
+        candidateMap[k] = entry
+        candidates[#candidates + 1] = entry
+    end
+
+    if AntiStuck.mapEntities and #AntiStuck.mapEntities > 0 then
+        for i = 1, #AntiStuck.mapEntities do
+            local v = AntiStuck.ToVector and AntiStuck.ToVector(AntiStuck.mapEntities[i]) or AntiStuck.mapEntities[i]
+            if v then addCandidate(v, 0) end
+        end
+    elseif AntiStuck.CollectMapEntities then
+        AntiStuck.CollectMapEntities()
+        if AntiStuck.mapEntities and #AntiStuck.mapEntities > 0 then
+            for i = 1, #AntiStuck.mapEntities do
+                local v = AntiStuck.ToVector and AntiStuck.ToVector(AntiStuck.mapEntities[i]) or AntiStuck.mapEntities
+                    [i]
+                if v then addCandidate(v, 0) end
             end
         end
     end
 
-    table.sort(sortedEntities, function(a, b)
-        return a.distance < b.distance
-    end)
+    do
+        local around = ents.FindInSphere(pos, maxEntityDist)
+        for i = 1, #around do
+            local ent = around[i]
+            if IsValid(ent) and ent ~= ply then
+                local v = ent:GetPos()
+                if v then
+                    local emins, emaxs = ent:OBBMins(), ent:OBBMaxs()
+                    local er = 0
+                    if emins and emaxs then
+                        local es = emaxs - emins
+                        er = math.max(math.abs(es.x), math.abs(es.y)) * 0.5
+                    end
+                    addCandidate(v, er)
+                end
+            end
+        end
+    end
 
-    local function FindGroundPosition(testPos)
-        local trace = util.TraceLine({
-            start = testPos + Vector(0, 0, 100),
-            endpos = testPos - Vector(0, 0, 1000),
+    if #candidates == 0 then return nil end
+
+    table.sort(candidates, function(a, b) return a.dist2 < b.dist2 end)
+    local maxProcess = math.min(#candidates, 32)
+
+    local function traceGround(testPos)
+        local tr = util.TraceHull({
+            start = testPos + Vector(0, 0, 64),
+            endpos = testPos - Vector(0, 0, 1024),
+            mins = hullMins,
+            maxs = hullMaxs,
             filter = ply,
             mask = MASK_PLAYERSOLID
         })
-
-        if trace.Hit and not trace.HitSky then
-            return trace.HitPos + Vector(0, 0, 8)
+        if tr.Hit and not tr.HitSky then
+            return tr.HitPos + Vector(0, 0, 2)
         end
-
         return testPos
     end
 
-    local function ValidatePosition(testPos)
-        if not util.IsInWorld(testPos) then return nil end
-
-        local groundPos = FindGroundPosition(testPos)
-        if not util.IsInWorld(groundPos) then return nil end
-
-        local isStuck, reason = AntiStuck.IsPositionStuck(groundPos, ply, false) -- Not original position
-
-        if isStuck == false then
-            return groundPos
-        elseif istable(isStuck) and isStuck[1] == false then
-            return groundPos
-        end
-
-        return nil
+    local function fitsHull(atPos)
+        local tr = util.TraceHull({
+            start = atPos,
+            endpos = atPos,
+            mins = hullMins,
+            maxs = hullMaxs,
+            filter = ply,
+            mask = MASK_PLAYERSOLID
+        })
+        return not tr.StartSolid and not tr.Hit
     end
 
-    -- Search around each entity position for safe spots
-    for _, entityData in ipairs(sortedEntities) do
-        local entityPos = entityData.pos
+    local function isValidStand(groundPos)
+        if not util.IsInWorld(groundPos) then return false end
+        local contents = util.PointContents(groundPos)
+        if bit.band(contents, CONTENTS_SOLID) ~= 0 then return false end
+        if bit.band(contents, CONTENTS_WATER) ~= 0 then return false end
+        if not fitsHull(groundPos) then return false end
+        local s = AntiStuck.IsPositionStuck and AntiStuck.IsPositionStuck(groundPos, ply, false)
+        if s == false then return true end
+        if istable(s) and s[1] == false then return true end
+        return false
+    end
 
-        -- Search at multiple distances from the entity
-        local searchDistances = {
-            safeDistance,
-            safeDistance + 32,
-            safeDistance + 64,
-            safeDistance + 96,
-            safeDistance + 128,
-            safeDistance + 192,
-            safeDistance + 256
-        }
+    local angles = {}
+    do
+        local idx = 1
+        for a = 0, 337.5, 22.5 do
+            local r = math.rad(a)
+            angles[idx] = { math.cos(r), math.sin(r) }
+            idx = idx + 1
+        end
+    end
 
-        for _, searchRadius in ipairs(searchDistances) do
-            -- Try positions around the entity in a circle
-            for angle = 0, 330, 30 do
-                local rad = math.rad(angle)
-                local offsetPos = entityPos + Vector(
-                    math.cos(rad) * searchRadius,
-                    math.sin(rad) * searchRadius,
-                    0
-                )
+    for i = 1, maxProcess do
+        local entityPos = candidates[i].pos
+        local er = candidates[i].radius or 0
+        local safeBase = math.max(baseSafe, er + 16)
+        local dists = { safeBase, safeBase + 32, safeBase + 64, safeBase + 96, safeBase + 128, safeBase + 192 }
 
-                local validPos = ValidatePosition(offsetPos)
-                if validPos then
-                    if RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-                        RARELOAD.Debug.AntiStuck("Found safe position near entity", {
-                            methodName = "TryMapEntities",
-                            safePosition = validPos,
-                            entityPosition = entityPos,
-                            searchRadius = searchRadius,
-                            angle = angle,
-                            distanceFromEntity = validPos:Distance(entityPos)
-                        }, ply)
-                    end
-                    return validPos, AntiStuck.UNSTUCK_METHODS.MAP_ENTITIES
-                end
-
-                -- Also try elevated positions
-                for _, heightOffset in ipairs({ 16, 32, 48, 64 }) do
-                    local elevatedPos = offsetPos + Vector(0, 0, heightOffset)
-                    validPos = ValidatePosition(elevatedPos)
-                    if validPos then
-                        if RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-                            RARELOAD.Debug.AntiStuck("Found elevated safe position near entity", {
-                                methodName = "TryMapEntities",
-                                safePosition = validPos,
-                                entityPosition = entityPos,
-                                searchRadius = searchRadius,
-                                heightOffset = heightOffset,
-                                distanceFromEntity = validPos:Distance(entityPos)
-                            }, ply)
-                        end
-                        return validPos, AntiStuck.UNSTUCK_METHODS.MAP_ENTITIES
-                    end
+        for di = 1, #dists do
+            local sr = dists[di]
+            for ai = 1, #angles do
+                local cs, sn = angles[ai][1], angles[ai][2]
+                local test = entityPos + Vector(cs * sr, sn * sr, 0)
+                local ground = traceGround(test)
+                if isValidStand(ground) then
+                    return ground, AntiStuck.UNSTUCK_METHODS and AntiStuck.UNSTUCK_METHODS.MAP_ENTITIES or 0
                 end
             end
 
-            -- Try cardinal directions with more spacing
-            local cardinalOffsets = {
-                Vector(searchRadius, 0, 0),
-                Vector(-searchRadius, 0, 0),
-                Vector(0, searchRadius, 0),
-                Vector(0, -searchRadius, 0),
-                Vector(searchRadius * 0.707, searchRadius * 0.707, 0),
-                Vector(-searchRadius * 0.707, searchRadius * 0.707, 0),
-                Vector(searchRadius * 0.707, -searchRadius * 0.707, 0),
-                Vector(-searchRadius * 0.707, -searchRadius * 0.707, 0)
+            local offs = {
+                Vector(sr, 0, 0), Vector(-sr, 0, 0), Vector(0, sr, 0), Vector(0, -sr, 0),
+                Vector(sr * 0.70710678, sr * 0.70710678, 0),
+                Vector(-sr * 0.70710678, sr * 0.70710678, 0),
+                Vector(sr * 0.70710678, -sr * 0.70710678, 0),
+                Vector(-sr * 0.70710678, -sr * 0.70710678, 0)
             }
-
-            for _, offset in ipairs(cardinalOffsets) do
-                local testPos = entityPos + offset
-                local validPos = ValidatePosition(testPos)
-                if validPos then
-                    if RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-                        RARELOAD.Debug.AntiStuck("Found safe position with cardinal offset", {
-                            methodName = "TryMapEntities",
-                            safePosition = validPos,
-                            entityPosition = entityPos,
-                            offset = offset,
-                            distanceFromEntity = validPos:Distance(entityPos)
-                        }, ply)
-                    end
-                    return validPos, AntiStuck.UNSTUCK_METHODS.MAP_ENTITIES
+            for oi = 1, #offs do
+                local test = entityPos + offs[oi]
+                local ground = traceGround(test)
+                if isValidStand(ground) then
+                    return ground, AntiStuck.UNSTUCK_METHODS and AntiStuck.UNSTUCK_METHODS.MAP_ENTITIES or 0
                 end
             end
         end
     end
 
-    -- Add debug statement when method fails
-    if RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-        RARELOAD.Debug.AntiStuck("Map Entities method failed to find safe position", {
-            methodName = "TryMapEntities",
-            entitiesChecked = #sortedEntities,
-            playerPosition = pos,
-            safeDistance = safeDistance
-        }, ply)
-    elseif RARELOAD.settings and RARELOAD.settings.debugEnabled then
-        print("[RARELOAD ANTI-STUCK] Map Entities method failed after checking " .. #sortedEntities .. " entities")
-    end
-
-    return nil, AntiStuck.UNSTUCK_METHODS.NONE
+    return nil, AntiStuck.UNSTUCK_METHODS and AntiStuck.UNSTUCK_METHODS.NONE or 0
 end
 
--- Register method with proper configuration
 if AntiStuck.RegisterMethod then
     AntiStuck.RegisterMethod("TryMapEntities", AntiStuck.TryMapEntities, {
         description = "Find safe positions near map entities and structures",
-        priority = 50, -- Medium priority
+        priority = 50,
         timeout = 2.0,
         retries = 1
     })

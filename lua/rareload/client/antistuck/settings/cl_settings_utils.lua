@@ -57,7 +57,6 @@ function RARELOAD.AntiStuckSettings.GetClipboardText(callback)
     end
 end
 
--- Load settings with defaults fallback
 function RARELOAD.AntiStuckSettings.LoadSettings()
     if RARELOAD.AntiStuck.ProfileSystem and RARELOAD.AntiStuck.ProfileSystem.GetCurrentProfileSettings then
         local settings = RARELOAD.AntiStuck.ProfileSystem.GetCurrentProfileSettings()
@@ -69,7 +68,6 @@ function RARELOAD.AntiStuckSettings.LoadSettings()
         end
     end
 
-    -- Fallback deep copy
     local settings = {}
     for k, v in pairs(Default_Anti_Stuck_Settings) do
         settings[k] = (type(v) == "table") and table.Copy(v) or v
@@ -77,7 +75,6 @@ function RARELOAD.AntiStuckSettings.LoadSettings()
     return settings
 end
 
--- Save settings and propagate to server via net message
 function RARELOAD.AntiStuckSettings.SaveSettings(settings)
     if not settings or type(settings) ~= "table" then
         print("[RARELOAD] Error: Invalid settings table")
@@ -129,7 +126,7 @@ end
 -- Export settings to clipboard
 function RARELOAD.AntiStuckSettings.ExportSettings()
     local settings = RARELOAD.AntiStuckSettings.LoadSettings()
-    local exported = { version = "1.0", timestamp = os.time(), settings = settings }
+    local exported = { version = "2.0", timestamp = os.time(), settings = settings }
     local jsonData = util.TableToJSON(exported, true)
     SetClipboardText(jsonData)
     return true
@@ -151,7 +148,7 @@ function RARELOAD.AntiStuckSettings.ImportSettings(callback)
             if callback then callback(false, "Invalid format") end
             return
         end
-        if importedData.version ~= "1.0" then
+        if importedData.version ~= "2.0" then
             notification.AddLegacy("Unsupported settings version: " .. tostring(importedData.version), NOTIFY_ERROR, 3)
             if callback then callback(false, "Unsupported version") end
             return

@@ -1,184 +1,124 @@
 local AntiStuck = RARELOAD.AntiStuck
 
 function AntiStuck.TryNodeGraph(pos, ply)
-    if not AntiStuck.nodeGraphReady then
-        if RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-            RARELOAD.Debug.AntiStuck("Node graph not initially ready, attempting detection now", {
-                methodName = "TryNodeGraph",
-                position = pos,
-                originalPosition = pos,
-                nodeGraphReady = AntiStuck.nodeGraphReady,
-                mapBounds = AntiStuck.mapBounds and "Available" or "Not available",
-                navMeshStatus = navmesh and "Available" or "Not available"
-            }, ply)
-        elseif RARELOAD.settings and RARELOAD.settings.debugEnabled then
-            print("[RARELOAD ANTI-STUCK] Node graph not initially ready, attempting detection now")
-        end
+    if not navmesh or (navmesh.IsLoaded and not navmesh.IsLoaded()) then
+        return nil, AntiStuck.UNSTUCK_METHODS.NONE
+    end
 
-        local directArea = navmesh.GetNearestNavArea(pos, false, 5000, false, true)
-        if directArea and IsValid(directArea) then
-            AntiStuck.nodeGraphReady = true
-            if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                print("[RARELOAD ANTI-STUCK] Node graph detected on-demand")
-            end
-        elseif AntiStuck.mapBounds and AntiStuck.mapCenter then
-            local centerArea = navmesh.GetNearestNavArea(AntiStuck.mapCenter, false, 10000, false, true)
-            if centerArea and IsValid(centerArea) then
-                AntiStuck.nodeGraphReady = true
-                if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                    print("[RARELOAD ANTI-STUCK] Node graph detected at map center")
-                end
-            else
-                if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                    print("[RARELOAD ANTI-STUCK] Node graph still unavailable after on-demand checks")
-                end
-                return nil, AntiStuck.UNSTUCK_METHODS.NONE
-            end
-        else
+    if not AntiStuck.nodeGraphReady then
+        local probe = navmesh.GetNearestNavArea(pos, false, 2048, false, true)
+        AntiStuck.nodeGraphReady = probe ~= nil and IsValid(probe)
+        if not AntiStuck.nodeGraphReady and AntiStuck.mapCenter then
+            probe = navmesh.GetNearestNavArea(AntiStuck.mapCenter, false, 8192, false, true)
+            AntiStuck.nodeGraphReady = probe ~= nil and IsValid(probe)
+        end
+        if not AntiStuck.nodeGraphReady then
             return nil, AntiStuck.UNSTUCK_METHODS.NONE
         end
     end
 
-    if not navmesh then
+    local function hull(p)
+        if IsValid(p) then return p:OBBMins(), p:OBBMaxs() end
+        return Vector(-16, -16, 0), Vector(16, 16, 72)
+    end
+
+    local mins, maxs = hull(ply)
+
+    local function standableFrom(v)
+        local start = v + Vector(0, 0, 64)
+        local tr = util.TraceHull({
+            start = start,
+            endpos = v - Vector(0, 0, 256),
+            mins = mins,
+            maxs = maxs,
+            mask =
+                MASK_PLAYERSOLID
+        })
+        if not tr.Hit or tr.StartSolid then return nil end
+        local p = tr.HitPos + Vector(0, 0, 2)
+        if not util.IsInWorld(p) then return nil end
+        local stuck = AntiStuck.IsPositionStuck(p, ply, false)
+        if not stuck then return p end
+        return nil
+    end
+
+    local function evalArea(a)
+        if not a or not IsValid(a) then return nil end
+        if a.IsBlocked and a:IsBlocked() then return nil end
+        local c = a:GetCenter()
+        if c then
+            local p = standableFrom(c)
+            if p then return p end
+        end
+        for i = 0, 3 do
+            local corner = a:GetCorner(i)
+            if corner then
+                local p = standableFrom(corner)
+                if p then return p end
+            end
+        end
+        return nil
+    end
+
+    local start = navmesh.GetNearestNavArea(pos, false, 2048, false, true) or
+        navmesh.GetNearestNavArea(pos, false, 8192, false, true)
+    if not start or not IsValid(start) then
         return nil, AntiStuck.UNSTUCK_METHODS.NONE
     end
 
-    local nodeSearchRadius = AntiStuck.CONFIG.NODE_SEARCH_RADIUS or 2048
-    local safeDistance = AntiStuck.CONFIG.SAFE_DISTANCE or 64
-    local maxAttempts = AntiStuck.CONFIG.MAX_UNSTUCK_ATTEMPTS or 50
-    local heightOffset = (AntiStuck.CONFIG and AntiStuck.CONFIG.NAVMESH_HEIGHT_OFFSET) or 16
-
-    local searchDistances = { safeDistance, 128, 256, 512, 1024, 2048, 4096, 8192 }
-
-    if AntiStuck.mapBounds then
-        local mapSize = math.max(AntiStuck.mapBounds.maxs.x - AntiStuck.mapBounds.mins.x,
-            AntiStuck.mapBounds.maxs.y - AntiStuck.mapBounds.mins.y)
-        table.insert(searchDistances, mapSize / 4)
-        table.insert(searchDistances, mapSize / 2)
+    local best = evalArea(start)
+    if best then
+        return best, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH
     end
 
-    if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-        RARELOAD.Debug.AntiStuck("NavMesh search start", { methodName = "TryNodeGraph" }, ply)
-    end
+    local maxVisited = (AntiStuck.CONFIG and AntiStuck.CONFIG.NAVMESH_BFS_LIMIT) or 800
+    local q, qi, qj = { start }, 1, 1
+    local visited = {}
+    local startId = start.GetID and start:GetID() or tostring(start)
+    visited[startId] = true
 
-    for _, distance in ipairs(searchDistances) do
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-            RARELOAD.Debug.AntiStuck("Searching navmesh", { methodName = "TryNodeGraph", distance = distance }, ply)
+    while qi <= qj and qj <= maxVisited do
+        local area = q[qi]; qi = qi + 1
+        local posCandidate = evalArea(area)
+        if posCandidate then
+            return posCandidate, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH
         end
-
-        local searchPositions = {
-            pos,
-            pos + Vector(distance / 4, 0, 0),
-            pos + Vector(-distance / 4, 0, 0),
-            pos + Vector(0, distance / 4, 0),
-            pos + Vector(0, -distance / 4, 0),
-            pos + Vector(distance / 8, distance / 8, 0),
-            pos + Vector(-distance / 8, -distance / 8, 0)
-        }
-
-        local heights = { 0 }
-        if AntiStuck.mapBounds then
-            table.insert(heights, AntiStuck.mapCenter.z - pos.z)
-            table.insert(heights, (AntiStuck.mapBounds.mins.z - pos.z) + 64)
-            table.insert(heights, (AntiStuck.mapBounds.maxs.z - pos.z) - 64)
-        end
-
-        for _, heightOffset in ipairs(heights) do
-            for _, searchPos in ipairs(searchPositions) do
-                local testPos = searchPos + Vector(0, 0, heightOffset)
-
-                local area = navmesh.GetNearestNavArea(testPos, false, math.min(distance, nodeSearchRadius), false, true)
-
-                if area and IsValid(area) then
-                    local center = area:GetCenter()
-                    if center then
-                        local safePos = center + Vector(0, 0, heightOffset)
-                        if util.IsInWorld(safePos) then
-                            local isStuck, reason = AntiStuck.IsPositionStuck(safePos, ply, false) -- Not original position
-                            if not isStuck then
-                                if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-                                    RARELOAD.Debug.AntiStuck("NavMesh found safe center",
-                                        { methodName = "TryNodeGraph", distance = distance }, ply)
-                                end
-                                return safePos, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH
-                            end
-                        end
-
-                        for i = 0, 3 do
-                            local corner = area:GetCorner(i)
-                            if corner then
-                                local cornerPos = corner + Vector(0, 0, heightOffset)
-                                if util.IsInWorld(cornerPos) then
-                                    local isStuck, reason = AntiStuck.IsPositionStuck(cornerPos, ply, false) -- Not original position
-                                    if not isStuck then
-                                        if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-                                            RARELOAD.Debug.AntiStuck("NavMesh found safe corner",
-                                                { methodName = "TryNodeGraph", distance = distance }, ply)
-                                        end
-                                        return cornerPos, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH
-                                    end
-                                end
-                            end
-                        end
+        local neighbors = area.GetAdjacentAreas and area:GetAdjacentAreas() or nil
+        if neighbors then
+            for _, n in ipairs(neighbors) do
+                if n and IsValid(n) then
+                    local id = n.GetID and n:GetID() or tostring(n)
+                    if not visited[id] then
+                        visited[id] = true
+                        qj = qj + 1
+                        q[qj] = n
+                        if qj - qi > maxVisited then break end
                     end
                 end
             end
         end
+        if qj - qi > maxVisited then break end
     end
 
     if AntiStuck.navAreas and #AntiStuck.navAreas > 0 then
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-            RARELOAD.Debug.AntiStuck("Trying cached nav areas",
-                { methodName = "TryNodeGraph", areaCount = #AntiStuck.navAreas }, ply)
-        end
-
-        local sortedAreas = {}
+        table.sort(AntiStuck.navAreas, function(a, b) return pos:DistToSqr(a.center) < pos:DistToSqr(b.center) end)
         for _, areaData in ipairs(AntiStuck.navAreas) do
-            table.insert(sortedAreas, {
-                data = areaData,
-                distance = pos:DistToSqr(areaData.center)
-            })
-        end
-
-        table.sort(sortedAreas, function(a, b) return a.distance < b.distance end)
-
-        for _, sortedArea in ipairs(sortedAreas) do
-            local areaData = sortedArea.data
-
-            local isStuck, reason = AntiStuck.IsPositionStuck(areaData.center, ply)
-            if not isStuck then
-                if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-                    RARELOAD.Debug.AntiStuck("Found safe cached nav area center", { methodName = "TryNodeGraph" }, ply)
-                end
-                return areaData.center, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH
-            end
-
+            local p = standableFrom(areaData.center)
+            if p then return p, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH end
             for _, corner in ipairs(areaData.corners) do
-                local cornerPos = corner + Vector(0, 0, 16)
-                local isStuck, reason = AntiStuck.IsPositionStuck(cornerPos, ply)
-                if not isStuck then
-                    if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-                        RARELOAD.Debug.AntiStuck("Found safe cached nav area corner", { methodName = "TryNodeGraph" },
-                            ply)
-                    end
-                    return cornerPos, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH
-                end
+                local p2 = standableFrom(corner)
+                if p2 then return p2, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH end
             end
         end
-    end
-
-    if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-        RARELOAD.Debug.AntiStuck("NavMesh exhausted options", { methodName = "TryNodeGraph" }, ply)
     end
 
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
 end
 
--- Register method with proper configuration
 if AntiStuck.RegisterMethod then
     AntiStuck.RegisterMethod("TryNodeGraph", AntiStuck.TryNodeGraph, {
         description = "Use navigation mesh nodes for pathfinding-based positioning",
-        priority = 40, -- Medium-high priority
+        priority = 40,
         timeout = 3.0,
         retries = 1
     })

@@ -4,12 +4,11 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 RARELOAD.AntiStuckSettings = RARELOAD.AntiStuckSettings or {}
+RARELOAD.AntiStuck.profileSystem = RARELOAD.AntiStuck.profileSystem or {}
 
--- When the server sends the active Anti-Stuck config, cache and refresh UI
 net.Receive("RareloadAntiStuckConfig", function()
     local tbl = net.ReadTable()
     if not istable(tbl) then return end
-    -- Server may send either: CONFIG table directly, or { settings = CONFIG, methods = {...} }
     local settings = istable(tbl.settings) and tbl.settings or tbl
     RARELOAD.AntiStuckSettings._loadedSettings = settings
     if RARELOAD.AntiStuckSettings.RefreshSettingsPanel then
@@ -17,15 +16,13 @@ net.Receive("RareloadAntiStuckConfig", function()
     end
 end)
 
--- Receive a shared profile from the server and pass to profile system if present
 net.Receive("RareloadReceiveSharedProfile", function()
     local profile = net.ReadTable()
-    if RARELOAD.AntiStuck and RARELOAD.AntiStuck.ProfileSystem and RARELOAD.AntiStuck.ProfileSystem.ReceiveSharedProfile then
-        RARELOAD.AntiStuck.ProfileSystem.ReceiveSharedProfile(profile)
+    if RARELOAD.AntiStuck and RARELOAD.AntiStuck.profileSystem and RARELOAD.AntiStuck.profileSystem.ReceiveSharedProfile then
+        RARELOAD.AntiStuck.profileSystem.ReceiveSharedProfile(profile)
     end
 end)
 
--- Toggle server autosave of Anti-Stuck settings
 concommand.Add("rareload_antistuck_autosave_server", function(ply, _, args)
     local enable = tobool(args and args[1])
     net.Start("RareloadAntiStuckSettings")
@@ -34,7 +31,6 @@ concommand.Add("rareload_antistuck_autosave_server", function(ply, _, args)
     net.SendToServer()
 end)
 
--- Developer testing hook to request current config
 concommand.Add("rareload_test_profile_system", function()
     net.Start("RareloadAntiStuckSettings")
     net.WriteString("request_config")

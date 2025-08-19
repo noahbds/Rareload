@@ -1,4 +1,3 @@
--- Main Settings Panel UI extracted from monolithic file
 ---@diagnostic disable: inject-field, undefined-field, param-type-mismatch, assign-type-mismatch
 
 RARELOAD = RARELOAD or {}
@@ -37,7 +36,6 @@ function RARELOAD.AntiStuckSettings.OpenSettingsPanel()
     if RARELOAD.AntiStuckSettings._openingPanel then return end
     RARELOAD.AntiStuckSettings._openingPanel = true
     if RARELOAD.AntiStuckSettings.CloseAllDialogs then RARELOAD.AntiStuckSettings.CloseAllDialogs() end
-    -- Request latest config from server (admins will receive it); the receive handler will refresh the panel
     if net and net.Start then
         net.Start("RareloadRequestAntiStuckConfig")
         net.SendToServer()
@@ -325,7 +323,6 @@ function RARELOAD.AntiStuckSettings._CreateSettingsPanel()
             control:SetValue(value)
             if control.Label then control.Label:SetVisible(false) end
 
-            -- Numeric value label next to the slider
             local valueLabel = vgui.Create("DLabel", container)
             valueLabel:SetFont("RareloadText")
             valueLabel:SetTextColor(THEME.textPrimary)
@@ -465,7 +462,6 @@ function RARELOAD.AntiStuckSettings._CreateSettingsPanel()
     return frame
 end
 
--- Console entry-points
 concommand.Add("rareload_antistuck_settings", function()
     if RARELOAD.AntiStuckSettings.OpenSettingsPanel then
         RARELOAD.AntiStuckSettings.OpenSettingsPanel()

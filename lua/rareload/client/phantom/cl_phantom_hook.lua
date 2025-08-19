@@ -1,6 +1,5 @@
 hook.Remove("GUIMousePressed", "PhantomPanelInteraction")
 
--- Optimized input handling with debouncing
 local lastKeyPress = {}
 local KEY_DEBOUNCE_TIME = 0.15
 
@@ -24,7 +23,6 @@ hook.Add("Think", "PhantomKeyboardNavigation", function()
 
     if not activeIndex then return end
 
-    -- Optimized navigation with debouncing
     if input.IsKeyDown(KEY_LEFT) and IsKeyReady(KEY_LEFT) then
         local newIndex = activeIndex - 1
         if newIndex < 1 then newIndex = #PHANTOM_CATEGORIES end
@@ -49,7 +47,6 @@ hook.Add("Think", "PhantomKeyboardNavigation", function()
         end
     end
 
-    -- Smooth scrolling
     local scrollDelta = 0
     if input.IsKeyDown(KEY_UP) then
         scrollDelta = -3
@@ -146,7 +143,6 @@ hook.Add("KeyPress", "PhantomInteractionToggle", function(ply, key)
         return
     end
 
-    -- Optimized phantom finding with distance pre-filtering
     local closestPhantom = nil
     local closestDistance = math.huge
     local maxInteractionDistance = 300
@@ -173,7 +169,6 @@ hook.Add("KeyPress", "PhantomInteractionToggle", function(ply, key)
         PhantomInteractionAngle = Angle(0, eyeYaw - 90, 90)
         surface.PlaySound("ui/buttonclick.wav")
 
-        -- Pre-calculate panel size with safety check
         local cache = PhantomInfoCache[closestPhantom]
         if cache and cache.data and cache.activeCategory then
             local content = cache.data[cache.activeCategory]
