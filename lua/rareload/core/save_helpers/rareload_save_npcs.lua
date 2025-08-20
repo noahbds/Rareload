@@ -1,13 +1,14 @@
 -- RareLoad Save NPCs Module
 
+---@class RARELOAD
 local RARELOAD = RARELOAD or {}
 RARELOAD.NPCSaver = RARELOAD.NPCSaver or {}
 
 local CONFIG = {
-    DEBUG = true,
+    DEBUG = RARELOAD.settings.debugEnabled,
     SAVE_PLAYER_OWNED_ONLY = false,
     MAX_NPCS_TO_SAVE = 500,
-    SAVE_NPC_NPC_RELATIONS = false,
+    SAVE_NPC_NPC_RELATIONS = true,
     MAX_RELATION_NPCS = 128,
     KEY_VALUES_TO_SAVE = {
         "spawnflags", "squadname", "targetname",
@@ -23,6 +24,17 @@ local function DebugLog(msg, ...)
         print("[RareLoad NPC Saver] " .. formatted)
         if SERVER then ServerLog("[RareLoad NPC Saver] " .. formatted .. "\n") end
     end
+end
+
+local function getsquadname(npc)
+    if not IsValid(npc) then return "" end
+    local kv = npc:GetKeyValues() or {}
+    local squadName = kv.squadname or ""
+    if squadName == "" and npc.GetSquad then
+        local ok, val = pcall(function() return npc:GetSquad() end)
+        if ok and isstring(val) then squadName = val end
+    end
+    return squadName
 end
 
 local function SafeGetNPCProperty(npc, propertyFn, defaultValue)
@@ -234,8 +246,20 @@ local function GetVJBaseProperties(npc)
     vjData.animationPlaybackRate = npc:GetNWFloat("AnimationPlaybackRate", 1)
     vjData.walkSpeed = npc:GetNWInt("VJ_WalkSpeed", 0)
     vjData.runSpeed = npc:GetNWInt("VJ_RunSpeed", 0)
-    vjData.isFollowing = npc:GetNWBool("VJ_IsBeingControlled", false)
-    vjData.followTarget = npc:GetNWEntity("VJ_TheController")
+    local entTbl = npc:GetTable() or {}
+    local isFollowing = (npc.IsFollowing == true) or (entTbl.IsFollowing == true)
+    vjData.isFollowing = isFollowing or false
+    if entTbl.FollowData and IsValid(entTbl.FollowData.Target) then
+        local tgt = entTbl.FollowData.Target
+        if tgt:IsPlayer() then
+            vjData.followTarget = { type = "player", id = (tgt.SteamID64 and tgt:SteamID64()) or tgt:SteamID() }
+        elseif tgt:IsNPC() then
+            vjData.followTarget = { type = "npc", id = GenerateNPCUniqueID(tgt) }
+        else
+            vjData.followTarget = { type = "entity", class = tgt:GetClass(), pos = tgt:GetPos():ToTable() }
+        end
+        vjData.followMinDistance = entTbl.FollowData.MinDist
+    end
     vjData.isMeleeAttacker = npc:GetNWBool("VJ_IsMeleeAttacking", false)
     vjData.isRangeAttacker = npc:GetNWBool("VJ_IsRangeAttacking", false)
     vjData.faction = npc.VJ_NPC_Class or npc:GetNWString("VJ_NPC_Class", "")
@@ -279,8 +303,9 @@ return function(ply)
         if not IsValid(npc) then continue end
 
         local owner = GetEntityOwner(npc)
-        local shouldSave = (IsValid(owner) and owner:IsPlayer()) or npc.SpawnedByRareload or
-        not CONFIG.SAVE_PLAYER_OWNED_ONLY
+        local isOwnerPlayer = false
+        if owner and owner.IsPlayer and owner:IsPlayer() then isOwnerPlayer = true end
+        local shouldSave = isOwnerPlayer or npc.SpawnedByRareload or not CONFIG.SAVE_PLAYER_OWNED_ONLY
         if not shouldSave then continue end
 
         local ok, err = pcall(function()
@@ -320,12 +345,41 @@ return function(ply)
                 frozen = IsValid(npc:GetPhysicsObject()) and not npc:GetPhysicsObject():IsMotionEnabled(),
                 weapons = GetNPCWeapons(npc),
                 keyValues = GetNPCKeyValues(npc),
+                squad = (function()
+                    local kv = npc:GetKeyValues() or {}
+                    local s = kv.squadname
+                    if s == nil and npc.GetSquad then
+                        local ok, val = pcall(function() return npc:GetSquad() end)
+                        if ok and isstring(val) then s = val end
+                    end
+                    return s
+                end)(),
+                squadMembers = (function()
+                    local members = {}
+                    if npc.GetSquad then
+                        local ok, squad = pcall(function() return npc:GetSquad() end)
+                        if ok and squad and squad ~= "" then
+                            for j = 1, #allNPCs do
+                                local otherNPC = allNPCs[j]
+                                if IsValid(otherNPC) and otherNPC ~= npc then
+                                    local otherSquad = getsquadname(otherNPC)
+                                    if otherSquad == squad then
+                                        members[#members + 1] = GenerateNPCUniqueID(otherNPC)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    return members
+                end)(),
+
+                squadLeader = SafeGetNPCProperty(npc, function() return npc.IsSquadLeader and npc:IsSquadLeader() end,
+                    false),
                 target = GetNPCTarget(npc),
                 schedule = GetNPCSchedule(npc),
                 relations = GetNPCRelations(npc, players, allNPCs),
                 citizenData = GetCitizenProperties(npc),
                 velocity = npc:GetVelocity(),
-                ownerSteamID = IsValid(owner) and (owner.SteamID64 and owner:SteamID64() or owner:SteamID()) or nil,
                 creationTime = npc.CreationTime or CurTime(),
                 flags = npc:GetFlags(),
                 npcState = npc.GetNPCState and npc:GetNPCState() or nil,
@@ -342,13 +396,29 @@ return function(ply)
             }
 
             if npc:GetClass() == "npc_vortigaunt" then
+                local SCHED_ALLY_INJURED_FOLLOW_CONST = rawget(_G, "SCHED_ALLY_INJURED_FOLLOW")
                 npcData.isAlly = SafeGetNPCProperty(npc,
-                    function() return npc.IsCurrentSchedule and npc:IsCurrentSchedule(SCHED_ALLY_INJURED_FOLLOW) end,
+                    function()
+                        return npc.IsCurrentSchedule and SCHED_ALLY_INJURED_FOLLOW_CONST ~= nil and
+                            npc:IsCurrentSchedule(SCHED_ALLY_INJURED_FOLLOW_CONST)
+                    end,
                     false)
             end
 
             if npc.AddEntityRelationship and IsValid(ply) then
                 npcData.playerRelationship = SafeGetNPCProperty(npc, function() return npc:Disposition(ply) end, nil)
+            end
+
+            do
+                local osid = nil
+                if owner then
+                    if owner.SteamID64 then
+                        osid = owner:SteamID64()
+                    elseif owner.SteamID then
+                        osid = owner:SteamID()
+                    end
+                end
+                npcData.ownerSteamID = osid
             end
 
             npcsData[#npcsData + 1] = npcData

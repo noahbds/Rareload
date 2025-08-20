@@ -1,19 +1,102 @@
+---@diagnostic disable: inject-field, undefined-field, need-check-nil, param-type-mismatch
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
-local npcLogs = {}
+local npcRestoreLogs = {}
+local debugEnabled = false
+
 util.AddNetworkString("RareloadRespawnNPC")
 
--- Ensure vector/angle conversion utilities are available
 if not RARELOAD or not RARELOAD.DataUtils then
     include("rareload/utils/rareload_data_utils.lua")
 end
 
+RARELOAD._MapReady = RARELOAD._MapReady or false
+RARELOAD._MapReadyTime = RARELOAD._MapReadyTime or 0
+RARELOAD._NPCSpawnQueue = RARELOAD._NPCSpawnQueue or {}
+
+hook.Add("InitPostEntity", "RARELOAD_MapReady", function()
+    RARELOAD._MapReady = true
+    RARELOAD._MapReadyTime = CurTime()
+    debugEnabled = RARELOAD.settings.debugEnabled or false
+
+    if debugEnabled then
+        RARELOAD.Debug.Log("INFO", "Map Ready", { "InitPostEntity fired", "Ready time: " .. RARELOAD._MapReadyTime })
+    end
+end)
+
+hook.Add("PostCleanupMap", "RARELOAD_MapReadyAfterCleanup", function()
+    timer.Simple(0, function()
+        RARELOAD._MapReady = true
+        RARELOAD._MapReadyTime = CurTime()
+        debugEnabled = RARELOAD.settings.debugEnabled or false
+
+        if debugEnabled then
+            RARELOAD.Debug.Log("INFO", "Map Ready After Cleanup",
+                { "PostCleanupMap processed", "Ready time: " .. RARELOAD._MapReadyTime })
+        end
+    end)
+end)
+
+function RARELOAD.IsMapReady()
+    return RARELOAD._MapReady == true
+end
+
+local vectorCache = {}
+function RARELOAD.CoerceVector(pos)
+    if isvector and isvector(pos) then return pos end
+
+    local cacheKey = tostring(pos)
+    if vectorCache[cacheKey] then return vectorCache[cacheKey] end
+
+    local result = nil
+    if istable(pos) then
+        local x = pos.x ~= nil and pos.x or pos[1]
+        local y = pos.y ~= nil and pos.y or pos[2]
+        local z = pos.z ~= nil and pos.z or pos[3]
+        if x ~= nil and y ~= nil and z ~= nil then
+            result = Vector(tonumber(x) or 0, tonumber(y) or 0, tonumber(z) or 0)
+        end
+    elseif isstring(pos) and RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.ToVector then
+        local ok, vec = pcall(RARELOAD.DataUtils.ToVector, pos)
+        if ok and isvector and isvector(vec) then result = vec end
+    end
+
+    if result then vectorCache[cacheKey] = result end
+    return result
+end
+
 function RARELOAD.RestoreNPCs()
-    if not SavedInfo or not SavedInfo.npcs or #SavedInfo.npcs == 0 then return end
+    if not SavedInfo or not SavedInfo.npcs or #SavedInfo.npcs == 0 then
+        if debugEnabled then
+            RARELOAD.Debug.Log("INFO", "NPC Restoration Skipped", { "No NPCs to restore" })
+        end
+        return
+    end
+
+    if not RARELOAD.IsMapReady() then
+        if debugEnabled then
+            RARELOAD.Debug.Log("WARN", "Map Not Ready", { "Deferring NPC restoration until InitPostEntity" })
+        end
+
+        hook.Add("InitPostEntity", "RARELOAD_RestoreNPCs_OnReady", function()
+            hook.Remove("InitPostEntity", "RARELOAD_RestoreNPCs_OnReady")
+            timer.Simple(RARELOAD.settings.npcRestoreDelay or 1, RARELOAD.RestoreNPCs)
+        end)
+        return
+    end
 
     local delay = RARELOAD.settings.npcRestoreDelay or 1
-    local batchSize = RARELOAD.settings.npcBatchSize or 5
-    local interval = RARELOAD.settings.npcSpawnInterval or 0.1
+    local batchSize = math.max(RARELOAD.settings.npcBatchSize or 8, 3)
+    local interval = math.max(RARELOAD.settings.npcSpawnInterval or 0.08, 0.05)
+
+    if debugEnabled then
+        RARELOAD.Debug.Log("INFO", "NPC Restoration Started", {
+            "Total NPCs: " .. #SavedInfo.npcs,
+            "Batch size: " .. batchSize,
+            "Interval: " .. interval .. "s",
+            "Initial delay: " .. delay .. "s"
+        })
+    end
 
     timer.Simple(delay, function()
         local stats = {
@@ -24,11 +107,12 @@ function RARELOAD.RestoreNPCs()
             relationshipsRestored = 0,
             schedulesRestored = 0,
             targetsSet = 0,
-            startTime = SysTime()
+            startTime = SysTime(),
+            endTime = 0,
+            errors = {}
         }
 
         local npcDataStats = { restored = {}, skipped = {}, failed = {} }
-        local errorMessages = {}
         local spawnedNPCsByID = {}
         local pendingRelations = {}
         local npcsToCreate = table.Copy(SavedInfo.npcs)
@@ -36,20 +120,20 @@ function RARELOAD.RestoreNPCs()
 
         local function ProcessBatch()
             local count = 0
-            local startTime = SysTime()
+            local batchStart = SysTime()
+            local processed = {}
 
-            while #npcsToCreate > 0 and count < batchSize and (SysTime() - startTime) < 0.05 do
+            while #npcsToCreate > 0 and count < batchSize and (SysTime() - batchStart) < 0.08 do
                 local npcData = table.remove(npcsToCreate, 1)
                 count = count + 1
 
                 if not npcData.class then
                     stats.failed = stats.failed + 1
+                    table.insert(stats.errors, "Missing NPC class for entry #" .. count)
                     table.insert(npcDataStats.failed, npcData)
-                    table.insert(errorMessages, "Missing NPC class")
                     continue
                 end
 
-                -- Build a stable key for de-duplication using a normalized position string
                 local posKey = (RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.PositionToString(npcData.pos, 2))
                     or tostring(npcData.pos)
                 local entityKey = npcData.class .. "|" .. (npcData.model or "") .. "|" .. posKey
@@ -57,6 +141,9 @@ function RARELOAD.RestoreNPCs()
                 if (npcData.id and spawnedNPCsByID[npcData.id]) or existingNpcs[entityKey] then
                     stats.skipped = stats.skipped + 1
                     table.insert(npcDataStats.skipped, npcData)
+                    if debugEnabled then
+                        table.insert(processed, "SKIP: " .. npcData.class .. " (already exists)")
+                    end
                     continue
                 end
 
@@ -65,43 +152,50 @@ function RARELOAD.RestoreNPCs()
                 if success and IsValid(result) then
                     stats.restored = stats.restored + 1
                     table.insert(npcDataStats.restored, npcData)
+                    if debugEnabled then
+                        table.insert(processed, "OK: " .. npcData.class .. " (" .. (npcData.id or "no-id") .. ")")
+                    end
                 else
                     stats.failed = stats.failed + 1
-                    local errorMsg = isstring(result) and result or "Unknown error"
+                    local errorMsg = isstring(result) and result or "Spawn failed"
+                    table.insert(stats.errors, npcData.class .. ": " .. errorMsg)
                     table.insert(npcDataStats.failed, npcData)
-                    table.insert(errorMessages, errorMsg)
-                    if RARELOAD.settings.debugEnabled then
-                        RARELOAD.Debug.Log("ERROR", "Failed to Create NPC", {
-                            "Class: " .. npcData.class,
-                            "Error: " .. tostring(result)
-                        })
+                    if debugEnabled then
+                        table.insert(processed, "FAIL: " .. npcData.class .. " - " .. errorMsg)
                     end
                 end
+            end
+
+            if debugEnabled and #processed > 0 then
+                table.insert(npcRestoreLogs, {
+                    header = "Batch Processed (Remaining: " .. #npcsToCreate .. ")",
+                    messages = processed
+                })
             end
 
             if #npcsToCreate > 0 then
                 timer.Simple(interval, ProcessBatch)
             else
-                timer.Simple(0.5, function()
+                timer.Simple(0.3, function()
                     RARELOAD.RestoreNPCRelationships(pendingRelations, spawnedNPCsByID, stats)
                     stats.endTime = SysTime()
 
-                    if RARELOAD.settings.debugEnabled then
-                        table.insert(npcLogs, {
-                            header = "NPC Restoration Stats",
+                    if debugEnabled then
+                        table.insert(npcRestoreLogs, {
+                            header = "NPC Restoration Complete",
                             messages = {
-                                "Total NPCs: " .. stats.total,
-                                "Restored: " .. stats.restored,
-                                "Skipped: " .. stats.skipped,
-                                "Failed: " .. stats.failed,
-                                "Time taken: " .. math.Round(stats.endTime - stats.startTime, 2) .. "s",
-                                "Relationships: " .. stats.relationshipsRestored,
-                                "Targets set: " .. stats.targetsSet,
-                                "Schedules: " .. stats.schedulesRestored
+                                "Total: " ..
+                                stats.total ..
+                                " | Restored: " ..
+                                stats.restored .. " | Skipped: " .. stats.skipped .. " | Failed: " .. stats.failed,
+                                "Duration: " .. math.Round(stats.endTime - stats.startTime, 3) .. "s",
+                                "Relationships: " ..
+                                stats.relationshipsRestored ..
+                                " | Targets: " .. stats.targetsSet .. " | Schedules: " .. stats.schedulesRestored,
+                                #stats.errors > 0 and ("Errors: " .. table.concat(stats.errors, " | ")) or "No errors"
                             }
                         })
-
-                        RARELOAD.Debug.LogGroup("ALL NPC RESTORATION LOGS", "INFO", npcLogs)
+                        RARELOAD.Debug.LogGroup("NPC RESTORATION", "INFO", npcRestoreLogs)
                     end
                 end)
             end
@@ -111,71 +205,78 @@ function RARELOAD.RestoreNPCs()
     end)
 end
 
-function RARELOAD.CollectExistingNPCs(spawnedNPCsByID, npcLogs)
-    npcLogs = npcLogs or {}
+function RARELOAD.CollectExistingNPCs(spawnedNPCsByID)
     local existingNpcs = {}
+    local existingCount = 0
+    local rareloadNpcs = {}
+
     for _, npc in ipairs(ents.GetAll()) do
-        if npc.SpawnedByRareload or npc.SavedByRareload then
+        if IsValid(npc) and npc:IsNPC() and (npc.SpawnedByRareload or npc.SavedByRareload) then
             local posStr = (RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.PositionToString(npc:GetPos(), 2))
                 or tostring(npc:GetPos())
             local key = npc:GetClass() .. "|" .. (npc:GetModel() or "") .. "|" .. posStr
             existingNpcs[key] = true
+            existingCount = existingCount + 1
 
             if npc.RareloadUniqueID then
                 spawnedNPCsByID[npc.RareloadUniqueID] = npc
-                if RARELOAD.settings.debugEnabled then
-                    table.insert(npcLogs, {
-                        header = "Found existing NPC",
-                        messages = {
-                            "Class: " .. npc:GetClass(),
-                            "ID: " .. npc.RareloadUniqueID,
-                            "Status: Already on map"
-                        }
-                    })
-                end
+                table.insert(rareloadNpcs, {
+                    class = npc:GetClass(),
+                    id = npc.RareloadUniqueID,
+                    position = npc:GetPos()
+                })
             end
         end
     end
+
+    if debugEnabled and existingCount > 0 then
+        table.insert(npcRestoreLogs, {
+            header = "Existing NPCs Found",
+            messages = {
+                "Total existing: " .. existingCount,
+                "With unique IDs: " .. #rareloadNpcs,
+                "Sample: " ..
+                (rareloadNpcs[1] and (rareloadNpcs[1].class .. " (" .. rareloadNpcs[1].id .. ")") or "none")
+            }
+        })
+    end
+
     return existingNpcs
 end
 
 function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
     local success, result = pcall(function()
         local npc = ents.Create(npcData.class)
-        if not IsValid(npc) then return nil, "Failed to create NPC" end
+        if not IsValid(npc) then return nil, "Entity creation failed" end
 
-        -- Normalize position to a Vector to satisfy any SetPos wrappers
-        local pos = npcData.pos
-        if isvector and isvector(pos) then
-            -- ok
-        elseif istable(pos) and pos.x and pos.y and pos.z then
-            pos = Vector(pos.x, pos.y, pos.z)
-        elseif isstring(pos) and RARELOAD and RARELOAD.DataUtils then
-            pos = RARELOAD.DataUtils.ToVector(pos)
-        end
-        if not (isvector and isvector(pos)) then
-            pos = Vector(0, 0, 0)
-        end
+        local pos = RARELOAD.CoerceVector(npcData.pos) or Vector(0, 0, 0)
         npcData.pos = pos
         npc:SetPos(pos)
+
+        if npc.SetSaveValue then
+            pcall(function()
+                npc:SetSaveValue("m_vecOrigin", pos)
+                npc:SetSaveValue("m_vecAbsOrigin", pos)
+                npc:SetSaveValue("origin", pos)
+            end)
+        end
 
         if npcData.model and util.IsValidModel(npcData.model) then
             npc:SetModel(npcData.model)
         end
 
-        -- Normalize angles if present
         if npcData.ang ~= nil then
             local ang = npcData.ang
-            if isangle and isangle(ang) then
-                -- ok
-            elseif istable(ang) then
-                if ang.p and ang.y and ang.r then
-                    ang = Angle(ang.p, ang.y, ang.r)
-                elseif #ang >= 3 then
-                    ang = Angle(ang[1], ang[2], ang[3])
+            if not (isangle and isangle(ang)) then
+                if istable(ang) then
+                    if ang.p and ang.y and ang.r then
+                        ang = Angle(ang.p, ang.y, ang.r)
+                    elseif #ang >= 3 then
+                        ang = Angle(ang[1], ang[2], ang[3])
+                    end
+                elseif isstring(ang) and RARELOAD and RARELOAD.DataUtils then
+                    ang = RARELOAD.DataUtils.ToAngle(ang)
                 end
-            elseif isstring(ang) and RARELOAD and RARELOAD.DataUtils then
-                ang = RARELOAD.DataUtils.ToAngle(ang)
             end
             if isangle and isangle(ang) then
                 npcData.ang = ang
@@ -188,7 +289,7 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
             local originalSquad = keyValuesCopy.squadname
             keyValuesCopy.squadname = nil
             for key, value in pairs(keyValuesCopy) do
-                npc:SetKeyValue(key, value)
+                pcall(function() npc:SetKeyValue(key, value) end)
             end
             if originalSquad then
                 npcData.originalSquad = originalSquad
@@ -198,11 +299,28 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
         npc:Spawn()
         npc:Activate()
 
+        local cls = npc:GetClass() or ""
+        local isVJBase = string.sub(cls, 1, 7) == "npc_vj_"
+
+        if isVJBase then
+            local desiredPos = pos
+            local desiredAng = npcData.ang
+            timer.Simple(0, function()
+                if not IsValid(npc) then return end
+                npc:SetPos(desiredPos)
+                if desiredAng and isangle and isangle(desiredAng) then
+                    npc:SetAngles(desiredAng)
+                end
+                if npc.DropToFloor then
+                    pcall(function() npc:DropToFloor() end)
+                end
+            end)
+        end
+
         if npcData.id then
             spawnedNPCsByID[npcData.id] = npc
         end
 
-        -- Fidelity restore
         if npcData.modelScale then
             pcall(function() npc:SetModelScale(npcData.modelScale, 0) end)
         end
@@ -267,18 +385,38 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
             end
         end
 
-        local phys = npc:GetPhysicsObject()
-        if IsValid(phys) then
-            if npcData.frozen or (npcData.physics and npcData.physics.frozen) then
-                phys:EnableMotion(false)
+        do
+            local phys = npc:GetPhysicsObject()
+            if IsValid(phys) then
+                if npcData.physics then
+                    if npcData.physics.mass then
+                        pcall(function() phys:SetMass(npcData.physics.mass) end)
+                    end
+                    if npcData.physics.gravityEnabled ~= nil then
+                        pcall(function() phys:EnableGravity(npcData.physics.gravityEnabled) end)
+                    end
+                    if npcData.physics.motionEnabled ~= nil then
+                        pcall(function() phys:EnableMotion(npcData.physics.motionEnabled) end)
+                    end
+                    if npcData.physics.material and phys.SetMaterial then
+                        pcall(function() phys:SetMaterial(npcData.physics.material) end)
+                    end
+                end
+                if npcData.frozen then
+                    phys:EnableMotion(false)
+                end
             end
-            if npcData.physics and npcData.physics.mass then
-                pcall(function() phys:SetMass(npcData.physics.mass) end)
-            end
-            if npcData.physics and npcData.physics.gravityEnabled ~= nil then
-                pcall(function() phys:EnableGravity(npcData.physics.gravityEnabled) end)
+            if npcData.velocity and npc.SetVelocity then
+                local v = npcData.velocity
+                if istable(v) and v.x and v.y and v.z then v = Vector(v.x, v.y, v.z) end
+                if isvector and isvector(v) then pcall(function() npc:SetVelocity(v) end) end
             end
         end
+
+        if npcData.moveType and npc.SetMoveType then pcall(function() npc:SetMoveType(npcData.moveType) end) end
+        if npcData.solidType and npc.SetSolid then pcall(function() npc:SetSolid(npcData.solidType) end) end
+        if npcData.hullType then pcall(function() if npc.SetHullType then npc:SetHullType(npcData.hullType) end end) end
+        if npcData.bloodColor and npc.SetBloodColor then pcall(function() npc:SetBloodColor(npcData.bloodColor) end) end
 
         if npcData.relations then
             pendingRelations[npc] = npcData.relations
@@ -288,7 +426,7 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
             RARELOAD.RestoreCitizenProperties(npc, npcData.citizenData)
         end
 
-        if npcData.vjBaseData and string.find(npc:GetClass() or "", "npc_vj_") == 1 then
+        if npcData.vjBaseData and isVJBase then
             RARELOAD.RestoreVJBaseProperties(npc, npcData.vjBaseData)
         end
 
@@ -321,18 +459,23 @@ end
 function RARELOAD.RestoreCitizenProperties(npc, citizenData)
     if not IsValid(npc) or not citizenData then return end
 
+    local restoredProps = {}
+
     if citizenData.isMedic then
         npc:SetKeyValue("citizentype", "3")
         npc:SetNWBool("IsMedic", true)
+        table.insert(restoredProps, "medic")
     end
 
     if citizenData.isAmmoSupplier then
         npc:SetKeyValue("ammosupplier", "1")
         npc:SetNWBool("IsAmmoSupplier", true)
+        table.insert(restoredProps, "ammo_supplier")
     end
 
     if citizenData.isRebel then
         npc:SetNWBool("IsRebel", true)
+        table.insert(restoredProps, "rebel")
 
         if not string.find(npc:GetModel() or "", "rebel") then
             local rebelModels = {
@@ -341,52 +484,114 @@ function RARELOAD.RestoreCitizenProperties(npc, citizenData)
                 "models/humans/group03/female_01.mdl"
             }
             npc:SetModel(rebelModels[math.random(#rebelModels)])
+            table.insert(restoredProps, "rebel_model")
         end
+    end
+
+    if debugEnabled and #restoredProps > 0 then
+        table.insert(npcRestoreLogs, {
+            header = "Citizen Properties Restored",
+            messages = {
+                "NPC: " .. npc:GetClass() .. " (" .. (npc.RareloadUniqueID or "no-id") .. ")",
+                "Properties: " .. table.concat(restoredProps, ", ")
+            }
+        })
     end
 end
 
 function RARELOAD.RestoreVJBaseProperties(npc, vjData)
     if not IsValid(npc) or not vjData then return end
 
+    local restoredProps = {}
+
     if vjData.vjType then
         npc:SetNWString("VJ_Type", vjData.vjType)
+        table.insert(restoredProps, "type=" .. vjData.vjType)
     end
 
     if vjData.maxHealth then
         npc:SetMaxHealth(vjData.maxHealth)
         npc:SetHealth(vjData.maxHealth)
+        table.insert(restoredProps, "maxHealth=" .. vjData.maxHealth)
     end
 
     if vjData.startHealth then
         npc:SetNWInt("VJ_StartingHealth", vjData.startHealth)
+        table.insert(restoredProps, "startHealth=" .. vjData.startHealth)
     end
 
     if vjData.animationPlaybackRate then
         npc:SetNWFloat("AnimationPlaybackRate", vjData.animationPlaybackRate)
+        table.insert(restoredProps, "animRate=" .. vjData.animationPlaybackRate)
     end
 
     if vjData.walkSpeed then
         npc:SetNWInt("VJ_WalkSpeed", vjData.walkSpeed)
+        table.insert(restoredProps, "walkSpeed=" .. vjData.walkSpeed)
     end
 
     if vjData.runSpeed then
         npc:SetNWInt("VJ_RunSpeed", vjData.runSpeed)
-    end
-
-    if vjData.isFollowing ~= nil then
-        npc:SetNWBool("VJ_IsBeingControlled", vjData.isFollowing)
+        table.insert(restoredProps, "runSpeed=" .. vjData.runSpeed)
     end
 
     if vjData.faction then
-        npc:SetNWString("VJ_NPC_Class", vjData.faction)
+        if istable(vjData.faction) then
+            npc.VJ_NPC_Class = table.Copy(vjData.faction)
+            table.insert(restoredProps, "faction=table")
+        elseif isstring(vjData.faction) then
+            npc:SetNWString("VJ_NPC_Class", vjData.faction)
+            table.insert(restoredProps, "faction=" .. vjData.faction)
+        end
+    end
+
+    if vjData.isFollowing then
+        table.insert(restoredProps, "following")
+        timer.Simple(0, function()
+            if not IsValid(npc) then return end
+            local minDist = vjData.followMinDistance
+            if vjData.followTarget and vjData.followTarget.type == "player" then
+                local target = RARELOAD.FindPlayerBySteamID(vjData.followTarget.id)
+                if IsValid(target) then
+                    RARELOAD.TryStartFollowVJ(npc, target, minDist)
+                    RARELOAD.EnforceVJFollow(npc, target, minDist)
+                else
+                    timer.Simple(0.2, function()
+                        if not IsValid(npc) then return end
+                        local t = RARELOAD.FindPlayerBySteamID(vjData.followTarget.id)
+                        if IsValid(t) then
+                            RARELOAD.TryStartFollowVJ(npc, t, minDist)
+                            RARELOAD.EnforceVJFollow(npc, t, minDist)
+                        end
+                    end)
+                end
+            elseif vjData.followTarget and vjData.followTarget.type == "npc" and npc.RareloadData then
+                npc.Rareload_FollowTargetNPC = vjData.followTarget.id
+                npc.Rareload_FollowMinDist = minDist
+            else
+                RARELOAD.TryStartFollowVJ(npc, nil, minDist)
+            end
+        end)
     end
 
     if vjData.isMeleeAttacker ~= nil then
         npc:SetNWBool("VJ_IsMeleeAttacking", vjData.isMeleeAttacker)
+        table.insert(restoredProps, "melee=" .. tostring(vjData.isMeleeAttacker))
     end
 
     if vjData.isRangeAttacker ~= nil then
         npc:SetNWBool("VJ_IsRangeAttacking", vjData.isRangeAttacker)
+        table.insert(restoredProps, "range=" .. tostring(vjData.isRangeAttacker))
+    end
+
+    if debugEnabled and #restoredProps > 0 then
+        table.insert(npcRestoreLogs, {
+            header = "VJ Base Properties Restored",
+            messages = {
+                "NPC: " .. npc:GetClass() .. " (" .. (npc.RareloadUniqueID or "no-id") .. ")",
+                "Properties: " .. table.concat(restoredProps, ", ")
+            }
+        })
     end
 end
 
@@ -401,35 +606,50 @@ function RARELOAD.FindPlayerBySteamID(steamID)
 end
 
 function RARELOAD.RestoreNPCRelationships(pendingRelations, spawnedNPCsByID, stats)
+    local relationshipStats = { player = 0, npc = 0, faction = 0 }
+
     for npc, relations in pairs(pendingRelations) do
-        if IsValid(npc) then
-            if relations.players then
-                for steamID, disposition in pairs(relations.players) do
-                    local player = RARELOAD.FindPlayerBySteamID(steamID)
-                    if IsValid(player) then
-                        npc:AddEntityRelationship(player, disposition, 99)
-                        stats.relationshipsRestored = stats.relationshipsRestored + 1
-                    end
-                end
-            end
+        if not IsValid(npc) then continue end
 
-            if relations.npcs then
-                for targetID, disposition in pairs(relations.npcs) do
-                    local targetNPC = spawnedNPCsByID[targetID]
-                    if IsValid(targetNPC) then
-                        npc:AddEntityRelationship(targetNPC, disposition, 99)
-                        stats.relationshipsRestored = stats.relationshipsRestored + 1
-                    end
-                end
-            end
-
-            if relations.factions then
-                for faction, disposition in pairs(relations.factions) do
-                    -- NOT_IMPLEMENTED: Faction relationships
-                    stats.relationshipsRestored = stats.relationshipsRestored + 1
+        if relations.players then
+            for steamID, disposition in pairs(relations.players) do
+                local player = RARELOAD.FindPlayerBySteamID(steamID)
+                if IsValid(player) then
+                    pcall(function() npc:AddEntityRelationship(player, disposition, 99) end)
+                    relationshipStats.player = relationshipStats.player + 1
                 end
             end
         end
+
+        if relations.npcs then
+            for targetID, disposition in pairs(relations.npcs) do
+                local targetNPC = spawnedNPCsByID[targetID]
+                if IsValid(targetNPC) then
+                    pcall(function() npc:AddEntityRelationship(targetNPC, disposition, 99) end)
+                    relationshipStats.npc = relationshipStats.npc + 1
+                end
+            end
+        end
+
+        if relations.factions then
+            for faction, disposition in pairs(relations.factions) do
+                relationshipStats.faction = relationshipStats.faction + 1
+            end
+        end
+    end
+
+    stats.relationshipsRestored = relationshipStats.player + relationshipStats.npc + relationshipStats.faction
+
+    if debugEnabled and stats.relationshipsRestored > 0 then
+        table.insert(npcRestoreLogs, {
+            header = "Relationships Restored",
+            messages = {
+                "Player relations: " .. relationshipStats.player,
+                "NPC relations: " .. relationshipStats.npc,
+                "Faction relations: " .. relationshipStats.faction,
+                "Total: " .. stats.relationshipsRestored
+            }
+        })
     end
 
     RARELOAD.RestoreNPCTargetsAndSchedules(spawnedNPCsByID, stats)
@@ -437,10 +657,27 @@ function RARELOAD.RestoreNPCRelationships(pendingRelations, spawnedNPCsByID, sta
 end
 
 function RARELOAD.RestoreNPCTargetsAndSchedules(spawnedNPCsByID, stats)
+    local targetsRestored = 0
+    local schedulesRestored = 0
+    local followRestored = 0
+
     for uniqueID, npc in pairs(spawnedNPCsByID) do
         if not IsValid(npc) then continue end
         local npcData = npc.RareloadData
         if not npcData then continue end
+
+        if npcData.vjBaseData and npc.Rareload_FollowTargetNPC then
+            local tgt = spawnedNPCsByID[npc.Rareload_FollowTargetNPC]
+            if IsValid(tgt) then
+                local minDist = npc.Rareload_FollowMinDist or
+                    (npcData.vjBaseData and npcData.vjBaseData.followMinDistance)
+                RARELOAD.TryStartFollowVJ(npc, tgt, minDist)
+                RARELOAD.EnforceVJFollow(npc, tgt, minDist)
+                npc.Rareload_FollowTargetNPC = nil
+                npc.Rareload_FollowMinDist = nil
+                followRestored = followRestored + 1
+            end
+        end
 
         if npcData.target then
             local target
@@ -450,14 +687,14 @@ function RARELOAD.RestoreNPCTargetsAndSchedules(spawnedNPCsByID, stats)
                 target = spawnedNPCsByID[npcData.target.id]
             end
             if IsValid(target) then
-                npc:SetEnemy(target)
-                stats.targetsSet = stats.targetsSet + 1
+                pcall(function() npc:SetEnemy(target) end)
+                targetsRestored = targetsRestored + 1
             end
         end
 
         if npcData.schedule and npc.SetSchedule then
-            npc:SetSchedule(npcData.schedule.id)
-            stats.schedulesRestored = stats.schedulesRestored + 1
+            pcall(function() npc:SetSchedule(npcData.schedule.id) end)
+            schedulesRestored = schedulesRestored + 1
             if npcData.schedule.target and npc.SetTarget then
                 local target
                 if npcData.schedule.target.type == "player" then
@@ -465,7 +702,7 @@ function RARELOAD.RestoreNPCTargetsAndSchedules(spawnedNPCsByID, stats)
                 elseif npcData.schedule.target.type == "npc" or npcData.schedule.target.type == "entity" then
                     target = spawnedNPCsByID[npcData.schedule.target.id]
                 end
-                if IsValid(target) then npc:SetTarget(target) end
+                if IsValid(target) then pcall(function() npc:SetTarget(target) end) end
             end
         end
 
@@ -486,134 +723,269 @@ function RARELOAD.RestoreNPCTargetsAndSchedules(spawnedNPCsByID, stats)
             pcall(function() npc:SetPlaybackRate(npcData.playbackRate) end)
         end
     end
+
+    stats.targetsSet = targetsRestored
+    stats.schedulesRestored = schedulesRestored
+
+    if debugEnabled and (targetsRestored > 0 or schedulesRestored > 0 or followRestored > 0) then
+        table.insert(npcRestoreLogs, {
+            header = "Targets & Schedules Restored",
+            messages = {
+                "Targets set: " .. targetsRestored,
+                "Schedules restored: " .. schedulesRestored,
+                "Follow behaviors: " .. followRestored
+            }
+        })
+    end
+end
+
+function RARELOAD.TryStartFollowVJ(npc, target, minDist)
+    if not IsValid(npc) then return end
+
+    local entTbl = npc:GetTable()
+    entTbl.IsFollowing = true
+    entTbl.FollowData = entTbl.FollowData or {}
+    if IsValid(target) then entTbl.FollowData.Target = target end
+    entTbl.FollowData.MinDist = minDist or entTbl.FollowData.MinDist or entTbl.FollowMinDistance or 100
+    entTbl.FollowData.Using = true
+
+    if IsValid(target) then
+        pcall(function()
+            if target:IsPlayer() then
+                npc:AddEntityRelationship(target, D_LI, 99)
+            elseif target:IsNPC() then
+                npc:AddEntityRelationship(target, D_FR, 99)
+            end
+        end)
+    end
+
+    local followMethods = {
+        function() if isfunction(npc.VJ_DoFollow) then npc:VJ_DoFollow(target, true) end end,
+        function() if isfunction(npc.StartFollowing) then npc:StartFollowing(target) end end,
+        function() if isfunction(npc.Follow) then npc:Follow(target) end end,
+        function() if isfunction(npc.SetFollowTarget) then npc:SetFollowTarget(target) end end
+    }
+
+    for _, method in ipairs(followMethods) do pcall(method) end
+
+    for i = 0, 2 do
+        timer.Simple(0.05 * i, function()
+            if not IsValid(npc) then return end
+            local t = target
+            if not IsValid(t) and npc.RareloadData and npc.RareloadData.vjBaseData and npc.RareloadData.vjBaseData.followTarget and npc.RareloadData.vjBaseData.followTarget.type == "player" then
+                t = RARELOAD.FindPlayerBySteamID(npc.RareloadData.vjBaseData.followTarget.id)
+            end
+            entTbl.IsFollowing = true
+            entTbl.FollowData = entTbl.FollowData or {}
+            if IsValid(t) then entTbl.FollowData.Target = t end
+            entTbl.FollowData.MinDist = minDist or entTbl.FollowData.MinDist or entTbl.FollowMinDistance or 100
+            entTbl.FollowData.Using = true
+            if IsValid(t) and npc.SetLastPosition and npc.SetSchedule then
+                pcall(function()
+                    npc:SetLastPosition(t:GetPos())
+                    if SCHED_FORCED_GO_RUN then
+                        npc:SetSchedule(SCHED_FORCED_GO_RUN)
+                    elseif SCHED_FORCED_GO then
+                        npc:SetSchedule(SCHED_FORCED_GO)
+                    end
+                end)
+            end
+        end)
+    end
+end
+
+function RARELOAD.EnforceVJFollow(npc, target, minDist)
+    if not IsValid(npc) then return end
+
+    for i = 1, 15 do
+        timer.Simple(0.05 * i, function()
+            if not IsValid(npc) then return end
+            local t = target
+            if not IsValid(t) and npc.RareloadData and npc.RareloadData.vjBaseData and npc.RareloadData.vjBaseData.followTarget then
+                local ft = npc.RareloadData.vjBaseData.followTarget
+                if ft.type == "player" then
+                    t = RARELOAD.FindPlayerBySteamID(ft.id)
+                end
+            end
+            RARELOAD.TryStartFollowVJ(npc, t, minDist)
+        end)
+    end
 end
 
 function RARELOAD.RestoreSquads(spawnedNPCsByID)
-    local squads = {}
-    local squadLogs = {}
+    local groups = {}
+    local squadStats = { total = 0, formed = 0, conflicts = 0, renamed = 0, split = 0 }
 
-    for uniqueID, npc in pairs(spawnedNPCsByID) do
+    local function SafeDisposition(a, b)
+        if not (IsValid(a) and IsValid(b) and a.Disposition) then return D_LI end
+        local ok, disp = pcall(function() return a:Disposition(b) end)
+        if ok and disp ~= nil then return disp end
+        return D_LI
+    end
+
+    local function MapHasForeignSquadMembers(name, ourSet)
+        if not name or name == "" then return false end
+        local found = false
+        for _, e in ipairs(ents.GetAll()) do
+            if IsValid(e) and e:IsNPC() then
+                local kv = e:GetKeyValues() or {}
+                if tostring(kv.squadname or "") == name then
+                    if not ourSet[e] then
+                        found = true
+                        break
+                    end
+                end
+            end
+        end
+        return found
+    end
+
+    local function SquadSuffix(firstNPC)
+        local id = (IsValid(firstNPC) and firstNPC.RareloadUniqueID) or tostring(firstNPC)
+        return string.sub(util.CRC(tostring(id)), 1, 6)
+    end
+
+    for _, npc in pairs(spawnedNPCsByID) do
         if not IsValid(npc) then continue end
-
         local npcData = npc.RareloadData
         if not npcData then continue end
 
-        local squadName = npcData.originalSquad or (npcData.keyValues and npcData.keyValues.squadname)
+        local squadName = npcData.squad or npcData.originalSquad or (npcData.keyValues and npcData.keyValues.squadname)
         if not squadName or squadName == "" then continue end
 
-        squads[squadName] = squads[squadName] or {}
-        table.insert(squads[squadName], npc)
+        groups[squadName] = groups[squadName] or {}
+        table.insert(groups[squadName], npc)
+        squadStats.total = squadStats.total + 1
     end
 
-    if RARELOAD.settings.debugEnabled then
-        for squadName, members in pairs(squads) do
-            if #members > 0 then
-                table.insert(squadLogs, {
-                    header = "Squad Found",
-                    messages = {
-                        "Name: " .. squadName,
-                        "Members: " .. #members
-                    }
-                })
-            end
-        end
-    end
-
-    for squadName, members in pairs(squads) do
-        if #members == 0 then continue end
-
-        if #members == 1 then
-            if IsValid(members[1]) then
-                members[1]:Fire("ClearSquad", "", 0)
-                members[1]:Fire("setsquad", squadName, 0.1)
-            end
-            continue
-        end
-
-        local allRelationships = {}
-        local enemyRelations = {}
-
-        for i, npc1 in ipairs(members) do
-            if not IsValid(npc1) then continue end
-
-            enemyRelations[npc1] = {}
-            local npc1Info = npc1:GetClass() .. " (ID: " .. (npc1.RareloadUniqueID or "unknown") .. ")"
-
-            for j, npc2 in ipairs(members) do
-                if i == j or not IsValid(npc2) then continue end
-
-                local npc2Info = npc2:GetClass() .. " (ID: " .. (npc2.RareloadUniqueID or "unknown") .. ")"
-                local disposition = npc1:Disposition(npc2)
-                local dispName = "Unknown"
-
-                if disposition == D_HT then
-                    dispName = "D_HT (Enemy)"
-                    table.insert(enemyRelations[npc1], npc2)
-                elseif disposition == D_LI then
-                    dispName = "D_LI (Like)"
-                elseif disposition == D_FR then
-                    dispName = "D_FR (Friend)"
-                elseif disposition == D_NU then
-                    dispName = "D_NU (Neutral)"
-                elseif disposition == D_FT then
-                    dispName = "D_FT (Fear)"
-                end
-
-                table.insert(allRelationships, npc1Info .. " → " .. npc2Info .. ": " .. dispName)
+    for baseName, members in pairs(groups) do
+        local adj = {}
+        local indexMap = {}
+        for i, npc in ipairs(members) do
+            if IsValid(npc) then
+                adj[i] = {}
+                indexMap[npc] = i
             end
         end
 
-        if RARELOAD.settings.debugEnabled and #allRelationships > 0 then
-            table.insert(squadLogs, {
-                header = "Squad Relationship Map: " .. squadName,
-                messages = allRelationships
-            })
-        end
-
-
-        local validSquadMembers = {}
-        for _, npc in ipairs(members) do
-            if IsValid(npc) and (#enemyRelations[npc] == 0) then
-                table.insert(validSquadMembers, npc)
-            end
-        end
-
-        if #validSquadMembers > 0 then
-            for _, npc in ipairs(validSquadMembers) do
-                if IsValid(npc) then
-                    npc:Fire("ClearSquad", "", 0)
-                    npc:Fire("setsquad", squadName, 0.1)
+        local conflicts = 0
+        for i = 1, #members do
+            local a = members[i]
+            if not IsValid(a) then continue end
+            for j = i + 1, #members do
+                local b = members[j]
+                if not IsValid(b) then continue end
+                local disp = SafeDisposition(a, b)
+                if disp == D_HT then
+                    conflicts = conflicts + 1
+                else
+                    adj[i][j] = true
+                    adj[j][i] = true
                 end
             end
+        end
+        if conflicts > 0 then squadStats.conflicts = squadStats.conflicts + 1 end
 
-            if RARELOAD.settings.debugEnabled then
-                table.insert(squadLogs, {
-                    header = "Squad Formed",
-                    messages = {
-                        "Name: " .. squadName,
-                        "Valid members: " .. #validSquadMembers
-                    }
-                })
+        local visited = {}
+        local components = {}
+        for i = 1, #members do
+            if not visited[i] and IsValid(members[i]) then
+                local queue = { i }
+                visited[i] = true
+                local comp = {}
+                while #queue > 0 do
+                    local v = table.remove(queue, 1)
+                    if IsValid(members[v]) then table.insert(comp, members[v]) end
+                    for w, ok in pairs(adj[v] or {}) do
+                        if ok and not visited[w] then
+                            visited[w] = true
+                            table.insert(queue, w)
+                        end
+                    end
+                end
+                if #comp > 0 then table.insert(components, comp) end
             end
+        end
+
+        if #components == 0 and #members > 0 then components = { members } end
+        if #components > 1 then squadStats.split = squadStats.split + (#components - 1) end
+
+        for idx, comp in ipairs(components) do
+            local leader = comp[1]
+            for _, n in ipairs(comp) do
+                if IsValid(n) and n.RareloadData and n.RareloadData.squadLeader then
+                    leader = n
+                    break
+                end
+            end
+            local suffix = SquadSuffix(leader)
+            local finalName = baseName
+            local ourSet = {}
+            for _, n in ipairs(comp) do ourSet[n] = true end
+            if MapHasForeignSquadMembers(finalName, ourSet) then
+                finalName = (baseName .. "_rl_" .. suffix)
+                squadStats.renamed = squadStats.renamed + 1
+            end
+            if #components > 1 then
+                finalName = finalName .. "_" .. tostring(idx)
+            end
+
+            for i = 1, #comp do
+                local a = comp[i]
+                if not IsValid(a) then goto continue_inner end
+                for j = 1, #comp do
+                    local b = comp[j]
+                    if i ~= j and IsValid(b) then
+                        pcall(function() a:AddEntityRelationship(b, D_LI, 99) end)
+                    end
+                end
+                ::continue_inner::
+            end
+
+            for _, n in ipairs(comp) do
+                if not IsValid(n) then goto continue_assign end
+                n:Fire("ClearSquad", "", 0)
+                n:Fire("setsquad", finalName, 0.05)
+                if n.SetKeyValue then pcall(function() n:SetKeyValue("squadname", finalName) end) end
+                ::continue_assign::
+            end
+
+            squadStats.formed = squadStats.formed + #comp
         end
     end
 
-    if RARELOAD.settings.debugEnabled and #squadLogs > 0 then
-        RARELOAD.Debug.LogSquadFileOnly("SQUAD RESTORATION LOGS", "INFO", squadLogs)
+    if debugEnabled and squadStats.total > 0 then
+        table.insert(npcRestoreLogs, {
+            header = "Squad Restoration Complete",
+            messages = {
+                "Total NPCs with squads: " .. squadStats.total,
+                "Members assigned: " .. squadStats.formed,
+                "Groups split: " .. squadStats.split,
+                "Squads with conflicts: " .. squadStats.conflicts,
+                "Renamed to avoid collisions: " .. squadStats.renamed,
+                "Unique base squads: " .. table.Count(groups)
+            }
+        })
     end
 end
 
 hook.Add("RARELOAD_SaveEntities", "RARELOAD_MarkSavedNPCs", function()
+    local markedCount = 0
     for _, npc in ipairs(ents.GetAll()) do
         if npc:IsNPC() and npc:IsValid() then
             npc.SavedByRareload = true
+            markedCount = markedCount + 1
         end
+    end
+
+    if debugEnabled then
+        RARELOAD.Debug.Log("INFO", "NPCs Marked for Save", { "Total marked: " .. markedCount })
     end
 end)
 
 net.Receive("RareloadRespawnNPC", function(len, ply)
     if not IsValid(ply) or not ply:IsAdmin() then
-        ply:ChatPrint("You need admin privileges to respawn entities")
+        ply:ChatPrint("[RARELOAD] Admin privileges required")
         return
     end
 
@@ -621,15 +993,21 @@ net.Receive("RareloadRespawnNPC", function(len, ply)
     local position = net.ReadVector()
 
     if not entityClass or entityClass == "" or not position then
-        ply:ChatPrint("Invalid entity data received")
+        ply:ChatPrint("[RARELOAD] Invalid entity data received")
         return
     end
 
-    print("[Rareload] Admin " .. ply:Nick() .. " respawning " .. entityClass .. " at " .. tostring(position))
+    if debugEnabled then
+        RARELOAD.Debug.Log("INFO", "Manual Respawn Request", {
+            "Admin: " .. ply:Nick(),
+            "Class: " .. entityClass,
+            "Position: " .. tostring(position)
+        })
+    end
 
     local matchedData = nil
     local isNPC = (isstring(entityClass) and string.sub(entityClass, 1, 4) == "npc_") or
-    (list.Get("NPC")[entityClass] ~= nil)
+        (list.Get("NPC")[entityClass] ~= nil)
     local savedList = isNPC and (SavedInfo and SavedInfo.npcs or {}) or (SavedInfo and SavedInfo.entities or {})
 
     if savedList then
@@ -643,39 +1021,28 @@ net.Receive("RareloadRespawnNPC", function(len, ply)
         end
     end
 
+    local success = false
     if matchedData then
         if isNPC then
             local spawnedNPCsByID = {}
             local pendingRelations = {}
-            local success, newNPC = RARELOAD.SpawnNPC(matchedData, spawnedNPCsByID, pendingRelations)
+            local spawnSuccess, newNPC = RARELOAD.SpawnNPC(matchedData, spawnedNPCsByID, pendingRelations)
 
-            if success and IsValid(newNPC) then
+            if spawnSuccess and IsValid(newNPC) then
                 if next(pendingRelations) then
                     timer.Simple(0.1, function()
                         RARELOAD.RestoreNPCRelationships(pendingRelations, spawnedNPCsByID, {
-                            relationshipsRestored = 0,
-                            targetsSet = 0,
-                            schedulesRestored = 0
+                            relationshipsRestored = 0, targetsSet = 0, schedulesRestored = 0
                         })
                     end)
                 end
-
-                ply:ChatPrint("[RARELOAD] " .. entityClass .. " respawned")
-            else
-                local entity = ents.Create(entityClass)
-                if IsValid(entity) then
-                    entity:SetPos(position)
-                    entity:Spawn()
-                    ply:ChatPrint("NPC " .. entityClass .. " respawned with basic properties (full restore failed)")
-                else
-                    ply:ChatPrint("Failed to respawn NPC: " .. entityClass)
-                end
+                ply:ChatPrint("[RARELOAD] " .. entityClass .. " restored successfully")
+                success = true
             end
         else
             local entity = ents.Create(entityClass)
             if IsValid(entity) then
                 entity:SetPos(position)
-
                 if matchedData.ang then entity:SetAngles(matchedData.ang) end
                 if matchedData.model and util.IsValidModel(matchedData.model) then entity:SetModel(matchedData.model) end
 
@@ -723,38 +1090,22 @@ net.Receive("RareloadRespawnNPC", function(len, ply)
 
                 entity.SpawnedByRareload = true
                 entity.SavedByRareload = true
-
-                ply:ChatPrint("Entity " .. entityClass .. " respawned with saved properties!")
-            else
-                ply:ChatPrint("Failed to respawn entity: " .. entityClass)
+                ply:ChatPrint("[RARELOAD] " .. entityClass .. " restored with saved properties")
+                success = true
             end
         end
-    else
-        local entity
+    end
 
-        if isNPC then
-            entity = ents.Create(entityClass)
-            if IsValid(entity) then
-                entity:SetPos(position)
-                entity:Spawn()
-                ply:ChatPrint("NPC " .. entityClass .. " respawned with default properties (no saved data found)")
-            else
-                ply:ChatPrint("Failed to respawn NPC: " .. entityClass)
-            end
-        else
-            entity = ents.Create(entityClass)
-            if IsValid(entity) then
-                entity:SetPos(position)
-                entity:Spawn()
-                entity:Activate()
-                ply:ChatPrint("Entity " .. entityClass .. " respawned with default properties (no saved data found)")
-            else
-                ply:ChatPrint("Failed to respawn entity: " .. entityClass)
-            end
-        end
-
+    if not success then
+        local entity = ents.Create(entityClass)
         if IsValid(entity) then
+            entity:SetPos(position)
+            entity:Spawn()
+            if not isNPC then entity:Activate() end
             entity.SpawnedByRareload = true
+            ply:ChatPrint("[RARELOAD] " .. entityClass .. " spawned with default properties")
+        else
+            ply:ChatPrint("[RARELOAD] Failed to spawn " .. entityClass)
         end
     end
 
