@@ -417,9 +417,6 @@ function OpenEntityViewer(ply)
             local playerCard = CreateStatsCard(statsContainer, "PLAYERS", totalPlayers, "with data")
             playerCard:Dock(LEFT)
             playerCard:DockMargin(0, 0, 12, 0)
-            local avgHealth = countedEntities > 0 and math.floor(totalHealth / countedEntities) or 0
-            local healthCard = CreateStatsCard(statsContainer, "AVG HEALTH", avgHealth, "HP")
-            healthCard:Dock(LEFT)
             if entitySheet and entitySheet.Tab and entitySheet.Tab.Text then
                 entitySheet.Tab.Text:SetText("Entities (" .. entityCount .. ")")
             end

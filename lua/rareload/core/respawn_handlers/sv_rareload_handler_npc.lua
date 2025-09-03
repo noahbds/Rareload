@@ -10,6 +10,13 @@ if not RARELOAD or not RARELOAD.DataUtils then
     include("rareload/utils/rareload_data_utils.lua")
 end
 
+-- Load shared deterministic ID / hash utilities (used by savers) if not already present
+if not (RARELOAD.Util and RARELOAD.Util.GenerateDeterministicID) then
+    if file.Exists("rareload/core/rareload_state_utils.lua", "LUA") then
+        include("rareload/core/rareload_state_utils.lua")
+    end
+end
+
 RARELOAD._MapReady = RARELOAD._MapReady or false
 RARELOAD._MapReadyTime = RARELOAD._MapReadyTime or 0
 RARELOAD._NPCSpawnQueue = RARELOAD._NPCSpawnQueue or {}
@@ -385,6 +392,7 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
             end
         end
 
+        -- Physics & movement restore
         do
             local phys = npc:GetPhysicsObject()
             if IsValid(phys) then
@@ -413,6 +421,7 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
             end
         end
 
+        -- Core types & flags
         if npcData.moveType and npc.SetMoveType then pcall(function() npc:SetMoveType(npcData.moveType) end) end
         if npcData.solidType and npc.SetSolid then pcall(function() npc:SetSolid(npcData.solidType) end) end
         if npcData.hullType then pcall(function() if npc.SetHullType then npc:SetHullType(npcData.hullType) end end) end
@@ -449,6 +458,9 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
         npc.SpawnedByRareload = true
         npc.SavedByRareload = true
         npc.RareloadUniqueID = npcData.id
+        if npc.SetNWString and npc.RareloadUniqueID then
+            pcall(function() npc:SetNWString("RareloadID", npc.RareloadUniqueID) end)
+        end
 
         return npc
     end)
@@ -816,6 +828,7 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
     local groups = {}
     local squadStats = { total = 0, formed = 0, conflicts = 0, renamed = 0, split = 0 }
 
+    -- Helper: safe disposition check (treat errors as friendly to avoid over-splitting)
     local function SafeDisposition(a, b)
         if not (IsValid(a) and IsValid(b) and a.Disposition) then return D_LI end
         local ok, disp = pcall(function() return a:Disposition(b) end)
@@ -823,6 +836,7 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
         return D_LI
     end
 
+    -- Helper: find existing non-Rareload NPCs on map with same squad name
     local function MapHasForeignSquadMembers(name, ourSet)
         if not name or name == "" then return false end
         local found = false
@@ -840,11 +854,13 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
         return found
     end
 
+    -- Helper: generate deterministic unique suffix from first member id
     local function SquadSuffix(firstNPC)
         local id = (IsValid(firstNPC) and firstNPC.RareloadUniqueID) or tostring(firstNPC)
         return string.sub(util.CRC(tostring(id)), 1, 6)
     end
 
+    -- Build groups keyed by saved squad name (prefer explicit npcData.squad)
     for _, npc in pairs(spawnedNPCsByID) do
         if not IsValid(npc) then continue end
         local npcData = npc.RareloadData
@@ -858,7 +874,9 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
         squadStats.total = squadStats.total + 1
     end
 
+    -- For each saved squad name, partition hostile members into separate components and form squads
     for baseName, members in pairs(groups) do
+        -- Build adjacency for non-hostile relationships among members
         local adj = {}
         local indexMap = {}
         for i, npc in ipairs(members) do
@@ -886,6 +904,7 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
         end
         if conflicts > 0 then squadStats.conflicts = squadStats.conflicts + 1 end
 
+        -- Find connected components (friendliness graph)
         local visited = {}
         local components = {}
         for i = 1, #members do
@@ -910,8 +929,11 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
         if #components == 0 and #members > 0 then components = { members } end
         if #components > 1 then squadStats.split = squadStats.split + (#components - 1) end
 
+        -- Assign squads per component
         for idx, comp in ipairs(components) do
+            -- Choose squad name; avoid collisions with foreign map squads
             local leader = comp[1]
+            -- Prefer saved leader if marked
             for _, n in ipairs(comp) do
                 if IsValid(n) and n.RareloadData and n.RareloadData.squadLeader then
                     leader = n
@@ -930,6 +952,7 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
                 finalName = finalName .. "_" .. tostring(idx)
             end
 
+            -- Enforce friendly relations within squad component
             for i = 1, #comp do
                 local a = comp[i]
                 if not IsValid(a) then goto continue_inner end
@@ -942,9 +965,11 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
                 ::continue_inner::
             end
 
+            -- Clear any previous squad and assign the final one
             for _, n in ipairs(comp) do
                 if not IsValid(n) then goto continue_assign end
                 n:Fire("ClearSquad", "", 0)
+                -- Use both input and fallback KeyValue in case input is unsupported
                 n:Fire("setsquad", finalName, 0.05)
                 if n.SetKeyValue then pcall(function() n:SetKeyValue("squadname", finalName) end) end
                 ::continue_assign::

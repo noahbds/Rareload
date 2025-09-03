@@ -8,6 +8,10 @@ if SERVER then
 
     -- Client utils (fonts must be loaded first)
     AddCSLuaFile("rareload/utils/rareload_fonts.lua")
+    -- Data / conversion utilities required by multiple client panels & tools
+    AddCSLuaFile("rareload/utils/rareload_data_utils.lua")
+    AddCSLuaFile("rareload/utils/data_conversion_utils.lua")
+    AddCSLuaFile("rareload/utils/vector_serialization.lua")
 
     -- Client UI files
     AddCSLuaFile("rareload/ui/rareload_ui.lua")
@@ -36,6 +40,8 @@ if SERVER then
     AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_modify_panel.lua")
     AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_theme.lua")
     AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_utils.lua")
+    -- Saved entities/NPCs 3D2D overlay
+    AddCSLuaFile("rareload/client/entity_viewer/cl_saved_entities_info.lua")
 
     -- Client anti-stuck files
     AddCSLuaFile("rareload/client/antistuck/cl_rareload_antistuck_init.lua")
@@ -191,6 +197,7 @@ elseif CLIENT then
     include("rareload/client/entity_viewer/cl_entity_viewer_modify_panel.lua")
     include("rareload/client/entity_viewer/cl_entity_viewer_theme.lua")
     include("rareload/client/entity_viewer/cl_entity_viewer_utils.lua")
+    include("rareload/client/entity_viewer/cl_saved_entities_info.lua")
 
     -- Client anti-stuck files
     include("rareload/client/antistuck/cl_rareload_antistuck_init.lua")

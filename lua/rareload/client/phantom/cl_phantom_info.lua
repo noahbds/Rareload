@@ -31,14 +31,66 @@ local MAX_ITEMS_HIGH_LOD = 50
 local MAX_ITEMS_MED_LOD = 20
 local MAX_ITEMS_LOW_LOD = 10
 
-PhantomInteractionMode = false
-PhantomInteractionTarget = nil
-PhantomInteractionAngle = nil
-PanelSizeMultiplier = 1.0
-ScrollSpeed = 20
-MaxPanelHeight = 1000
-ScrollPersistence = {}
-ScrollbarWidth = 6
+-- Interaction state similar to entity viewer
+local PhantomInteractionState = { active = false, phantom = nil, steamID = nil, lastAction = 0 }
+local PhantomKeyStates = {}
+local KEY_REPEAT_DELAY = 0.25
+local CandidatePhantom, CandidateSteamID, CandidateYawDiff
+local INTERACT_KEY = KEY_E
+local REQUIRE_SHIFT_MOD = true
+local ScrollDelta = 0
+local LeaveTime = 0
+
+local lpCache
+
+local function InteractModifierDown()
+    if not REQUIRE_SHIFT_MOD then return true end
+    if input.IsKeyDown(KEY_LSHIFT) or input.IsKeyDown(KEY_RSHIFT) then return true end
+    local ply = lpCache
+    if (not IsValid(ply)) then ply = LocalPlayer() end
+    if IsValid(ply) and (ply:KeyDown(IN_SPEED) or ply:KeyDown(IN_WALK)) then return true end
+    return false
+end
+
+local function KeyPressed(code)
+    if not input.IsKeyDown(code) then return false end
+    local t = CurTime()
+    local last = PhantomKeyStates[code] or 0
+    if t - last > KEY_REPEAT_DELAY then
+        PhantomKeyStates[code] = t
+        return true
+    end
+    return false
+end
+
+local function EnterPhantomInteraction(phantom, steamID)
+    PhantomInteractionState.active = true
+    PhantomInteractionState.phantom = phantom
+    PhantomInteractionState.steamID = steamID
+    PhantomInteractionState.lastAction = CurTime()
+    lpCache = lpCache or LocalPlayer()
+    if IsValid(lpCache) then
+        lpCache:DrawViewModel(false)
+    end
+end
+
+local function LeavePhantomInteraction()
+    PhantomInteractionState.active = false
+    PhantomInteractionState.phantom = nil
+    PhantomInteractionState.steamID = nil
+    PhantomInteractionState.lockAng = nil
+    LeaveTime = CurTime()
+    if IsValid(lpCache) then
+        lpCache:DrawViewModel(true)
+    end
+end
+
+-- Phantom-specific constants
+local PHANTOM_DRAW_DISTANCE_SQR = 600 * 100
+local BASE_SCALE = 0.11
+local MAX_VISIBLE_LINES = 30
+local SCROLL_SPEED = 3
+local PanelScroll = { phantoms = {} }
 
 -- Cached calculations
 local fontSizeCache = {}
@@ -54,20 +106,20 @@ local THEME = {
     scrollbarHandle = Color(160, 180, 200, 200)
 }
 
-function CalculateOptimalPanelSize(categoryContent)
+function CalculateOptimalPanelSize(categoryContent, numCategories)
     if type(categoryContent) ~= "table" then
         return 350
     end
 
     -- Use cached size if available
-    local cacheKey = #categoryContent
+    local cacheKey = #categoryContent .. "_" .. (numCategories or 5)
     if panelSizeCache[cacheKey] then
         return panelSizeCache[cacheKey]
     end
 
     local baseWidth = 350
     local minWidth = 300
-    local maxWidth = 500
+    local maxWidth = 680
     local contentWidth = baseWidth
 
     surface.SetFont("Trebuchet18")
@@ -83,9 +135,15 @@ function CalculateOptimalPanelSize(categoryContent)
             fontSizeCache[value] = surface.GetTextSize(value)
         end
 
-        local totalWidth = fontSizeCache[label] + fontSizeCache[value] + 140
+        local totalWidth = fontSizeCache[label] + fontSizeCache[value] + 170
         contentWidth = math.max(contentWidth, totalWidth)
+        if contentWidth > maxWidth then break end
     end
+
+    -- Ensure minimum width for tabs
+    local minTabWidth = 60
+    local minWidthForTabs = (numCategories or 5) * minTabWidth
+    contentWidth = math.max(contentWidth, minWidthForTabs)
 
     local result = math.Clamp(contentWidth, minWidth, maxWidth)
     panelSizeCache[cacheKey] = result
@@ -122,20 +180,30 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
     -- Basic Information (always full detail)
     table.insert(data.basic, { "Player", ply:Nick(), Color(255, 255, 255) })
     table.insert(data.basic, { "SteamID", ply:SteamID(), Color(200, 200, 200) })
-    table.insert(data.basic, { "Model", SavedInfo.playermodel, Color(200, 200, 200) })
+    if SavedInfo.playermodel then
+        table.insert(data.basic, { "Model", SavedInfo.playermodel, Color(200, 200, 200) })
+    end
     table.insert(data.basic, { "Map", mapName, Color(180, 180, 200) })
 
     -- Position Information (simplified for lower LOD)
     if lodLevel <= 2 then
-        table.insert(data.position,
-            { "Position", RARELOAD.DataUtils.FormatVectorDetailed(SavedInfo.pos), Color(255, 255, 255) })
-        table.insert(data.position,
-            { "Direction", RARELOAD.DataUtils.FormatAngleDetailed(SavedInfo.ang), Color(220, 220, 220) })
+        if SavedInfo.pos then
+            table.insert(data.position,
+                { "Position", string.format("%.1f, %.1f, %.1f", SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z), Color(
+                    255, 255, 255) })
+        end
+        if SavedInfo.ang then
+            table.insert(data.position,
+                { "Direction", string.format("%.1f°, %.1f°, %.1f°", SavedInfo.ang.p, SavedInfo.ang.y, SavedInfo.ang.r),
+                    Color(220, 220, 220) })
+        end
     else
-        table.insert(data.position,
-            { "Position", "(" ..
-            math.floor(SavedInfo.pos.x) ..
-            ", " .. math.floor(SavedInfo.pos.y) .. ", " .. math.floor(SavedInfo.pos.z) .. ")", Color(255, 255, 255) })
+        if SavedInfo.pos then
+            table.insert(data.position,
+                { "Position", "(" ..
+                math.floor(SavedInfo.pos.x) ..
+                ", " .. math.floor(SavedInfo.pos.y) .. ", " .. math.floor(SavedInfo.pos.z) .. ")", Color(255, 255, 255) })
+        end
     end
 
     if lodLevel <= 1 then
@@ -306,343 +374,358 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     local steamID = ply:SteamID()
     local phantomPos = phantom:GetPos()
     local distanceSqr = playerPos:DistToSqr(phantomPos)
-    local isActiveInteraction = PhantomInteractionMode and PhantomInteractionTarget == steamID
-    local maxDistance = isActiveInteraction and 500000 or 250000
 
-    if distanceSqr > maxDistance then
-        PhantomInfoCache[steamID] = nil
-        if isActiveInteraction then
-            PhantomInteractionMode = false
-            PhantomInteractionTarget = nil
-            PhantomInteractionAngle = nil
-        end
-        return
-    end
-
-    -- Determine LOD level based on distance
-    local lodLevel = 1
-    if distanceSqr > LOD_DISTANCE_HIGH * LOD_DISTANCE_HIGH then
-        lodLevel = distanceSqr > LOD_DISTANCE_MED * LOD_DISTANCE_MED and 3 or 2
-    end
+    -- Check if this phantom is too far away
+    if distanceSqr > PHANTOM_DRAW_DISTANCE_SQR then return end
 
     local now = CurTime()
 
-    -- Use consistent cache key for LOD-based caching
-    if not PhantomInfoCache[steamID] or PhantomInfoCache[steamID].expires < now or PhantomInfoCache[steamID].lodLevel ~= lodLevel then
+    -- Build or get cached phantom info data
+    if not PhantomInfoCache[steamID] or PhantomInfoCache[steamID].expires < now then
         local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][steamID]
+        local preservedCategory = PhantomInfoCache[steamID] and PhantomInfoCache[steamID].activeCategory or "basic"
         PhantomInfoCache[steamID] = {
-            data = BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel),
+            data = BuildPhantomInfoData(ply, savedInfo, mapName, 1),
             expires = now + CACHE_LIFETIME,
-            activeCategory = (PhantomInfoCache[steamID] and PhantomInfoCache[steamID].activeCategory) or "basic",
-            lodLevel = lodLevel,
-            hoverScale = (PhantomInfoCache[steamID] and PhantomInfoCache[steamID].hoverScale) or 1.0,
-            categoryChanged = (PhantomInfoCache[steamID] and PhantomInfoCache[steamID].categoryChanged) or now
+            activeCategory = preservedCategory
         }
     end
 
     local cache = PhantomInfoCache[steamID]
-    if not cache then return end -- Additional safety check
+    if not cache then return end
 
-    local infoData = cache.data
-    local activeCategory = cache.activeCategory
+    local saved = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][steamID]
+    if not saved then return end
 
-    -- Performance: Skip rendering if too many items and distance is far
-    if lodLevel >= 3 and #infoData[activeCategory] > 20 then
-        return
+    -- Draw similar to entity viewer system
+    lpCache = lpCache or LocalPlayer()
+    if not IsValid(lpCache) then return end
+
+    local eyePos = lpCache:EyePos()
+    local pos = phantom:GetPos()
+
+    local categories = PHANTOM_CATEGORIES
+    local activeCat = cache.activeCategory or "basic"
+    local lines = cache.data[activeCat] or {}
+
+    local lineHeight = 18
+    local titleHeight = 36
+    local tabHeight = 22
+
+    -- Calculate panel width based on content and number of tabs
+    local width = CalculateOptimalPanelSize(lines, #categories)
+
+    local panelID = steamID
+    local scrollTable = PanelScroll.phantoms
+    local scrollKey = panelID .. "_" .. activeCat
+    local maxScrollLines = math.max(0, #lines - MAX_VISIBLE_LINES)
+    local currentScroll = math.min(scrollTable[scrollKey] or 0, maxScrollLines)
+    scrollTable[scrollKey] = currentScroll
+
+    -- Calculate dynamic height based on actual content in active tab
+    local actualVisibleLines = math.min(#lines, MAX_VISIBLE_LINES)
+    local contentHeight = actualVisibleLines * lineHeight + 12
+    local panelHeight = titleHeight + tabHeight + contentHeight + 18
+
+    -- Position the panel above the phantom
+    local dir = (pos - eyePos)
+    dir:Normalize()
+    local ang = dir:Angle()
+    ang.y = ang.y - 90
+    ang.p = 0
+    ang.r = 90
+
+    local scale = BASE_SCALE * math.Clamp(1 - (math.sqrt(distanceSqr) / 4000), 0.4, 1.2)
+
+    -- Dynamic positioning: Calculate phantom head height and position panel above it
+    local phantomMins, phantomMaxs = phantom:OBBMins(), phantom:OBBMaxs()
+    local phantomHeight = phantomMaxs.z - phantomMins.z
+    local headOffset = math.max(phantomHeight + 10, 80) -- At least 80 units above, or phantom height + 10
+
+    -- Calculate the panel height in world units and position it so the bottom is above the phantom head
+    local panelHeightWorldUnits = panelHeight * scale
+    local panelBottomZ = pos.z + headOffset
+    local panelCenterZ = panelBottomZ + (panelHeightWorldUnits / 2)
+
+    local drawPos = Vector(pos.x, pos.y, panelCenterZ)
+    local offsetX = -width / 2
+    local offsetY = -panelHeight / 2
+
+    -- Check for candidate interaction (aiming at phantom)
+    local aimAng = lpCache:EyeAngles()
+    local toPhantomAng = (pos - lpCache:EyePos()):Angle()
+    local yawDiff = math.abs(math.AngleDifference(aimAng.y, toPhantomAng.y))
+    local isFocused = PhantomInteractionState.active and PhantomInteractionState.steamID == steamID
+    local isCandidate = false
+
+    if not PhantomInteractionState.active and distanceSqr < 40000 and yawDiff < 10 then
+        if (not CandidatePhantom) or (distanceSqr < lpCache:GetPos():DistToSqr(CandidatePhantom:GetPos())) then
+            CandidatePhantom = phantom
+            CandidateSteamID = steamID
+            CandidateYawDiff = yawDiff
+            isCandidate = true
+        end
     end
 
-    -- Rest of the drawing code remains largely the same but with optimized calculations
-    local drawPos = phantomPos + Vector(0, 0, 80)
-    local panelAng = nil
+    cam.Start3D2D(drawPos, ang, scale)
 
-    if isActiveInteraction then
-        panelAng = PhantomInteractionAngle
-    else
-        local dir = (phantomPos - playerPos)
-        dir:Normalize()
-        panelAng = dir:Angle()
-        panelAng.y = panelAng.y - 90
-        panelAng.p, panelAng.r = 0, 90
+    -- Recalculate offsets in case width was adjusted for tabs
+    offsetX = -width / 2
+    offsetY = -panelHeight / 2
+
+    -- Draw background and border
+    surface.SetDrawColor(0, 0, 0, 130)
+    surface.DrawRect(offsetX + 4, offsetY + 4, width, panelHeight)
+    draw.RoundedBox(10, offsetX, offsetY, width, panelHeight, Color(15, 18, 26, 240))
+    draw.RoundedBox(10, offsetX + 2, offsetY + 2, width - 4, panelHeight - 4, Color(26, 30, 40, 245))
+
+    -- Draw border
+    for i = 0, 1 do
+        surface.SetDrawColor(THEME.border.r, THEME.border.g, THEME.border.b, 200 - i * 40)
+        surface.DrawOutlinedRect(offsetX + i, offsetY + i, width - i * 2, panelHeight - i * 2, 1)
     end
 
-    -- Scale down for distant phantoms
-    local distanceScale = isActiveInteraction and 1.5 or math.Clamp(1.0 - (math.sqrt(distanceSqr) / 1500), 0.3, 1.0)
-    local scale = 0.1 * (cache.hoverScale or 1.0) * distanceScale
+    -- Draw header
+    surface.SetDrawColor(THEME.header.r, THEME.header.g, THEME.header.b, 245)
+    surface.DrawRect(offsetX, offsetY, width, titleHeight)
+    local title = "Phantom: " .. ply:Nick()
+    draw.SimpleText(title, "Trebuchet24", offsetX + 12, offsetY + titleHeight / 2, Color(240, 240, 255), TEXT_ALIGN_LEFT,
+        TEXT_ALIGN_CENTER)
 
-    local theme = THEME
-
-    local lineHeight = 22
-    local titleHeight = 40
-    local tabHeight = 30
-    local textPadding = 15
-    local scrollbarPadding = 5
-    local optimalWidth = CalculateOptimalPanelSize(infoData[activeCategory])
-    local contentWidth = optimalWidth * PanelSizeMultiplier
-    local panelWidth = math.max(contentWidth, 800)
-    local contentHeight = (#infoData[activeCategory]) * lineHeight
-    local maxDisplayHeight = math.min(contentHeight + 20,
-        MaxPanelHeight * (0.1 * (cache.hoverScale or 1.0) * (isActiveInteraction and 1.5 or 1.0)))
-    local needsScrolling = contentHeight >
-        (MaxPanelHeight * 0.1 * (cache.hoverScale or 1.0) * (isActiveInteraction and 1.5 or 1.0) - 20)
-    local maxScrollOffset = math.max(0,
-        contentHeight -
-        (MaxPanelHeight * 0.1 * (cache.hoverScale or 1.0) * (isActiveInteraction and 1.5 or 1.0) - 20))
-
-    ScrollPersistence[steamID] = ScrollPersistence[steamID] or {}
-    ScrollPersistence[steamID][activeCategory] = ScrollPersistence[steamID][activeCategory] or 0
-    local scrollOffset = needsScrolling and math.Clamp(ScrollPersistence[steamID][activeCategory], 0, maxScrollOffset) or
-        0
-    ScrollPersistence[steamID][activeCategory] = scrollOffset
-
-    local panelHeight = titleHeight + tabHeight + maxDisplayHeight
-    local offsetX, offsetY = -panelWidth / 2, -panelHeight / 2
-
-    cam.Start3D2D(drawPos, panelAng,
-        scale)
-
-    ----------------------------
-    -- Draw Background & Border
-    ----------------------------
-    -- Draw Background & Border with consistent radius
-    draw.RoundedBox(8, offsetX, offsetY, panelWidth, panelHeight, theme.background)
-    for i = 0, 2 do
-        local borderColor = Color(theme.border.r, theme.border.g, theme.border.b, 255 - i * 40)
-        surface.SetDrawColor(borderColor)
-        surface.DrawOutlinedRect(offsetX - i, offsetY - i, panelWidth + i * 2, panelHeight + i * 2, 1)
-    end
-
-    ----------------------------
-    -- Draw Header
-    ----------------------------
-    local titleText = "Phantom of " .. ply:Nick()
-    surface.SetDrawColor(theme.header)
-    surface.DrawRect(offsetX, offsetY, panelWidth, titleHeight)
-    draw.SimpleText(titleText, "Trebuchet24", offsetX + panelWidth / 2 + 1, offsetY + titleHeight / 2 + 1,
-        Color(0, 0, 0, 150), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    draw.SimpleText(titleText, "Trebuchet24", offsetX + panelWidth / 2, offsetY + titleHeight / 2 + 3,
-        theme.text, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-
-    ----------------------------
-    -- Draw Tabs
-    ----------------------------
-    local minTabWidth = 0
-    surface.SetFont("Trebuchet18")
-    for _, cat in ipairs(PHANTOM_CATEGORIES) do
-        local textWidth = surface.GetTextSize(cat[2])
-        minTabWidth = math.max(minTabWidth, textWidth + 20)
-    end
-    local tabWidth = math.max(panelWidth / #PHANTOM_CATEGORIES, minTabWidth)
-    panelWidth = math.max(panelWidth, tabWidth * #PHANTOM_CATEGORIES)
-    offsetX = -panelWidth / 2
-
+    -- Draw tabs
     local tabY = offsetY + titleHeight
-    local tabScreenInfo = {}
-    for i, categoryInfo in ipairs(PHANTOM_CATEGORIES) do
-        local catID, catName, catColor = categoryInfo[1], categoryInfo[2], categoryInfo[3]
-        local tabX = offsetX + (i - 1) * tabWidth
-        local isActive = (catID == activeCategory)
+    local tabWidth = width / #categories
 
-        local bgR = isActive and catColor.r / 2.5 or 40
-        local bgG = isActive and catColor.g / 2.5 or 40
-        local bgB = isActive and catColor.b / 2.5 or 40
-        surface.SetDrawColor(bgR, bgG, bgB, 200)
-        surface.DrawRect(tabX, tabY, tabWidth, tabHeight)
+    -- Ensure minimum tab width for readability
+    local minTabWidth = 60
+    if tabWidth < minTabWidth then
+        tabWidth = minTabWidth
+        width = math.max(width, #categories * minTabWidth)
+        offsetX = -width / 2 -- Recalculate offset with new width
+    end
+
+    for i, cat in ipairs(categories) do
+        local catID, catName, catColor = cat[1], cat[2], cat[3]
+        local tabX = offsetX + (i - 1) * tabWidth
+        local isActive = (catID == activeCat)
 
         if isActive then
-            for j = 0, 2 do
-                surface.SetDrawColor(catColor.r, catColor.g, catColor.b, 255 - j * 50)
-                surface.DrawOutlinedRect(tabX + j, tabY + j, tabWidth - j * 2, tabHeight - j * 2, 1)
-            end
-            local triSize = 8
-            draw.NoTexture()
-            surface.SetDrawColor(catColor)
-            surface.DrawPoly({
-                { x = tabX + tabWidth / 2 - triSize, y = tabY + tabHeight },
-                { x = tabX + tabWidth / 2 + triSize, y = tabY + tabHeight },
-                { x = tabX + tabWidth / 2,           y = tabY + tabHeight + triSize }
-            })
+            surface.SetDrawColor(catColor.r / 3, catColor.g / 3, catColor.b / 3, 200)
+            surface.DrawRect(tabX, tabY, tabWidth, tabHeight)
+            surface.SetDrawColor(catColor.r, catColor.g, catColor.b, 255)
+            surface.DrawOutlinedRect(tabX, tabY, tabWidth, tabHeight, 2)
+        else
+            surface.SetDrawColor(40, 40, 50, 180)
+            surface.DrawRect(tabX, tabY, tabWidth, tabHeight)
         end
 
         local textColor = isActive and Color(255, 255, 255) or Color(180, 180, 180)
-        draw.SimpleText(catName, "Trebuchet18", tabX + tabWidth / 2, tabY + tabHeight / 2,
-            textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-        table.insert(tabScreenInfo,
-            {
-                catID = catID,
-                worldX = tabX + tabWidth / 2,
-                worldY = tabY + tabHeight / 2,
-                worldW = tabWidth,
-                worldH =
-                    tabHeight
-            })
-    end
 
-    ----------------------------
-    -- Draw Content via Stencil
-    ----------------------------
-    local contentY = tabY + tabHeight
-    render.SetStencilEnable(true)
-    render.SetStencilWriteMask(255)
-    render.SetStencilTestMask(255)
-    render.SetStencilReferenceValue(1)
-    ---@diagnostic disable-next-line: param-type-mismatch
-    render.SetStencilCompareFunction(STENCIL_ALWAYS)
-    ---@diagnostic disable-next-line: param-type-mismatch
-    render.SetStencilPassOperation(STENCIL_REPLACE)
-    ---@diagnostic disable-next-line: param-type-mismatch
-    render.SetStencilFailOperation(STENCIL_KEEP)
-    ---@diagnostic disable-next-line: param-type-mismatch
-    render.SetStencilZFailOperation(STENCIL_KEEP)
-
-    draw.RoundedBox(0, offsetX, contentY, panelWidth, maxDisplayHeight, Color(255, 255, 255, 1))
-    ---@diagnostic disable-next-line: param-type-mismatch
-    render.SetStencilCompareFunction(STENCIL_EQUAL)
-    ---@diagnostic disable-next-line: param-type-mismatch
-    render.SetStencilPassOperation(STENCIL_KEEP)
-
-    do
-        local lines = infoData[activeCategory]
-        local total = #lines
+        -- Truncate tab name if it's too long for the tab width
+        local displayName = catName
         surface.SetFont("Trebuchet18")
-
-        -- Compute visible index range to avoid iterating off-screen lines
-        local firstVisible = math.max(1, math.floor((scrollOffset - 10) / lineHeight))
-        local lastVisible = math.min(total, math.ceil((scrollOffset + maxDisplayHeight + lineHeight) / lineHeight))
-
-        for i = firstVisible, lastVisible do
-            local line = lines[i]
-            local label, value, valueColor = line[1], tostring(line[2]), line[3] or Color(255, 255, 255)
-            local yPos = contentY + (i - 1) * lineHeight - scrollOffset + 10
-
-            local fadeDelay = i * 0.05
-            local alpha = math.min((CurTime() - (cache.categoryChanged or 0) - fadeDelay) * 5, 1)
-            alpha = math.max(alpha, 0)
-
-            local colonSuffix = (line[4] and line[4].noColon) and "" or ":"
-            draw.SimpleText(label .. colonSuffix, "Trebuchet18", offsetX + textPadding, yPos,
-                Color(200, 200, 200, 200 * alpha), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-            local valueX = offsetX + textPadding + 120
-            local maxValueWidth = panelWidth - (textPadding * 2) - 130 -
-                (needsScrolling and (5 + scrollbarPadding * 2) or 0)
-
-            local textWidth = surface.GetTextSize(value)
-            if textWidth > maxValueWidth then
-                local low, high = 1, #value
-                while low <= high do
-                    local mid = math.floor((low + high) / 2)
-                    local testStr = string.sub(value, 1, mid) .. "..."
-                    if surface.GetTextSize(testStr) <= maxValueWidth then
-                        low = mid + 1
-                    else
-                        high = mid - 1
-                    end
-                end
-                value = high >= 5 and (string.sub(value, 1, high) .. "...") or
-                    (string.sub(value, 1, math.floor(maxValueWidth / 10)) .. "...")
+        local textWidth = surface.GetTextSize(displayName)
+        if textWidth > tabWidth - 8 then
+            -- Try to abbreviate long names
+            if catName == "Basic Information" then
+                displayName = "Basic"
+            elseif catName == "Position and Movement" then
+                displayName = "Position"
+            elseif catName == "Saved Entities and NPCs" then
+                displayName = "Entities"
+            elseif string.len(catName) > 8 then
+                displayName = string.sub(catName, 1, 6) .. ".."
             end
-            local finalColor = Color(valueColor.r, valueColor.g, valueColor.b, (valueColor.a or 255) * alpha)
-            draw.SimpleText(value, "Trebuchet18", valueX, yPos,
-                finalColor, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        end
-    end
-    render.SetStencilEnable(false)
-
-    ----------------------------
-    -- Draw Scrollbar
-    ----------------------------
-    if needsScrolling then
-        local scrollBarWidth = 5
-        local scrollbarPadding = 5
-        local scrollBarX = offsetX + panelWidth - scrollBarWidth - scrollbarPadding
-        local scrollbarTopPadding = scrollbarPadding
-        local scrollbarBottomPadding = scrollbarPadding
-        local scrollBarY = contentY + scrollbarTopPadding
-        local scrollBarHeight = maxDisplayHeight - scrollbarTopPadding - scrollbarBottomPadding
-
-        draw.RoundedBox(4, scrollBarX, scrollBarY, scrollBarWidth, scrollBarHeight, theme.scrollbar)
-
-        local handleRatio = math.min(1, scrollBarHeight / contentHeight)
-        local handleHeight = math.max(30, scrollBarHeight * handleRatio)
-        local handleY = scrollBarY + (scrollOffset / maxScrollOffset) * (scrollBarHeight - handleHeight)
-        draw.RoundedBox(4, scrollBarX, handleY, scrollBarWidth, handleHeight, theme.scrollbarHandle)
-
-        local btnSize = scrollBarWidth + 4
-        if scrollOffset > 0 then
-            draw.SimpleText("▲", "Trebuchet18", scrollBarX + scrollBarWidth / 2, scrollBarY + btnSize / 2 - 2,
-                Color(255, 255, 255, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-        end
-        if scrollOffset < maxScrollOffset then
-            draw.SimpleText("▼", "Trebuchet18", scrollBarX + scrollBarWidth / 2,
-                scrollBarY + scrollBarHeight - btnSize / 2 + 2,
-                Color(255, 255, 255, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
 
-        cache.scrollbarInfo = {
-            x = scrollBarX,
-            y = scrollBarY,
-            width = scrollBarWidth,
-            height = scrollBarHeight,
-            handleY = handleY,
-            handleHeight = handleHeight,
-            contentHeight = contentHeight,
-            visibleHeight = maxDisplayHeight,
-            maxScrollOffset = maxScrollOffset,
-            upButtonY = scrollBarY,
-            upButtonHeight = btnSize,
-            downButtonY = scrollBarY + scrollBarHeight - btnSize + 2,
-            downButtonHeight = btnSize
-        }
-
-        cache.maxScrollOffset = maxScrollOffset
+        draw.SimpleText(displayName, "Trebuchet18", tabX + tabWidth / 2, tabY + tabHeight / 2, textColor,
+            TEXT_ALIGN_CENTER,
+            TEXT_ALIGN_CENTER)
     end
 
-    ----------------------------
-    -- Draw Help/Prompt Text
-    ----------------------------
-    if isActiveInteraction then
-        local helpText = "← → to navigate tabs  |  ↑↓ or use Scroll wheel to scroll |  E to Exit"
-        surface.SetFont("Trebuchet18")
-        local textWidth, textHeight = surface.GetTextSize(helpText)
+    -- Draw content
+    local startY = tabY + tabHeight + 6
+    surface.SetFont("Trebuchet18")
+    local visibleLines = math.min(#lines - currentScroll, actualVisibleLines)
+    for i = 1, visibleLines do
+        local lineIndex = currentScroll + i
+        if lineIndex > #lines then break end
 
-        local textY = offsetY - 20
-        local bgPadding = 5
+        local l = lines[lineIndex]
+        local y = startY + (i - 1) * lineHeight
 
-        draw.RoundedBox(4,
-            offsetX + panelWidth / 2 - textWidth / 2 - 10,
-            textY - textHeight / 2 - bgPadding,
-            textWidth + 20,
-            textHeight + bgPadding * 2,
-            Color(20, 20, 30, 200))
-
-        draw.SimpleText(helpText, "Trebuchet18", offsetX + panelWidth / 2, textY,
-            Color(255, 255, 255, 230), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    elseif distanceSqr < 10000 then
-        local promptText = "Press [E] to interact"
-        surface.SetFont("Trebuchet18")
-        local textWidth, textHeight = surface.GetTextSize(promptText)
-
-        local textY = offsetY - 20
-        local bgPadding = 5
-
-        draw.RoundedBox(4,
-            offsetX + panelWidth / 2 - textWidth / 2 - 10,
-            textY - textHeight / 2 - bgPadding,
-            textWidth + 20,
-            textHeight + bgPadding * 2,
-            Color(20, 20, 30, 200))
-
-        draw.SimpleText(promptText, "Trebuchet18", offsetX + panelWidth / 2, textY,
-            Color(255, 255, 255, 230), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        draw.SimpleText(l[1] .. ":", "Trebuchet18", offsetX + 12, y, Color(200, 200, 200), TEXT_ALIGN_LEFT,
+            TEXT_ALIGN_TOP)
+        draw.SimpleText(l[2], "Trebuchet18", offsetX + 180, y, l[3] or THEME.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
     end
 
-    cache.panelInfo = { tabInfo = tabScreenInfo, activeTabIndex = nil, hasScrollbar = needsScrolling }
+    -- Draw scrollbar if needed
+    if maxScrollLines > 0 then
+        local barX = offsetX + width - 12
+        local barY = startY
+        local barW = 8
+        local barH = contentHeight - 12
+        surface.SetDrawColor(60, 60, 70, 160)
+        surface.DrawRect(barX, barY, barW, barH)
 
-    for i, tab in ipairs(tabScreenInfo) do
-        if tab.catID == activeCategory then
-            cache.panelInfo.activeTabIndex = i
-            break
-        end
+        local handleH = math.max(20, barH * (actualVisibleLines / #lines))
+        local handleY = barY + (currentScroll / maxScrollLines) * (barH - handleH)
+        surface.SetDrawColor(90, 150, 230, 220)
+        surface.DrawRect(barX, handleY, barW, handleH)
+    end
+
+    -- Draw interaction prompts
+    if isFocused then
+        draw.SimpleText("Left/Right Tabs | Up/Down/MWheel Scroll | Shift+E Exit", "Trebuchet18", offsetX + width / 2,
+            offsetY - 12, Color(160, 210, 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    elseif isCandidate then
+        draw.SimpleText("Shift + E to Inspect", "Trebuchet18", offsetX + width / 2, offsetY - 6, Color(160, 210, 255),
+            TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
 
     cam.End3D2D()
 end
+
+function DrawAllPhantomPanels()
+    if not (RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled) then return end
+
+    CandidatePhantom, CandidateSteamID, CandidateYawDiff = nil, nil, nil
+    lpCache = lpCache or LocalPlayer()
+    if not IsValid(lpCache) then return end
+
+    local playerPos = lpCache:GetPos()
+    local mapName = game.GetMap()
+    local drawnCount = 0
+
+    -- Draw all phantom panels
+    if RARELOAD.Phantom then
+        for steamID, data in pairs(RARELOAD.Phantom) do
+            if IsValid(data.phantom) and drawnCount < 10 then -- Limit draws per frame
+                local success, err = pcall(DrawPhantomInfo, data, playerPos, mapName)
+                if not success then
+                    print("[RARELOAD] Error drawing phantom info for " .. steamID .. ": " .. tostring(err))
+                end
+                drawnCount = drawnCount + 1
+            end
+        end
+    end
+
+    -- Handle interaction logic
+    local ct = CurTime()
+    if PhantomInteractionState.active then
+        local phantom = PhantomInteractionState.phantom
+        if (not IsValid(phantom)) or lpCache:EyePos():DistToSqr(phantom:GetPos()) > PHANTOM_DRAW_DISTANCE_SQR * 1.1 then
+            LeavePhantomInteraction()
+        else
+            if KeyPressed(INTERACT_KEY) and InteractModifierDown() then
+                LeavePhantomInteraction()
+                return
+            end
+
+            local cache = PhantomInfoCache[PhantomInteractionState.steamID]
+            if not cache then
+                LeavePhantomInteraction()
+                return
+            end
+
+            if cache and cache.activeCategory then
+                local categoryList = PHANTOM_CATEGORIES
+
+                -- Check for tab navigation - store direction first to avoid double consumption
+                local tabDirection = 0
+                if KeyPressed(KEY_RIGHT) then
+                    tabDirection = 1
+                elseif KeyPressed(KEY_LEFT) then
+                    tabDirection = -1
+                end
+
+                if tabDirection ~= 0 then
+                    local currentIndex = 1
+                    for i, cat in ipairs(categoryList) do
+                        if cat[1] == cache.activeCategory then
+                            currentIndex = i
+                            break
+                        end
+                    end
+                    local newIndex = currentIndex + tabDirection
+                    if newIndex > #categoryList then newIndex = 1 end
+                    if newIndex < 1 then newIndex = #categoryList end
+                    cache.activeCategory = categoryList[newIndex][1]
+                    surface.PlaySound("ui/buttonrollover.wav")
+                end
+
+                -- Handle scrolling
+                local panelID = PhantomInteractionState.steamID
+                local scrollTable = PanelScroll.phantoms
+                local scrollKey = panelID .. "_" .. cache.activeCategory
+                local lines = cache.data[cache.activeCategory] or {}
+                local maxScrollLines = math.max(0, #lines - MAX_VISIBLE_LINES)
+
+                if KeyPressed(KEY_UP) and maxScrollLines > 0 then
+                    local newScroll = math.max(0, (scrollTable[scrollKey] or 0) - SCROLL_SPEED)
+                    scrollTable[scrollKey] = newScroll
+                elseif KeyPressed(KEY_DOWN) and maxScrollLines > 0 then
+                    local newScroll = math.min(maxScrollLines, (scrollTable[scrollKey] or 0) + SCROLL_SPEED)
+                    scrollTable[scrollKey] = newScroll
+                end
+            end
+        end
+    else
+        -- Check for new interaction candidate
+        if CandidatePhantom and KeyPressed(INTERACT_KEY) and InteractModifierDown() then
+            EnterPhantomInteraction(CandidatePhantom, CandidateSteamID)
+            surface.PlaySound("ui/buttonclick.wav")
+        end
+    end
+end
+
+-- Hook to handle CreateMove for camera lock during interaction
+hook.Add("CreateMove", "RARELOAD_PhantomPanels_CamLock", function(cmd)
+    if PhantomInteractionState.active or CurTime() - LeaveTime < 0.5 then
+        cmd:RemoveKey(IN_USE)
+    end
+    if not PhantomInteractionState.active then return end
+
+    local phantom = PhantomInteractionState.phantom
+    if not IsValid(phantom) then return end
+
+    lpCache = lpCache or LocalPlayer()
+    if not IsValid(lpCache) then return end
+
+    local ang = PhantomInteractionState.lockAng
+    if not ang then
+        ang = lpCache:EyeAngles()
+        PhantomInteractionState.lockAng = ang
+    end
+    cmd:SetViewAngles(ang)
+end)
+
+-- Hook to handle scrolling during interaction
+hook.Add("PlayerBindPress", "RARELOAD_PhantomInteractScroll", function(ply, bind, pressed)
+    if not PhantomInteractionState.active or not pressed then return end
+
+    local cache = PhantomInfoCache[PhantomInteractionState.steamID]
+    if cache and cache.activeCategory then
+        local panelID = PhantomInteractionState.steamID
+        local scrollTable = PanelScroll.phantoms
+        local scrollKey = panelID .. "_" .. cache.activeCategory
+        local lines = cache.data[cache.activeCategory] or {}
+        local maxScrollLines = math.max(0, #lines - MAX_VISIBLE_LINES)
+
+        if bind == "invprev" and maxScrollLines > 0 then
+            local newScroll = math.max(0, (scrollTable[scrollKey] or 0) - SCROLL_SPEED)
+            scrollTable[scrollKey] = newScroll
+            return true
+        elseif bind == "invnext" and maxScrollLines > 0 then
+            local newScroll = math.min(maxScrollLines, (scrollTable[scrollKey] or 0) + SCROLL_SPEED)
+            scrollTable[scrollKey] = newScroll
+            return true
+        end
+    end
+
+    if string.find(bind, "+use") then
+        return false
+    end
+
+    return true
+end)

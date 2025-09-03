@@ -1,3 +1,4 @@
+---@diagnostic disable: inject-field, undefined-field
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 
@@ -13,30 +14,18 @@ local ENTITY_RESTORATION = {
     POSITION_TOLERANCE = 5
 }
 
+-- Use shared state hash util (loaded by savers) for consistency
+if not (RARELOAD.Util and RARELOAD.Util.GenerateEntityStateHash) then
+    if file.Exists("rareload/core/rareload_state_utils.lua", "LUA") then
+        include("rareload/core/rareload_state_utils.lua")
+    end
+end
+
 local function GenerateEntityStateHash(data)
-    local values = {
-        data.material or "",
-        tostring(data.skin or 0),
-        tostring(data.health or 0)
-    }
-
-    if data.color then
-        table.insert(values, tostring(data.color.r or 255))
-        table.insert(values, tostring(data.color.g or 255))
-        table.insert(values, tostring(data.color.b or 255))
-        table.insert(values, tostring(data.color.a or 255))
+    if RARELOAD.Util and RARELOAD.Util.GenerateEntityStateHash then
+        return RARELOAD.Util.GenerateEntityStateHash(data)
     end
-
-    if data.bodygroups then
-        for id, value in pairs(data.bodygroups) do
-            table.insert(values, tostring(id) .. "=" .. tostring(value))
-        end
-    end
-
-    table.insert(values, data.frozen and "1" or "0")
-    if data.mass then table.insert(values, tostring(data.mass)) end
-
-    return table.concat(values, "|")
+    return tostring(os.time()) -- fallback (shouldn't happen)
 end
 
 local function GetEntityProperties(ent)
@@ -65,6 +54,37 @@ local function GetEntityProperties(ent)
     if IsValid(phys) then
         data.frozen = not phys:IsMotionEnabled()
         data.mass = phys:GetMass()
+        if phys.IsGravityEnabled then
+            local okGrav, grav = pcall(phys.IsGravityEnabled, phys)
+            if okGrav then data.gravityEnabled = grav end
+        end
+        if phys.GetMaterial then
+            local okMat, mat = pcall(phys.GetMaterial, phys)
+            if okMat and mat then data.physicsMaterial = mat end
+        end
+        if phys.GetElasticity then
+            local okEl, el = pcall(phys.GetElasticity, phys)
+            if okEl and el then data.elasticity = el end
+        end
+    end
+
+    -- Extended properties captured by saver
+    if ent.GetCollisionGroup then data.collisionGroup = ent:GetCollisionGroup() end
+    if ent.GetMoveType then data.moveType = ent:GetMoveType() end
+    if ent.GetSolid then data.solidType = ent:GetSolid() end
+    if ent.GetModelScale then
+        local sc = ent:GetModelScale()
+        if sc and sc ~= 1 then data.modelScale = sc end
+    end
+    if ent.GetSpawnFlags then
+        local sf = ent:GetSpawnFlags()
+        if sf and sf ~= 0 then data.spawnFlags = sf end
+    end
+    if ent.GetVelocity then
+        local vel = ent:GetVelocity()
+        if vel.x ~= 0 or vel.y ~= 0 or vel.z ~= 0 then
+            data.velocity = { x = vel.x, y = vel.y, z = vel.z }
+        end
     end
 
     local owner = ent:CPPIGetOwner() and ent:CPPIGetOwner() or nil
@@ -281,6 +301,11 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
             local convertedAngle = RARELOAD.DataUtils.ToAngle(entData.ang)
             entData.ang = convertedAngle
         end
+        -- Compute a state hash for saved data (new format) if not present so extended properties differences trigger replacements
+        if not entData.stateHash then
+            entData.stateHash = GenerateEntityStateHash(entData)
+        end
+
         if not entData.class or type(entData.class) ~= "string" or entData.class == "" then
             stats.failed = stats.failed + 1
             table.insert(entityData.failed, entData)
@@ -451,6 +476,10 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
             else
                 ent.RareloadEntityID = "ent_" .. ent:EntIndex() .. "_" .. os.time() .. "_" .. math.random(1000, 9999)
             end
+            -- Network the ID so clients can directly match without positional approximation
+            if ent.SetNWString then
+                pcall(function() ent:SetNWString("RareloadID", ent.RareloadEntityID) end)
+            end
             ent:Spawn()
             ent:Activate()
             if entData.health and entData.health > 0 then
@@ -487,6 +516,27 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
                     end
                 end
             end
+            if entData.modelScale and ent.SetModelScale then
+                pcall(ent.SetModelScale, ent, entData.modelScale, 0)
+            end
+            if entData.collisionGroup and ent.SetCollisionGroup then
+                pcall(ent.SetCollisionGroup, ent, entData.collisionGroup)
+            end
+            if entData.moveType and ent.SetMoveType then
+                pcall(ent.SetMoveType, ent, entData.moveType)
+            end
+            if entData.solidType and ent.SetSolid then
+                pcall(ent.SetSolid, ent, entData.solidType)
+            end
+            if entData.spawnFlags and ent.AddSpawnFlags then
+                pcall(ent.AddSpawnFlags, ent, entData.spawnFlags)
+            end
+            if entData.renderMode and ent.SetRenderMode then
+                pcall(ent.SetRenderMode, ent, entData.renderMode)
+            end
+            if entData.renderFX and ent.SetRenderFX then
+                pcall(ent.SetRenderFX, ent, entData.renderFX)
+            end
             local phys = ent:GetPhysicsObject()
             if IsValid(phys) then
                 if entData.frozen then
@@ -508,6 +558,15 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
                 if entData.mass then
                     phys:SetMass(entData.mass)
                 end
+                if entData.gravityEnabled ~= nil then
+                    pcall(phys.EnableGravity, phys, entData.gravityEnabled)
+                end
+                if entData.physicsMaterial then
+                    pcall(phys.SetMaterial, phys, entData.physicsMaterial)
+                end
+                if entData.elasticity and phys.SetElasticity then
+                    pcall(phys.SetElasticity, phys, entData.elasticity)
+                end
             end
             if entData.owner then
                 for _, p in ipairs(player.GetAll()) do
@@ -518,6 +577,14 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
                         break
                     end
                 end
+            end
+            if entData.keyvalues and ent.KeyValue then
+                for k, v in pairs(entData.keyvalues) do
+                    pcall(ent.KeyValue, ent, k, tostring(v))
+                end
+            end
+            if entData.name and ent.SetName then
+                pcall(ent.SetName, ent, entData.name)
             end
             ent.SpawnedByRareload = true
             ent.SavedByRareload = true
@@ -732,6 +799,16 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
                     end
                 end
             end
+            if matchedData.modelScale and ent.SetModelScale then pcall(ent.SetModelScale, ent, matchedData.modelScale, 0) end
+            if matchedData.collisionGroup and ent.SetCollisionGroup then
+                pcall(ent.SetCollisionGroup, ent,
+                    matchedData.collisionGroup)
+            end
+            if matchedData.moveType and ent.SetMoveType then pcall(ent.SetMoveType, ent, matchedData.moveType) end
+            if matchedData.solidType and ent.SetSolid then pcall(ent.SetSolid, ent, matchedData.solidType) end
+            if matchedData.spawnFlags and ent.AddSpawnFlags then pcall(ent.AddSpawnFlags, ent, matchedData.spawnFlags) end
+            if matchedData.renderMode and ent.SetRenderMode then pcall(ent.SetRenderMode, ent, matchedData.renderMode) end
+            if matchedData.renderFX and ent.SetRenderFX then pcall(ent.SetRenderFX, ent, matchedData.renderFX) end
 
             local phys = ent:GetPhysicsObject()
             if IsValid(phys) then
@@ -749,13 +826,25 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
                         phys:SetVelocity(vel)
                     end
                 end
-                if matchedData.mass then phys:SetMass(matchedData.mass) end
+                if matchedData.mass then pcall(phys.SetMass, phys, matchedData.mass) end
+                if matchedData.gravityEnabled ~= nil then pcall(phys.EnableGravity, phys, matchedData.gravityEnabled) end
+                if matchedData.physicsMaterial then pcall(phys.SetMaterial, phys, matchedData.physicsMaterial) end
+                if matchedData.elasticity and phys.SetElasticity then
+                    pcall(phys.SetElasticity, phys,
+                        matchedData.elasticity)
+                end
             end
 
             ent.SpawnedByRareload = true
             ent.SavedByRareload = true
             ent.RespawnedBy = ply:SteamID()
             ent.RespawnTime = os.time()
+            if matchedData.keyvalues and ent.KeyValue then
+                for k, v in pairs(matchedData.keyvalues) do
+                    pcall(ent.KeyValue, ent, k, tostring(v))
+                end
+            end
+            if matchedData.name and ent.SetName then pcall(ent.SetName, ent, matchedData.name) end
 
             return ent
         end)

@@ -10,6 +10,12 @@ function AntiStuck.TryWorldBrushes(pos, ply)
         return nil, AntiStuck.UNSTUCK_METHODS.NONE
     end
 
+    -- Validation registration calls this with ply = nil; safely handle
+    if not ply or (IsValid and not IsValid(ply)) then
+        -- Return a neutral failure so interface validation passes without throwing
+        return nil, AntiStuck.UNSTUCK_METHODS.NONE
+    end
+
     local now = CurTime()
     local startTime = SysTime()
     local cfg = AntiStuck.CONFIG or {}
@@ -33,7 +39,7 @@ function AntiStuck.TryWorldBrushes(pos, ply)
     local mapMins, mapMaxs = AntiStuck.mapBounds.mins, AntiStuck.mapBounds.maxs
     local function InMapBounds(v)
         return v.x >= mapMins.x and v.x <= mapMaxs.x and v.y >= mapMins.y and v.y <= mapMaxs.y and v.z >= mapMins.z and
-        v.z <= mapMaxs.z
+            v.z <= mapMaxs.z
     end
 
     local hullMins, hullMaxs = ply:GetHull()
@@ -104,20 +110,20 @@ function AntiStuck.TryWorldBrushes(pos, ply)
         end
         for _, off in ipairs(offsets) do
             local startPos = Vector(x, y, baseHeight + off + 1024)
-            if not InMapBounds(startPos) then goto continue end
-            local endPos = Vector(x, y, baseHeight + off - 1024)
-            local tr = util.TraceLine({
-                start = startPos,
-                endpos = endPos,
-                mask = MASK_PLAYERSOLID_BRUSHONLY
-            })
-            if tr.Hit and tr.HitNormal.z > 0.7 then
-                local p = tr.HitPos + Vector(0, 0, 8)
-                if consider(p) then
-                    return p
+            if InMapBounds(startPos) then
+                local endPos = Vector(x, y, baseHeight + off - 1024)
+                local tr = util.TraceLine({
+                    start = startPos,
+                    endpos = endPos,
+                    mask = MASK_PLAYERSOLID_BRUSHONLY
+                })
+                if tr.Hit and tr.HitNormal.z > 0.7 then
+                    local p = tr.HitPos + Vector(0, 0, 8)
+                    if consider(p) then
+                        return p
+                    end
                 end
             end
-            ::continue::
             if SysTime() - startTime > timeBudget then return nil end
         end
         return nil

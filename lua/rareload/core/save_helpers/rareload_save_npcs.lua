@@ -5,16 +5,18 @@ local RARELOAD = RARELOAD or {}
 RARELOAD.NPCSaver = RARELOAD.NPCSaver or {}
 
 local CONFIG = {
-    DEBUG = RARELOAD.settings.debugEnabled,
+    DEBUG = true,
     SAVE_PLAYER_OWNED_ONLY = false,
     MAX_NPCS_TO_SAVE = 500,
+    -- Save relationships between NPCs (may be heavy on large maps)
     SAVE_NPC_NPC_RELATIONS = true,
     MAX_RELATION_NPCS = 128,
+    -- Only keep KV keys that are NOT already serialized explicitly elsewhere.
+    -- Removed: spawnflags, health, rendercolor, rendermode, expression (explicitly captured separately)
     KEY_VALUES_TO_SAVE = {
-        "spawnflags", "squadname", "targetname",
-        "wakeradius", "sleepstate", "health",
-        "rendercolor", "rendermode", "renderamt",
-        "additionalequipment", "expression", "citizentype"
+        "squadname", "targetname",
+        "wakeradius", "sleepstate",
+        "additionalequipment", "citizentype"
     }
 }
 
@@ -63,30 +65,16 @@ local function GetEntityOwner(ent)
     return owner
 end
 
-local function GenerateNPCUniqueID(npc)
-    if not IsValid(npc) then return "invalid_npc" end
-    local pos = npc:GetPos()
-    local ang = npc:GetAngles()
-    local gx, gy, gz = math.floor(pos.x / 16), math.floor(pos.y / 16), math.floor(pos.z / 16)
-    local class = npc:GetClass() or "unknown"
-    local model = npc:GetModel() or "nomodel"
-    local skin = npc:GetSkin() or 0
-    local kv = npc:GetKeyValues() or {}
-    local targetname = tostring(kv.targetname or "")
-    local squadname = tostring(kv.squadname or "")
-    local numBG = SafeGetNPCProperty(npc, function() return npc:GetNumBodyGroups() end, 0)
-    local bgParts = {}
-    for i = 0, numBG - 1 do
-        bgParts[#bgParts + 1] = tostring(npc:GetBodygroup(i))
+-- Shared deterministic helpers (load once)
+if not (RARELOAD.Util and RARELOAD.Util.GenerateDeterministicID) then
+    if file.Exists("rareload/core/rareload_state_utils.lua", "LUA") then
+        include("rareload/core/rareload_state_utils.lua")
     end
-    local base = table.concat({
-        class, model, tostring(skin),
-        tostring(gx), tostring(gy), tostring(gz),
-        string.format("%.1f", ang.p), string.format("%.1f", ang.y), string.format("%.1f", ang.r),
-        targetname, squadname, table.concat(bgParts, ",")
-    }, "|")
-    local hash = util.CRC(base)
-    return class .. "_" .. hash
+end
+
+local function GenerateNPCUniqueID(npc)
+    return (RARELOAD.Util and RARELOAD.Util.GenerateDeterministicID) and RARELOAD.Util.GenerateDeterministicID(npc) or
+        "npc_legacyid"
 end
 
 local function GetNPCRelations(npc, players, allNPCs)
@@ -184,11 +172,12 @@ local function GetNPCKeyValues(npc)
     local keyValuesData = {}
     local npcKeyValues = npc:GetKeyValues() or {}
     for _, keyName in ipairs(CONFIG.KEY_VALUES_TO_SAVE) do
-        if npcKeyValues[keyName] ~= nil then
-            keyValuesData[keyName] = npcKeyValues[keyName]
+        local val = npcKeyValues[keyName]
+        if val ~= nil then
+            keyValuesData[keyName] = val
         end
     end
-    return keyValuesData
+    return next(keyValuesData) and keyValuesData or nil
 end
 
 local function GetNPCBodygroups(npc)
@@ -246,6 +235,7 @@ local function GetVJBaseProperties(npc)
     vjData.animationPlaybackRate = npc:GetNWFloat("AnimationPlaybackRate", 1)
     vjData.walkSpeed = npc:GetNWInt("VJ_WalkSpeed", 0)
     vjData.runSpeed = npc:GetNWInt("VJ_RunSpeed", 0)
+    -- Follow state: use entity table fields instead of controller NWVars
     local entTbl = npc:GetTable() or {}
     local isFollowing = (npc.IsFollowing == true) or (entTbl.IsFollowing == true)
     vjData.isFollowing = isFollowing or false
@@ -319,17 +309,19 @@ return function(ply)
                 if sub and sub ~= "" then submaterials[sm] = sub end
             end
 
+            local ang = npc:GetAngles() or Angle(0, 0, 0)
+            local pos = npc:GetPos() or Vector(0, 0, 0)
+
             local npcData = {
                 id = GenerateNPCUniqueID(npc),
                 class = npc:GetClass(),
-                pos = npc:GetPos():ToTable(),
-                ang = npc:GetAngles(),
+                pos = { x = pos.x, y = pos.y, z = pos.z },
+                ang = { p = ang.p, y = ang.y, r = ang.r },
                 model = npc:GetModel(),
                 skin = npc:GetSkin(),
                 bodygroups = GetNPCBodygroups(npc),
                 modelScale = npc:GetModelScale(),
-                color = colTbl,
-                renderColor = colTbl,
+                color = colTbl, -- single canonical color table
                 renderMode = npc:GetRenderMode(),
                 renderFX = npc:GetRenderFX(),
                 materialOverride = npc:GetMaterial(),
@@ -344,7 +336,7 @@ return function(ply)
                 vjBaseData = GetVJBaseProperties(npc),
                 frozen = IsValid(npc:GetPhysicsObject()) and not npc:GetPhysicsObject():IsMotionEnabled(),
                 weapons = GetNPCWeapons(npc),
-                keyValues = GetNPCKeyValues(npc),
+                keyValues = GetNPCKeyValues(npc), -- already stripped of duplicates
                 squad = (function()
                     local kv = npc:GetKeyValues() or {}
                     local s = kv.squadname
@@ -359,6 +351,7 @@ return function(ply)
                     if npc.GetSquad then
                         local ok, squad = pcall(function() return npc:GetSquad() end)
                         if ok and squad and squad ~= "" then
+                            -- Find all NPCs with the same squad name
                             for j = 1, #allNPCs do
                                 local otherNPC = allNPCs[j]
                                 if IsValid(otherNPC) and otherNPC ~= npc then
@@ -372,16 +365,15 @@ return function(ply)
                     end
                     return members
                 end)(),
-
                 squadLeader = SafeGetNPCProperty(npc, function() return npc.IsSquadLeader and npc:IsSquadLeader() end,
                     false),
                 target = GetNPCTarget(npc),
                 schedule = GetNPCSchedule(npc),
                 relations = GetNPCRelations(npc, players, allNPCs),
                 citizenData = GetCitizenProperties(npc),
-                velocity = npc:GetVelocity(),
+                velocity = npc:GetVelocity(), -- not duplicated elsewhere
                 creationTime = npc.CreationTime or CurTime(),
-                flags = npc:GetFlags(),
+                flags = npc:GetFlags(),       -- distinct from spawnflags
                 npcState = npc.GetNPCState and npc:GetNPCState() or nil,
                 hullType = npc.GetHullType and npc:GetHullType() or nil,
                 expression = npc.GetExpression and npc:GetExpression() or nil,
@@ -390,10 +382,15 @@ return function(ply)
                 sequence = npc.GetSequence and npc:GetSequence() or nil,
                 cycle = npc.GetCycle and npc:GetCycle() or nil,
                 playbackRate = npc.GetPlaybackRate and npc:GetPlaybackRate() or nil,
-                spawnflags = npc.GetSpawnFlags and npc:GetSpawnFlags() or nil,
+                spawnflags = npc.GetSpawnFlags and npc:GetSpawnFlags() or nil, -- explicit (removed from keyValues)
                 SavedByRareload = true,
                 SavedAt = os.time()
             }
+
+            -- Network the ID immediately so client can associate without waiting for respawn
+            if npc.SetNWString and npcData.id then
+                pcall(function() npc:SetNWString("RareloadID", npcData.id) end)
+            end
 
             if npc:GetClass() == "npc_vortigaunt" then
                 local SCHED_ALLY_INJURED_FOLLOW_CONST = rawget(_G, "SCHED_ALLY_INJURED_FOLLOW")
@@ -409,6 +406,7 @@ return function(ply)
                 npcData.playerRelationship = SafeGetNPCProperty(npc, function() return npc:Disposition(ply) end, nil)
             end
 
+            -- Safer owner serialization
             do
                 local osid = nil
                 if owner then
@@ -419,6 +417,28 @@ return function(ply)
                     end
                 end
                 npcData.ownerSteamID = osid
+            end
+
+            if RARELOAD.Util and RARELOAD.Util.GenerateEntityStateHash then
+                npcData.stateHash = RARELOAD.Util.GenerateEntityStateHash({
+                    material = npcData.materialOverride,
+                    model = npcData.model,
+                    skin = npcData.skin,
+                    health = npcData.health,
+                    maxHealth = npcData.maxHealth,
+                    modelScale = npcData.modelScale,
+                    collisionGroup = npcData.collisionGroup,
+                    moveType = npcData.moveType,
+                    solidType = npcData.solidType,
+                    spawnFlags = npcData.spawnflags,
+                    color = npcData.color,
+                    bodygroups = npcData.bodygroups,
+                    physicsMaterial = npcData.physics and npcData.physics.material or nil,
+                    gravityEnabled = npcData.physics and npcData.physics.gravityEnabled,
+                    elasticity = npcData.physics and npcData.physics.elasticity,
+                    frozen = npcData.frozen,
+                    mass = npcData.physics and npcData.physics.mass or nil
+                })
             end
 
             npcsData[#npcsData + 1] = npcData

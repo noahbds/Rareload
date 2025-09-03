@@ -247,69 +247,64 @@ end
 local nextPhantomCheck = 0
 local nextVisibilityUpdate = 0
 local lastMapName = game.GetMap()
-local eyeForwardCache = Vector(1, 0, 0)
+local cachedMapPositions = nil
+local lastMapCacheTime = 0
 
-hook.Add("PostDrawOpaqueRenderables", "DrawPlayerPhantomInfo", function()
+hook.Add("PostDrawOpaqueRenderables", "RARELOAD_DrawPhantomInfo", function()
     BufferPhantom()
 
     local now = CurTime()
     local lp = LocalPlayer()
     if not IsValid(lp) then return end
-    local playerPos = lp:GetPos()
-    local eyePos = EyePos()
-    local eyeAng = EyeAngles()
-    eyeForwardCache = eyeAng:Forward()
 
+    -- Early exit if debug is disabled and no phantoms need processing
+    local isDebugEnabled = RARELOAD.settings.debugEnabled
+    local hasPhantoms = next(RARELOAD.Phantom or {}) ~= nil
+
+    if not isDebugEnabled and not hasPhantoms then return end
+
+    -- Cache map and position data
+    local currentMap = game.GetMap()
+    if currentMap ~= lastMapName then
+        lastMapName = currentMap
+        cachedMapPositions = nil -- Invalidate cache when map changes
+    end
+
+    -- Update phantom positions and visibility less frequently
     if now >= nextPhantomCheck then
-        local map = game.GetMap()
-        if map ~= lastMapName then
-            lastMapName = map
+        -- Cache position table to avoid repeated lookups
+        if not cachedMapPositions or (now - lastMapCacheTime) > 5.0 then
+            cachedMapPositions = RARELOAD.playerPositions[currentMap] or {}
+            lastMapCacheTime = now
         end
-        local posTbl = RARELOAD.playerPositions[map] or {}
-        local needsRefresh = false
 
-        for steamID in pairs(posTbl) do
-            if not RARELOAD.Phantom[steamID] or not IsValid(RARELOAD.Phantom[steamID].phantom) then
-                needsRefresh = true
-                break
+        -- Only check for refresh if we have position data
+        if next(cachedMapPositions) then
+            local needsRefresh = false
+            for steamID in pairs(cachedMapPositions) do
+                if not RARELOAD.Phantom[steamID] or not IsValid(RARELOAD.Phantom[steamID].phantom) then
+                    needsRefresh = true
+                    break
+                end
             end
-        end
 
-        if needsRefresh then
-            RARELOAD.RefreshPhantoms()
+            if needsRefresh then
+                RARELOAD.RefreshPhantoms()
+            end
         end
 
         nextPhantomCheck = now + PHANTOM_UPDATE_INTERVAL
     end
 
+    -- Update visibility less frequently to improve performance
     if now >= nextVisibilityUpdate then
         UpdatePhantomVisibility()
-        nextVisibilityUpdate = now + 0.5
+        nextVisibilityUpdate = now + 0.75 -- Slightly less frequent updates
     end
 
-    if RARELOAD.settings.debugEnabled and next(RARELOAD.Phantom) then
-        local mapName = lastMapName
-        local drawnCount = 0
-
-        local ft = FrameTime()
-        local drawBudget = math.max(3, math.min(10, math.floor(0.006 / math.max(ft, 0.001))))
-
-        for _, data in pairs(RARELOAD.Phantom) do
-            if IsValid(data.phantom) and drawnCount < drawBudget then
-                local ph = data.phantom
-                local phPos = ph:GetPos()
-                local distance = playerPos:DistToSqr(phPos)
-                if distance <= PHANTOM_MAX_DISTANCE_SQR then
-                    local toPhantom = phPos + PHANTOM_HEAD_OFFSET - eyePos
-                    if eyeForwardCache:Dot(toPhantom) > 0 then
-                        if not PIXEL_VIS_HANDLE or util.PixelVisible(phPos + PHANTOM_HEAD_OFFSET, 4, PIXEL_VIS_HANDLE) > 0.05 then
-                            DrawPhantomInfo(data, playerPos, mapName)
-                            drawnCount = drawnCount + 1
-                        end
-                    end
-                end
-            end
-        end
+    -- Only draw panels if debug is enabled and we have phantoms
+    if isDebugEnabled and hasPhantoms then
+        DrawAllPhantomPanels()
     end
 end)
 
