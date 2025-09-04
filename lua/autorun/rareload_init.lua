@@ -40,8 +40,16 @@ if SERVER then
     AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_modify_panel.lua")
     AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_theme.lua")
     AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_utils.lua")
-    -- Saved entities/NPCs 3D2D overlay
-    AddCSLuaFile("rareload/client/entity_viewer/cl_saved_entities_info.lua")
+
+    -- Saved entities display system files
+    AddCSLuaFile("rareload/client/saved_entity_display/SED_init.lua")
+    AddCSLuaFile("rareload/client/saved_entity_display/SED_entity_tracking.lua")
+    AddCSLuaFile("rareload/client/saved_entity_display/SED_render_utils.lua")
+    AddCSLuaFile("rareload/client/saved_entity_display/SED_panel_builder.lua")
+    AddCSLuaFile("rareload/client/saved_entity_display/SED_panel_renderer.lua")
+    AddCSLuaFile("rareload/client/saved_entity_display/SED_interaction_system.lua")
+    AddCSLuaFile("rareload/client/saved_entity_display/SED_hooks.lua")
+    AddCSLuaFile("rareload/client/saved_entity_display/SED_loader.lua")
 
     -- Client anti-stuck files
     AddCSLuaFile("rareload/client/antistuck/cl_rareload_antistuck_init.lua")
@@ -71,6 +79,7 @@ if SERVER then
     include("rareload/core/rareload_core.lua")
     include("rareload/core/sv_rareload.lua")
     include("rareload/core/sv_rareload_hooks.lua")
+    include("rareload/core/sv_sed_npc_freeze.lua")
 
     -- Save helpers
     include("rareload/core/save_helpers/rareload_save_ammo.lua")
@@ -197,7 +206,9 @@ elseif CLIENT then
     include("rareload/client/entity_viewer/cl_entity_viewer_modify_panel.lua")
     include("rareload/client/entity_viewer/cl_entity_viewer_theme.lua")
     include("rareload/client/entity_viewer/cl_entity_viewer_utils.lua")
-    include("rareload/client/entity_viewer/cl_saved_entities_info.lua")
+
+    -- Saved entities display system
+    include("rareload/client/saved_entity_display/SED_loader.lua")
 
     -- Client anti-stuck files
     include("rareload/client/antistuck/cl_rareload_antistuck_init.lua")

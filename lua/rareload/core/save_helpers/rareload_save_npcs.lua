@@ -311,6 +311,7 @@ return function(ply)
 
             local ang = npc:GetAngles() or Angle(0, 0, 0)
             local pos = npc:GetPos() or Vector(0, 0, 0)
+            local vel = npc:GetVelocity() or Vector(0, 0, 0)
 
             local npcData = {
                 id = GenerateNPCUniqueID(npc),
@@ -371,9 +372,9 @@ return function(ply)
                 schedule = GetNPCSchedule(npc),
                 relations = GetNPCRelations(npc, players, allNPCs),
                 citizenData = GetCitizenProperties(npc),
-                velocity = npc:GetVelocity(), -- not duplicated elsewhere
+                velocity = { x = vel.x, y = vel.y, z = vel.z },
                 creationTime = npc.CreationTime or CurTime(),
-                flags = npc:GetFlags(),       -- distinct from spawnflags
+                flags = npc:GetFlags(),
                 npcState = npc.GetNPCState and npc:GetNPCState() or nil,
                 hullType = npc.GetHullType and npc:GetHullType() or nil,
                 expression = npc.GetExpression and npc:GetExpression() or nil,
@@ -382,12 +383,11 @@ return function(ply)
                 sequence = npc.GetSequence and npc:GetSequence() or nil,
                 cycle = npc.GetCycle and npc:GetCycle() or nil,
                 playbackRate = npc.GetPlaybackRate and npc:GetPlaybackRate() or nil,
-                spawnflags = npc.GetSpawnFlags and npc:GetSpawnFlags() or nil, -- explicit (removed from keyValues)
+                spawnflags = npc.GetSpawnFlags and npc:GetSpawnFlags() or nil,
                 SavedByRareload = true,
                 SavedAt = os.time()
             }
 
-            -- Network the ID immediately so client can associate without waiting for respawn
             if npc.SetNWString and npcData.id then
                 pcall(function() npc:SetNWString("RareloadID", npcData.id) end)
             end
@@ -406,7 +406,6 @@ return function(ply)
                 npcData.playerRelationship = SafeGetNPCProperty(npc, function() return npc:Disposition(ply) end, nil)
             end
 
-            -- Safer owner serialization
             do
                 local osid = nil
                 if owner then

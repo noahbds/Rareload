@@ -1,10 +1,8 @@
 -- Deterministic unique ID generation similar to NPC saver
 ---@diagnostic disable: undefined-field, inject-field, need-check-nil
 
--- Shared deterministic helpers
 if not RARELOAD then RARELOAD = {} end
 if not (RARELOAD.Util and RARELOAD.Util.GenerateDeterministicID) then
-    -- Load shared hashing / ID util if not already present
     if file.Exists("rareload/core/rareload_state_utils.lua", "LUA") then
         include("rareload/core/rareload_state_utils.lua")
     end
@@ -15,7 +13,6 @@ local function GenerateEntityUniqueID(ent)
         "ent_legacyid"
 end
 
--- Helper: robust owner SteamID retrieval
 local function GetOwnerSteamID(owner)
     if not IsValid(owner) then return nil end
     if owner.SteamID then
@@ -29,7 +26,6 @@ local function GetOwnerSteamID(owner)
     return nil
 end
 
--- Helper to mark an entity as saved (adds tag field); diagnostics disabled for field injection
 local function MarkSaved(ent)
     ---@diagnostic disable-next-line: inject-field
     ent.SavedByRareload = true
@@ -62,12 +58,11 @@ return function(ply)
                         pcall(function() ent:SetNWString("RareloadID", ent.RareloadEntityID) end)
                     end
                 end
-                -- Ensure already identified entities also have networked ID
+
                 if ent.SetNWString and ent.RareloadEntityID and (ent.GetNWString and ent:GetNWString("RareloadID", "") == "") then
                     pcall(function() ent:SetNWString("RareloadID", ent.RareloadEntityID) end)
                 end
 
-                -- Always tag as saved by Rareload
                 MarkSaved(ent)
 
                 if not ent.OriginalSpawner then
@@ -128,10 +123,10 @@ return function(ply)
                     if okEl and el then entityData.elasticity = el end
                 end
 
-                -- Velocity (store only if not zero to reduce size)
+                -- Velocity
                 if ent.GetVelocity then
                     local okVel, vel = pcall(ent.GetVelocity, ent)
-                    if okVel and vel and (vel.x ~= 0 or vel.y ~= 0 or vel.z ~= 0) then
+                    if okVel and vel then
                         entityData.velocity = { x = vel.x, y = vel.y, z = vel.z }
                     end
                 end
@@ -164,13 +159,13 @@ return function(ply)
                     if okSolid and solid then entityData.solidType = solid end
                 end
 
-                -- Spawn flags (map / scripted entities)
+                -- Spawn flags
                 if ent.GetSpawnFlags then
                     local okSF, sf = pcall(ent.GetSpawnFlags, ent)
                     if okSF and sf and sf ~= 0 then entityData.spawnFlags = sf end
                 end
 
-                -- KeyValues snapshot (avoid huge tables; filter a few common ones)
+                -- KeyValues snapshot
                 if ent.GetKeyValues then
                     local okKV, kvTbl = pcall(ent.GetKeyValues, ent)
                     if okKV and istable(kvTbl) then
@@ -183,7 +178,9 @@ return function(ply)
                             rendercolor = true,
                             rendermode = true,
                             skin = true,
-                            modelscale = true
+                            modelscale = true,
+                            velocity = true,
+                            mass = true,
                         }
                         for k, v in pairs(kvTbl) do
                             if not EXCLUDE[k] and (type(v) == "number" or type(v) == "string") then
@@ -197,7 +194,7 @@ return function(ply)
                     end
                 end
 
-                -- Name / targetname (explicit)
+                -- Name / targetname
                 if ent.GetName then
                     local okName, nameStr = pcall(ent.GetName, ent)
                     if okName and nameStr and nameStr ~= "" then entityData.name = nameStr end
@@ -217,7 +214,6 @@ return function(ply)
                     if s ~= nil then entityData.skin = s end
                 end
 
-                -- Final state hash (used by restoration comparisons)
                 if RARELOAD.Util and RARELOAD.Util.GenerateEntityStateHash then
                     entityData.stateHash = RARELOAD.Util.GenerateEntityStateHash(entityData)
                 end
