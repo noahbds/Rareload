@@ -55,9 +55,13 @@ function SED.RescanLate()
     if CurTime() - SED.LAST_RESCAN < SED.RESCAN_INTERVAL then return end
     SED.LAST_RESCAN = CurTime()
 
+    local processed = 0
+    local maxPerRescan = 256
     for _, ent in ipairs(ents.GetAll()) do
         if IsValid(ent) and not SED.TrackedEntities[ent] and not SED.TrackedNPCs[ent] then
             SED.TrackIfSaved(ent)
+            processed = processed + 1
+            if processed >= maxPerRescan then break end
         end
     end
 end
@@ -70,7 +74,7 @@ timer.Simple(1, function()
     end
 end)
 
-timer.Create("RARELOAD_CacheCleanup", 30, 0, function()
+timer.Create("RARELOAD_CacheCleanup", 45, 0, function()
     local now = CurTime()
 
     if SED.EntityPanelCache then

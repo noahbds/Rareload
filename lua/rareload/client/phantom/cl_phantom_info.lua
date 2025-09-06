@@ -23,19 +23,15 @@ PHANTOM_CATEGORIES = {
     { "stats",     "Statistics",              Color(147, 112, 219) }
 }
 
--- Performance constants
-local LOD_DISTANCE_HIGH = 400
-local LOD_DISTANCE_MED = 800
-local LOD_DISTANCE_LOW = 1200
 local MAX_ITEMS_HIGH_LOD = 50
 local MAX_ITEMS_MED_LOD = 20
 local MAX_ITEMS_LOW_LOD = 10
 
--- Interaction state similar to entity viewer
 local PhantomInteractionState = { active = false, phantom = nil, steamID = nil, lastAction = 0 }
+local PhantomLookingAtPanelUntil = 0
 local PhantomKeyStates = {}
 local KEY_REPEAT_DELAY = 0.25
-local CandidatePhantom, CandidateSteamID, CandidateYawDiff
+local CandidatePhantom, CandidateSteamID, CandidateYawDiff, CandidateDistSqr
 local INTERACT_KEY = KEY_E
 local REQUIRE_SHIFT_MOD = true
 local ScrollDelta = 0
@@ -85,18 +81,15 @@ local function LeavePhantomInteraction()
     end
 end
 
--- Phantom-specific constants
-local PHANTOM_DRAW_DISTANCE_SQR = 600 * 100
+local PHANTOM_DRAW_DISTANCE_SQR = SED.BASE_DRAW_DISTANCE * SED.BASE_DRAW_DISTANCE -- for consistency with SED
 local BASE_SCALE = 0.11
 local MAX_VISIBLE_LINES = 30
 local SCROLL_SPEED = 3
 local PanelScroll = { phantoms = {} }
 
--- Cached calculations
 local fontSizeCache = {}
 local panelSizeCache = {}
 
--- Static theme (avoid re-allocating Color objects every frame)
 local THEME = {
     background = Color(20, 20, 30, 220),
     header = Color(30, 30, 45, 255),
@@ -111,7 +104,6 @@ function CalculateOptimalPanelSize(categoryContent, numCategories)
         return 350
     end
 
-    -- Use cached size if available
     local cacheKey = #categoryContent .. "_" .. (numCategories or 5)
     if panelSizeCache[cacheKey] then
         return panelSizeCache[cacheKey]
@@ -123,7 +115,7 @@ function CalculateOptimalPanelSize(categoryContent, numCategories)
     local contentWidth = baseWidth
 
     surface.SetFont("Trebuchet18")
-    for i = 1, math.min(#categoryContent, 10) do -- Sample only first 10 items for performance
+    for i = 1, math.min(#categoryContent, 10) do
         local lineData = categoryContent[i]
         local label = tostring(lineData[1] or "")
         local value = tostring(lineData[2] or "")
@@ -140,7 +132,6 @@ function CalculateOptimalPanelSize(categoryContent, numCategories)
         if contentWidth > maxWidth then break end
     end
 
-    -- Ensure minimum width for tabs
     local minTabWidth = 60
     local minWidthForTabs = (numCategories or 5) * minTabWidth
     contentWidth = math.max(contentWidth, minWidthForTabs)
@@ -161,7 +152,7 @@ function table.map(tbl, func)
 end
 
 function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
-    lodLevel = lodLevel or 1 -- 1=high, 2=medium, 3=low
+    lodLevel = lodLevel or 1
 
     local data = {
         basic = {},
@@ -177,7 +168,6 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
         return data
     end
 
-    -- Basic Information (always full detail)
     table.insert(data.basic, { "Player", ply:Nick(), Color(255, 255, 255) })
     table.insert(data.basic, { "SteamID", ply:SteamID(), Color(200, 200, 200) })
     if SavedInfo.playermodel then
@@ -185,7 +175,6 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
     end
     table.insert(data.basic, { "Map", mapName, Color(180, 180, 200) })
 
-    -- Position Information (simplified for lower LOD)
     if lodLevel <= 2 then
         if SavedInfo.pos then
             table.insert(data.position,
@@ -210,8 +199,6 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
         table.insert(data.position,
             { "Movement Type", moveTypeNames[SavedInfo.moveType] or "Unknown", Color(220, 220, 220) })
     end
-
-    -- Equipment (LOD-based item limits)
     local maxItems = lodLevel == 1 and MAX_ITEMS_HIGH_LOD or lodLevel == 2 and MAX_ITEMS_MED_LOD or MAX_ITEMS_LOW_LOD
 
     if SavedInfo.activeWeapon then
@@ -221,7 +208,6 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
         table.insert(data.equipment, { "Active Weapon", prettyName, Color(255, 200, 200) })
     end
 
-    -- Process Inventory with LOD
     if SavedInfo.inventory and type(SavedInfo.inventory) == "table" and #SavedInfo.inventory > 0 then
         table.insert(data.equipment, { "══ Inventory ══", #SavedInfo.inventory .. " items total", Color(255, 220, 150) })
 
@@ -264,7 +250,6 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
                     table.insert(data.equipment,
                         { prefix .. " " .. prettyItemName, displayText, catData.color, { noColon = true } })
 
-                    -- Only show ammo details for high LOD
                     if lodLevel == 1 and SavedInfo.ammo and SavedInfo.ammo[itemData.item] then
                         local ammoInfo = SavedInfo.ammo[itemData.item]
                         local ammoText = ""
@@ -294,7 +279,6 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
         end
     end
 
-    -- Simplified entity processing for lower LOD
     local function processGroupedDataLOD(group, config)
         if group and type(group) == "table" and #group > 0 then
             table.insert(data.entities, { config.totalLabel, #group, config.totalColor })
@@ -335,7 +319,6 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
         end
     end
 
-    -- Process entities with LOD
     processGroupedDataLOD(SavedInfo.entities, {
         totalLabel = "Total Entities",
         totalColor = Color(255, 180, 180),
@@ -352,13 +335,12 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
         entryColor = Color(200, 255, 200)
     })
 
-    -- Stats (always show)
     table.insert(data.stats, { "Health", math.floor(SavedInfo.health or 0), Color(255, 180, 180) })
     table.insert(data.stats, { "Armor", math.floor(SavedInfo.armor or 0), Color(180, 180, 255) })
 
     if lodLevel <= 2 and SavedInfo.npcs and #SavedInfo.npcs > 0 then
         local totalHealth = 0
-        for i = 1, math.min(#SavedInfo.npcs, 50) do -- Limit calculation for performance
+        for i = 1, math.min(#SavedInfo.npcs, 50) do
             totalHealth = totalHealth + (SavedInfo.npcs[i].health or 0)
         end
         table.insert(data.stats, { "Total NPC Health", math.floor(totalHealth), Color(200, 255, 200) })
@@ -374,13 +356,10 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     local steamID = ply:SteamID()
     local phantomPos = phantom:GetPos()
     local distanceSqr = playerPos:DistToSqr(phantomPos)
-
-    -- Check if this phantom is too far away
     if distanceSqr > PHANTOM_DRAW_DISTANCE_SQR then return end
 
     local now = CurTime()
 
-    -- Build or get cached phantom info data
     if not PhantomInfoCache[steamID] or PhantomInfoCache[steamID].expires < now then
         local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][steamID]
         local preservedCategory = PhantomInfoCache[steamID] and PhantomInfoCache[steamID].activeCategory or "basic"
@@ -397,7 +376,6 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     local saved = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][steamID]
     if not saved then return end
 
-    -- Draw similar to entity viewer system
     lpCache = lpCache or LocalPlayer()
     if not IsValid(lpCache) then return end
 
@@ -412,7 +390,6 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     local titleHeight = 36
     local tabHeight = 22
 
-    -- Calculate panel width based on content and number of tabs
     local width = CalculateOptimalPanelSize(lines, #categories)
 
     local panelID = steamID
@@ -422,12 +399,10 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     local currentScroll = math.min(scrollTable[scrollKey] or 0, maxScrollLines)
     scrollTable[scrollKey] = currentScroll
 
-    -- Calculate dynamic height based on actual content in active tab
     local actualVisibleLines = math.min(#lines, MAX_VISIBLE_LINES)
     local contentHeight = actualVisibleLines * lineHeight + 12
     local panelHeight = titleHeight + tabHeight + contentHeight + 18
 
-    -- Position the panel above the phantom
     local dir = (pos - eyePos)
     dir:Normalize()
     local ang = dir:Angle()
@@ -437,12 +412,10 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
 
     local scale = BASE_SCALE * math.Clamp(1 - (math.sqrt(distanceSqr) / 4000), 0.4, 1.2)
 
-    -- Dynamic positioning: Calculate phantom head height and position panel above it
     local phantomMins, phantomMaxs = phantom:OBBMins(), phantom:OBBMaxs()
     local phantomHeight = phantomMaxs.z - phantomMins.z
-    local headOffset = math.max(phantomHeight + 10, 80) -- At least 80 units above, or phantom height + 10
+    local headOffset = math.max(phantomHeight + 10, 80)
 
-    -- Calculate the panel height in world units and position it so the bottom is above the phantom head
     local panelHeightWorldUnits = panelHeight * scale
     local panelBottomZ = pos.z + headOffset
     local panelCenterZ = panelBottomZ + (panelHeightWorldUnits / 2)
@@ -451,57 +424,41 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     local offsetX = -width / 2
     local offsetY = -panelHeight / 2
 
-    -- Check for candidate interaction (aiming at phantom)
     local aimAng = lpCache:EyeAngles()
     local toPhantomAng = (pos - lpCache:EyePos()):Angle()
     local yawDiff = math.abs(math.AngleDifference(aimAng.y, toPhantomAng.y))
     local isFocused = PhantomInteractionState.active and PhantomInteractionState.steamID == steamID
     local isCandidate = false
 
-    if not PhantomInteractionState.active and distanceSqr < 40000 and yawDiff < 10 then
-        if (not CandidatePhantom) or (distanceSqr < lpCache:GetPos():DistToSqr(CandidatePhantom:GetPos())) then
-            CandidatePhantom = phantom
-            CandidateSteamID = steamID
-            CandidateYawDiff = yawDiff
-            isCandidate = true
-        end
-    end
-
     cam.Start3D2D(drawPos, ang, scale)
 
-    -- Recalculate offsets in case width was adjusted for tabs
     offsetX = -width / 2
     offsetY = -panelHeight / 2
 
-    -- Draw background and border
     surface.SetDrawColor(0, 0, 0, 130)
     surface.DrawRect(offsetX + 4, offsetY + 4, width, panelHeight)
     draw.RoundedBox(10, offsetX, offsetY, width, panelHeight, Color(15, 18, 26, 240))
     draw.RoundedBox(10, offsetX + 2, offsetY + 2, width - 4, panelHeight - 4, Color(26, 30, 40, 245))
 
-    -- Draw border
     for i = 0, 1 do
         surface.SetDrawColor(THEME.border.r, THEME.border.g, THEME.border.b, 200 - i * 40)
         surface.DrawOutlinedRect(offsetX + i, offsetY + i, width - i * 2, panelHeight - i * 2, 1)
     end
 
-    -- Draw header
     surface.SetDrawColor(THEME.header.r, THEME.header.g, THEME.header.b, 245)
     surface.DrawRect(offsetX, offsetY, width, titleHeight)
     local title = "Phantom: " .. ply:Nick()
     draw.SimpleText(title, "Trebuchet24", offsetX + 12, offsetY + titleHeight / 2, Color(240, 240, 255), TEXT_ALIGN_LEFT,
         TEXT_ALIGN_CENTER)
 
-    -- Draw tabs
     local tabY = offsetY + titleHeight
     local tabWidth = width / #categories
 
-    -- Ensure minimum tab width for readability
     local minTabWidth = 60
     if tabWidth < minTabWidth then
         tabWidth = minTabWidth
         width = math.max(width, #categories * minTabWidth)
-        offsetX = -width / 2 -- Recalculate offset with new width
+        offsetX = -width / 2
     end
 
     for i, cat in ipairs(categories) do
@@ -521,12 +478,10 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
 
         local textColor = isActive and Color(255, 255, 255) or Color(180, 180, 180)
 
-        -- Truncate tab name if it's too long for the tab width
         local displayName = catName
         surface.SetFont("Trebuchet18")
         local textWidth = surface.GetTextSize(displayName)
         if textWidth > tabWidth - 8 then
-            -- Try to abbreviate long names
             if catName == "Basic Information" then
                 displayName = "Basic"
             elseif catName == "Position and Movement" then
@@ -543,7 +498,6 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
             TEXT_ALIGN_CENTER)
     end
 
-    -- Draw content
     local startY = tabY + tabHeight + 6
     surface.SetFont("Trebuchet18")
     local visibleLines = math.min(#lines - currentScroll, actualVisibleLines)
@@ -559,7 +513,6 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
         draw.SimpleText(l[2], "Trebuchet18", offsetX + 180, y, l[3] or THEME.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
     end
 
-    -- Draw scrollbar if needed
     if maxScrollLines > 0 then
         local barX = offsetX + width - 12
         local barY = startY
@@ -574,7 +527,6 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
         surface.DrawRect(barX, handleY, barW, handleH)
     end
 
-    -- Draw interaction prompts
     if isFocused then
         draw.SimpleText("Left/Right Tabs | Up/Down/MWheel Scroll | Shift+E Exit", "Trebuchet18", offsetX + width / 2,
             offsetY - 12, Color(160, 210, 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
@@ -584,33 +536,98 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     end
 
     cam.End3D2D()
+
+    -- After drawing, compute whether the player is aiming at the 3D2D panel rectangle
+    local eyePos2 = lpCache:EyePos()
+    local forward = lpCache:EyeAngles():Forward()
+    local panelCenter = drawPos
+    local panelNormal = (panelCenter - eyePos2):GetNormalized()
+    local right = ang:Right()
+    local up = ang:Up()
+
+    local lookAtPanel = false
+    local denom = forward:Dot(panelNormal)
+    if math.abs(denom) > 1e-3 then
+        local t = (panelCenter - eyePos2):Dot(panelNormal) / denom
+        if t > 0 then
+            local hitPos = eyePos2 + forward * t
+            local rel = hitPos - panelCenter
+            local x = rel:Dot(right)
+            local y = rel:Dot(up)
+            local halfW = (width * 0.5) * scale
+            local halfH = (panelHeight * 0.5) * scale
+            if math.abs(x) <= halfW and math.abs(y) <= halfH then
+                lookAtPanel = true
+            end
+        end
+    end
+
+    if lookAtPanel then
+        PhantomLookingAtPanelUntil = CurTime() + 0.03
+    end
+
+    if not isFocused and lookAtPanel then
+        isCandidate = true
+    end
 end
 
-function DrawAllPhantomPanels()
-    if not (RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled) then return end
+function QueuePhantomPanelsForRendering()
+    -- Render phantom panels whenever the depth renderer is available; no longer gated by debug mode
+    if not (RARELOAD.DepthRenderer and RARELOAD.DepthRenderer.AddRenderItem) then return end
 
-    CandidatePhantom, CandidateSteamID, CandidateYawDiff = nil, nil, nil
+    CandidatePhantom, CandidateSteamID, CandidateYawDiff, CandidateDistSqr = nil, nil, nil, nil
     lpCache = lpCache or LocalPlayer()
     if not IsValid(lpCache) then return end
 
     local playerPos = lpCache:GetPos()
     local mapName = game.GetMap()
-    local drawnCount = 0
+    local queuedCount = 0
+    local aimAng = lpCache:EyeAngles()
+    local yawThreshold = 10        -- degrees
+    local distThresholdSqr = 40000 -- 200 units squared (same as DrawPhantomInfo)
 
-    -- Draw all phantom panels
     if RARELOAD.Phantom then
         for steamID, data in pairs(RARELOAD.Phantom) do
-            if IsValid(data.phantom) and drawnCount < 10 then -- Limit draws per frame
-                local success, err = pcall(DrawPhantomInfo, data, playerPos, mapName)
-                if not success then
-                    print("[RARELOAD] Error drawing phantom info for " .. steamID .. ": " .. tostring(err))
+            if IsValid(data.phantom) and queuedCount < 10 then
+                local phantomPos = data.phantom:GetPos()
+
+                local renderFunction = function()
+                    local success, err = pcall(DrawPhantomInfo, data, playerPos, mapName)
+                    if not success then
+                        print("[RARELOAD] Error drawing phantom info for " .. steamID .. ": " .. tostring(err))
+                    end
                 end
-                drawnCount = drawnCount + 1
+
+                RARELOAD.DepthRenderer.AddRenderItem(phantomPos, renderFunction, "phantom")
+                queuedCount = queuedCount + 1
+
+                -- Pick best candidate for interaction before input handling (was previously set during render)
+                if not PhantomInteractionState.active then
+                    local toPhantomAng = (phantomPos - lpCache:EyePos()):Angle()
+                    local yawDiff = math.abs(math.AngleDifference(aimAng.y, toPhantomAng.y))
+                    local distSqr = playerPos:DistToSqr(phantomPos)
+                    if distSqr < distThresholdSqr and yawDiff < yawThreshold then
+                        if (not IsValid(CandidatePhantom)) then
+                            CandidatePhantom = data.phantom
+                            CandidateSteamID = steamID
+                            CandidateYawDiff = yawDiff
+                            CandidateDistSqr = distSqr
+                        else
+                            -- Prefer the closer phantom when multiple match (with safety guards)
+                            local currentBestDist = tonumber(CandidateDistSqr) or math.huge
+                            if distSqr < currentBestDist or yawDiff < (CandidateYawDiff or 1e9) then
+                                CandidatePhantom = data.phantom
+                                CandidateSteamID = steamID
+                                CandidateYawDiff = yawDiff
+                                CandidateDistSqr = distSqr
+                            end
+                        end
+                    end
+                end
             end
         end
     end
 
-    -- Handle interaction logic
     local ct = CurTime()
     if PhantomInteractionState.active then
         local phantom = PhantomInteractionState.phantom
@@ -631,7 +648,169 @@ function DrawAllPhantomPanels()
             if cache and cache.activeCategory then
                 local categoryList = PHANTOM_CATEGORIES
 
-                -- Check for tab navigation - store direction first to avoid double consumption
+                local tabDirection = 0
+                if KeyPressed(KEY_RIGHT) then
+                    tabDirection = 1
+                elseif KeyPressed(KEY_LEFT) then
+                    tabDirection = -1
+                end
+
+                if tabDirection ~= 0 then
+                    local currentIndex = 1
+                    for i, cat in ipairs(categoryList) do
+                        if cat[1] == cache.activeCategory then
+                            currentIndex = i
+                            break
+                        end
+                    end
+                    local newIndex = currentIndex + tabDirection
+                    if newIndex < 1 then newIndex = #categoryList end
+                    if newIndex > #categoryList then newIndex = 1 end
+                    cache.activeCategory = categoryList[newIndex][1]
+                    PhantomInteractionState.lastAction = ct
+                end
+
+                if math.abs(ScrollDelta) > 0.1 then
+                    local panelData = PanelScroll.phantoms[PhantomInteractionState.steamID]
+                    if not panelData then
+                        PanelScroll.phantoms[PhantomInteractionState.steamID] = { scroll = 0 }
+                        panelData = PanelScroll.phantoms[PhantomInteractionState.steamID]
+                    end
+
+                    panelData.scroll = panelData.scroll + ScrollDelta
+                    panelData.scroll = math.max(0, panelData.scroll)
+                    ScrollDelta = ScrollDelta * 0.8
+                    PhantomInteractionState.lastAction = ct
+                end
+            end
+        end
+    else
+        if CandidatePhantom and CandidateSteamID then
+            if KeyPressed(INTERACT_KEY) and InteractModifierDown() then
+                -- Require the player to be aiming at the panel to enter interaction
+                local function IsAimingAtPanel(phantom, steamID)
+                    if not (IsValid(phantom) and steamID) then return false end
+                    lpCache = lpCache or LocalPlayer()
+                    if not IsValid(lpCache) then return false end
+
+                    local ply = lpCache
+                    local eyePos = ply:EyePos()
+                    local pos = phantom:GetPos()
+
+                    local dir = (pos - eyePos)
+                    dir:Normalize()
+                    local ang = dir:Angle()
+                    ang.y = ang.y - 90
+                    ang.p = 0
+                    ang.r = 90
+
+                    local mapName = game.GetMap()
+                    local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][steamID]
+                    local categories = PHANTOM_CATEGORIES
+                    local cache = PhantomInfoCache[steamID]
+                    local activeCat = (cache and cache.activeCategory) or "basic"
+                    local dataLines
+                    if cache and cache.data then
+                        dataLines = cache.data[activeCat] or {}
+                    else
+                        local plyEnt
+                        for _, p in ipairs(player.GetAll()) do
+                            if p:SteamID() == steamID then
+                                plyEnt = p
+                                break
+                            end
+                        end
+                        if not IsValid(plyEnt) then return false end
+                        dataLines = BuildPhantomInfoData(plyEnt, savedInfo, mapName, 1)[activeCat] or {}
+                    end
+
+                    local width = CalculateOptimalPanelSize(dataLines, #categories)
+                    local lineHeight, titleHeight, tabHeight = 18, 36, 22
+                    local actualVisibleLines = math.min(#dataLines, MAX_VISIBLE_LINES)
+                    local contentHeight = actualVisibleLines * lineHeight + 12
+                    local panelHeight = titleHeight + tabHeight + contentHeight + 18
+
+                    local distanceSqr = eyePos:DistToSqr(pos)
+                    local scale = BASE_SCALE * math.Clamp(1 - (math.sqrt(distanceSqr) / 4000), 0.4, 1.2)
+
+                    local phantomMins, phantomMaxs = phantom:OBBMins(), phantom:OBBMaxs()
+                    local phantomHeight = phantomMaxs.z - phantomMins.z
+                    local headOffset = math.max(phantomHeight + 10, 80)
+                    local panelHeightWorldUnits = panelHeight * scale
+                    local panelBottomZ = pos.z + headOffset
+                    local panelCenterZ = panelBottomZ + (panelHeightWorldUnits / 2)
+                    local drawPos = Vector(pos.x, pos.y, panelCenterZ)
+
+                    local panelCenter = drawPos
+                    local forward = ply:EyeAngles():Forward()
+                    local normal = (panelCenter - eyePos):GetNormalized()
+                    local right = ang:Right()
+                    local up = ang:Up()
+                    local denom = forward:Dot(normal)
+                    if math.abs(denom) <= 1e-3 then return false end
+                    local t = (panelCenter - eyePos):Dot(normal) / denom
+                    if t <= 0 then return false end
+                    local hitPos = eyePos + forward * t
+                    local rel = hitPos - panelCenter
+                    local x = rel:Dot(right)
+                    local y = rel:Dot(up)
+                    local halfW = (width * 0.5) * scale
+                    local halfH = (panelHeight * 0.5) * scale
+                    return math.abs(x) <= halfW and math.abs(y) <= halfH
+                end
+
+                if IsAimingAtPanel(CandidatePhantom, CandidateSteamID) then
+                    EnterPhantomInteraction(CandidatePhantom, CandidateSteamID)
+                    return
+                end
+            end
+        end
+    end
+end
+
+function DrawAllPhantomPanels()
+    -- Allow drawing phantom panels regardless of debug mode
+
+    CandidatePhantom, CandidateSteamID, CandidateYawDiff = nil, nil, nil
+    lpCache = lpCache or LocalPlayer()
+    if not IsValid(lpCache) then return end
+
+    local playerPos = lpCache:GetPos()
+    local mapName = game.GetMap()
+    local drawnCount = 0
+
+    if RARELOAD.Phantom then
+        for steamID, data in pairs(RARELOAD.Phantom) do
+            if IsValid(data.phantom) and drawnCount < 10 then
+                local success, err = pcall(DrawPhantomInfo, data, playerPos, mapName)
+                if not success then
+                    print("[RARELOAD] Error drawing phantom info for " .. steamID .. ": " .. tostring(err))
+                end
+                drawnCount = drawnCount + 1
+            end
+        end
+    end
+
+    local ct = CurTime()
+    if PhantomInteractionState.active then
+        local phantom = PhantomInteractionState.phantom
+        if (not IsValid(phantom)) or lpCache:EyePos():DistToSqr(phantom:GetPos()) > PHANTOM_DRAW_DISTANCE_SQR * 1.1 then
+            LeavePhantomInteraction()
+        else
+            if KeyPressed(INTERACT_KEY) and InteractModifierDown() then
+                LeavePhantomInteraction()
+                return
+            end
+
+            local cache = PhantomInfoCache[PhantomInteractionState.steamID]
+            if not cache then
+                LeavePhantomInteraction()
+                return
+            end
+
+            if cache and cache.activeCategory then
+                local categoryList = PHANTOM_CATEGORIES
+
                 local tabDirection = 0
                 if KeyPressed(KEY_RIGHT) then
                     tabDirection = 1
@@ -654,7 +833,6 @@ function DrawAllPhantomPanels()
                     surface.PlaySound("ui/buttonrollover.wav")
                 end
 
-                -- Handle scrolling
                 local panelID = PhantomInteractionState.steamID
                 local scrollTable = PanelScroll.phantoms
                 local scrollKey = panelID .. "_" .. cache.activeCategory
@@ -671,7 +849,6 @@ function DrawAllPhantomPanels()
             end
         end
     else
-        -- Check for new interaction candidate
         if CandidatePhantom and KeyPressed(INTERACT_KEY) and InteractModifierDown() then
             EnterPhantomInteraction(CandidatePhantom, CandidateSteamID)
             surface.PlaySound("ui/buttonclick.wav")
@@ -679,9 +856,11 @@ function DrawAllPhantomPanels()
     end
 end
 
--- Hook to handle CreateMove for camera lock during interaction
 hook.Add("CreateMove", "RARELOAD_PhantomPanels_CamLock", function(cmd)
     if PhantomInteractionState.active or CurTime() - LeaveTime < 0.5 then
+        cmd:RemoveKey(IN_USE)
+    elseif PhantomLookingAtPanelUntil and CurTime() <= PhantomLookingAtPanelUntil then
+        -- Prevent +use when aiming at the phantom 3D2D panel
         cmd:RemoveKey(IN_USE)
     end
     if not PhantomInteractionState.active then return end
@@ -700,9 +879,20 @@ hook.Add("CreateMove", "RARELOAD_PhantomPanels_CamLock", function(cmd)
     cmd:SetViewAngles(ang)
 end)
 
--- Hook to handle scrolling during interaction
 hook.Add("PlayerBindPress", "RARELOAD_PhantomInteractScroll", function(ply, bind, pressed)
-    if not PhantomInteractionState.active or not pressed then return end
+    if not pressed then return end
+
+    if not PhantomInteractionState.active then
+        -- Don't block normal use outside interaction; allow SED to handle global interactions too
+        return
+    end
+
+    -- Allow normal movement while interacting with the phantom panel
+    -- (do not block these binds so the player can move around)
+    if bind == "+forward" or bind == "+back" or bind == "+moveleft" or bind == "+moveright"
+        or bind == "+jump" or bind == "+duck" or bind == "+walk" or bind == "+speed" then
+        return false
+    end
 
     local cache = PhantomInfoCache[PhantomInteractionState.steamID]
     if cache and cache.activeCategory then
@@ -723,8 +913,9 @@ hook.Add("PlayerBindPress", "RARELOAD_PhantomInteractScroll", function(ply, bind
         end
     end
 
+    -- While in interaction, block most inputs; explicitly block +use to avoid world interactions
     if string.find(bind, "+use") then
-        return false
+        return true
     end
 
     return true

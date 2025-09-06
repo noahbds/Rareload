@@ -7,8 +7,8 @@ RARELOAD.nextPhantomRefresh     = RARELOAD.nextPhantomRefresh or 0
 
 local PHANTOM_UPDATE_INTERVAL   = 1.0
 local DATA_RELOAD_INTERVAL      = 10.0
-local PHANTOM_MAX_DISTANCE      = 2000
-local PHANTOM_CULL_DISTANCE     = 3000
+local PHANTOM_MAX_DISTANCE      = 10000
+local PHANTOM_CULL_DISTANCE     = 10000
 local PHANTOM_MAX_DISTANCE_SQR  = PHANTOM_MAX_DISTANCE * PHANTOM_MAX_DISTANCE
 local PHANTOM_CULL_DISTANCE_SQR = PHANTOM_CULL_DISTANCE * PHANTOM_CULL_DISTANCE
 local PHANTOM_HEAD_OFFSET       = Vector(0, 0, 80)
@@ -250,35 +250,39 @@ local lastMapName = game.GetMap()
 local cachedMapPositions = nil
 local lastMapCacheTime = 0
 
-hook.Add("PostDrawOpaqueRenderables", "RARELOAD_DrawPhantomInfo", function()
+hook.Add("PostDrawOpaqueRenderables", "RARELOAD_QueuePhantomInfo", function()
     BufferPhantom()
 
     local now = CurTime()
     local lp = LocalPlayer()
     if not IsValid(lp) then return end
 
-    -- Early exit if debug is disabled and no phantoms need processing
     local isDebugEnabled = RARELOAD.settings.debugEnabled
-    local hasPhantoms = next(RARELOAD.Phantom or {}) ~= nil
+    -- Only consider phantoms that have a valid clientside model
+    local hasValidPhantoms = false
+    if RARELOAD.Phantom then
+        for _, data in pairs(RARELOAD.Phantom) do
+            if data and IsValid(data.phantom) then
+                hasValidPhantoms = true
+                break
+            end
+        end
+    end
 
-    if not isDebugEnabled and not hasPhantoms then return end
+    -- Even if debug is off, we still want to render 3D2D info panels; if no phantoms yet, allow refresh below
 
-    -- Cache map and position data
     local currentMap = game.GetMap()
     if currentMap ~= lastMapName then
         lastMapName = currentMap
-        cachedMapPositions = nil -- Invalidate cache when map changes
+        cachedMapPositions = nil
     end
 
-    -- Update phantom positions and visibility less frequently
     if now >= nextPhantomCheck then
-        -- Cache position table to avoid repeated lookups
         if not cachedMapPositions or (now - lastMapCacheTime) > 5.0 then
             cachedMapPositions = RARELOAD.playerPositions[currentMap] or {}
             lastMapCacheTime = now
         end
 
-        -- Only check for refresh if we have position data
         if next(cachedMapPositions) then
             local needsRefresh = false
             for steamID in pairs(cachedMapPositions) do
@@ -296,15 +300,14 @@ hook.Add("PostDrawOpaqueRenderables", "RARELOAD_DrawPhantomInfo", function()
         nextPhantomCheck = now + PHANTOM_UPDATE_INTERVAL
     end
 
-    -- Update visibility less frequently to improve performance
     if now >= nextVisibilityUpdate then
         UpdatePhantomVisibility()
-        nextVisibilityUpdate = now + 0.75 -- Slightly less frequent updates
+        nextVisibilityUpdate = now + 0.75
     end
 
-    -- Only draw panels if debug is enabled and we have phantoms
-    if isDebugEnabled and hasPhantoms then
-        DrawAllPhantomPanels()
+    -- Always hand off to the info renderer when available; phantom info handles its own gating
+    if type(QueuePhantomPanelsForRendering) == "function" then
+        QueuePhantomPanelsForRendering()
     end
 end)
 

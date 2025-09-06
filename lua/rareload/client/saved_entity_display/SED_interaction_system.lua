@@ -172,36 +172,9 @@ function SED.HandleInteractionInput()
             end
         end
     else
+        -- Only allow entering interaction when the player is aiming at the 3D2D panel (candidate set by panel hit-test)
         if SED.CandidateEnt and SED.KeyPressed(SED.INTERACT_KEY) and SED.InteractModifierDown() and not SED.PlayerIsHoldingSomething() then
             SED.EnterInteraction(SED.CandidateEnt, SED.CandidateIsNPC, SED.CandidateID)
-        elseif SED.KeyPressed(SED.INTERACT_KEY) and SED.InteractModifierDown() and not SED.PlayerIsHoldingSomething() then
-            local tr = SED.lpCache:GetEyeTrace()
-            if tr and tr.Entity then
-                local hit = tr.Entity
-                if IsValid(hit) then
-                    local isPlayer = false
-                    if hit and hit.IsPlayer and isfunction(hit.IsPlayer) then
-                        local okPlayer, resPlayer = pcall(hit.IsPlayer, hit)
-                        isPlayer = okPlayer and resPlayer or false
-                    end
-                    if not isPlayer then
-                        local id = ""
-                        local getter = hit and hit.GetNWString
-                        if getter and isfunction(getter) then
-                            local ok, val = pcall(getter, hit, "RareloadID", "")
-                            if ok and type(val) == "string" then id = val end
-                        end
-                        if id ~= "" then
-                            SED.EnsureSavedLookup()
-                            local isNPC = hit and hit.IsNPC and hit:IsNPC() == true
-                            local saved = isNPC and SED.SAVED_NPCS_BY_ID[id] or SED.SAVED_ENTITIES_BY_ID[id]
-                            if saved then
-                                SED.EnterInteraction(hit, isNPC, id)
-                            end
-                        end
-                    end
-                end
-            end
         end
     end
 end

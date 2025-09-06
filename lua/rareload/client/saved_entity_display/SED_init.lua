@@ -19,8 +19,8 @@ SED.TrackedNPCs = {}
 SED.MAP_LAST_BUILD = 0
 SED.SAVED_LOOKUP_INTERVAL = 5
 SED.LAST_RESCAN = 0
-SED.RESCAN_INTERVAL = 2
-SED.INFO_CACHE_LIFETIME = 0.5
+SED.RESCAN_INTERVAL = 4
+SED.INFO_CACHE_LIFETIME = 1.0
 
 -- Display configuration
 SED.MAX_DRAW_PER_FRAME = 40
@@ -34,6 +34,14 @@ SED.MAX_VISIBLE_LINES = 30
 SED.SCROLL_SPEED = 3
 SED.LARGE_ENTITY_THRESHOLD = 200
 SED.MASSIVE_ENTITY_THRESHOLD = 800
+
+-- Visibility culling
+SED.CULL_VIEW_CONE = true
+SED.FOV_COS_THRESHOLD = math.cos(math.rad(70))
+SED.NEARBY_DIST_SQR = 512 * 512
+
+-- Interaction/hit-test
+SED.HITTEST_ONLY_CANDIDATE = true
 
 -- Scroll state
 SED.PanelScroll = { entities = {}, npcs = {} }
@@ -50,6 +58,7 @@ SED.INTERACT_KEY = KEY_E
 SED.REQUIRE_SHIFT_MOD = true
 SED.ScrollDelta = 0
 SED.LeaveTime = 0
+SED.LookingAtPanelUntil = 0
 
 -- Cache tables
 SED.EntityPanelCache = {}

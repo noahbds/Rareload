@@ -179,10 +179,17 @@ function SED.BuildPanelData(saved, ent, isNPC)
         end
         if saved.weapons and #saved.weapons > 0 then add("combat", "Weapons", #saved.weapons) end
         if istable(saved.weapons) then
+            local limit = 16
+            local shown = 0
             for i, w in ipairs(saved.weapons) do
-                if istable(w) and i <= 30 then
+                if istable(w) then
                     add("combat", "W" .. i, w.class or w.name)
+                    shown = shown + 1
+                    if shown >= limit then break end
                 end
+            end
+            if #saved.weapons > limit then
+                add("combat", "+more", ("%d more..."):format(#saved.weapons - limit))
             end
         end
         if saved.weaponProficiency then add("combat", "Proficiency", saved.weaponProficiency) end
@@ -219,20 +226,28 @@ function SED.BuildPanelData(saved, ent, isNPC)
     -- Bodygroups
     if istable(saved.bodygroups) then
         local count = 0
+        local limit = 24
         for k, v in pairs(saved.bodygroups) do
-            if count >= 50 then break end
             add("visual", "BG " .. k, v)
             count = count + 1
+            if count >= limit then break end
+        end
+        if table.Count(saved.bodygroups) > count then
+            add("visual", "+more", ("%d more..."):format(table.Count(saved.bodygroups) - count))
         end
     end
 
     -- SubMaterials
     if istable(saved.subMaterials) then
         local count = 0
+        local limit = 20
         for idx, mat in pairs(saved.subMaterials) do
-            if count >= 30 then break end
             add("visual", "SubMat" .. idx, mat ~= "" and (mat:match("([^/\\]+)$") or mat) or "<default>")
             count = count + 1
+            if count >= limit then break end
+        end
+        if table.Count(saved.subMaterials) > count then
+            add("visual", "+more", ("%d more..."):format(table.Count(saved.subMaterials) - count))
         end
     end
 
@@ -261,10 +276,14 @@ function SED.BuildPanelData(saved, ent, isNPC)
     if istable(saved.keyvalues) or istable(saved.keyValues) then
         local kv = saved.keyvalues or saved.keyValues
         local added = 0
+        local limit = 60
         for k, v in pairs(kv) do
-            if added >= 80 then break end
             add("keyvalues", tostring(k), type(v) == "string" and v or tostring(v))
             added = added + 1
+            if added >= limit then break end
+        end
+        if table.Count(kv) > added then
+            add("keyvalues", "+more", ("%d more..."):format(table.Count(kv) - added))
         end
     end
 
@@ -308,6 +327,19 @@ function SED.BuildPanelData(saved, ent, isNPC)
             metaCount = metaCount + 1
         end
     end
+
+    -- Bound total lines per category to avoid pathological frames
+    local function clampCategory(catId)
+        local list = cats[catId]
+        if not list then return end
+        local maxLines = 200
+        if #list > maxLines then
+            local extra = #list - maxLines
+            while #list > maxLines do table.remove(list) end
+            list[#list + 1] = { "+more", ("%d more..."):format(extra), SED.THEME.text }
+        end
+    end
+    for k, _ in pairs(cats) do clampCategory(k) end
 
     entry = {
         data = cats,

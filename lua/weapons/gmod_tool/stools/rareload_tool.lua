@@ -115,8 +115,6 @@ local function loadAddonSettings()
     return true, nil
 end
 
--- Helper functions for data conversion (now using centralized utilities)
--- Load centralized conversion functions
 if not RARELOAD or not RARELOAD.DataUtils then
     include("rareload/utils/rareload_data_utils.lua")
 end

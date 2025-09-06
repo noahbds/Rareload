@@ -1,5 +1,9 @@
 local RareloadUI = include("rareload/ui/rareload_ui.lua")
 
+-- Lightweight material cache (built-in gradients)
+local GRADIENT_U = Material("vgui/gradient-u")
+local GRADIENT_R = Material("vgui/gradient-r")
+
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 RARELOAD.lastMoveTime = RARELOAD.lastMoveTime or 0
@@ -53,6 +57,26 @@ local TOOL_UI = {
 
 local ToolScreen = {}
 
+-- Static feature config to avoid per-frame allocations
+local FEATURES = {
+    { name = "Move Type",             key = "spawnModeEnabled",      kind = "bool" },
+    { name = "Auto Save",             key = "autoSaveEnabled",       kind = "bool" },
+    { name = "Save Inventory",        key = "retainInventory",       kind = "bool" },
+    { name = "Save Global Inventory", key = "retainGlobalInventory", kind = "bool" },
+    { name = "Save Ammo",             key = "retainAmmo",            kind = "bool" },
+    { name = "Save Health and Armor", key = "retainHealthArmor",     kind = "bool" },
+    { name = "Save Entities",         key = "retainMapEntities",     kind = "bool" },
+    { name = "Save NPCs",             key = "retainMapNPCs",         kind = "bool" },
+    { name = "Debug Mode",            key = "debugEnabled",          kind = "bool" },
+    { name = "Auto Save Interval",    key = "autoSaveInterval",      kind = "value", unit = "s" },
+    { name = "Angle Tolerance",       key = "angleTolerance",        kind = "value", unit = "°" },
+    { name = "Max History Size",      key = "maxHistorySize",        kind = "value" }
+}
+
+-- Reusable dynamic colors to avoid GC churn
+local TMP_COLOR = Color(255, 255, 255, 255)
+local TMP_COLOR2 = Color(255, 255, 255, 255)
+
 local function initAnimState(RARELOAD)
     RARELOAD.AnimState = RARELOAD.AnimState or {
         lastSaveTime = 0,
@@ -67,7 +91,9 @@ local function initAnimState(RARELOAD)
         scrollDirection = 1,
         nextScrollTime = CurTime(),
         scrollPauseTime = 5,
-        scrollSpeed = 15
+        scrollSpeed = 15,
+        lastRemainingSecond = -1,
+        cachedCountdownText = "Saving in: 0s"
     }
     return RARELOAD.AnimState
 end
@@ -151,7 +177,7 @@ local function drawProgressBar(width, height, state, barY, barHeight, progress, 
     end
 
     local textY = barY + barHeight / 2
-    local infoText = "Saving in: " .. math.floor(timeRemaining) .. "s"
+    local infoText = state and state.cachedCountdownText or ("Saving in: " .. math.floor(timeRemaining) .. "s")
     local textColor = TOOL_UI.COLORS.TEXT.NORMAL
 
     if timeRemaining < TOOL_UI.ANIMATION.PULSE_THRESHOLD then
@@ -401,23 +427,13 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
 
     local state = initAnimState(RARELOAD)
     local currentTime = CurTime()
+    local ft = FrameTime()
 
-    local keyFeatures = {
-        { name = "Move Type",             enabled = settings.spawnModeEnabled },
-        { name = "Auto Save",             enabled = settings.autoSaveEnabled },
-        { name = "Save Inventory",        enabled = settings.retainInventory },
-        { name = "Save Global Inventory", enabled = settings.retainGlobalInventory },
-        { name = "Save Ammo",             enabled = settings.retainAmmo },
-        { name = "Save Health and Armor", enabled = settings.retainHealthArmor },
-        { name = "Save Entities",         enabled = settings.retainMapEntities },
-        { name = "Save NPCs",             enabled = settings.retainMapNPCs },
-        { name = "Debug Mode",            enabled = settings.debugEnabled },
-        { name = "Auto Save Interval",    enabled = settings.autoSaveInterval },
-        { name = "Angle Tolerance",       enabled = settings.angleTolerance },
-        { name = "Max History Size",      enabled = settings.maxHistorySize }
-    }
+    -- Drive phases for subtle animations (were static before)
+    state.glowPhase = (state.glowPhase + ft * 2) % (math.pi * 2)
+    state.pulsePhase = (state.pulsePhase + ft * 6) % (math.pi * 2)
 
-    local totalFeatureHeight = #keyFeatures * layout.FEATURE_SPACING
+    local totalFeatureHeight = #FEATURES * layout.FEATURE_SPACING
     local visibleHeight = height - layout.FEATURE_START_Y - 30
     local maxScrollOffset = math.max(0, totalFeatureHeight - visibleHeight)
 
@@ -444,15 +460,27 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
 
     surface.SetDrawColor(colors.BG)
     surface.DrawRect(0, 0, width, height)
+    -- Header with gradient accent
     surface.SetDrawColor(colors.HEADER)
     surface.DrawRect(0, 0, width, 50)
+    if GRADIENT_U then
+        surface.SetMaterial(GRADIENT_U)
+        surface.SetDrawColor(255, 255, 255, 35)
+        surface.DrawTexturedRect(0, 0, width, 50)
+    end
 
     draw.SimpleText("RARELOAD", "CTNV2", width / 2, 25, colors.TEXT_LIGHT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
     local isEnabled = settings.addonEnabled
     local statusColor = isEnabled and colors.ENABLED or colors.DISABLED
+    -- Status pill
     surface.SetDrawColor(statusColor)
-    surface.DrawRect(10, 60, width - 20, 30)
+    draw.RoundedBox(8, 10, 60, width - 20, 30, statusColor)
+    if GRADIENT_R then
+        surface.SetMaterial(GRADIENT_R)
+        surface.SetDrawColor(255, 255, 255, 20)
+        surface.DrawTexturedRect(10, 60, width - 20, 30)
+    end
 
     local statusText = isEnabled and "ENABLED" or "DISABLED"
     local textColor = isEnabled and colors.TEXT_DARK or colors.TEXT_LIGHT
@@ -460,41 +488,41 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
 
     render.SetScissorRect(0, layout.FEATURE_START_Y, width, height - 30, true)
 
-    for i, feature in ipairs(keyFeatures) do
+    for i, cfg in ipairs(FEATURES) do
         local y = layout.FEATURE_START_Y + (i - 1) * layout.FEATURE_SPACING - state.scrollOffset
 
         if y + layout.FEATURE_SPACING > layout.FEATURE_START_Y and y < height - 30 then
             local iconSize = layout.FEATURE_ICON_SIZE
+            local value = settings[cfg.key]
 
-            local isValueSetting = feature.name == "Angle Tolerance" or
-                feature.name == "Auto Save Interval" or
-                feature.name == "Max Distance" or
-                feature.name == "Max History Size"
+            -- Row background (zebra stripes for readability)
+            if i % 2 == 0 then
+                surface.SetDrawColor(255, 255, 255, 6)
+                surface.DrawRect(8, y - 2, width - 16, layout.FEATURE_SPACING)
+            end
 
-            if isValueSetting then
-                local value = feature.enabled
-                local valueText = tostring(value)
+            if cfg.kind == "value" then
+                -- Left accent dot (header color)
+                draw.RoundedBox(iconSize / 2, 12, y + 2, iconSize, iconSize - 4, colors.HEADER)
 
-                surface.SetDrawColor(colors.HEADER)
-                draw.NoTexture()
-                RareloadUI.DrawCircle(20, y + iconSize / 2, iconSize / 2, 20, colors.HEADER)
+                draw.SimpleText(cfg.name, "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT,
+                    TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 
-                draw.SimpleText(feature.name, "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT, TEXT_ALIGN_LEFT,
-                    TEXT_ALIGN_CENTER)
-                draw.SimpleText(valueText, "CTNV", width - 15, y + iconSize / 2, colors.TEXT_LIGHT, TEXT_ALIGN_RIGHT,
-                    TEXT_ALIGN_CENTER)
+                local valueText = value ~= nil and tostring(value) or "-"
+                if cfg.unit and valueText ~= "-" then valueText = valueText .. (cfg.unit or "") end
+                draw.SimpleText(valueText, "CTNV", width - 15, y + iconSize / 2, colors.TEXT_LIGHT,
+                    TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
             else
-                local dotColor = feature.enabled and colors.ENABLED or colors.DISABLED
+                local on = value and true or false
+                local dotColor = on and colors.ENABLED or colors.DISABLED
 
-                surface.SetDrawColor(dotColor)
-                draw.NoTexture()
-                RareloadUI.DrawCircle(20, y + iconSize / 2, iconSize / 2, 20, dotColor)
+                -- Modern pill indicator instead of circle (less overdraw, cleaner look)
+                draw.RoundedBox(iconSize / 2, 12, y + 2, iconSize, iconSize - 4, dotColor)
 
-                draw.SimpleText(feature.name, "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT, TEXT_ALIGN_LEFT,
-                    TEXT_ALIGN_CENTER)
-                local stateText = feature.enabled and "ON" or "OFF"
-                draw.SimpleText(stateText, "CTNV", width - 15, y + iconSize / 2, dotColor, TEXT_ALIGN_RIGHT,
-                    TEXT_ALIGN_CENTER)
+                draw.SimpleText(cfg.name, "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT,
+                    TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                draw.SimpleText(on and "ON" or "OFF", "CTNV", width - 15, y + iconSize / 2, dotColor,
+                    TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
             end
         end
     end
@@ -518,6 +546,13 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
             local barHeight = TOOL_UI.LAYOUT.BAR_HEIGHT
             local barY = height - 22
             local timeRemaining = math.max(0, interval - timeElapsed)
+
+            -- Cache countdown text per second to avoid string churn
+            local remainInt = math.floor(timeRemaining)
+            if remainInt ~= state.lastRemainingSecond then
+                state.cachedCountdownText = "Saving in: " .. remainInt .. "s"
+                state.lastRemainingSecond = remainInt
+            end
 
             RARELOAD.activeProgress = (progress > 0 and progress < 1)
 

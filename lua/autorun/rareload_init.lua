@@ -10,8 +10,10 @@ if SERVER then
     AddCSLuaFile("rareload/utils/rareload_fonts.lua")
     -- Data / conversion utilities required by multiple client panels & tools
     AddCSLuaFile("rareload/utils/rareload_data_utils.lua")
-    AddCSLuaFile("rareload/utils/data_conversion_utils.lua")
     AddCSLuaFile("rareload/utils/vector_serialization.lua")
+
+    -- Shared renderer for depth sorting (must be loaded before phantom and SED systems)
+    AddCSLuaFile("rareload/client/shared/depth_sorted_renderer.lua")
 
     -- Client UI files
     AddCSLuaFile("rareload/ui/rareload_ui.lua")
@@ -57,7 +59,6 @@ if SERVER then
     AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_data.lua")
     AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_events.lua")
     AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_method_list.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_panel.lua")
     AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_panel_main.lua")
     AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_theme.lua")
     -- Profile subsystem (client)
@@ -184,6 +185,9 @@ elseif CLIENT then
     if RARELOAD.RegisterFonts then
         RARELOAD.RegisterFonts()
     end
+
+    -- Load shared depth-sorted renderer before phantom and SED systems
+    include("rareload/client/shared/depth_sorted_renderer.lua")
 
     -- UI system
     include("rareload/ui/rareload_ui.lua")

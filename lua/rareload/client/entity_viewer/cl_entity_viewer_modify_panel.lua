@@ -1,4 +1,3 @@
-include("rareload/utils/data_conversion_utils.lua")
 include("rareload/utils/vector_serialization.lua")
 
 local draw, surface, string, math, util, file, net, timer, IsValid, pairs, ipairs, tostring =

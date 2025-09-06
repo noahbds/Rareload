@@ -1,5 +1,3 @@
--- Event hooks and main update logic
-
 hook.Add("OnEntityCreated", "RARELOAD_TrackSavedEntities", function(ent)
     timer.Simple(0, function()
         if IsValid(ent) then SED.TrackIfSaved(ent) end
@@ -11,6 +9,10 @@ end)
 
 hook.Add("CreateMove", "RARELOAD_SavedPanels_CamLock", function(cmd)
     if SED.InteractionState.active or CurTime() - SED.LeaveTime < 0.5 then
+        -- In interaction or shortly after leaving, block +use to avoid picking entities
+        cmd:RemoveKey(IN_USE)
+    elseif SED.LookingAtPanelUntil and CurTime() <= SED.LookingAtPanelUntil then
+        -- Only while aiming at the 3D2D frame, prevent pickup/use on the underlying entity
         cmd:RemoveKey(IN_USE)
     end
     if not SED.InteractionState.active then return end
@@ -46,13 +48,8 @@ hook.Add("PlayerBindPress", "RARELOAD_InteractScroll", function(ply, bind, press
     end
 end)
 
-hook.Add("PostDrawOpaqueRenderables", "Rareload_DrawSavedEntitiesAndNPCs", function()
-    if not (RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled) then
-        if SED.InteractionState.active then
-            SED.LeaveInteraction()
-        end
-        return
-    end
+hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", function()
+    -- Always process panels; visibility and distances are already handled in renderer.
 
     local currentTime = CurTime()
 
@@ -64,7 +61,11 @@ hook.Add("PostDrawOpaqueRenderables", "Rareload_DrawSavedEntitiesAndNPCs", funct
 
     SED.CandidateEnt, SED.CandidateIsNPC, SED.CandidateID, SED.CandidateYawDiff = nil, nil, nil, nil
 
-    SED.DrawAllSavedPanels()
+    if RARELOAD.DepthRenderer and RARELOAD.DepthRenderer.AddRenderItem then
+        SED.QueueAllSavedPanels()
+    else
+        SED.DrawAllSavedPanels()
+    end
 
     SED.HandleInteractionInput()
 end)
