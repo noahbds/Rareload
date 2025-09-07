@@ -81,23 +81,40 @@ local function LeavePhantomInteraction()
     end
 end
 
-local PHANTOM_DRAW_DISTANCE_SQR = SED.BASE_DRAW_DISTANCE * SED.BASE_DRAW_DISTANCE -- for consistency with SED
-local BASE_SCALE = 0.11
+-- Safe draw-distance lookup to avoid hard dependency on SED load order
+local function GetPhantomDrawDistSqr()
+    local base = 1000
+    if RARELOAD and RARELOAD.SavedEntityDisplay and RARELOAD.SavedEntityDisplay.BASE_DRAW_DISTANCE then
+        base = RARELOAD.SavedEntityDisplay.BASE_DRAW_DISTANCE
+    elseif SED and SED.BASE_DRAW_DISTANCE then
+        base = SED.BASE_DRAW_DISTANCE
+    end
+    return base * base
+end
+local BASE_SCALE        = 0.11
 local MAX_VISIBLE_LINES = 30
-local SCROLL_SPEED = 3
-local PanelScroll = { phantoms = {} }
+local SCROLL_SPEED      = 3
+local PanelScroll       = { phantoms = {} }
 
-local fontSizeCache = {}
-local panelSizeCache = {}
+local fontSizeCache     = {}
+local panelSizeCache    = {}
 
-local THEME = {
-    background = Color(20, 20, 30, 220),
-    header = Color(30, 30, 45, 255),
-    border = Color(70, 130, 180, 255),
-    text = Color(220, 220, 255),
-    scrollbar = Color(40, 40, 50, 120),
-    scrollbarHandle = Color(160, 180, 200, 200)
-}
+-- Prefer SED's theme if available to visually match Saved Entity Display panels
+local THEME             = (RARELOAD and RARELOAD.SavedEntityDisplay and RARELOAD.SavedEntityDisplay.THEME) or _G.THEME or
+    {
+        background = Color(20, 20, 30, 220),
+        header = Color(30, 30, 45, 255),
+        border = Color(70, 130, 180, 255),
+        text = Color(220, 220, 255),
+    }
+
+-- Use SED's draw/surface wrappers when present for consistent font metrics and colors
+local SEDRef            = RARELOAD and RARELOAD.SavedEntityDisplay
+local SURF_SetFont      = (SEDRef and SEDRef.surface_SetFont) or surface.SetFont
+local SURF_GetTextSize  = (SEDRef and SEDRef.surface_GetTextSize) or surface.GetTextSize
+local SURF_SetDrawColor = (SEDRef and SEDRef.surface_SetDrawColor) or surface.SetDrawColor
+local DRAW_SimpleText   = (SEDRef and SEDRef.draw_SimpleText) or draw.SimpleText
+local DRAW_RoundedBox   = (SEDRef and SEDRef.draw_RoundedBox) or draw.RoundedBox
 
 function CalculateOptimalPanelSize(categoryContent, numCategories)
     if type(categoryContent) ~= "table" then
@@ -109,22 +126,23 @@ function CalculateOptimalPanelSize(categoryContent, numCategories)
         return panelSizeCache[cacheKey]
     end
 
-    local baseWidth = 350
-    local minWidth = 300
-    local maxWidth = 680
+    -- Align with SED sizing so both UIs feel consistent
+    local baseWidth = 360
+    local minWidth = 340
+    local maxWidth = 750
     local contentWidth = baseWidth
 
-    surface.SetFont("Trebuchet18")
+    SURF_SetFont("Trebuchet18")
     for i = 1, math.min(#categoryContent, 10) do
         local lineData = categoryContent[i]
         local label = tostring(lineData[1] or "")
         local value = tostring(lineData[2] or "")
 
         if not fontSizeCache[label] then
-            fontSizeCache[label] = surface.GetTextSize(label .. ":")
+            fontSizeCache[label] = (SURF_GetTextSize(label .. ":")) or 0
         end
         if not fontSizeCache[value] then
-            fontSizeCache[value] = surface.GetTextSize(value)
+            fontSizeCache[value] = (SURF_GetTextSize(value)) or 0
         end
 
         local totalWidth = fontSizeCache[label] + fontSizeCache[value] + 170
@@ -356,7 +374,7 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     local steamID = ply:SteamID()
     local phantomPos = phantom:GetPos()
     local distanceSqr = playerPos:DistToSqr(phantomPos)
-    if distanceSqr > PHANTOM_DRAW_DISTANCE_SQR then return end
+    if distanceSqr > GetPhantomDrawDistSqr() then return end
 
     local now = CurTime()
 
@@ -448,7 +466,7 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     surface.SetDrawColor(THEME.header.r, THEME.header.g, THEME.header.b, 245)
     surface.DrawRect(offsetX, offsetY, width, titleHeight)
     local title = "Phantom: " .. ply:Nick()
-    draw.SimpleText(title, "Trebuchet24", offsetX + 12, offsetY + titleHeight / 2, Color(240, 240, 255), TEXT_ALIGN_LEFT,
+    DRAW_SimpleText(title, "Trebuchet24", offsetX + 12, offsetY + titleHeight / 2, Color(240, 240, 255), TEXT_ALIGN_LEFT,
         TEXT_ALIGN_CENTER)
 
     local tabY = offsetY + titleHeight
@@ -466,21 +484,20 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
         local tabX = offsetX + (i - 1) * tabWidth
         local isActive = (catID == activeCat)
 
+        local fillCol = Color(math.floor(catColor.r * (isActive and 0.6 or 0.25)),
+            math.floor(catColor.g * (isActive and 0.6 or 0.25)), math.floor(catColor.b * (isActive and 0.6 or 0.25)),
+            isActive and 230 or 130)
+        SURF_SetDrawColor(fillCol.r, fillCol.g, fillCol.b, fillCol.a)
+        surface.DrawRect(tabX, tabY, tabWidth, tabHeight)
+
         if isActive then
-            surface.SetDrawColor(catColor.r / 3, catColor.g / 3, catColor.b / 3, 200)
-            surface.DrawRect(tabX, tabY, tabWidth, tabHeight)
-            surface.SetDrawColor(catColor.r, catColor.g, catColor.b, 255)
-            surface.DrawOutlinedRect(tabX, tabY, tabWidth, tabHeight, 2)
-        else
-            surface.SetDrawColor(40, 40, 50, 180)
-            surface.DrawRect(tabX, tabY, tabWidth, tabHeight)
+            SURF_SetDrawColor(catColor.r, catColor.g, catColor.b, 255)
+            surface.DrawOutlinedRect(tabX, tabY, tabWidth, tabHeight, 1)
         end
 
-        local textColor = isActive and Color(255, 255, 255) or Color(180, 180, 180)
-
         local displayName = catName
-        surface.SetFont("Trebuchet18")
-        local textWidth = surface.GetTextSize(displayName)
+        SURF_SetFont("Trebuchet18")
+        local textWidth = (SURF_GetTextSize(displayName)) or 0
         if textWidth > tabWidth - 8 then
             if catName == "Basic Information" then
                 displayName = "Basic"
@@ -493,14 +510,15 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
             end
         end
 
-        draw.SimpleText(displayName, "Trebuchet18", tabX + tabWidth / 2, tabY + tabHeight / 2, textColor,
-            TEXT_ALIGN_CENTER,
-            TEXT_ALIGN_CENTER)
+        DRAW_SimpleText(displayName, "Trebuchet18", tabX + tabWidth / 2, tabY + tabHeight / 2,
+            isActive and Color(255, 255, 255) or Color(205, 205, 205), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
 
     local startY = tabY + tabHeight + 6
-    surface.SetFont("Trebuchet18")
+    SURF_SetFont("Trebuchet18")
     local visibleLines = math.min(#lines - currentScroll, actualVisibleLines)
+    local labelX = offsetX + 14
+    local valueX = offsetX + 180
     for i = 1, visibleLines do
         local lineIndex = currentScroll + i
         if lineIndex > #lines then break end
@@ -508,34 +526,50 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
         local l = lines[lineIndex]
         local y = startY + (i - 1) * lineHeight
 
-        draw.SimpleText(l[1] .. ":", "Trebuchet18", offsetX + 12, y, Color(200, 200, 200), TEXT_ALIGN_LEFT,
+        -- Alternate row background for readability (match SED style)
+        if (i + currentScroll) % 2 == 0 then
+            SURF_SetDrawColor(40, 48, 62, 95)
+            surface.DrawRect(offsetX + 6, y - 2, width - 12, lineHeight)
+        end
+
+        DRAW_SimpleText((l[1] or "") .. ":", "Trebuchet18", labelX, y, Color(210, 210, 215), TEXT_ALIGN_LEFT,
             TEXT_ALIGN_TOP)
-        draw.SimpleText(l[2], "Trebuchet18", offsetX + 180, y, l[3] or THEME.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+        DRAW_SimpleText(l[2] or "", "Trebuchet18", valueX, y, l[3] or THEME.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
     end
 
     if maxScrollLines > 0 then
-        local barX = offsetX + width - 12
-        local barY = startY
-        local barW = 8
-        local barH = contentHeight - 12
-        surface.SetDrawColor(60, 60, 70, 160)
-        surface.DrawRect(barX, barY, barW, barH)
-
-        local handleH = math.max(20, barH * (actualVisibleLines / #lines))
-        local handleY = barY + (currentScroll / maxScrollLines) * (barH - handleH)
-        surface.SetDrawColor(90, 150, 230, 220)
-        surface.DrawRect(barX, handleY, barW, handleH)
+        -- Slim scrollbar similar to SED
+        local barW = 5
+        local barX = offsetX + width - barW - 10
+        local barY = startY - 2
+        local barH = contentHeight - 4
+        DRAW_RoundedBox(3, barX, barY, barW, barH, Color(30, 34, 44, 185))
+        local handleH = math.max(16, barH * (actualVisibleLines / #lines))
+        local handleY = barY + (barH - handleH) * (currentScroll / maxScrollLines)
+        DRAW_RoundedBox(3, barX, handleY, barW, handleH, Color(90, 150, 230, 220))
     end
 
-    if isFocused then
-        draw.SimpleText("Left/Right Tabs | Up/Down/MWheel Scroll | Shift+E Exit", "Trebuchet18", offsetX + width / 2,
-            offsetY - 12, Color(160, 210, 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    elseif isCandidate then
-        draw.SimpleText("Shift + E to Inspect", "Trebuchet18", offsetX + width / 2, offsetY - 6, Color(160, 210, 255),
-            TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    end
+    -- Hints will be drawn in a small separate 3D2D block above (matching SED)
 
     cam.End3D2D()
+
+    -- Draw hints above the panel, SED-style
+    if isFocused or isCandidate then
+        local hintY = drawPos.z + (panelHeight * scale) / 2 + 10
+        local hintPos = Vector(drawPos.x, drawPos.y, hintY)
+        local hintScale = scale * 0.8
+        cam.Start3D2D(hintPos, ang, hintScale)
+        if isFocused then
+            DRAW_SimpleText("INTERACT MODE", "Trebuchet18", 0, 0, Color(255, 235, 190), TEXT_ALIGN_CENTER,
+                TEXT_ALIGN_CENTER)
+            DRAW_SimpleText("Left/Right Tabs | Up/Down/MWheel Scroll | Shift+E Exit", "Trebuchet18", 0, 20,
+                Color(225, 225, 230), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        elseif isCandidate then
+            DRAW_SimpleText("Shift + E to Inspect", "Trebuchet18", 0, 0, Color(160, 210, 255), TEXT_ALIGN_CENTER,
+                TEXT_ALIGN_CENTER)
+        end
+        cam.End3D2D()
+    end
 
     -- After drawing, compute whether the player is aiming at the 3D2D panel rectangle
     local eyePos2 = lpCache:EyePos()
@@ -572,7 +606,10 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
 end
 
 function QueuePhantomPanelsForRendering()
-    -- Render phantom panels whenever the depth renderer is available; no longer gated by debug mode
+    -- Only render phantom panels when debug mode is enabled
+    if not (RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled) then return end
+
+    -- Render phantom panels whenever the depth renderer is available
     if not (RARELOAD.DepthRenderer and RARELOAD.DepthRenderer.AddRenderItem) then return end
 
     CandidatePhantom, CandidateSteamID, CandidateYawDiff, CandidateDistSqr = nil, nil, nil, nil
@@ -631,7 +668,7 @@ function QueuePhantomPanelsForRendering()
     local ct = CurTime()
     if PhantomInteractionState.active then
         local phantom = PhantomInteractionState.phantom
-        if (not IsValid(phantom)) or lpCache:EyePos():DistToSqr(phantom:GetPos()) > PHANTOM_DRAW_DISTANCE_SQR * 1.1 then
+        if (not IsValid(phantom)) or lpCache:EyePos():DistToSqr(phantom:GetPos()) > GetPhantomDrawDistSqr() * 1.1 then
             LeavePhantomInteraction()
         else
             if KeyPressed(INTERACT_KEY) and InteractModifierDown() then
@@ -769,7 +806,8 @@ function QueuePhantomPanelsForRendering()
 end
 
 function DrawAllPhantomPanels()
-    -- Allow drawing phantom panels regardless of debug mode
+    -- Only draw phantom panels when debug mode is enabled
+    if not (RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled) then return end
 
     CandidatePhantom, CandidateSteamID, CandidateYawDiff = nil, nil, nil
     lpCache = lpCache or LocalPlayer()
@@ -794,7 +832,7 @@ function DrawAllPhantomPanels()
     local ct = CurTime()
     if PhantomInteractionState.active then
         local phantom = PhantomInteractionState.phantom
-        if (not IsValid(phantom)) or lpCache:EyePos():DistToSqr(phantom:GetPos()) > PHANTOM_DRAW_DISTANCE_SQR * 1.1 then
+        if (not IsValid(phantom)) or lpCache:EyePos():DistToSqr(phantom:GetPos()) > GetPhantomDrawDistSqr() * 1.1 then
             LeavePhantomInteraction()
         else
             if KeyPressed(INTERACT_KEY) and InteractModifierDown() then

@@ -131,10 +131,9 @@ local function EntitiesHaveDifferentProperties(existingData, savedData, debugOut
         return true, differences
     end
 
-    if existingData.health ~= (savedData.health or 0) and savedData.health and savedData.health > 0 then
+    if savedData.health ~= nil and isnumber(savedData.health) and existingData.health ~= savedData.health then
         if debugOutput then
-            table.insert(differences,
-                "Health: " .. tostring(existingData.health) .. " vs " .. tostring(savedData.health))
+            table.insert(differences, "Health: " .. tostring(existingData.health) .. " vs " .. tostring(savedData.health))
         end
         return true, differences
     end
@@ -334,11 +333,45 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
         if entData.id and originalEntitiesByID[entData.id] then
             isOriginalStillHere = true
             stats.originalStillExists = stats.originalStillExists + 1
-            stats.skipped = stats.skipped + 1
-            table.insert(entityData.skipped, entData)
-            if RARELOAD.settings.debugEnabled then
-                print(string.format("[RARELOAD] Skipping %s - original entity still exists (ID: %s)",
-                    entData.class, entData.id))
+
+            local ent = originalEntitiesByID[entData.id]
+            if IsValid(ent) then
+                -- Sync position and angles to saved data
+                if entData.pos and type(entData.pos) == "Vector" then
+                    pcall(ent.SetPos, ent, entData.pos)
+                end
+                if entData.ang and type(entData.ang) == "Angle" then
+                    pcall(ent.SetAngles, ent, entData.ang)
+                end
+
+                -- Sync health (and max health when available)
+                if entData.health ~= nil and isnumber(entData.health) and ent.SetHealth then
+                    if entData.maxHealth and entData.maxHealth > 0 and ent.SetMaxHealth then
+                        pcall(ent.SetMaxHealth, ent, entData.maxHealth)
+                    else
+                        -- Ensure saved HP is not clamped by current max health
+                        if ent.GetMaxHealth and ent.SetMaxHealth then
+                            local curMax = ent:GetMaxHealth() or 0
+                            if entData.health > curMax then
+                                pcall(ent.SetMaxHealth, ent, entData.health)
+                            end
+                        end
+                    end
+                    pcall(ent.SetHealth, ent, entData.health)
+                end
+
+                stats.restored = stats.restored + 1
+                table.insert(entityData.restored, entData)
+
+                if RARELOAD.settings.debugEnabled then
+                    print(string.format(
+                        "[RARELOAD] Updated original entity %s (ID: %s) to saved pos/ang/health",
+                        tostring(ent), tostring(entData.id)))
+                end
+            else
+                -- If somehow invalid, just record as skipped to avoid spawning a duplicate here
+                stats.skipped = stats.skipped + 1
+                table.insert(entityData.skipped, entData)
             end
             continue
         end
@@ -476,18 +509,23 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
             else
                 ent.RareloadEntityID = "ent_" .. ent:EntIndex() .. "_" .. os.time() .. "_" .. math.random(1000, 9999)
             end
-            -- Network the ID so clients can directly match without positional approximation
             if ent.SetNWString then
                 pcall(function() ent:SetNWString("RareloadID", ent.RareloadEntityID) end)
             end
             ent:Spawn()
+            if entData.maxHealth and entData.maxHealth > 0 and ent.SetMaxHealth then
+                pcall(ent.SetMaxHealth, ent, entData.maxHealth)
+            end
+            if entData.health ~= nil and isnumber(entData.health) and ent.SetHealth then
+                if (not entData.maxHealth or entData.maxHealth <= 0) and ent.GetMaxHealth and ent.SetMaxHealth then
+                    local curMax = ent:GetMaxHealth() or 0
+                    if entData.health > curMax then
+                        pcall(ent.SetMaxHealth, ent, entData.health)
+                    end
+                end
+                pcall(ent.SetHealth, ent, entData.health)
+            end
             ent:Activate()
-            if entData.health and entData.health > 0 then
-                ent:SetHealth(entData.health)
-            end
-            if entData.maxHealth and entData.maxHealth > 0 then
-                ent:SetMaxHealth(entData.maxHealth)
-            end
             if entData.color then
                 local color
                 if type(entData.color) == "table" then
@@ -678,6 +716,8 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
     else
         stats.endTime = SysTime()
         UpdateProgress(stats.total, stats.total)
+        -- No batched spawns; signal completion after immediate phase
+        hook.Run("RareloadEntitiesRestored", stats)
     end
 
     local savedIDs = {}
@@ -699,6 +739,9 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
             table.insert(entityData.duplicatesRemoved, entry.data)
         end
     end
+
+    -- If there were no far entities, the completion hook was run above.
+    -- If there were far entities, the completion hook runs inside ProcessBatch after all spawns.
 
     return #closeEntities > 0
 end
@@ -774,9 +817,20 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
             end
 
             ent:Spawn()
+            -- Set max health before health to avoid clamping, and bump max if only health is provided
+            if matchedData.maxHealth and matchedData.maxHealth > 0 and ent.SetMaxHealth then
+                pcall(ent.SetMaxHealth, ent, matchedData.maxHealth)
+            end
+            if matchedData.health ~= nil and isnumber(matchedData.health) and ent.SetHealth then
+                if (not matchedData.maxHealth or matchedData.maxHealth <= 0) and ent.GetMaxHealth and ent.SetMaxHealth then
+                    local curMax = ent:GetMaxHealth() or 0
+                    if matchedData.health > curMax then
+                        pcall(ent.SetMaxHealth, ent, matchedData.health)
+                    end
+                end
+                pcall(ent.SetHealth, ent, matchedData.health)
+            end
             ent:Activate()
-
-            if matchedData.health then ent:SetHealth(matchedData.health) end
             if matchedData.skin then ent:SetSkin(matchedData.skin) end
 
             if matchedData.color then

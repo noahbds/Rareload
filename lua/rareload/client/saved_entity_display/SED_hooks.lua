@@ -49,7 +49,8 @@ hook.Add("PlayerBindPress", "RARELOAD_InteractScroll", function(ply, bind, press
 end)
 
 hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", function()
-    -- Always process panels; visibility and distances are already handled in renderer.
+    -- Only process panels when debug mode is enabled
+    if not (RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled) then return end
 
     local currentTime = CurTime()
 
