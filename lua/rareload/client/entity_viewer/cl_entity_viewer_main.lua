@@ -1,6 +1,11 @@
 include("rareload/client/entity_viewer/cl_entity_viewer_theme.lua")
+include("rareload/utils/rareload_fonts.lua")
 include("rareload/client/entity_viewer/cl_entity_viewer_utils.lua")
+-- Ensure dependent panels are loaded in correct order
+include("rareload/client/entity_viewer/cl_entity_viewer_modify_panel.lua")
+include("rareload/client/entity_viewer/cl_entity_viewer_info_panel.lua")
 include("rareload/client/entity_viewer/cl_entity_viewer_create_category.lua")
+include("rareload/client/entity_viewer/cl_entity_viewer_json_editor.lua")
 
 local entityViewerFrame
 local lastShortcutTime = 0
@@ -9,18 +14,21 @@ local ANIMATION_SPEED = 0.3
 local VIEWER_SETTINGS = {
     autoRefresh = false,
     refreshInterval = 5,
-    showAdvancedInfo = true
+    showAdvancedInfo = true,
+    viewDensity = "comfortable", -- comfortable | compact
+    sortMode = "Class",          -- Class | Distance | Health
+    lastSize = { w = 0, h = 0 },
+    lastTab = 1
 }
 
 local function LoadViewerSettings()
-    if file.Exists("rareload/entity_viewer_settings.json", "DATA") then
-        local json = file.Read("rareload/entity_viewer_settings.json", "DATA")
-        local success, t = pcall(util.JSONToTable, json)
-        if success and istable(t) then
-            for k, v in pairs(t) do
-                VIEWER_SETTINGS[k] = v
-            end
-        end
+    if not file.Exists("rareload/entity_viewer_settings.json", "DATA") then return end
+    local json = file.Read("rareload/entity_viewer_settings.json", "DATA")
+    local success, t = pcall(util.JSONToTable, json)
+    if not success then return end
+    local settingsTbl = istable(t) and t or {}
+    for k, v in pairs(settingsTbl) do
+        VIEWER_SETTINGS[k] = v
     end
 end
 
@@ -31,6 +39,11 @@ end
 LoadViewerSettings()
 
 function OpenEntityViewer(ply)
+    -- Ensure our custom fonts are registered exactly once on the client
+    if RARELOAD and RARELOAD.RegisterFonts and not RARELOAD._fontsInit then
+        RARELOAD.RegisterFonts()
+        RARELOAD._fontsInit = true
+    end
     if not THEME or not ShowNotification or not util or not file then
         notification.AddLegacy("Rareload Entity Viewer: Missing dependencies!", NOTIFY_ERROR, 5)
         return
@@ -53,7 +66,11 @@ function OpenEntityViewer(ply)
     ---@class DFrame
     local frame = vgui.Create("DFrame")
     entityViewerFrame = frame
-    local w, h = math.Clamp(ScrW() * 0.8, 900, ScrW() - 40), math.Clamp(ScrH() * 0.85, 700, ScrH() - 40)
+    local defaultW, defaultH = math.Clamp(ScrW() * 0.8, 900, ScrW() - 40), math.Clamp(ScrH() * 0.85, 700, ScrH() - 40)
+    local w = (VIEWER_SETTINGS.lastSize and VIEWER_SETTINGS.lastSize.w or 0) > 0 and
+        math.min(VIEWER_SETTINGS.lastSize.w, ScrW() - 40) or defaultW
+    local h = (VIEWER_SETTINGS.lastSize and VIEWER_SETTINGS.lastSize.h or 0) > 0 and
+        math.min(VIEWER_SETTINGS.lastSize.h, ScrH() - 40) or defaultH
     frame:SetSize(w, h)
     frame:SetTitle("")
     frame:Center()
@@ -81,6 +98,10 @@ function OpenEntityViewer(ply)
 
     local oldClose = frame.Close
     frame.Close = function(self)
+        -- persist size
+        local cw, ch = self:GetSize()
+        VIEWER_SETTINGS.lastSize = { w = cw, h = ch }
+        SaveViewerSettings()
         self:AlphaTo(0, ANIMATION_SPEED, 0, function()
             oldClose(self)
         end)
@@ -94,6 +115,8 @@ function OpenEntityViewer(ply)
 
     frame.OnRemove = function()
         entityViewerFrame = nil
+        -- Safety: remove global shortcut hook when the viewer is destroyed
+        hook.Remove("Think", "RareloadEntityViewerShortcut")
     end
 
     local headerContainer = vgui.Create("DPanel", frame)
@@ -123,6 +146,55 @@ function OpenEntityViewer(ply)
     local actionsPanel = vgui.Create("DPanel", searchContainer)
     actionsPanel:Dock(FILL)
     actionsPanel.Paint = function() end
+
+    -- Sort selector
+    ---@type DComboBox
+    local sortCombo = vgui.Create("DComboBox", actionsPanel)
+    sortCombo:Dock(RIGHT)
+    sortCombo:SetWide(150)
+    sortCombo:DockMargin(4, 4, 4, 4)
+    sortCombo:AddChoice("Sort: Class")
+    sortCombo:AddChoice("Sort: Distance")
+    sortCombo:AddChoice("Sort: Health")
+    sortCombo:SetValue("Sort: " .. (VIEWER_SETTINGS.sortMode or "Class"))
+    sortCombo.Paint = function(self, w, h)
+        draw.RoundedBox(6, 0, 0, w, h, THEME.surface)
+        surface.SetDrawColor(THEME.border)
+        surface.DrawOutlinedRect(0, 0, w, h, 1)
+    end
+    -- Watch for sort selection changes without overriding class methods
+    do
+        local lastVal = sortCombo:GetValue()
+        timer.Create("RareloadSortWatch", 0.15, 0, function()
+            if not IsValid(frame) or not IsValid(sortCombo) then
+                timer.Remove("RareloadSortWatch")
+                return
+            end
+            local val = sortCombo:GetValue()
+            if val ~= lastVal and val ~= nil and val ~= "" then
+                lastVal = val
+                local mode = string.match(val or "", "Sort:%s*(%w+)") or "Class"
+                if VIEWER_SETTINGS.sortMode ~= mode then
+                    VIEWER_SETTINGS.sortMode = mode
+                    SaveViewerSettings()
+                    LoadData(searchBar:GetValue())
+                end
+            end
+        end)
+    end
+
+    -- Compact view toggle
+    local densityBtn = CreateActionButton(actionsPanel, "Toggle Density", "icon16/application_view_tile.png",
+        THEME.textSecondary,
+        "Toggle compact view")
+    densityBtn:Dock(RIGHT)
+    densityBtn:DockMargin(4, 4, 4, 4)
+    densityBtn.DoClick = function()
+        surface.PlaySound("ui/buttonclickrelease.wav")
+        VIEWER_SETTINGS.viewDensity = (VIEWER_SETTINGS.viewDensity == "compact") and "comfortable" or "compact"
+        SaveViewerSettings()
+        LoadData(searchBar:GetValue())
+    end
 
     local refreshButton = CreateActionButton(actionsPanel, "Refresh", "icon16/arrow_refresh.png", THEME.info,
         "Refresh entity data")
@@ -213,6 +285,8 @@ function OpenEntityViewer(ply)
     tabs.Paint = function(self, tw, th)
         draw.RoundedBox(8, 0, 0, tw, th, THEME.surface)
     end
+    -- store on frame for later access in Close
+    frame._tabs = tabs
 
     local function CreateModernTab(title, icon, isNPCTab)
         local container = vgui.Create("DPanel")
@@ -225,33 +299,43 @@ function OpenEntityViewer(ply)
         local tabColor = isNPCTab and THEME.secondary or THEME.primary
         local scrollbar = scroll:GetVBar()
         scrollbar:SetWide(12)
+        if scrollbar.SetHideButtons then scrollbar:SetHideButtons(true) end
         scrollbar.Paint = function(_, w, h)
             draw.RoundedBox(6, 0, 0, w, h, ColorAlpha(THEME.backgroundDark, 180))
         end
-        scrollbar.btnUp.hoverFraction = 0
-        scrollbar.btnDown.hoverFraction = 0
-        scrollbar.btnGrip.hoverFraction = 0
-        scrollbar.btnUp.Paint = function(self, w, h)
-            self.hoverFraction = Lerp(FrameTime() * 8, self.hoverFraction, self:IsHovered() and 1 or 0)
-            local color = THEME:LerpColor(self.hoverFraction, tabColor, THEME.primaryLight)
-            draw.RoundedBox(6, 2, 0, w - 4, h - 2, color)
+        local btnUp = scrollbar.btnUp
+        if IsValid(btnUp) then
+            btnUp.hoverFraction = 0
+            btnUp.Paint = function(self, w, h)
+                self.hoverFraction = Lerp(FrameTime() * 8, self.hoverFraction or 0, self:IsHovered() and 1 or 0)
+                local color = THEME:LerpColor(self.hoverFraction, tabColor, THEME.primaryLight)
+                draw.RoundedBox(6, 2, 0, w - 4, h - 2, color)
+            end
         end
-        scrollbar.btnDown.Paint = function(self, w, h)
-            self.hoverFraction = Lerp(FrameTime() * 8, self.hoverFraction, self:IsHovered() and 1 or 0)
-            local color = THEME:LerpColor(self.hoverFraction, tabColor, THEME.primaryLight)
-            draw.RoundedBox(6, 2, 2, w - 4, h - 2, color)
+        local btnDown = scrollbar.btnDown
+        if IsValid(btnDown) then
+            btnDown.hoverFraction = 0
+            btnDown.Paint = function(self, w, h)
+                self.hoverFraction = Lerp(FrameTime() * 8, self.hoverFraction or 0, self:IsHovered() and 1 or 0)
+                local color = THEME:LerpColor(self.hoverFraction, tabColor, THEME.primaryLight)
+                draw.RoundedBox(6, 2, 2, w - 4, h - 2, color)
+            end
         end
-        scrollbar.btnGrip.Paint = function(self, w, h)
-            self.hoverFraction = Lerp(FrameTime() * 8, self.hoverFraction, self:IsHovered() and 1 or 0)
-            local color = THEME:LerpColor(self.hoverFraction, tabColor, THEME.primaryLight)
-            draw.RoundedBox(6, 2, 0, w - 4, h, color)
-            if h > 30 then
-                surface.SetDrawColor(255, 255, 255, 80 + 60 * self.hoverFraction)
-                local center = h / 2
-                surface.DrawLine(w / 2, center - 5, w / 2, center + 5)
-                if h > 50 then
-                    surface.DrawLine(w / 2, center - 10, w / 2, center - 5)
-                    surface.DrawLine(w / 2, center + 5, w / 2, center + 10)
+        local btnGrip = scrollbar.btnGrip
+        if IsValid(btnGrip) then
+            btnGrip.hoverFraction = 0
+            btnGrip.Paint = function(self, w, h)
+                self.hoverFraction = Lerp(FrameTime() * 8, self.hoverFraction or 0, self:IsHovered() and 1 or 0)
+                local color = THEME:LerpColor(self.hoverFraction, tabColor, THEME.primaryLight)
+                draw.RoundedBox(6, 2, 0, w - 4, h, color)
+                if h > 30 then
+                    surface.SetDrawColor(255, 255, 255, 80 + 60 * (self.hoverFraction or 0))
+                    local center = h / 2
+                    surface.DrawLine(w / 2, center - 5, w / 2, center + 5)
+                    if h > 50 then
+                        surface.DrawLine(w / 2, center - 10, w / 2, center - 5)
+                        surface.DrawLine(w / 2, center + 5, w / 2, center + 10)
+                    end
                 end
             end
         end
@@ -339,6 +423,15 @@ function OpenEntityViewer(ply)
     local entityScroll, entitySheet = CreateModernTab("Entities", "icon16/bricks.png", false)
     local npcScroll, npcSheet = CreateModernTab("NPCs", "icon16/user.png", true)
 
+    -- restore previously selected tab
+    timer.Simple(0, function()
+        if IsValid(tabs) and tabs.SetActiveTab and entitySheet and npcSheet then
+            local idx = math.Clamp(tonumber(VIEWER_SETTINGS.lastTab or 1) or 1, 1, 2)
+            local targetTab = (idx == 2 and npcSheet and npcSheet.Tab) or (entitySheet and entitySheet.Tab)
+            if targetTab then tabs:SetActiveTab(targetTab) end
+        end
+    end)
+
     local loadingOverlay
 
     local function HideModernLoading()
@@ -377,6 +470,9 @@ function OpenEntityViewer(ply)
                 HideModernLoading()
                 return
             end
+            local sortMode = VIEWER_SETTINGS.sortMode or "Class"
+            local playerPos = IsValid(LocalPlayer()) and LocalPlayer():GetPos() or nil
+            local compact = VIEWER_SETTINGS.viewDensity == "compact"
             local entityCount, npcCount = 0, 0
             local entityCategories, npcCategories = 0, 0
             local totalPlayers = 0
@@ -390,14 +486,15 @@ function OpenEntityViewer(ply)
                         end
                     end
                     local category = CreateCategory(entityScroll, "Player: " .. steamID, playerData.entities, false,
-                        filter)
+                        filter, sortMode, playerPos, { compact = compact })
                     if category then
                         entityCategories = entityCategories + 1
                         entityCount = entityCount + #playerData.entities
                     end
                 end
                 if playerData.npcs and #playerData.npcs > 0 then
-                    local category = CreateCategory(npcScroll, "Player: " .. steamID, playerData.npcs, true, filter)
+                    local category = CreateCategory(npcScroll, "Player: " .. steamID, playerData.npcs, true, filter,
+                        sortMode, playerPos, { compact = compact })
                     if category then
                         npcCategories = npcCategories + 1
                         npcCount = npcCount + #playerData.npcs
@@ -417,6 +514,12 @@ function OpenEntityViewer(ply)
             local playerCard = CreateStatsCard(statsContainer, "PLAYERS", totalPlayers, "with data")
             playerCard:Dock(LEFT)
             playerCard:DockMargin(0, 0, 12, 0)
+            if countedEntities > 0 then
+                local avgHP = math.floor(totalHealth / countedEntities)
+                local hpCard = CreateStatsCard(statsContainer, "AVG HP", avgHP, tostring(countedEntities) .. " with HP")
+                hpCard:Dock(LEFT)
+                hpCard:DockMargin(0, 0, 12, 0)
+            end
             if entitySheet and entitySheet.Tab and entitySheet.Tab.Text then
                 entitySheet.Tab.Text:SetText("Entities (" .. entityCount .. ")")
             end
@@ -449,14 +552,23 @@ function OpenEntityViewer(ply)
         end
     end
 
-    searchBar.OnChange = function()
-        local searchText = searchBar:GetValue()
-        if timer.Exists("RareloadSearch") then
-            timer.Remove("RareloadSearch")
-        end
-        timer.Create("RareloadSearch", 0.4, 1, function()
-            if IsValid(frame) then
-                LoadData(searchText)
+    -- Debounced search without injecting fields into the DTextEntry object
+    do
+        local lastSearchValue = searchBar:GetValue()
+        timer.Create("RareloadSearchInput", 0.1, 0, function()
+            if not IsValid(frame) or not IsValid(searchBar) then
+                timer.Remove("RareloadSearchInput")
+                return
+            end
+            local v = searchBar:GetValue()
+            if v ~= lastSearchValue then
+                lastSearchValue = v
+                if timer.Exists("RareloadSearch") then timer.Remove("RareloadSearch") end
+                timer.Create("RareloadSearch", 0.35, 1, function()
+                    if IsValid(frame) then
+                        LoadData(v)
+                    end
+                end)
             end
         end)
     end
@@ -474,18 +586,47 @@ function OpenEntityViewer(ply)
 
     UpdateAutoRefresh()
 
+    -- Debounce persisting size to disk while dragging
+    local function DebouncedSaveSize(w, h)
+        timer.Remove("RareloadViewerSizeSave")
+        timer.Create("RareloadViewerSizeSave", 0.35, 1, function()
+            VIEWER_SETTINGS.lastSize = { w = w, h = h }
+            SaveViewerSettings()
+        end)
+    end
+
     frame.OnSizeChanged = function(self, w, h)
         local maxW, maxH = ScrW() - 40, ScrH() - 40
         if w > maxW or h > maxH then
             self:SetSize(math.min(w, maxW), math.min(h, maxH))
             self:Center()
         end
-        local availableWidth = searchContainer:GetWide() - actionsPanel:GetWide() - 20
-        searchPanel:SetWide(math.max(250, math.min(400, availableWidth)))
+        -- Size search bar proportionally to container width
+        local proportionalWidth = math.floor(searchContainer:GetWide() * 0.45)
+        searchPanel:SetWide(math.Clamp(proportionalWidth, 250, 420))
         headerContainer:InvalidateLayout(true)
         statsContainer:InvalidateLayout(true)
         searchContainer:InvalidateLayout(true)
         tabs:InvalidateLayout(true)
+        DebouncedSaveSize(w, h)
+    end
+    frame.OnRemove = function()
+        timer.Remove("RareloadSearchInput")
+        timer.Remove("RareloadSearch")
+        timer.Remove("RareloadViewerAutoRefresh")
+        timer.Remove("RareloadViewerSizeSave")
+        -- Also ensure our global shortcut hook is gone (idempotent)
+        hook.Remove("Think", "RareloadEntityViewerShortcut")
+        -- persist last selected tab
+        if IsValid(tabs) and tabs.GetActiveTab and entitySheet and npcSheet then
+            local active = tabs:GetActiveTab()
+            if active == (npcSheet and npcSheet.Tab) then
+                VIEWER_SETTINGS.lastTab = 2
+            else
+                VIEWER_SETTINGS.lastTab = 1
+            end
+            SaveViewerSettings()
+        end
     end
 
     if not ConVarExists("rareload_teleport_to") then
@@ -500,6 +641,8 @@ function OpenEntityViewer(ply)
         end)
     end
 
+    -- Keyboard shortcuts: F7 to open, Ctrl+F focus search, Ctrl+R refresh
+    local lastKeyComboTime = 0
     hook.Add("Think", "RareloadEntityViewerShortcut", function()
         if input.IsKeyDown(KEY_F7) and not gui.IsGameUIVisible() then
             if CurTime() - lastShortcutTime > 0.5 then
@@ -508,6 +651,22 @@ function OpenEntityViewer(ply)
                     RunConsoleCommand("entity_viewer_open")
                 end
             end
+        end
+
+        if not IsValid(frame) then return end
+        local ctrlDown = input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL)
+        if ctrlDown and input.IsKeyDown(KEY_F) and (CurTime() - lastKeyComboTime) > 0.4 then
+            lastKeyComboTime = CurTime()
+            if IsValid(searchBar) then
+                searchBar:RequestFocus()
+                timer.Simple(0, function()
+                    if IsValid(searchBar) then searchBar:SelectAll() end
+                end)
+            end
+        elseif ctrlDown and input.IsKeyDown(KEY_R) and (CurTime() - lastKeyComboTime) > 0.6 then
+            lastKeyComboTime = CurTime()
+            LoadData(IsValid(searchBar) and searchBar:GetValue() or "")
+            ShowNotification("Refreshing data...", NOTIFY_GENERIC)
         end
     end)
 
@@ -602,10 +761,24 @@ function OpenSettingsPanel()
         draw.SimpleText("Close", "RareloadText", w / 2, h / 2, THEME.textPrimary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
     closeBtn.DoClick = function()
-
+        surface.PlaySound("ui/buttonclickrelease.wav")
+        settingsFrame:Close()
     end
-    settingsFrame:Close()
     SaveViewerSettings()
-end
 
-concommand.Add("entity_viewer_open", OpenEntityViewer)
+    -- If interval changes while auto-refresh is on, restart the timer with new interval
+    if intervalSlider and intervalSlider.OnValueChanged then
+        local originalHandler = intervalSlider.OnValueChanged
+        intervalSlider.OnValueChanged = function(self, val)
+            originalHandler(self, val)
+            if VIEWER_SETTINGS.autoRefresh and IsValid(entityViewerFrame) then
+                timer.Remove("RareloadViewerAutoRefresh")
+                timer.Create("RareloadViewerAutoRefresh", VIEWER_SETTINGS.refreshInterval, 0, function()
+                    if IsValid(entityViewerFrame) and LoadData then
+                        LoadData()
+                    end
+                end)
+            end
+        end
+    end
+end

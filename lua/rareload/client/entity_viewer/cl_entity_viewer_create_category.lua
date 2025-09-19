@@ -1,6 +1,14 @@
 local highlightAllActive = false
 
-function CreateCategory(parent, title, dataList, isNPC, filter)
+-- Ensure data utils are available for parsing positions
+if not RARELOAD or not RARELOAD.DataUtils then
+    include("rareload/utils/rareload_data_utils.lua")
+end
+
+-- sortMode: "Class" | "Distance" | "Health"
+-- playerPos: Vector or nil
+-- options: { compact = boolean }
+function CreateCategory(parent, title, dataList, isNPC, filter, sortMode, playerPos, options)
     if not dataList or #dataList == 0 then return nil end
 
     local filteredData = {}
@@ -19,9 +27,37 @@ function CreateCategory(parent, title, dataList, isNPC, filter)
 
     if #dataList == 0 then return nil end
 
-    table.sort(dataList, function(a, b)
-        return (a.class or "") < (b.class or "")
-    end)
+    -- Sorting
+    sortMode = sortMode or "Class"
+    if sortMode == "Distance" and IsValid(LocalPlayer()) and playerPos then
+        local function getDist(item)
+            if not item or not item.pos then return math.huge end
+            local pt = RARELOAD.DataUtils.ToPositionTable(item.pos)
+            if not pt then return math.huge end
+            local v = Vector(pt.x, pt.y, pt.z)
+            return v:DistToSqr(playerPos)
+        end
+        table.sort(dataList, function(a, b)
+            local da, db = getDist(a), getDist(b)
+            if da == db then
+                return (a.class or "") < (b.class or "")
+            end
+            return da < db
+        end)
+    elseif sortMode == "Health" then
+        table.sort(dataList, function(a, b)
+            local ha = tonumber(a.health or -1) or -1
+            local hb = tonumber(b.health or -1) or -1
+            if ha == hb then
+                return (a.class or "") < (b.class or "")
+            end
+            return ha > hb -- higher first
+        end)
+    else
+        table.sort(dataList, function(a, b)
+            return (a.class or "") < (b.class or "")
+        end)
+    end
 
     local mainContainer = vgui.Create("DPanel", parent)
     mainContainer:Dock(TOP)
@@ -35,9 +71,11 @@ function CreateCategory(parent, title, dataList, isNPC, filter)
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
 
-    local baseItemHeight = 280
-    local minItemHeight = 120
-    local maxItemHeight = 320
+    local compact = options and options.compact
+    -- Match CreateInfoPanel heights to avoid clipped content or excess space
+    local baseItemHeight = compact and 220 or 280
+    local minItemHeight = compact and 180 or 240
+    local maxItemHeight = compact and 260 or 320
 
     local itemCount = #dataList
     local itemHeight
@@ -58,6 +96,8 @@ function CreateCategory(parent, title, dataList, isNPC, filter)
     local batchActionsHeight = 40
     local marginHeight = 8
     local maxVisibleItems = math.min(itemCount, 8)
+    -- Compute height based on card header + actions + estimated item heights,
+    -- but cap to avoid super-tall categories causing nested scroll issue
     local contentHeight = maxVisibleItems * (itemHeight + marginHeight) + batchActionsHeight
 
     mainContainer:SetTall(headerHeight)
@@ -190,7 +230,8 @@ function CreateCategory(parent, title, dataList, isNPC, filter)
         end
     end)
 
-    HighlightBtn = CreateModernBatchButton("Highlight All", "icon16/eye.png", THEME.warning, function(items)
+    local highlightBtn
+    highlightBtn = CreateModernBatchButton("Highlight All", "icon16/eye.png", THEME.warning, function(items)
         highlightAllActive = not highlightAllActive
 
         if not RARELOAD.HighlightData then
@@ -265,26 +306,25 @@ function CreateCategory(parent, title, dataList, isNPC, filter)
         else
             ShowNotification("Highlight turned off!", NOTIFY_GENERIC)
         end
-
-        HighlightBtn.Paint = function(self, w, h)
-            local baseColor = highlightAllActive and Color(255, 140, 0) or
-                Color(255, 220, 80)
-            local btnColor = self:IsHovered() and Color(baseColor.r * 1.2, baseColor.g * 1.2, baseColor.b * 1.2) or
-                baseColor
-
-            draw.RoundedBox(4, 0, 0, w, h, btnColor)
-
-            surface.SetDrawColor(255, 255, 255, 230)
-            surface.SetMaterial(Material("icon16/eye.png"))
-            surface.DrawTexturedRect(w / 2 - 8, h / 2 - 8, 16, 16)
-
-            if highlightAllActive then
-                local pulseAlpha = math.sin(CurTime() * 4) * 40 + 60
-                surface.SetDrawColor(255, 255, 255, pulseAlpha)
-                surface.DrawOutlinedRect(0, 0, w, h, 2)
-            end
-        end
     end)
+
+    -- Draw based on current toggle state
+    highlightBtn.Paint = function(self, w, h)
+        local baseColor = highlightAllActive and Color(255, 140, 0) or Color(255, 220, 80)
+        local btnColor = self:IsHovered() and Color(baseColor.r * 1.2, baseColor.g * 1.2, baseColor.b * 1.2) or baseColor
+
+        draw.RoundedBox(4, 0, 0, w, h, btnColor)
+
+        surface.SetDrawColor(255, 255, 255, 230)
+        surface.SetMaterial(Material("icon16/eye.png"))
+        surface.DrawTexturedRect(w / 2 - 8, h / 2 - 8, 16, 16)
+
+        if highlightAllActive then
+            local pulseAlpha = math.sin(CurTime() * 4) * 40 + 60
+            surface.SetDrawColor(255, 255, 255, pulseAlpha)
+            surface.DrawOutlinedRect(0, 0, w, h, 2)
+        end
+    end
 
     CreateModernBatchButton("Export All", "icon16/disk.png", THEME.info, function(items)
         SetClipboardText(util.TableToJSON(items, true))
@@ -435,23 +475,30 @@ function CreateCategory(parent, title, dataList, isNPC, filter)
     local scrollbar = scrollPanel:GetVBar()
     if IsValid(scrollbar) then
         scrollbar:SetWide(8)
+        if scrollbar.SetHideButtons then scrollbar:SetHideButtons(true) end
         scrollbar.Paint = function(_, w, h)
             draw.RoundedBox(4, 0, 0, w, h, THEME.backgroundDark)
         end
-
-        scrollbar.btnUp.Paint = function(self, w, h)
-            local color = self:IsHovered() and THEME.primaryLight or THEME.primary
-            draw.RoundedBox(4, 1, 0, w - 2, h - 1, color)
+        local btnUp = scrollbar.btnUp
+        if IsValid(btnUp) then
+            btnUp.Paint = function(self, w, h)
+                local color = self:IsHovered() and THEME.primaryLight or THEME.primary
+                draw.RoundedBox(4, 1, 0, w - 2, h - 1, color)
+            end
         end
-
-        scrollbar.btnDown.Paint = function(self, w, h)
-            local color = self:IsHovered() and THEME.primaryLight or THEME.primary
-            draw.RoundedBox(4, 1, 1, w - 2, h - 1, color)
+        local btnDown = scrollbar.btnDown
+        if IsValid(btnDown) then
+            btnDown.Paint = function(self, w, h)
+                local color = self:IsHovered() and THEME.primaryLight or THEME.primary
+                draw.RoundedBox(4, 1, 1, w - 2, h - 1, color)
+            end
         end
-
-        scrollbar.btnGrip.Paint = function(self, w, h)
-            local color = self:IsHovered() and THEME.primaryLight or THEME.primary
-            draw.RoundedBox(4, 1, 0, w - 2, h, color)
+        local btnGrip = scrollbar.btnGrip
+        if IsValid(btnGrip) then
+            btnGrip.Paint = function(self, w, h)
+                local color = self:IsHovered() and THEME.primaryLight or THEME.primary
+                draw.RoundedBox(4, 1, 0, w - 2, h, color)
+            end
         end
     end
 
@@ -490,10 +537,10 @@ function CreateCategory(parent, title, dataList, isNPC, filter)
             if IsValid(scrollPanel) then
                 scrollPanel:Clear()
                 for _, d in ipairs(dataList) do
-                    CreateInfoPanel(scrollPanel, d, isNPC, function() end)
+                    CreateInfoPanel(scrollPanel, d, isNPC, function() end, nil, { compact = compact })
                 end
             end
-        end)
+        end, nil, { compact = compact })
     end
 
     local function ToggleExpansion()

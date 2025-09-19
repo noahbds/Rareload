@@ -6,10 +6,9 @@ RARELOAD.DepthRenderer.MAX_DISTANCE = 15000
 RARELOAD.DepthRenderer.CULL_BEHIND = true
 RARELOAD.DepthRenderer.USE_PCALL = false
 
--- Localize frequently used globals for micro-optimizations in hot paths
 local tbl_insert = table.insert
 local tbl_sort = table.sort
-local tbl_empty = table.Empty -- GLua helper (empties table in-place)
+local tbl_empty = table.Empty
 local cam_IgnoreZ = cam.IgnoreZ
 local _pcall = pcall
 local _print = print
@@ -40,7 +39,6 @@ function RARELOAD.DepthRenderer.AddRenderItem(pos, renderFunction, itemType, pri
     if distSqr > maxDistSqr then return end
 
     if RARELOAD.DepthRenderer.CULL_BEHIND then
-        -- EyeVector is cheaper than EyeAngles():Forward() and is available as a global on client
         local forward = EyeVector()
         if forward:Dot(delta) <= 0 then return end
     end
@@ -83,7 +81,6 @@ function RARELOAD.DepthRenderer.ProcessRenderQueue()
         end)
     end
 
-    -- Find split point: non-top first (depth-tested), then on-top (ignore Z)
     local firstOnTopIndex
     for i = 1, n do
         if queue[i].onTop then
@@ -94,7 +91,6 @@ function RARELOAD.DepthRenderer.ProcessRenderQueue()
 
     local usePcall = RARELOAD.DepthRenderer.USE_PCALL
 
-    -- Pass 1: render all non-top items
     local upto = firstOnTopIndex and (firstOnTopIndex - 1) or n
     for i = 1, upto do
         local item = queue[i]
@@ -111,7 +107,6 @@ function RARELOAD.DepthRenderer.ProcessRenderQueue()
         end
     end
 
-    -- Pass 2: render all on-top items within a single IgnoreZ block
     if firstOnTopIndex then
         cam_IgnoreZ(true)
         if usePcall then
@@ -135,7 +130,6 @@ function RARELOAD.DepthRenderer.ProcessRenderQueue()
         cam_IgnoreZ(false)
     end
 
-    -- Clear queue in-place to avoid reallocating a new table
     if tbl_empty then
         tbl_empty(queue)
     else

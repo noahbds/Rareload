@@ -1,3 +1,16 @@
+-- Localize frequently used globals for micro-optimizations
+local draw, surface, util, vgui, hook, render = draw, surface, util, vgui, hook, render
+local math, string, os = math, string, os
+local Color, Vector, Angle = Color, Vector, Angle
+local IsValid, CurTime, FrameTime, Lerp = IsValid, CurTime, FrameTime, Lerp
+local TEXT_ALIGN_CENTER, MOUSE_LEFT = TEXT_ALIGN_CENTER, MOUSE_LEFT
+
+-- Cache commonly used materials once
+local MAT_DELETE_ICON = Material("icon16/image_delete.png")
+local MAT_EYE_ICON = Material("icon16/eye.png")
+local MAT_ICON_NPC = Material("icon16/user.png")
+local MAT_ICON_ENTITY = Material("icon16/bricks.png")
+
 local function CreateInfoLine(parent, label, value, color, tooltip)
     local container = vgui.Create("DPanel", parent)
     container:Dock(TOP)
@@ -49,10 +62,6 @@ local function CreateInfoLine(parent, label, value, color, tooltip)
             local val = value
             if istable(val) then
                 val = util.TableToJSON(val, true)
-            elseif isvector(val) then
-                val = tostring(val)
-            elseif isangle(val) then
-                val = tostring(val)
             else
                 val = tostring(val)
             end
@@ -75,25 +84,14 @@ function CreateStyledButton(parent, text, icon, color, onClick)
 
     local hoverFraction = 0
     local pressFraction = 0
+    local iconMat = icon and Material(icon) or nil
 
     btn.Paint = function(self, w, h)
-        hoverFraction = Lerp(FrameTime() * 8, hoverFraction, self:IsHovered() and 1 or 0)
-        pressFraction = Lerp(FrameTime() * 12, pressFraction, self:IsDown() and 1 or 0)
-
         local targetHover = self:IsHovered() and 1 or 0
         local targetPress = self:IsDown() and 1 or 0
 
-        if isnumber(hoverFraction) and isnumber(targetHover) then
-            hoverFraction = Lerp(FrameTime() * 8, hoverFraction, targetHover)
-        else
-            hoverFraction = targetHover
-        end
-
-        if isnumber(pressFraction) and isnumber(targetPress) then
-            pressFraction = Lerp(FrameTime() * 12, pressFraction, targetPress)
-        else
-            pressFraction = targetPress
-        end
+        hoverFraction = Lerp(FrameTime() * 8, hoverFraction, targetHover)
+        pressFraction = Lerp(FrameTime() * 12, pressFraction, targetPress)
 
         local bgColor = Color(
             math.Clamp(color.r + (hoverFraction * 20) - (pressFraction * 30), 0, 255),
@@ -108,25 +106,27 @@ function CreateStyledButton(parent, text, icon, color, onClick)
             draw.RoundedBox(8, 0, 0, w, h, Color(255, 255, 255, 20 * hoverFraction))
         end
 
-        if icon then
+        if iconMat then
             surface.SetDrawColor(255, 255, 255, 255 - pressFraction * 50)
-            surface.SetMaterial(Material(icon))
+            surface.SetMaterial(iconMat)
             surface.DrawTexturedRect(w / 2 - 8, h / 2 - 8, 16, 16)
         end
     end
 
     btn.DoClick = function()
         surface.PlaySound("ui/buttonclickrelease.wav")
-        onClick()
+        if onClick then onClick() end
     end
 
     return btn
 end
 
-function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
+-- options: { compact = boolean }
+function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction, options)
     local panel = vgui.Create("DPanel", parent)
     panel:Dock(TOP)
-    panel:SetTall(280)
+    local compact = options and options.compact
+    panel:SetTall(compact and 220 or 280)
     panel:DockMargin(8, 6, 8, 6)
     panel:SetAlpha(0)
     panel:AlphaTo(255, 0.3, 0)
@@ -152,7 +152,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
     end
 
     local modelSection = vgui.Create("DPanel", panel)
-    modelSection:SetSize(140, 140)
+    modelSection:SetSize(compact and 110 or 140, compact and 110 or 140)
     modelSection:Dock(LEFT)
     modelSection:DockMargin(12, 12, 8, 12)
     modelSection.Paint = function(self, w, h)
@@ -189,21 +189,12 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
                 ent:SetAngles(Angle(0, currentAngle, 0))
             end
         end
-
-        modelPanel.PaintOver = function(self, w, h)
-            local badgeColor = typeColor
-            draw.RoundedBoxEx(6, 4, 4, 24, 18, badgeColor, true, false, false, false)
-
-            local iconName = isNPC and "👤" or "📦"
-            draw.SimpleText(iconName, "RareloadCaption", 16, 13, THEME.textPrimary,
-                TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-        end
     else
         modelPanel.Paint = function(self, w, h)
             draw.RoundedBox(6, 0, 0, w, h, THEME.backgroundDark)
 
             surface.SetDrawColor(THEME.textDisabled)
-            surface.SetMaterial(Material("icon16/image_delete.png"))
+            surface.SetMaterial(MAT_DELETE_ICON)
             surface.DrawTexturedRect(w / 2 - 16, h / 2 - 20, 32, 32)
 
             draw.SimpleText("No Model", "RareloadCaption", w / 2, h / 2 + 20,
@@ -218,7 +209,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
 
     local headerSection = vgui.Create("DPanel", contentArea)
     headerSection:Dock(TOP)
-    headerSection:SetTall(50)
+    headerSection:SetTall(compact and 40 or 50)
     headerSection.Paint = function(self, w, h)
         draw.RoundedBox(6, 0, 0, w, h, THEME.surfaceVariant)
     end
@@ -253,17 +244,23 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
     ---@class DVScrollBar
     local scrollbar = scrollPanel:GetVBar()
     scrollbar:SetWide(8)
+    if scrollbar.SetHideButtons then scrollbar:SetHideButtons(true) end
     scrollbar.Paint = function(_, w, h)
         draw.RoundedBox(4, 0, 0, w, h, THEME.backgroundDark)
     end
-    scrollbar.btnGrip.Paint = function(self, w, h)
-        local color = self:IsHovered() and THEME.primaryLight or THEME.primary
-        draw.RoundedBox(4, 0, 0, w, h, color)
+    do
+        local grip = scrollbar.btnGrip
+        if grip and IsValid(grip) then
+            grip.Paint = function(self, w, h)
+                local color = self:IsHovered() and THEME.primaryLight or THEME.primary
+                draw.RoundedBox(4, 0, 0, w, h, color)
+            end
+        end
     end
 
     local infoContainer = vgui.Create("DPanel", scrollPanel)
     infoContainer:Dock(TOP)
-    infoContainer:SetTall(450)
+    infoContainer:SetTall(0) -- we'll compute this dynamically based on sections below
     infoContainer.Paint = function() end
 
     local sections = {
@@ -286,17 +283,27 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
         include("rareload/utils/rareload_data_utils.lua")
     end
 
+    -- Parse position once and reuse
+    local parsedPos = nil
+    local parsedPosVec = nil
     if data.pos then
-        local parsedPos = RARELOAD.DataUtils.ToPositionTable(data.pos)
+        parsedPos = RARELOAD.DataUtils.ToPositionTable(data.pos)
         if parsedPos then
-            local posText = string.format("X: %.1f Y: %.1f Z: %.1f", parsedPos.x, parsedPos.y, parsedPos.z)
-            table.insert(sections[1].items, { "Position", posText, THEME.textSecondary })
+            parsedPosVec = Vector(parsedPos.x, parsedPos.y, parsedPos.z)
+        end
+    end
 
-            local ply = LocalPlayer()
-            if IsValid(ply) and ply:GetPos() then
-                local distance = math.Round(ply:GetPos():Distance(Vector(parsedPos.x, parsedPos.y, parsedPos.z)), 1)
+    if parsedPos then
+        local posText = string.format("X: %.1f Y: %.1f Z: %.1f", parsedPos.x, parsedPos.y, parsedPos.z)
+        table.insert(sections[1].items, { "Position", posText, THEME.textSecondary })
+
+        local ply = LocalPlayer()
+        if IsValid(ply) and ply.GetPos then
+            local plyPos = ply:GetPos()
+            if plyPos and parsedPosVec then
+                local distance = math.Round(plyPos:Distance(parsedPosVec), 1)
                 table.insert(sections[2].items,
-                    { "Distance", distance and distance .. " units" or "N/A", THEME.textSecondary })
+                    { "Distance", (distance and (distance .. " units")) or "N/A", THEME.textSecondary })
             end
         end
     end
@@ -340,16 +347,6 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
         table.insert(sections[2].items, { "Type", data.type, typeColor })
     end
 
-    if data.pos then
-        local pos = tostring(data.pos)
-        local ply = LocalPlayer()
-        if IsValid(ply) and ply:GetPos() then
-            local distance = math.Round(ply:GetPos():Distance(Vector(data.pos.x, data.pos.y, data.pos.z)), 1)
-            table.insert(sections[2].items,
-                { "Distance", distance and distance .. " units" or "N/A", THEME.textSecondary })
-        end
-    end
-
     if data.ang then
         local angText = RARELOAD.DataUtils.FormatAngleDetailed(data.ang)
         angText = string.gsub(angText, "[{}]", "")
@@ -370,35 +367,38 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
         table.insert(sections[4].items, { "Spawned By", data.originallySpawnedBy, THEME.secondary })
     end
 
+    local accumulatedHeight = 0
     for _, section in ipairs(sections) do
         if #section.items > 0 then
             local sectionPanel = vgui.Create("DPanel", infoContainer)
             sectionPanel:Dock(TOP)
-            sectionPanel:SetTall(#section.items * 28 + 8)
+            local secTall = #section.items * 28 + 8
+            sectionPanel:SetTall(secTall)
             sectionPanel:DockMargin(0, 4, 0, 4)
             sectionPanel.Paint = function() end
+            accumulatedHeight = accumulatedHeight + secTall + 8 -- include DockMargin spacing estimate
 
             for _, item in ipairs(section.items) do
                 CreateInfoLine(sectionPanel, item[1], item[2], item[3])
             end
         end
     end
+    -- Apply computed height (fallback to a minimum to keep spacing consistent)
+    infoContainer:SetTall(math.max(accumulatedHeight, compact and 120 or 160))
 
     local actionsPanel = vgui.Create("DPanel", contentArea)
     actionsPanel:Dock(BOTTOM)
-    actionsPanel:SetTall(44)
+    actionsPanel:SetTall(compact and 36 or 44)
     actionsPanel:DockMargin(0, 8, 0, 0)
     actionsPanel.Paint = function(self, w, h)
         draw.RoundedBox(6, 0, 0, w, h, THEME.backgroundDark)
     end
 
     local buttonSpacing = 4
-    local buttonSize = 36
 
-    if data.pos then
+    if parsedPos then
         local teleportBtn = CreateStyledButton(actionsPanel, "Teleport", "icon16/arrow_right.png", THEME.success,
             function()
-                local parsedPos = RARELOAD.DataUtils.ToPositionTable(data.pos)
                 if parsedPos then
                     RunConsoleCommand("rareload_teleport_to", parsedPos.x, parsedPos.y, parsedPos.z)
                     if ShowNotification then
@@ -413,14 +413,16 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
         teleportBtn:DockMargin(8, 4, buttonSpacing, 4)
     end
 
-    HighlightBtn = CreateStyledButton(actionsPanel, "Highlight", "icon16/flag_yellow.png", THEME.success,
+    local highlightBtn
+    local highlightActive = false
+    highlightBtn = CreateStyledButton(actionsPanel, "Highlight", "icon16/flag_yellow.png", THEME.success,
         function()
-            if not data.pos then
+            if not parsedPos then
                 ShowNotification("No position to highlight!", NOTIFY_ERROR)
                 return
             end
 
-            local entityID = string.format("pos_%.1f_%.1f_%.1f", data.pos.x, data.pos.y, data.pos.z)
+            local entityID = string.format("pos_%.1f_%.1f_%.1f", parsedPos.x, parsedPos.y, parsedPos.z)
 
             if not RARELOAD.HighlightData then
                 RARELOAD.HighlightData = {}
@@ -471,22 +473,22 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
 
             if alreadyHighlighted then
                 table.remove(RARELOAD.HighlightData, existingIndex)
-                HighlightActive = false
+                highlightActive = false
                 ShowNotification("Highlight turned off for this entity!", NOTIFY_GENERIC)
             else
                 table.insert(RARELOAD.HighlightData, {
                     id = entityID,
-                    pos = data.pos,
+                    pos = parsedPos,
                     persistent = true,
                     color = Color(255, 255, 0, 100),
                     lineColor = Color(255, 255, 255, 40)
                 })
-                HighlightActive = true
+                highlightActive = true
                 ShowNotification("Highlighting position! Click again to turn off.", NOTIFY_GENERIC)
             end
 
-            HighlightBtn.Paint = function(self, w, h)
-                local baseColor = HighlightActive and Color(255, 140, 0) or
+            highlightBtn.Paint = function(self, w, h)
+                local baseColor = highlightActive and Color(255, 140, 0) or
                     Color(255, 220, 80)
                 local btnColor = self:IsHovered() and Color(baseColor.r * 1.2, baseColor.g * 1.2, baseColor.b * 1.2) or
                     baseColor
@@ -494,22 +496,21 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
                 draw.RoundedBox(4, 0, 0, w, h, btnColor)
 
                 surface.SetDrawColor(255, 255, 255, 230)
-                surface.SetMaterial(Material("icon16/eye.png"))
+                surface.SetMaterial(MAT_EYE_ICON)
                 surface.DrawTexturedRect(w / 2 - 8, h / 2 - 8, 16, 16)
 
-                if HighlightActive then
+                if highlightActive then
                     local pulseAlpha = math.sin(CurTime() * 4) * 40 + 60
                     surface.SetDrawColor(255, 255, 255, pulseAlpha)
                     surface.DrawOutlinedRect(0, 0, w, h, 2)
                 end
             end
         end)
-    HighlightBtn:Dock(LEFT)
-    HighlightBtn:DockMargin(0, 4, 4, 4)
+    highlightBtn:Dock(LEFT)
+    highlightBtn:DockMargin(0, 4, 4, 4)
 
-    if data.pos then
+    if parsedPos then
         local copyBtn = CreateStyledButton(actionsPanel, "Copy Position", "icon16/page_copy.png", THEME.info, function()
-            local parsedPos = RARELOAD.DataUtils.ToPositionTable(data.pos)
             if parsedPos then
                 SetClipboardText(string.format("Vector(%.1f, %.1f, %.1f)", parsedPos.x, parsedPos.y, parsedPos.z))
                 if ShowNotification then
@@ -524,15 +525,15 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
         copyBtn:DockMargin(0, 4, 4, 4)
     end
 
-    if data.pos then
+    if parsedPos then
         local respawnBtn = CreateStyledButton(actionsPanel, "Respawn", "icon16/arrow_refresh.png", THEME.primary,
             function()
-                local parsedPos = RARELOAD.DataUtils.ToPositionTable(data.pos)
                 if data.class and parsedPos then
                     local ns = isNPC and "RareloadRespawnNPC" or "RareloadRespawnEntity"
-                    net.Start(ns); net.WriteString(data.class); net.WriteVector(Vector(parsedPos.x, parsedPos.y,
-                        parsedPos.z)); net
-                        .SendToServer()
+                    net.Start(ns)
+                    net.WriteString(data.class)
+                    net.WriteVector(Vector(parsedPos.x, parsedPos.y, parsedPos.z))
+                    net.SendToServer()
                     ShowNotification("Respawning " .. (isNPC and "NPC" or "entity") .. "...", NOTIFY_GENERIC)
                     if onAction then onAction("respawn", data) end
                 else
