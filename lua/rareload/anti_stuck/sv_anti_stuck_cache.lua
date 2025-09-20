@@ -41,7 +41,6 @@ function AntiStuck.CleanupCache()
     end
 end
 
--- background cleanup
 if not timer.Exists("RARELOAD_CacheCleanup") then
     timer.Create("RARELOAD_CacheCleanup", 60, 0, function()
         if AntiStuck and AntiStuck.CleanupCache then AntiStuck.CleanupCache() end

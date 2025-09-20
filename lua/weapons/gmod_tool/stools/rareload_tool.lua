@@ -70,7 +70,7 @@ if CLIENT then
         RARELOAD.reloadImageState = {
             hasData = hasData,
             showTime = CurTime(),
-            duration = 3 -- Show for 3 seconds
+            duration = 3
         }
     end)
 end
@@ -270,8 +270,8 @@ function TOOL.BuildCPanel(panel)
     RareloadUI.CreateButton(panel, "Toggle Rareload", "rareload_rareload",
         "Enable or disable Rareload", "addonEnabled")
 
-    RareloadUI.CreateButton(panel, "Toggle Move Type", "rareload_spawn_mode",
-        "Switch between different spawn modes", "spawnModeEnabled")
+    RareloadUI.CreateButton(panel, "Toggle Anti-stuck system", "rareload_spawn_mode",
+        "Enable or disable anti-stuck system", "spawnModeEnabled")
 
     RareloadUI.CreateButton(panel, "Toggle Auto Save", "rareload_auto_save",
         "Enable or disable auto saving position", "autoSaveEnabled")

@@ -27,7 +27,7 @@ function AntiStuck.SetupNetworking()
                     enabled = method.enabled,
                     priority = method.priority,
                     timeout = method.timeout,
-                    func = method.func -- note: this is the func id string, not function ref
+                    func = method.func
                 })
             end
             net.WriteTable({ settings = AntiStuck.CONFIG, methods = serializedMethods })
@@ -62,7 +62,6 @@ function AntiStuck.SetupNetworking()
                     name = method.name,
                     description = method.description,
                     enabled = method.enabled ~= false,
-                    -- Renumber priorities strictly by order (first=10, last=10*n)
                     priority = (i * 10),
                     timeout = tonumber(method.timeout) or 1.0,
                     func = method.func

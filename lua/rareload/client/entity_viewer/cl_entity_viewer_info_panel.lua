@@ -1,11 +1,9 @@
--- Localize frequently used globals for micro-optimizations
 local draw, surface, util, vgui, hook, render = draw, surface, util, vgui, hook, render
 local math, string, os = math, string, os
 local Color, Vector, Angle = Color, Vector, Angle
 local IsValid, CurTime, FrameTime, Lerp = IsValid, CurTime, FrameTime, Lerp
 local TEXT_ALIGN_CENTER, MOUSE_LEFT = TEXT_ALIGN_CENTER, MOUSE_LEFT
 
--- Cache commonly used materials once
 local MAT_DELETE_ICON = Material("icon16/image_delete.png")
 local MAT_EYE_ICON = Material("icon16/eye.png")
 local MAT_ICON_NPC = Material("icon16/user.png")
@@ -121,7 +119,6 @@ function CreateStyledButton(parent, text, icon, color, onClick)
     return btn
 end
 
--- options: { compact = boolean }
 function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction, options)
     local panel = vgui.Create("DPanel", parent)
     panel:Dock(TOP)
@@ -260,7 +257,7 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction, options)
 
     local infoContainer = vgui.Create("DPanel", scrollPanel)
     infoContainer:Dock(TOP)
-    infoContainer:SetTall(0) -- we'll compute this dynamically based on sections below
+    infoContainer:SetTall(0)
     infoContainer.Paint = function() end
 
     local sections = {
@@ -278,12 +275,10 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction, options)
         table.insert(sections[1].items, { "Health", healthText, healthColor })
     end
 
-    -- Load centralized conversion functions
     if not RARELOAD or not RARELOAD.DataUtils then
         include("rareload/utils/rareload_data_utils.lua")
     end
 
-    -- Parse position once and reuse
     local parsedPos = nil
     local parsedPosVec = nil
     if data.pos then
@@ -376,14 +371,13 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction, options)
             sectionPanel:SetTall(secTall)
             sectionPanel:DockMargin(0, 4, 0, 4)
             sectionPanel.Paint = function() end
-            accumulatedHeight = accumulatedHeight + secTall + 8 -- include DockMargin spacing estimate
+            accumulatedHeight = accumulatedHeight + secTall + 8
 
             for _, item in ipairs(section.items) do
                 CreateInfoLine(sectionPanel, item[1], item[2], item[3])
             end
         end
     end
-    -- Apply computed height (fallback to a minimum to keep spacing consistent)
     infoContainer:SetTall(math.max(accumulatedHeight, compact and 120 or 160))
 
     local actionsPanel = vgui.Create("DPanel", contentArea)

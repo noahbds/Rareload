@@ -1,5 +1,3 @@
--- Saved Entity and NPCs Display System
-
 include("rareload/client/saved_entity_display/SED_init.lua")
 include("rareload/client/saved_entity_display/SED_entity_tracking.lua")
 include("rareload/client/saved_entity_display/SED_render_utils.lua")

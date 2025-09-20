@@ -1,3 +1,3 @@
 return function(ply)
-    ToggleSetting(ply, 'spawnModeEnabled', 'Spawn with saved move type')
+    ToggleSetting(ply, 'spawnModeEnabled', 'Toggle anti-stuck system')
 end

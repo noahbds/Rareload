@@ -258,7 +258,6 @@ hook.Add("PostDrawOpaqueRenderables", "RARELOAD_QueuePhantomInfo", function()
     if not IsValid(lp) then return end
 
     local isDebugEnabled = RARELOAD.settings.debugEnabled
-    -- Only consider phantoms that have a valid clientside model
     local hasValidPhantoms = false
     if RARELOAD.Phantom then
         for _, data in pairs(RARELOAD.Phantom) do
@@ -268,8 +267,6 @@ hook.Add("PostDrawOpaqueRenderables", "RARELOAD_QueuePhantomInfo", function()
             end
         end
     end
-
-    -- Even if debug is off, we still want to render 3D2D info panels; if no phantoms yet, allow refresh below
 
     local currentMap = game.GetMap()
     if currentMap ~= lastMapName then
@@ -305,7 +302,6 @@ hook.Add("PostDrawOpaqueRenderables", "RARELOAD_QueuePhantomInfo", function()
         nextVisibilityUpdate = now + 0.75
     end
 
-    -- Always hand off to the info renderer when available; phantom info handles its own gating
     if type(QueuePhantomPanelsForRendering) == "function" then
         QueuePhantomPanelsForRendering()
     end

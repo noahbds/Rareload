@@ -2,7 +2,6 @@ RARELOAD = RARELOAD or {}
 RARELOAD.AdminPanel = RARELOAD.AdminPanel or {}
 RARELOAD.AdminPanel.Utils = RARELOAD.AdminPanel.Utils or {}
 
--- Check if a player has a specific permission
 function RARELOAD.AdminPanel.Utils.GetPermissionValue(steamID, permName)
     for _, ply in ipairs(player.GetAll()) do
         if ply:SteamID() == steamID and ply:IsSuperAdmin() then
@@ -22,7 +21,6 @@ function RARELOAD.AdminPanel.Utils.GetPermissionValue(steamID, permName)
     return RARELOAD.Permissions.DEFS[permName] and RARELOAD.Permissions.DEFS[permName].default or false
 end
 
--- Get player data (online or offline)
 function RARELOAD.AdminPanel.Utils.GetPlayerData(steamID)
     for _, ply in ipairs(player.GetAll()) do
         if ply:SteamID() == steamID then
@@ -49,7 +47,6 @@ function RARELOAD.AdminPanel.Utils.GetPlayerData(steamID)
     return nil
 end
 
--- Get all players (online and offline if requested)
 function RARELOAD.AdminPanel.Utils.GetAllPlayers(includeOffline)
     local players = {}
 
@@ -92,7 +89,6 @@ function RARELOAD.AdminPanel.Utils.GetAllPlayers(includeOffline)
     return players
 end
 
--- Filter players by search term
 function RARELOAD.AdminPanel.Utils.FilterPlayers(players, searchTerm)
     if not searchTerm or searchTerm == "" then
         return players
@@ -111,7 +107,6 @@ function RARELOAD.AdminPanel.Utils.FilterPlayers(players, searchTerm)
     return filteredPlayers
 end
 
--- Sort players by priority (online first, then admin status, then name)
 function RARELOAD.AdminPanel.Utils.SortPlayers(players)
     table.sort(players, function(a, b)
         if a.isOnline ~= b.isOnline then return a.isOnline end
@@ -119,7 +114,6 @@ function RARELOAD.AdminPanel.Utils.SortPlayers(players)
         if b.isSuperAdmin and not a.isSuperAdmin then return false end
         if a.isAdmin and not b.isAdmin then return true end
         if b.isAdmin and not a.isAdmin then return false end
-        -- Sort bots after real players within same category
         if a.isBot ~= b.isBot then return not a.isBot end
         return string.lower(a.nick) < string.lower(b.nick)
     end)
@@ -127,7 +121,6 @@ function RARELOAD.AdminPanel.Utils.SortPlayers(players)
     return players
 end
 
--- Categorize permissions for better organization
 function RARELOAD.AdminPanel.Utils.CategorizePermissions()
     local permCategories = {
         ["ADMIN"] = {},

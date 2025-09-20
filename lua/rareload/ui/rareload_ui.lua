@@ -1,11 +1,9 @@
----@diagnostic disable: missing-fields
 local RareloadUI = {}
 
 if SERVER then
     util.AddNetworkString("RareloadSettingsSync")
     util.AddNetworkString("RareloadAntiStuckConfig")
 
-    -- Broadcast addon settings to all clients (proper net usage)
     local function BroadcastSettings()
         local settings = file.Read("rareload/addon_state.json", "DATA") or "{}"
         net.Start("RareloadSettingsSync")
@@ -13,12 +11,10 @@ if SERVER then
         net.Broadcast()
     end
 
-    -- Expose for other server files if needed
     RareloadUI.BroadcastSettings = BroadcastSettings
 end
 
 if SERVER then
-    -- Delay the initial broadcast to ensure everything is loaded
     timer.Simple(1, function()
         if RareloadUI and RareloadUI.BroadcastSettings then
             RareloadUI.BroadcastSettings()
@@ -29,27 +25,19 @@ end
 if CLIENT then
     RARELOAD = RARELOAD or {}
 
-    -- Client-side permission check fallback
-    -- This function checks if the local player has a specific permission
     function RARELOAD.CheckPermission(ply, permName)
-        -- If the player is a superadmin, they have all permissions
         if ply:IsSuperAdmin() then
             return true
         end
 
-        -- If the permissions system is initialized with HasPermission function, use it
         if RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
             return RARELOAD.Permissions.HasPermission(ply, permName)
         end
 
-        -- Default fallback to admin check
         return ply:IsAdmin()
     end
 end
 
--- ==============================
---    THEME & VISUAL SETTINGS
--- ==============================
 RareloadUI.Theme = {
     Colors = {
         Background = Color(30, 30, 35, 230),
@@ -57,30 +45,25 @@ RareloadUI.Theme = {
         Accent = Color(65, 145, 255),
         Danger = Color(255, 70, 70),
         Success = Color(70, 200, 120),
-
         Text = {
             Primary = Color(245, 245, 245),
             Secondary = Color(180, 180, 190),
             Disabled = Color(120, 120, 130)
         },
-
         Button = {
             Normal = Color(60, 60, 70),
             Hover = Color(70, 70, 80),
             Active = Color(50, 50, 60),
             Selected = Color(65, 145, 255)
         },
-
         Slider = {
             Track = Color(50, 50, 55),
             Groove = Color(65, 145, 255),
             Knob = Color(225, 225, 235),
             KnobHover = Color(255, 255, 255)
         },
-
         Separator = Color(60, 60, 70)
     },
-
     Sizes = {
         CornerRadius = 6,
         ButtonHeight = 40,
@@ -89,16 +72,12 @@ RareloadUI.Theme = {
         Padding = 15,
         Margin = 10
     },
-
     Animation = {
         Speed = 6,
         Bounce = 0.2
     }
 }
 
--- ==============================
---    UTILITY FUNCTIONS
--- ==============================
 function RareloadUI.DrawRoundedBox(x, y, w, h, radius, color)
     draw.RoundedBox(radius, x, y, w, h, color)
 end
@@ -134,20 +113,13 @@ function RareloadUI.Lerp(t, a, b)
     return a + (b - a) * t
 end
 
--- ==============================
---    UI COMPONENTS
--- ==============================
-
 function RareloadUI.CreateToggle(parent, text, description, command, initialState, callback)
     local theme = RareloadUI.Theme
-
-    ---@class DPanel
     local toggle = vgui.Create("DPanel", parent)
     toggle:Dock(TOP)
     toggle:DockMargin(theme.Sizes.Margin, theme.Sizes.Margin, theme.Sizes.Margin, theme.Sizes.Margin)
     toggle:SetTall(description and 70 or 50)
     toggle:SetPaintBackground(false)
-
     toggle.Enabled = initialState or false
     toggle.Fraction = toggle.Enabled and 1 or 0
     toggle.HoverFraction = 0
@@ -175,20 +147,13 @@ function RareloadUI.CreateToggle(parent, text, description, command, initialStat
         local trackHeight = 22
         local trackX = w - trackWidth - 10
         local trackY = (h - trackHeight) / 2
-
         self.Fraction = Lerp(FrameTime() * 10, self.Fraction, self.Enabled and 1 or 0)
         self.HoverFraction = Lerp(FrameTime() * 8, self.HoverFraction, self:IsHovered() and 1 or 0)
-
-        local trackColor = self.Enabled and
-            theme.Colors.Accent or
-            theme.Colors.Button.Normal
-
+        local trackColor = self.Enabled and theme.Colors.Accent or theme.Colors.Button.Normal
         RareloadUI.DrawRoundedBox(trackX, trackY, trackWidth, trackHeight, trackHeight / 2, trackColor)
-
         local knobSize = trackHeight - 6
         local knobX = trackX + 3 + (trackWidth - knobSize - 6) * self.Fraction
         local knobY = trackY + 3
-
         if self.HoverFraction > 0 then
             RareloadUI.DrawCircle(
                 knobX + knobSize / 2,
@@ -198,7 +163,6 @@ function RareloadUI.CreateToggle(parent, text, description, command, initialStat
                 ColorAlpha(theme.Colors.Text.Primary, 20 * self.HoverFraction)
             )
         end
-
         RareloadUI.DrawCircle(
             knobX + knobSize / 2,
             knobY + knobSize / 2,
@@ -212,7 +176,6 @@ function RareloadUI.CreateToggle(parent, text, description, command, initialStat
         if keyCode == MOUSE_LEFT then
             self.Enabled = not self.Enabled
             surface.PlaySound(self.Enabled and "ui/buttonclick.wav" or "ui/buttonclickrelease.wav")
-
             RunConsoleCommand(command, self.Enabled and "1" or "0")
             if callback then callback(self.Enabled) end
         end
@@ -223,14 +186,11 @@ end
 
 function RareloadUI.CreateSlider(parent, title, description, command, min, max, decimals, defaultValue, unit)
     local theme = RareloadUI.Theme
-
-    ---@class DPanel
     local slider = vgui.Create("DPanel", parent)
     slider:Dock(TOP)
     slider:DockMargin(theme.Sizes.Margin, theme.Sizes.Margin, theme.Sizes.Margin, theme.Sizes.Margin * 1.5)
     slider:SetTall(description and 90 or 70)
     slider:SetPaintBackground(false)
-
     slider.Min = min or 0
     slider.Max = max or 100
     slider.Value = defaultValue or min or 0
@@ -263,16 +223,12 @@ function RareloadUI.CreateSlider(parent, title, description, command, min, max, 
     valueDisplay:SetTextColor(theme.Colors.Text.Primary)
 
     local function updateValueDisplay()
-        local format = slider.Decimals > 0
-            and "%." .. slider.Decimals .. "f%s"
-            or "%d%s"
-
+        local format = slider.Decimals > 0 and "%." .. slider.Decimals .. "f%s" or "%d%s"
         valueDisplay:SetText(string.format(format, slider.Value, slider.Unit))
     end
 
     updateValueDisplay()
 
-    ---@class DPanel
     local track = vgui.Create("DPanel", slider)
     track:Dock(BOTTOM)
     track:DockMargin(0, 5, 70, 5)
@@ -284,14 +240,12 @@ function RareloadUI.CreateSlider(parent, title, description, command, min, max, 
             local width = self:GetWide() - theme.Sizes.KnobSize
             local fraction = math.Clamp((x - theme.Sizes.KnobSize / 2) / width, 0, 1)
             slider.Value = slider.Min + (slider.Max - slider.Min) * fraction
-
             if slider.Decimals > 0 then
                 local multiplier = 10 ^ slider.Decimals
                 slider.Value = math.Round(slider.Value * multiplier) / multiplier
             else
                 slider.Value = math.Round(slider.Value)
             end
-
             updateValueDisplay()
             RunConsoleCommand(command, slider.Value)
         end
@@ -312,22 +266,17 @@ function RareloadUI.CreateSlider(parent, title, description, command, min, max, 
         end
     end
 
-
     track.Paint = function(self, w, h)
         local trackHeight = theme.Sizes.SliderHeight
         local trackY = (h - trackHeight) / 2
         local knobSize = theme.Sizes.KnobSize
         local fraction = (slider.Value - slider.Min) / (slider.Max - slider.Min)
         local knobX = fraction * (w - knobSize)
-
         RareloadUI.DrawRoundedBox(0, trackY, w, trackHeight, trackHeight / 2, theme.Colors.Slider.Track)
-
         RareloadUI.DrawRoundedBox(0, trackY, knobX + knobSize / 2, trackHeight, trackHeight / 2,
             theme.Colors.Slider.Groove)
-
         slider.HoverFraction = Lerp(FrameTime() * 8, slider.HoverFraction,
             (self:IsHovered() or slider.Dragging) and 1 or 0)
-
         if slider.HoverFraction > 0 then
             RareloadUI.DrawCircle(
                 knobX + knobSize / 2,
@@ -337,7 +286,6 @@ function RareloadUI.CreateSlider(parent, title, description, command, min, max, 
                 ColorAlpha(theme.Colors.Accent, 40 * slider.HoverFraction)
             )
         end
-
         RareloadUI.DrawCircle(
             knobX + knobSize / 2,
             trackY + trackHeight / 2,
@@ -345,7 +293,6 @@ function RareloadUI.CreateSlider(parent, title, description, command, min, max, 
             20,
             slider.Dragging and theme.Colors.Slider.KnobHover or theme.Colors.Slider.Knob
         )
-
         local notches = 5
         for i = 0, notches do
             local x = (i / notches) * (w - knobSize) + knobSize / 2
@@ -359,7 +306,6 @@ end
 
 function RareloadUI.CreateActionButton(parent, text, command, description)
     local theme = RareloadUI.Theme
-
     local button = vgui.Create("DPanel", parent)
     button:Dock(TOP)
     button:DockMargin(theme.Sizes.Margin, theme.Sizes.Margin, theme.Sizes.Margin, theme.Sizes.Margin)
@@ -375,7 +321,6 @@ function RareloadUI.CreateActionButton(parent, text, command, description)
         if command then
             RunConsoleCommand(command)
         end
-
         local flash = vgui.Create("DPanel", button)
         flash:SetSize(button:GetWide(), button:GetTall())
         flash:SetAlpha(120)
@@ -383,7 +328,6 @@ function RareloadUI.CreateActionButton(parent, text, command, description)
             RareloadUI.DrawRoundedBox(0, 0, w, h, theme.Sizes.CornerRadius, Color(255, 255, 255))
         end
         flash:AlphaTo(0, 0.3, 0, function() flash:Remove() end)
-
         surface.PlaySound("ui/buttonclickrelease.wav")
     end
 
@@ -411,16 +355,12 @@ function RareloadUI.CreateActionButton(parent, text, command, description)
     button.Paint = function(self, w, h)
         self.HoverFraction = Lerp(FrameTime() * 8, self.HoverFraction, self.Hovered and 1 or 0)
         self.PressFraction = Lerp(FrameTime() * 10, self.PressFraction, self.Pressed and 1 or 0)
-
         local baseColor = theme.Colors.Success
         local r = baseColor.r + 20 * self.HoverFraction - 15 * self.PressFraction
         local g = baseColor.g + 20 * self.HoverFraction - 15 * self.PressFraction
         local b = baseColor.b + 20 * self.HoverFraction - 15 * self.PressFraction
-
         local color = Color(r, g, b, baseColor.a)
-
         RareloadUI.DrawRoundedBox(0, 0, w, h, theme.Sizes.CornerRadius, color)
-
         draw.SimpleText(
             text,
             "RareloadUI.Button",
@@ -430,7 +370,6 @@ function RareloadUI.CreateActionButton(parent, text, command, description)
             TEXT_ALIGN_CENTER,
             TEXT_ALIGN_CENTER
         )
-
         surface.SetDrawColor(255, 255, 255, 30 + 20 * self.HoverFraction)
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
@@ -440,8 +379,6 @@ end
 
 function RareloadUI.CreateButton(parent, text, command, description, settingKey, primary)
     local theme = RareloadUI.Theme
-
-    ---@class DPanel
     local button = vgui.Create("DPanel", parent)
     button:Dock(TOP)
     button:DockMargin(theme.Sizes.Margin, theme.Sizes.Margin, theme.Sizes.Margin, theme.Sizes.Margin)
@@ -459,7 +396,6 @@ function RareloadUI.CreateButton(parent, text, command, description, settingKey,
     button.IsEnabled = GetSettingValue()
     button.ButtonText = text
     button.ButtonFont = "RareloadUI.Button"
-
     button.Hovered = false
     button.Pressed = false
     button.HoverFraction = 0
@@ -468,26 +404,19 @@ function RareloadUI.CreateButton(parent, text, command, description, settingKey,
     button.UpdateTextFit = function(self)
         local width = self:GetWide()
         if width <= 0 then return end
-
         local currentFont = self.ButtonFont
         surface.SetFont(currentFont)
         local textW, textH = surface.GetTextSize(self.ButtonText or "")
-
         if not textW or textW <= 0 then return end
-
         local availableWidth = width - 70
-
         if textW > availableWidth and availableWidth > 0 then
             local scaleFactor = availableWidth / textW
             local newSize = math.floor(18 * scaleFactor)
             newSize = math.max(10, newSize)
-
             local fontName = "RareloadUI.ButtonDynamic" .. newSize
-
             if not RareloadUI.CreatedDynamicFonts then
                 RareloadUI.CreatedDynamicFonts = {}
             end
-
             if not RareloadUI.CreatedDynamicFonts[fontName] then
                 surface.CreateFont(fontName, {
                     font = "Segoe UI",
@@ -497,7 +426,6 @@ function RareloadUI.CreateButton(parent, text, command, description, settingKey,
                 })
                 RareloadUI.CreatedDynamicFonts[fontName] = true
             end
-
             self.ButtonFont = fontName
         else
             self.ButtonFont = "RareloadUI.Button"
@@ -518,7 +446,6 @@ function RareloadUI.CreateButton(parent, text, command, description, settingKey,
                     button:InvalidateLayout()
                 end)
             end
-
             local flash = vgui.Create("DPanel", button)
             flash:SetSize(button:GetWide(), button:GetTall())
             flash:SetAlpha(120)
@@ -526,7 +453,6 @@ function RareloadUI.CreateButton(parent, text, command, description, settingKey,
                 RareloadUI.DrawRoundedBox(0, 0, w, h, theme.Sizes.CornerRadius, Color(255, 255, 255))
             end
             flash:AlphaTo(0, 0.3, 0, function() flash:Remove() end)
-
             surface.PlaySound("ui/buttonclickrelease.wav")
         end
     end
@@ -566,20 +492,14 @@ function RareloadUI.CreateButton(parent, text, command, description, settingKey,
 
     button.Paint = function(self, w, h)
         if not w or w <= 0 or not h or h <= 0 then return end
-
         self.HoverFraction = Lerp(FrameTime() * 8, self.HoverFraction, self.Hovered and 1 or 0)
         self.PressFraction = Lerp(FrameTime() * 10, self.PressFraction, self.Pressed and 1 or 0)
-
         local baseColor = self.IsEnabled and theme.Colors.Accent or theme.Colors.Button.Normal
-
         local r = baseColor.r + 20 * self.HoverFraction - 15 * self.PressFraction
         local g = baseColor.g + 20 * self.HoverFraction - 15 * self.PressFraction
         local b = baseColor.b + 20 * self.HoverFraction - 15 * self.PressFraction
-
         local color = Color(r, g, b, baseColor.a)
-
         RareloadUI.DrawRoundedBox(0, 0, w, h, theme.Sizes.CornerRadius, color)
-
         if self.ButtonText and self.ButtonFont then
             draw.SimpleText(
                 self.ButtonText,
@@ -591,7 +511,6 @@ function RareloadUI.CreateButton(parent, text, command, description, settingKey,
                 TEXT_ALIGN_CENTER
             )
         end
-
         local statusText = self.IsEnabled and "ON" or "OFF"
         draw.SimpleText(
             statusText,
@@ -602,7 +521,6 @@ function RareloadUI.CreateButton(parent, text, command, description, settingKey,
             TEXT_ALIGN_RIGHT,
             TEXT_ALIGN_CENTER
         )
-
         surface.SetDrawColor(255, 255, 255, 30 + 20 * self.HoverFraction)
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
@@ -612,7 +530,6 @@ end
 
 function RareloadUI.CreateSeparator(parent)
     local theme = RareloadUI.Theme
-
     local separator = vgui.Create("DPanel", parent)
     separator:Dock(TOP)
     separator:DockMargin(theme.Sizes.Margin * 2, theme.Sizes.Margin, theme.Sizes.Margin * 2, theme.Sizes.Margin)
@@ -629,7 +546,6 @@ end
 
 function RareloadUI.CreateHeader(parent, text)
     local theme = RareloadUI.Theme
-
     local header = vgui.Create("DPanel", parent)
     header:Dock(TOP)
     header:DockMargin(theme.Sizes.Margin, theme.Sizes.Margin, theme.Sizes.Margin, 0)
@@ -655,7 +571,6 @@ function RareloadUI.CreatePanel(title)
     if RARELOAD and RARELOAD.RegisterFonts then
         local ok = pcall(RARELOAD.RegisterFonts)
         if not ok then
-            -- continue without fonts
         end
     end
 
@@ -670,13 +585,10 @@ function RareloadUI.CreatePanel(title)
     frame:SetDeleteOnClose(true)
 
     frame.Paint = function(self, w, h)
-        ---@diagnostic disable-next-line: undefined-field
         Derma_DrawBackgroundBlur(self, self.StartTime or 0)
         RareloadUI.DrawRoundedBox(0, 0, w, h, theme.Sizes.CornerRadius, theme.Colors.Background)
-
         RareloadUI.DrawRoundedBox(0, 0, w, 50, theme.Sizes.CornerRadius, theme.Colors.Panel)
         RareloadUI.DrawRoundedBox(0, 0, w, 6, theme.Sizes.CornerRadius, theme.Colors.Accent)
-
         draw.SimpleText(
             title or "Rareload Settings",
             "RareloadUI.Title",
@@ -686,11 +598,9 @@ function RareloadUI.CreatePanel(title)
             TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER
         )
-
         RareloadUI.DrawRoundedBox(0, h - 50, w, 50, theme.Sizes.CornerRadius, theme.Colors.Panel)
     end
 
-    ---@class DButton
     local closeBtn = vgui.Create("DButton", frame)
     closeBtn:SetText("")
     closeBtn:SetSize(30, 30)
@@ -711,8 +621,6 @@ function RareloadUI.CreatePanel(title)
     local scroll = vgui.Create("DScrollPanel", frame)
     scroll:Dock(FILL)
     scroll:DockMargin(0, 50, 0, 50)
-
-    -- Safely style the scrollbar if it exists
     local scrollbar = scroll:GetVBar()
     if IsValid(scrollbar) then
         if scrollbar.SetWide then scrollbar:SetWide(8) end
@@ -722,15 +630,11 @@ function RareloadUI.CreatePanel(title)
         end
     end
 
-    -- Ensure a safe mouse wheel handler exists
     local canvas = scroll.GetCanvas and scroll:GetCanvas() or nil
     if IsValid(canvas) and not canvas.OnMouseWheeled then
-        ---@diagnostic disable-next-line: inject-field
         canvas.OnMouseWheeled = function(self, delta)
             local parent = self:GetParent()
-            ---@diagnostic disable-next-line: undefined-field
             if IsValid(parent) and parent.OnMouseWheeled then
-                ---@diagnostic disable-next-line: undefined-field
                 return parent:OnMouseWheeled(delta)
             end
         end

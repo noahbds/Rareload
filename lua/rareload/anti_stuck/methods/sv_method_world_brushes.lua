@@ -10,9 +10,7 @@ function AntiStuck.TryWorldBrushes(pos, ply)
         return nil, AntiStuck.UNSTUCK_METHODS.NONE
     end
 
-    -- Validation registration calls this with ply = nil; safely handle
     if not ply or (IsValid and not IsValid(ply)) then
-        -- Return a neutral failure so interface validation passes without throwing
         return nil, AntiStuck.UNSTUCK_METHODS.NONE
     end
 

@@ -1,24 +1,10 @@
--- rareload_fonts.lua
--- Enhanced font definitions for better readability and modern appearance
---
--- Improvements made:
--- • Switched editor fonts to Consolas for better code readability
--- • Unified font family to Segoe UI for consistency across UI elements
--- • Added subtle shadows for better depth and contrast
--- • Improved size hierarchy for better visual organization
--- • Enhanced weights for better text clarity
--- • Increased sizes slightly for improved legibility
-
-
-
 if SERVER then return end
 
 RARELOAD = RARELOAD or {}
 
 function RARELOAD.RegisterFonts()
-    -- Editor/JSON fonts - Enhanced monospace fonts for better code readability
     surface.CreateFont("RareloadEditor", {
-        font = "Consolas", -- Better monospace font with excellent readability
+        font = "Consolas",
         size = 22,
         weight = 500,
         antialias = true,
@@ -29,13 +15,13 @@ function RARELOAD.RegisterFonts()
         strikeout = false,
         symbol = false,
         rotary = false,
-        shadow = true, -- Subtle shadow for better depth
+        shadow = true,
         blursize = 0,
         scanlines = 0,
         extended = true
     })
     surface.CreateFont("RareloadEditorSmall", {
-        font = "Consolas", -- Consistent with main editor font
+        font = "Consolas",
         size = 18,
         weight = 400,
         antialias = true,
@@ -50,10 +36,10 @@ function RARELOAD.RegisterFonts()
         blursize = 0,
         scanlines = 0,
         extended = true
-    })                     -- Theme/Entity Viewer fonts - Enhanced with better hierarchy and readability
+    })
     surface.CreateFont("RareloadDisplay", {
-        font = "Segoe UI", -- Keep Segoe UI for its excellent readability
-        size = 38,         -- Slightly larger for better presence
+        font = "Segoe UI",
+        size = 38,
         weight = 700,
         antialias = true,
         extended = true,
@@ -63,14 +49,14 @@ function RARELOAD.RegisterFonts()
         strikeout = false,
         symbol = false,
         rotary = false,
-        shadow = true, -- Add subtle shadow for depth
+        shadow = true,
         additive = false,
         blursize = 0,
         scanlines = 0
     })
     surface.CreateFont("RareloadHeading", {
         font = "Segoe UI",
-        size = 26, -- Better size relationship
+        size = 26,
         weight = 600,
         antialias = true,
         extended = true,
@@ -87,7 +73,7 @@ function RARELOAD.RegisterFonts()
     })
     surface.CreateFont("RareloadSubheading", {
         font = "Segoe UI",
-        size = 20, -- Better size step
+        size = 20,
         weight = 500,
         antialias = true,
         extended = true,
@@ -103,8 +89,8 @@ function RARELOAD.RegisterFonts()
         scanlines = 0
     })
     surface.CreateFont("RareloadBody", {
-        font = "Segoe UI", -- Consistent font family
-        size = 16,         -- Slightly larger for better readability
+        font = "Segoe UI",
+        size = 16,
         weight = 400,
         antialias = true,
         extended = true,
@@ -114,14 +100,14 @@ function RARELOAD.RegisterFonts()
         strikeout = false,
         symbol = false,
         rotary = false,
-        shadow = true, -- Subtle shadow for better contrast
+        shadow = true,
         additive = false,
         blursize = 0,
         scanlines = 0
     })
     surface.CreateFont("RareloadCaption", {
         font = "Segoe UI",
-        size = 13, -- Slightly larger for better legibility
+        size = 13,
         weight = 400,
         antialias = true,
         extended = true,
@@ -138,7 +124,7 @@ function RARELOAD.RegisterFonts()
     })
     surface.CreateFont("RareloadLabel", {
         font = "Segoe UI",
-        size = 14, -- Better size for labels
+        size = 14,
         weight = 500,
         antialias = true,
         extended = true,
@@ -155,7 +141,7 @@ function RARELOAD.RegisterFonts()
     })
     surface.CreateFont("RareloadHeader", {
         font = "Segoe UI",
-        size = 24, -- Better hierarchy
+        size = 24,
         weight = 600,
         antialias = true,
         extended = true,
@@ -172,7 +158,7 @@ function RARELOAD.RegisterFonts()
     })
     surface.CreateFont("RareloadTitle", {
         font = "Segoe UI",
-        size = 30, -- Better size relationship
+        size = 30,
         weight = 700,
         antialias = true,
         extended = true,
@@ -188,8 +174,8 @@ function RARELOAD.RegisterFonts()
         scanlines = 0
     })
     surface.CreateFont("RareloadText", {
-        font = "Segoe UI", -- Switch to Segoe UI for consistency
-        size = 17,         -- Slightly larger for better readability
+        font = "Segoe UI",
+        size = 17,
         weight = 400,
         antialias = true,
         extended = true,
@@ -206,7 +192,7 @@ function RARELOAD.RegisterFonts()
     })
     surface.CreateFont("RareloadSmall", {
         font = "Segoe UI",
-        size = 13, -- Slightly larger for better legibility
+        size = 13,
         weight = 400,
         antialias = true,
         extended = true,
@@ -220,10 +206,10 @@ function RARELOAD.RegisterFonts()
         additive = false,
         blursize = 0,
         scanlines = 0
-    })                     -- Toolscreen fonts - Enhanced with better weight and shadows
+    })
     surface.CreateFont("CTNV", {
-        font = "Segoe UI", -- Switch to Segoe UI for consistency
-        size = 19,         -- Slightly larger
+        font = "Segoe UI",
+        size = 19,
         weight = 500,
         antialias = true,
         outline = false,
@@ -239,8 +225,8 @@ function RARELOAD.RegisterFonts()
         extended = true
     })
     surface.CreateFont("CTNV2", {
-        font = "Segoe UI", -- Consistent font family
-        size = 26,         -- Better size relationship
+        font = "Segoe UI",
+        size = 26,
         weight = 700,
         antialias = true,
         shadow = true,
@@ -254,10 +240,10 @@ function RARELOAD.RegisterFonts()
         blursize = 0,
         scanlines = 0,
         extended = true
-    })                     -- UI fonts - Enhanced with better typography and shadows
+    })
     surface.CreateFont("RareloadUI.Title", {
-        font = "Segoe UI", -- Switch to Segoe UI for consistency
-        size = 30,         -- Better size relationship
+        font = "Segoe UI",
+        size = 30,
         weight = 600,
         antialias = true,
         outline = false,
@@ -274,7 +260,7 @@ function RARELOAD.RegisterFonts()
     })
     surface.CreateFont("RareloadUI.Heading", {
         font = "Segoe UI",
-        size = 24, -- Better hierarchy
+        size = 24,
         weight = 600,
         antialias = true,
         outline = false,
@@ -291,7 +277,7 @@ function RARELOAD.RegisterFonts()
     })
     surface.CreateFont("RareloadUI.Text", {
         font = "Segoe UI",
-        size = 19, -- Slightly larger for better readability
+        size = 19,
         weight = 400,
         antialias = true,
         outline = false,
@@ -308,7 +294,7 @@ function RARELOAD.RegisterFonts()
     })
     surface.CreateFont("RareloadUI.Small", {
         font = "Segoe UI",
-        size = 17, -- Slightly larger
+        size = 17,
         weight = 400,
         antialias = true,
         outline = false,
@@ -325,7 +311,7 @@ function RARELOAD.RegisterFonts()
     })
     surface.CreateFont("RareloadUI.Button", {
         font = "Segoe UI",
-        size = 19, -- Better button text size
+        size = 19,
         weight = 600,
         antialias = true,
         outline = false,
@@ -340,9 +326,6 @@ function RARELOAD.RegisterFonts()
         scanlines = 0,
         extended = true
     })
-
-    -- Provide a fallback for addons requesting the non-standard 'Bandal' font
-    -- This suppresses engine warnings by aliasing to a common UI font.
     surface.CreateFont("Bandal", {
         font = "Segoe UI",
         size = 18,
@@ -361,5 +344,3 @@ function RARELOAD.RegisterFonts()
         extended = true
     })
 end
-
--- To use: Call RARELOAD.RegisterFonts() once on the client (e.g., in an init or main UI file)

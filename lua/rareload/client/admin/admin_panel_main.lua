@@ -172,7 +172,6 @@ function PANEL:ShowSaveMessage(changedCount, totalCount)
 end
 
 function PANEL:OnRemove()
-    -- -_-
 end
 
 vgui.Register("RareloadAdminPanel", PANEL, "DFrame")

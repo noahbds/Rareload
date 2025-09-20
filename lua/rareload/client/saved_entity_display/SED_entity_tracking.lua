@@ -1,5 +1,3 @@
--- Entity tracking and saved data lookup functions
-
 function SED.RebuildSavedLookup()
     local map = game.GetMap()
     if not (RARELOAD.playerPositions and map) then return end

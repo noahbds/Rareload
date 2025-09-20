@@ -77,7 +77,6 @@ function RARELOAD.Debug.LogInventory(ply)
 end
 
 function RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
-    -- Prevent duplicate weapon logs within a short time window per player
     RARELOAD._weaponLogCooldown = RARELOAD._weaponLogCooldown or {}
     local key = "global"
     local now = CurTime()
@@ -472,14 +471,6 @@ function RARELOAD.Debug.LogAntiStuck(operation, methodName, data, ply)
         RARELOAD.Debug.Log(level, header, mainMessage, ply)
     end
 end
-
--- Session-style Anti-Stuck logging helpers for clear, grouped output
--- Usage:
---   local sess = RARELOAD.Debug.StartAntiStuckSession(ply, originalPos)
---   RARELOAD.Debug.AntiStuckStep(sess, "info", "Method 1/3: Cached Positions", "success 68%, timeout 0.3s")
---   RARELOAD.Debug.AntiStuckStep(sess, "fail", "Cached Positions", "no valid cached positions")
---   RARELOAD.Debug.AntiStuckStep(sess, "ok", "Smart Displacement", "found position in 0.018s (attempt 4)")
---   RARELOAD.Debug.FinishAntiStuckSession(sess, { success = true, attempts = 4, totalTime = 0.018, finalPos = pos })
 
 local function _fmtVec(v)
     if not v then return "nil" end

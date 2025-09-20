@@ -14,7 +14,6 @@ local ENTITY_RESTORATION = {
     POSITION_TOLERANCE = 5
 }
 
--- Use shared state hash util (loaded by savers) for consistency
 if not (RARELOAD.Util and RARELOAD.Util.GenerateEntityStateHash) then
     if file.Exists("rareload/core/rareload_state_utils.lua", "LUA") then
         include("rareload/core/rareload_state_utils.lua")
@@ -25,7 +24,7 @@ local function GenerateEntityStateHash(data)
     if RARELOAD.Util and RARELOAD.Util.GenerateEntityStateHash then
         return RARELOAD.Util.GenerateEntityStateHash(data)
     end
-    return tostring(os.time()) -- fallback (shouldn't happen)
+    return tostring(os.time())
 end
 
 local function GetEntityProperties(ent)
@@ -68,7 +67,6 @@ local function GetEntityProperties(ent)
         end
     end
 
-    -- Extended properties captured by saver
     if ent.GetCollisionGroup then data.collisionGroup = ent:GetCollisionGroup() end
     if ent.GetMoveType then data.moveType = ent:GetMoveType() end
     if ent.GetSolid then data.solidType = ent:GetSolid() end
@@ -292,7 +290,6 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
             entData.pos = pos
         end
         if entData.ang and type(entData.ang) ~= "Angle" then
-            -- Load centralized conversion functions
             if not RARELOAD or not RARELOAD.DataUtils then
                 include("rareload/utils/rareload_data_utils.lua")
             end
@@ -300,7 +297,6 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
             local convertedAngle = RARELOAD.DataUtils.ToAngle(entData.ang)
             entData.ang = convertedAngle
         end
-        -- Compute a state hash for saved data (new format) if not present so extended properties differences trigger replacements
         if not entData.stateHash then
             entData.stateHash = GenerateEntityStateHash(entData)
         end
@@ -336,7 +332,6 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
 
             local ent = originalEntitiesByID[entData.id]
             if IsValid(ent) then
-                -- Sync position and angles to saved data
                 if entData.pos and type(entData.pos) == "Vector" then
                     pcall(ent.SetPos, ent, entData.pos)
                 end
@@ -344,12 +339,10 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
                     pcall(ent.SetAngles, ent, entData.ang)
                 end
 
-                -- Sync health (and max health when available)
                 if entData.health ~= nil and isnumber(entData.health) and ent.SetHealth then
                     if entData.maxHealth and entData.maxHealth > 0 and ent.SetMaxHealth then
                         pcall(ent.SetMaxHealth, ent, entData.maxHealth)
                     else
-                        -- Ensure saved HP is not clamped by current max health
                         if ent.GetMaxHealth and ent.SetMaxHealth then
                             local curMax = ent:GetMaxHealth() or 0
                             if entData.health > curMax then
@@ -369,7 +362,6 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
                         tostring(ent), tostring(entData.id)))
                 end
             else
-                -- If somehow invalid, just record as skipped to avoid spawning a duplicate here
                 stats.skipped = stats.skipped + 1
                 table.insert(entityData.skipped, entData)
             end
@@ -488,7 +480,6 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
                 elseif type(entData.ang) == "table" and #entData.ang == 3 then
                     ang = Angle(entData.ang[1], entData.ang[2], entData.ang[3])
                 else
-                    -- Use centralized conversion functions for string and other types
                     if not RARELOAD or not RARELOAD.DataUtils then
                         include("rareload/utils/rareload_data_utils.lua")
                     end
@@ -716,7 +707,6 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
     else
         stats.endTime = SysTime()
         UpdateProgress(stats.total, stats.total)
-        -- No batched spawns; signal completion after immediate phase
         hook.Run("RareloadEntitiesRestored", stats)
     end
 
@@ -739,10 +729,6 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
             table.insert(entityData.duplicatesRemoved, entry.data)
         end
     end
-
-    -- If there were no far entities, the completion hook was run above.
-    -- If there were far entities, the completion hook runs inside ProcessBatch after all spawns.
-
     return #closeEntities > 0
 end
 
@@ -817,7 +803,6 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
             end
 
             ent:Spawn()
-            -- Set max health before health to avoid clamping, and bump max if only health is provided
             if matchedData.maxHealth and matchedData.maxHealth > 0 and ent.SetMaxHealth then
                 pcall(ent.SetMaxHealth, ent, matchedData.maxHealth)
             end

@@ -1,7 +1,3 @@
--- Server-side Deep Copy Utility Module
--- Provides a true deep copy function for profile data to prevent reference sharing
-
--- True deep copy function that handles circular references and all data types
 local function DeepCopy(original, copies)
     copies = copies or {}
     local originalType = type(original)
@@ -17,14 +13,12 @@ local function DeepCopy(original, copies)
             copy[DeepCopy(originalKey, copies)] = DeepCopy(originalValue, copies)
         end
         setmetatable(copy, DeepCopy(getmetatable(original), copies))
-    else -- number, string, boolean, etc
+    else
         copy = original
     end
     return copy
 end
 
--- Specialized deep copy function for profile settings
--- Optimized for the specific structure of anti-stuck settings
 local function DeepCopySettings(settings)
     if not settings or type(settings) ~= "table" then
         return {}
@@ -33,7 +27,6 @@ local function DeepCopySettings(settings)
     local copy = {}
     for key, value in pairs(settings) do
         if type(value) == "table" then
-            -- Deep copy nested tables (like METHOD_ENABLE_FLAGS)
             copy[key] = DeepCopy(value)
         else
             copy[key] = value
@@ -42,8 +35,6 @@ local function DeepCopySettings(settings)
     return copy
 end
 
--- Specialized deep copy function for profile methods
--- Optimized for the specific structure of anti-stuck methods
 local function DeepCopyMethods(methods)
     if not methods or type(methods) ~= "table" then
         return {}
@@ -58,7 +49,6 @@ local function DeepCopyMethods(methods)
                 enabled = method.enabled,
                 description = method.description
             }
-            -- Copy any additional properties
             for key, value in pairs(method) do
                 if key ~= "name" and key ~= "func" and key ~= "enabled" and key ~= "description" then
                     if type(value) == "table" then
@@ -75,7 +65,6 @@ local function DeepCopyMethods(methods)
     return copy
 end
 
--- Make functions available globally for server-side use
 _G.RareloadDeepCopy = DeepCopy
 _G.RareloadDeepCopySettings = DeepCopySettings
 _G.RareloadDeepCopyMethods = DeepCopyMethods

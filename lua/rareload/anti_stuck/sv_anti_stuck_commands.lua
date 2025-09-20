@@ -59,8 +59,10 @@ concommand.Add("rareload_antistuck_methods", function(ply)
     end
 
     local sortedMethods = {}
-    for name, methodObj in pairs(AntiStuck.methodRegistry) do table.insert(sortedMethods,
-            { name = name, obj = methodObj }) end
+    for name, methodObj in pairs(AntiStuck.methodRegistry) do
+        table.insert(sortedMethods,
+            { name = name, obj = methodObj })
+    end
     table.sort(sortedMethods, function(a, b) return a.obj.priority < b.obj.priority end)
 
     for _, methodInfo in ipairs(sortedMethods) do
@@ -129,7 +131,6 @@ concommand.Add("rareload_server_fix_corrupted_profiles", function(ply)
     if IsValid(ply) then ply:ChatPrint(message) end
 end)
 
--- Testing commands
 concommand.Add("rareload_antistuck_test_enable", function(ply)
     if IsValid(ply) and not ply:IsAdmin() then
         ply:ChatPrint("[RARELOAD] Only admins can enable anti-stuck testing mode.")
@@ -140,8 +141,12 @@ concommand.Add("rareload_antistuck_test_enable", function(ply)
     "[RARELOAD] Anti-stuck testing mode ENABLED globally. All respawns will trigger the anti-stuck system."
     print(message)
     if IsValid(ply) then ply:ChatPrint(message) end
-    for _, p in ipairs(player.GetAll()) do if p:IsAdmin() then p:ChatPrint(
-            "[RARELOAD] Anti-stuck testing mode is now ACTIVE.") end end
+    for _, p in ipairs(player.GetAll()) do
+        if p:IsAdmin() then
+            p:ChatPrint(
+                "[RARELOAD] Anti-stuck testing mode is now ACTIVE.")
+        end
+    end
 end)
 
 concommand.Add("rareload_antistuck_test_disable", function(ply)
@@ -154,8 +159,12 @@ concommand.Add("rareload_antistuck_test_disable", function(ply)
     local message = "[RARELOAD] Anti-stuck testing mode DISABLED globally."
     print(message)
     if IsValid(ply) then ply:ChatPrint(message) end
-    for _, p in ipairs(player.GetAll()) do if p:IsAdmin() then p:ChatPrint(
-            "[RARELOAD] Anti-stuck testing mode is now INACTIVE.") end end
+    for _, p in ipairs(player.GetAll()) do
+        if p:IsAdmin() then
+            p:ChatPrint(
+                "[RARELOAD] Anti-stuck testing mode is now INACTIVE.")
+        end
+    end
 end)
 
 concommand.Add("rareload_antistuck_test_player", function(ply, _, args)
@@ -172,10 +181,12 @@ concommand.Add("rareload_antistuck_test_player", function(ply, _, args)
         return
     end
     local targetPlayer
-    for _, p in ipairs(player.GetAll()) do if string.lower(p:Nick()):find(string.lower(targetName), 1, true) then
+    for _, p in ipairs(player.GetAll()) do
+        if string.lower(p:Nick()):find(string.lower(targetName), 1, true) then
             targetPlayer = p
             break
-        end end
+        end
+    end
     if not IsValid(targetPlayer) then
         local message = "[RARELOAD] Player '" .. targetName .. "' not found."
         print(message)
@@ -191,7 +202,7 @@ concommand.Add("rareload_antistuck_test_player", function(ply, _, args)
     if IsValid(ply) then ply:ChatPrint(message) end
     if IsValid(targetPlayer) and targetPlayer.ChatPrint then
         targetPlayer:ChatPrint(
-        "[RARELOAD] Anti-stuck testing mode enabled for you. Your next respawn will trigger the anti-stuck system.")
+            "[RARELOAD] Anti-stuck testing mode enabled for you. Your next respawn will trigger the anti-stuck system.")
     end
 end)
 

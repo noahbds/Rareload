@@ -2,9 +2,6 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.Util = RARELOAD.Util or {}
 
--- Produce a lightweight, order-stable string hash of entity/NPC state that matters for deciding
--- whether an existing in-world entity differs from saved data enough to warrant replacement.
--- Keep this in sync with any comparison logic inside restoration handlers.
 function RARELOAD.Util.GenerateEntityStateHash(data)
     if not data or type(data) ~= "table" then return "invalid" end
 

@@ -81,7 +81,6 @@ local function LeavePhantomInteraction()
     end
 end
 
--- Safe draw-distance lookup to avoid hard dependency on SED load order
 local function GetPhantomDrawDistSqr()
     local base = 1000
     if RARELOAD and RARELOAD.SavedEntityDisplay and RARELOAD.SavedEntityDisplay.BASE_DRAW_DISTANCE then
@@ -92,14 +91,13 @@ local function GetPhantomDrawDistSqr()
     return base * base
 end
 local BASE_SCALE        = 0.11
-local MAX_VISIBLE_LINES = 30
+local MAX_VISIBLE_LINES = 10
 local SCROLL_SPEED      = 3
 local PanelScroll       = { phantoms = {} }
 
 local fontSizeCache     = {}
 local panelSizeCache    = {}
 
--- Prefer SED's theme if available to visually match Saved Entity Display panels
 local THEME             = (RARELOAD and RARELOAD.SavedEntityDisplay and RARELOAD.SavedEntityDisplay.THEME) or _G.THEME or
     {
         background = Color(20, 20, 30, 220),
@@ -108,7 +106,6 @@ local THEME             = (RARELOAD and RARELOAD.SavedEntityDisplay and RARELOAD
         text = Color(220, 220, 255),
     }
 
--- Use SED's draw/surface wrappers when present for consistent font metrics and colors
 local SEDRef            = RARELOAD and RARELOAD.SavedEntityDisplay
 local SURF_SetFont      = (SEDRef and SEDRef.surface_SetFont) or surface.SetFont
 local SURF_GetTextSize  = (SEDRef and SEDRef.surface_GetTextSize) or surface.GetTextSize
@@ -126,7 +123,6 @@ function CalculateOptimalPanelSize(categoryContent, numCategories)
         return panelSizeCache[cacheKey]
     end
 
-    -- Align with SED sizing so both UIs feel consistent
     local baseWidth = 360
     local minWidth = 340
     local maxWidth = 750
@@ -526,7 +522,6 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
         local l = lines[lineIndex]
         local y = startY + (i - 1) * lineHeight
 
-        -- Alternate row background for readability (match SED style)
         if (i + currentScroll) % 2 == 0 then
             SURF_SetDrawColor(40, 48, 62, 95)
             surface.DrawRect(offsetX + 6, y - 2, width - 12, lineHeight)
@@ -538,7 +533,6 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     end
 
     if maxScrollLines > 0 then
-        -- Slim scrollbar similar to SED
         local barW = 5
         local barX = offsetX + width - barW - 10
         local barY = startY - 2
@@ -549,11 +543,8 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
         DRAW_RoundedBox(3, barX, handleY, barW, handleH, Color(90, 150, 230, 220))
     end
 
-    -- Hints will be drawn in a small separate 3D2D block above (matching SED)
-
     cam.End3D2D()
 
-    -- Draw hints above the panel, SED-style
     if isFocused or isCandidate then
         local hintY = drawPos.z + (panelHeight * scale) / 2 + 10
         local hintPos = Vector(drawPos.x, drawPos.y, hintY)
@@ -571,7 +562,6 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
         cam.End3D2D()
     end
 
-    -- After drawing, compute whether the player is aiming at the 3D2D panel rectangle
     local eyePos2 = lpCache:EyePos()
     local forward = lpCache:EyeAngles():Forward()
     local panelCenter = drawPos
@@ -606,10 +596,7 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
 end
 
 function QueuePhantomPanelsForRendering()
-    -- Only render phantom panels when debug mode is enabled
     if not (RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled) then return end
-
-    -- Render phantom panels whenever the depth renderer is available
     if not (RARELOAD.DepthRenderer and RARELOAD.DepthRenderer.AddRenderItem) then return end
 
     CandidatePhantom, CandidateSteamID, CandidateYawDiff, CandidateDistSqr = nil, nil, nil, nil
@@ -620,8 +607,8 @@ function QueuePhantomPanelsForRendering()
     local mapName = game.GetMap()
     local queuedCount = 0
     local aimAng = lpCache:EyeAngles()
-    local yawThreshold = 10        -- degrees
-    local distThresholdSqr = 40000 -- 200 units squared (same as DrawPhantomInfo)
+    local yawThreshold = 10
+    local distThresholdSqr = 40000
 
     if RARELOAD.Phantom then
         for steamID, data in pairs(RARELOAD.Phantom) do
@@ -638,7 +625,6 @@ function QueuePhantomPanelsForRendering()
                 RARELOAD.DepthRenderer.AddRenderItem(phantomPos, renderFunction, "phantom")
                 queuedCount = queuedCount + 1
 
-                -- Pick best candidate for interaction before input handling (was previously set during render)
                 if not PhantomInteractionState.active then
                     local toPhantomAng = (phantomPos - lpCache:EyePos()):Angle()
                     local yawDiff = math.abs(math.AngleDifference(aimAng.y, toPhantomAng.y))
@@ -650,7 +636,6 @@ function QueuePhantomPanelsForRendering()
                             CandidateYawDiff = yawDiff
                             CandidateDistSqr = distSqr
                         else
-                            -- Prefer the closer phantom when multiple match (with safety guards)
                             local currentBestDist = tonumber(CandidateDistSqr) or math.huge
                             if distSqr < currentBestDist or yawDiff < (CandidateYawDiff or 1e9) then
                                 CandidatePhantom = data.phantom
@@ -724,7 +709,6 @@ function QueuePhantomPanelsForRendering()
     else
         if CandidatePhantom and CandidateSteamID then
             if KeyPressed(INTERACT_KEY) and InteractModifierDown() then
-                -- Require the player to be aiming at the panel to enter interaction
                 local function IsAimingAtPanel(phantom, steamID)
                     if not (IsValid(phantom) and steamID) then return false end
                     lpCache = lpCache or LocalPlayer()
@@ -806,7 +790,6 @@ function QueuePhantomPanelsForRendering()
 end
 
 function DrawAllPhantomPanels()
-    -- Only draw phantom panels when debug mode is enabled
     if not (RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled) then return end
 
     CandidatePhantom, CandidateSteamID, CandidateYawDiff = nil, nil, nil
@@ -898,7 +881,6 @@ hook.Add("CreateMove", "RARELOAD_PhantomPanels_CamLock", function(cmd)
     if PhantomInteractionState.active or CurTime() - LeaveTime < 0.5 then
         cmd:RemoveKey(IN_USE)
     elseif PhantomLookingAtPanelUntil and CurTime() <= PhantomLookingAtPanelUntil then
-        -- Prevent +use when aiming at the phantom 3D2D panel
         cmd:RemoveKey(IN_USE)
     end
     if not PhantomInteractionState.active then return end
@@ -921,12 +903,9 @@ hook.Add("PlayerBindPress", "RARELOAD_PhantomInteractScroll", function(ply, bind
     if not pressed then return end
 
     if not PhantomInteractionState.active then
-        -- Don't block normal use outside interaction; allow SED to handle global interactions too
         return
     end
 
-    -- Allow normal movement while interacting with the phantom panel
-    -- (do not block these binds so the player can move around)
     if bind == "+forward" or bind == "+back" or bind == "+moveleft" or bind == "+moveright"
         or bind == "+jump" or bind == "+duck" or bind == "+walk" or bind == "+speed" then
         return false
@@ -951,7 +930,6 @@ hook.Add("PlayerBindPress", "RARELOAD_PhantomInteractScroll", function(ply, bind
         end
     end
 
-    -- While in interaction, block most inputs; explicitly block +use to avoid world interactions
     if string.find(bind, "+use") then
         return true
     end

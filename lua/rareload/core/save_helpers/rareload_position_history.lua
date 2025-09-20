@@ -42,14 +42,13 @@ function RARELOAD.GetPreviousPositionData(steamID, mapName)
     if RARELOAD.playerPositionHistory[mapName] and
         RARELOAD.playerPositionHistory[mapName][steamID] and
         #RARELOAD.playerPositionHistory[mapName][steamID] > 0 then
-        local lastPos = RARELOAD.playerPositionHistory[mapName][steamID]
-            [#RARELOAD.playerPositionHistory[mapName][steamID]]
-
-        table.remove(RARELOAD.playerPositionHistory[mapName][steamID])
+        local history = RARELOAD.playerPositionHistory[mapName][steamID]
+        local lastPos = history[1]
+        table.remove(history, 1)
 
         if RARELOAD.settings.debugEnabled then
             print("[RARELOAD DEBUG] Retrieved previous position for " .. steamID .. " (Remaining history: " ..
-                #RARELOAD.playerPositionHistory[mapName][steamID] .. ")")
+                #history .. ")")
         end
 
         return lastPos

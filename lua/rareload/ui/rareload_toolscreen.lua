@@ -1,6 +1,4 @@
 local RareloadUI = include("rareload/ui/rareload_ui.lua")
-
--- Lightweight material cache (built-in gradients)
 local GRADIENT_U = Material("vgui/gradient-u")
 local GRADIENT_R = Material("vgui/gradient-r")
 
@@ -57,9 +55,8 @@ local TOOL_UI = {
 
 local ToolScreen = {}
 
--- Static feature config to avoid per-frame allocations
 local FEATURES = {
-    { name = "Move Type",             key = "spawnModeEnabled",      kind = "bool" },
+    { name = "Anti-stuck system",     key = "spawnModeEnabled",      kind = "bool" },
     { name = "Auto Save",             key = "autoSaveEnabled",       kind = "bool" },
     { name = "Save Inventory",        key = "retainInventory",       kind = "bool" },
     { name = "Save Global Inventory", key = "retainGlobalInventory", kind = "bool" },
@@ -73,7 +70,6 @@ local FEATURES = {
     { name = "Max History Size",      key = "maxHistorySize",        kind = "value" }
 }
 
--- Reusable dynamic colors to avoid GC churn
 local TMP_COLOR = Color(255, 255, 255, 255)
 local TMP_COLOR2 = Color(255, 255, 255, 255)
 
@@ -108,7 +104,7 @@ local function drawWaitingForTriggerBar(width, height, state, barY, barHeight, c
     draw.RoundedBox(8, 9, barY + 1, width - 18, barHeight - 2, TOOL_UI.COLORS.PROGRESS.BG_INNER)
     draw.RoundedBox(8, 10, barY + 2, width - 20, barHeight - 4, baseColor)
 
-    local shineOpacity = math.abs(math.sin(state.glowPhase)) * 40
+    local shineOpacity = DISABLE_ANIM and 0 or math.abs(math.sin(state.glowPhase)) * 40
     surface.SetDrawColor(TOOL_UI.COLORS.PROGRESS.SHINE.r, TOOL_UI.COLORS.PROGRESS.SHINE.g,
         TOOL_UI.COLORS.PROGRESS.SHINE.b, shineOpacity)
     surface.DrawRect(10, barY + 2, width - 20, 2)
@@ -153,12 +149,12 @@ local function drawProgressBar(width, height, state, barY, barHeight, progress, 
     if barWidth > 2 then
         draw.RoundedBox(8, 10, barY + 2, barWidth, barHeight - 4, baseColor)
 
-        local shineOpacity = math.abs(math.sin(state.glowPhase)) * 40
+        local shineOpacity = DISABLE_ANIM and 0 or math.abs(math.sin(state.glowPhase)) * 40
         surface.SetDrawColor(TOOL_UI.COLORS.PROGRESS.SHINE.r, TOOL_UI.COLORS.PROGRESS.SHINE.g,
             TOOL_UI.COLORS.PROGRESS.SHINE.b, shineOpacity)
         surface.DrawRect(10, barY + 2, barWidth, 2)
 
-        if timeRemaining < TOOL_UI.ANIMATION.PULSE_THRESHOLD then
+        if not DISABLE_ANIM and timeRemaining < TOOL_UI.ANIMATION.PULSE_THRESHOLD then
             local pulseIntensity = math.sin(state.pulsePhase) * 0.1 + 0.9
             local pulseColor = Color(
                 baseColor.r * pulseIntensity,
@@ -376,13 +372,19 @@ local function drawReloadStateImage(width, height)
         return
     end
 
-    local alpha = 255
-    local remainingTime = RARELOAD.reloadImageState.duration - (CurTime() - RARELOAD.reloadImageState.showTime)
-    if remainingTime < 0.5 then
-        alpha = remainingTime * 510
+    -- Static alpha and progress when animations disabled
+    local alpha, animProgress
+    if DISABLE_ANIM then
+        alpha = 255
+        animProgress = 1
+    else
+        local remainingTime = RARELOAD.reloadImageState.duration - (CurTime() - RARELOAD.reloadImageState.showTime)
+        alpha = 255
+        if remainingTime < 0.5 then
+            alpha = remainingTime * 510
+        end
+        animProgress = math.Clamp((CurTime() - RARELOAD.reloadImageState.animStartTime) / 0.8, 0, 1)
     end
-
-    local animProgress = math.Clamp((CurTime() - RARELOAD.reloadImageState.animStartTime) / 0.8, 0, 1)
 
     surface.SetDrawColor(30, 30, 35, math.min(200, alpha))
     surface.DrawRect(0, 0, width, height)
@@ -403,10 +405,22 @@ local function drawReloadStateImage(width, height)
     end
 end
 
-function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
+-- Add optional offsetX, offsetY so we can render inside a frame without drawing at (0,0) on screen
+function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offsetX, offsetY)
     cam.Start2D()
     width = width or 256
     height = height or 256
+
+    -- Optional 2D translation to panel top-left in screen space (used by frame rendering)
+    local ox = tonumber(offsetX) or 0
+    local oy = tonumber(offsetY) or 0
+    local pushed = false
+    if ox ~= 0 or oy ~= 0 then
+        local m = Matrix()
+        m:Translate(Vector(ox, oy, 0))
+        cam.PushModelMatrix(m)
+        pushed = true
+    end
 
     assert(RARELOAD, "RARELOAD table required")
     assert(loadAddonSettings, "loadAddonSettings function required")
@@ -429,17 +443,22 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
     local currentTime = CurTime()
     local ft = FrameTime()
 
-    -- Drive phases for subtle animations (were static before)
-    state.glowPhase = (state.glowPhase + ft * 2) % (math.pi * 2)
-    state.pulsePhase = (state.pulsePhase + ft * 6) % (math.pi * 2)
+    -- Animation timers: disabled => static values
+    if DISABLE_ANIM then
+        state.glowPhase = 0
+        state.pulsePhase = 0
+    else
+        state.glowPhase = (state.glowPhase + ft * 2) % (math.pi * 2)
+        state.pulsePhase = (state.pulsePhase + ft * 6) % (math.pi * 2)
+    end
 
+    -- Auto-scrolling: disabled => no movement
     local totalFeatureHeight = #FEATURES * layout.FEATURE_SPACING
     local visibleHeight = height - layout.FEATURE_START_Y - 30
     local maxScrollOffset = math.max(0, totalFeatureHeight - visibleHeight)
 
-    state.nextScrollTime = state.nextScrollTime or currentTime
-
-    if maxScrollOffset > 0 then
+    if not DISABLE_ANIM and maxScrollOffset > 0 then
+        state.nextScrollTime = state.nextScrollTime or currentTime
         if currentTime > (state.nextScrollTime or 0) then
             if state.scrollDirection == 1 and state.targetScrollOffset >= maxScrollOffset then
                 state.scrollDirection = -1
@@ -454,13 +473,15 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
                 )
             end
         end
-
         state.scrollOffset = Lerp(FrameTime() * 3, state.scrollOffset, state.targetScrollOffset)
+    else
+        state.scrollOffset = 0
+        state.targetScrollOffset = 0
     end
 
+    -- Background and header (now drawn with the translation if present)
     surface.SetDrawColor(colors.BG)
     surface.DrawRect(0, 0, width, height)
-    -- Header with gradient accent
     surface.SetDrawColor(colors.HEADER)
     surface.DrawRect(0, 0, width, 50)
     if GRADIENT_U then
@@ -473,7 +494,6 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
 
     local isEnabled = settings.addonEnabled
     local statusColor = isEnabled and colors.ENABLED or colors.DISABLED
-    -- Status pill
     surface.SetDrawColor(statusColor)
     draw.RoundedBox(8, 10, 60, width - 20, 30, statusColor)
     if GRADIENT_R then
@@ -486,7 +506,11 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
     local textColor = isEnabled and colors.TEXT_DARK or colors.TEXT_LIGHT
     draw.SimpleText(statusText, "CTNV", width / 2, 75, textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
-    render.SetScissorRect(0, layout.FEATURE_START_Y, width, height - 30, true)
+    if pushed then
+        render.SetScissorRect(ox + 0, oy + layout.FEATURE_START_Y, ox + width, oy + height - 30, true)
+    else
+        render.SetScissorRect(0, layout.FEATURE_START_Y, width, height - 30, true)
+    end
 
     for i, cfg in ipairs(FEATURES) do
         local y = layout.FEATURE_START_Y + (i - 1) * layout.FEATURE_SPACING - state.scrollOffset
@@ -495,14 +519,12 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
             local iconSize = layout.FEATURE_ICON_SIZE
             local value = settings[cfg.key]
 
-            -- Row background (zebra stripes for readability)
             if i % 2 == 0 then
                 surface.SetDrawColor(255, 255, 255, 6)
                 surface.DrawRect(8, y - 2, width - 16, layout.FEATURE_SPACING)
             end
 
             if cfg.kind == "value" then
-                -- Left accent dot (header color)
                 draw.RoundedBox(iconSize / 2, 12, y + 2, iconSize, iconSize - 4, colors.HEADER)
 
                 draw.SimpleText(cfg.name, "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT,
@@ -516,7 +538,6 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
                 local on = value and true or false
                 local dotColor = on and colors.ENABLED or colors.DISABLED
 
-                -- Modern pill indicator instead of circle (less overdraw, cleaner look)
                 draw.RoundedBox(iconSize / 2, 12, y + 2, iconSize, iconSize - 4, dotColor)
 
                 draw.SimpleText(cfg.name, "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT,
@@ -529,6 +550,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
 
     render.SetScissorRect(0, 0, 0, 0, false)
 
+    -- Progress / auto-save bar
     if settings.autoSaveEnabled and settings.autoSaveInterval then
         local currentTime = CurTime()
         local lastSave = RARELOAD.serverLastSaveTime or 0
@@ -547,7 +569,6 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
             local barY = height - 22
             local timeRemaining = math.max(0, interval - timeElapsed)
 
-            -- Cache countdown text per second to avoid string churn
             local remainInt = math.floor(timeRemaining)
             if remainInt ~= state.lastRemainingSecond then
                 state.cachedCountdownText = "Saving in: " .. remainInt .. "s"
@@ -569,17 +590,66 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings)
         end
     end
 
+    -- Version / reload-state
     if not RARELOAD.reloadImageState then
         draw.SimpleText("v2.0", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT,
             TEXT_ALIGN_BOTTOM)
     else
         drawReloadStateImage(width, height)
     end
+
+    if pushed then
+        cam.PopModelMatrix()
+    end
 end
 
 function ToolScreen.EndDraw()
     render.SetScissorRect(0, 0, 0, 0, false)
     cam.End2D()
+end
+
+local function _LoadAddonSettingsForFrame()
+    local path = "rareload/addon_state.json"
+    if not file.Exists(path, "DATA") then
+        return false, "Settings file does not exist"
+    end
+    local json = file.Read(path, "DATA") or ""
+    if json == "" then
+        return false, "Settings file is empty"
+    end
+    local settings = util.JSONToTable(json)
+    if not settings then
+        return false, "Failed to parse settings JSON"
+    end
+    RARELOAD.settings = settings
+    return true
+end
+
+if CLIENT then
+    concommand.Add("rareload_toolscreen_frame", function(_, _, args)
+        local drawW = tonumber(args[1]) or 512
+        local drawH = tonumber(args[2]) or 512
+
+        local frame = vgui.Create("DFrame")
+        frame:SetTitle("")
+        frame:SetSize(drawW, drawH)
+        frame:Center()
+        frame:MakePopup()
+        frame.Paint = function(self, w, h)
+            -- Keep frame chrome minimal; content is fully drawn by ToolScreen
+            draw.RoundedBox(0, 0, 0, w, h, Color(0, 0, 0, 150))
+        end
+
+        local canvas = vgui.Create("DPanel", frame)
+        canvas:Dock(FILL)
+        canvas:DockMargin(1, 1, 1, 1)
+        canvas.Paint = function(self, w, h)
+            -- Get the panel’s screen-space position to translate ToolScreen draw calls
+            local sx, sy = self:LocalToScreen(0, 0)
+            ToolScreen.Draw(self, w, h, RARELOAD, _LoadAddonSettingsForFrame, sx, sy)
+            ToolScreen.EndDraw()
+        end
+    end)
 end
 
 return ToolScreen

@@ -5,7 +5,6 @@ RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 local AntiStuck = RARELOAD.AntiStuck
 local PS = AntiStuck.ProfileSystem
 
--- Initialize method order from profile or defaults and validate against registry
 function AntiStuck.LoadMethods(forceReload)
     if not forceReload and AntiStuck.methods and #AntiStuck.methods > 0 and AntiStuck._lastMethodLoad and (CurTime() - AntiStuck._lastMethodLoad) < 30 then
         return true
@@ -16,22 +15,19 @@ function AntiStuck.LoadMethods(forceReload)
     if profileMethods and #profileMethods > 0 then
         local validMethods, enabledCount = {}, 0
         local anyCorrections = false
-        -- Build a quick lookup for default display name/description/timeout by func
         local defaultByFunc = {}
         if AntiStuck.DefaultMethods then
             for _, dm in ipairs(AntiStuck.DefaultMethods) do
                 defaultByFunc[dm.func] = dm
             end
         end
-        local step = 10 -- priority mapping: 1st=10, 2nd=20, ...
+        local step = 10
         for idx, m in ipairs(profileMethods) do
             if m.func and m.name then
                 local methodObj = AntiStuck.methodRegistry and AntiStuck.methodRegistry[m.func]
                 if methodObj then
                     if m.enabled == nil then m.enabled = true end
-                    -- Always set priority based on current order (first=10, last=10*n)
                     m.priority = idx * step
-                    -- Normalize display name and description from defaults to avoid mismatches
                     local def = defaultByFunc[m.func]
                     if def then
                         if m.name ~= def.name and def.name then
@@ -60,10 +56,8 @@ function AntiStuck.LoadMethods(forceReload)
                 end
             end
         end
-        -- Do NOT sort here: respect the profile-defined order as shown in the UI
         AntiStuck.methods = validMethods
 
-        -- If we corrected any metadata, persist back to the current profile to fix stored display data
         if anyCorrections and PS and PS.UpdateCurrentProfile then
             PS.UpdateCurrentProfile(nil, validMethods)
         end
@@ -86,7 +80,6 @@ function AntiStuck.LoadMethods(forceReload)
         return true
     end
 
-    -- Fallback to defaults
     local defaultMethods = RareloadDeepCopyMethods(AntiStuck.DefaultMethods)
     for _, method in ipairs(defaultMethods) do
         method.enabled = true

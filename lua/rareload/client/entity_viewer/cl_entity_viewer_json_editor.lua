@@ -247,7 +247,7 @@ end
 function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
     local panel = vgui.Create("DPanel", parent)
     panel:Dock(FILL)
-    panel.Paint = function() end -- Use centralized functions for formatting position and angle data
+    panel.Paint = function() end
     if data.pos then
         data.pos = RARELOAD.DataUtils.FormatPositionForJSON(data.pos, 4)
     end

@@ -1,8 +1,3 @@
--- RARELOAD compatibility shim for SetPos
--- Some addons wrap Entity:SetPos and expect a Vector strictly.
--- This wrapper coerces common formats (tables, strings) into a Vector
--- before delegating to the previously defined SetPos implementation.
-
 if SERVER then
     local function coerceVectorArg(p)
         if not (isvector and isvector(p)) then
@@ -34,7 +29,6 @@ if SERVER then
         local ENT = FindMetaTable and FindMetaTable("Entity")
         if not ENT then return end
 
-        -- If already wrapped by us and still present, do nothing
         if ENT.RareloadSetPosWrapped then return end
 
         local prev = ENT.SetPos
@@ -47,7 +41,6 @@ if SERVER then
 
         ENT.RareloadSetPosWrapped = true
 
-        -- If another addon saved the original as oldSetPos, wrap that too
         if ENT.oldSetPos and not ENT.RareloadOldSetPosWrapped then
             local old = ENT.oldSetPos
             ENT.RareloadOrig_oldSetPos = old
@@ -60,7 +53,6 @@ if SERVER then
         end
     end
 
-    -- Try early and late to win over other wrappers
     timer.Simple(0, installWrapper)
     hook.Add("InitPostEntity", "RARELOAD_Compat_SetPos", installWrapper)
     timer.Simple(1, installWrapper)

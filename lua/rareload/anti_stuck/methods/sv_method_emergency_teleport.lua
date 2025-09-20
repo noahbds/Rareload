@@ -17,7 +17,7 @@ function AntiStuck.TryEmergencyTeleport(pos, ply)
                 local randomPos = Vector(randX, randY, height)
 
                 if util.IsInWorld(randomPos) then
-                    local isStuck, reason = AntiStuck.IsPositionStuck(randomPos, ply, false) -- Not original position
+                    local isStuck, reason = AntiStuck.IsPositionStuck(randomPos, ply, false)
                     if not isStuck then
                         return randomPos, AntiStuck.UNSTUCK_METHODS.EMERGENCY_TELEPORT
                     end
@@ -101,7 +101,6 @@ function AntiStuck.TryEmergencyTeleport(pos, ply)
         end
     end
 
-    -- Grounded fallback near map center to avoid invalid high-Z placements
     local fallbackHeight = (AntiStuck.CONFIG and AntiStuck.CONFIG.FALLBACK_HEIGHT) or 256
     local center = AntiStuck.mapCenter or Vector(0, 0, 0)
     local startPos = center + Vector(0, 0, math.max(256, fallbackHeight))
@@ -117,12 +116,11 @@ function AntiStuck.TryEmergencyTeleport(pos, ply)
     return grounded, AntiStuck.UNSTUCK_METHODS.EMERGENCY_TELEPORT
 end
 
--- Register method with proper configuration
 if AntiStuck.RegisterMethod then
     AntiStuck.RegisterMethod("TryEmergencyTeleport", AntiStuck.TryEmergencyTeleport, {
         description = "Last resort emergency positioning with map boundary detection",
-        priority = 90, -- Low priority - only used when other methods fail
-        timeout = 5.0, -- Longer timeout since this is the emergency method
+        priority = 90,
+        timeout = 5.0,
         retries = 2
     })
 else

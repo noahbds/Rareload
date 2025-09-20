@@ -1,16 +1,20 @@
 ---@diagnostic disable: inject-field, undefined-field
--- Load centralized conversion functions
 if not RARELOAD or not RARELOAD.DataUtils then
     include("rareload/utils/rareload_data_utils.lua")
 end
-
--- Using centralized angle conversion function directly
--- from RARELOAD.DataUtils instead of creating a local wrapper function
 
 function RARELOAD.HandlePlayerSpawn(ply)
     if not RARELOAD.settings.addonEnabled then return end
     if not IsValid(ply) then return end
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
+    do
+        local mapName = game.GetMap()
+        local hasAnyForMap = RARELOAD.playerPositions[mapName]
+            and next(RARELOAD.playerPositions[mapName]) ~= nil
+        if not hasAnyForMap and RARELOAD.LoadPlayerPositions then
+            RARELOAD.LoadPlayerPositions()
+        end
+    end
     if not RARELOAD.AntiStuck then
         include("rareload/anti_stuck/sv_anti_stuck_init.lua")
         if RARELOAD.AntiStuck and RARELOAD.AntiStuck.Initialize then
@@ -75,7 +79,8 @@ function RARELOAD.HandlePlayerSpawn(ply)
         return
     end
     local moveType = tonumber(SavedInfo.moveType) or MOVETYPE_WALK
-    if not Settings.spawnModeEnabled then
+
+    if Settings.spawnModeEnabled then
         if not RARELOAD.AntiStuck then
             include("rareload/anti_stuck/sv_anti_stuck_init.lua")
             if RARELOAD.AntiStuck.Initialize then
@@ -87,11 +92,10 @@ function RARELOAD.HandlePlayerSpawn(ply)
             or (SavedInfo.pos + Vector(0, 0, 2))
         local isStuck, stuckReason = false, nil
 
-        -- Always check if position is stuck, regardless of hull collision
         isStuck, stuckReason = RARELOAD.AntiStuck.IsPositionStuck(
             (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
             and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
-            or SavedInfo.pos, ply, true) -- Mark as original position
+            or SavedInfo.pos, ply, true)
 
         if isStuck then
             if RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
@@ -110,7 +114,6 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 ply:SetPos(pos)
                 RARELOAD.SavePositionToCache(safePos)
 
-                -- Apply saved angle with slight delay
                 timer.Simple(0.05, function()
                     if not IsValid(ply) then return end
                     local parsedAngle = RARELOAD.DataUtils.ToAngle(SavedInfo.ang)
@@ -126,7 +129,9 @@ function RARELOAD.HandlePlayerSpawn(ply)
                     end
                 end)
 
-                ply:SetMoveType(MOVETYPE_WALK)
+                timer.Simple(0, function()
+                    if IsValid(ply) then ply:SetMoveType(moveType) end
+                end)
                 if safePos ~= SavedInfo.pos and DebugEnabled then
                     RARELOAD.Debug.Log("INFO", "Player position adjusted by anti-stuck system", tostring(safePos), ply)
                 end
@@ -144,7 +149,6 @@ function RARELOAD.HandlePlayerSpawn(ply)
             ply:SetPos(pos)
             RARELOAD.SavePositionToCache(SavedInfo.pos)
 
-            -- Apply saved angle with slight delay
             timer.Simple(0.05, function()
                 if not IsValid(ply) then return end
                 local parsedAngle = RARELOAD.DataUtils.ToAngle(SavedInfo.ang)
@@ -160,14 +164,36 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 end
             end)
 
-            ply:SetMoveType(MOVETYPE_WALK)
+            timer.Simple(0, function()
+                if IsValid(ply) then ply:SetMoveType(moveType) end
+            end)
         end
     else
-        timer.Simple(0, function() ply:SetMoveType(moveType) end)
-        SetPlayerPositionAndEyeAngles(ply, SavedInfo)
+        local pos = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
+            and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
+            or SavedInfo.pos
+        ply:SetPos(pos)
+        RARELOAD.SavePositionToCache(pos)
+
+        timer.Simple(0.05, function()
+            if not IsValid(ply) then return end
+            local parsedAngle = RARELOAD.DataUtils.ToAngle(SavedInfo.ang)
+            if parsedAngle then
+                ply:SetEyeAngles(parsedAngle)
+                if DebugEnabled then
+                    print("[RARELOAD DEBUG] Applied saved angle (anti-stuck disabled): " .. tostring(parsedAngle))
+                end
+            else
+                if DebugEnabled then
+                    print("[RARELOAD DEBUG] Could not parse saved angle: " .. tostring(SavedInfo.ang))
+                end
+            end
+        end)
+
+        timer.Simple(0, function() if IsValid(ply) then ply:SetMoveType(moveType) end end)
         if DebugEnabled then
             print("[RARELOAD DEBUG] Move type set to: " .. tostring(moveType))
-            print("[RARELOAD DEBUG] Using SetPlayerPositionAndEyeAngles for spawn mode")
+            print("[RARELOAD DEBUG] Anti-stuck disabled; used saved position and angles directly")
         end
     end
     if RARELOAD.settings.retainGlobalInventory then
@@ -235,7 +261,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
     if Settings.retainMapEntities and SavedInfo.entities then
         local playerPos = SavedInfo.pos
         local spawnedCloseEntities = RARELOAD.RestoreEntities(playerPos)
-        if spawnedCloseEntities and not Settings.spawnModeEnabled then
+        if spawnedCloseEntities and Settings.spawnModeEnabled then
             timer.Simple(0.05, function()
                 if IsValid(ply) then
                     SetPlayerPositionAndEyeAngles(ply, SavedInfo)

@@ -1,18 +1,15 @@
 if not SERVER then return end
 
--- Deep copy utilities
 include("sv_deepcopy_utils.lua")
 
 RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 local AntiStuck = RARELOAD.AntiStuck
 
--- Testing flags (shared state)
 AntiStuck.testingMode = AntiStuck.testingMode or false
 AntiStuck.testingPlayers = AntiStuck.testingPlayers or {}
 AntiStuck.originalStuckPositions = AntiStuck.originalStuckPositions or {}
 
--- Default settings and methods
 AntiStuck.DefaultSettings = AntiStuck.DefaultSettings or {
     MAX_UNSTUCK_ATTEMPTS = 35,
     MAX_SEARCH_TIME = 1.5,
@@ -58,8 +55,6 @@ AntiStuck.DefaultSettings = AntiStuck.DefaultSettings or {
     DISTANCE_PRIORITY = true,
     SUCCESS_RATE_LEARNING = true,
     PERFORMANCE_MONITORING = true,
-    -- If true, always use the profile-defined order of methods (drag & drop order in UI),
-    -- ignoring dynamic reordering by success rates. Keeps priorities predictable.
     RESPECT_PROFILE_ORDER = true,
 
     METHOD_TIMEOUT_MULTIPLIERS = {
@@ -87,7 +82,6 @@ AntiStuck.DefaultMethods = AntiStuck.DefaultMethods or {
     { name = "Emergency Teleport", func = "TryEmergencyTeleport", enabled = true, priority = 45, timeout = 0.2, description = "Failsafe: Guaranteed positioning" }
 }
 
--- Initialize CONFIG and utilities
 AntiStuck.CONFIG = AntiStuck.CONFIG or RareloadDeepCopySettings(AntiStuck.DefaultSettings)
 
 function AntiStuck.GetConfig(key)
@@ -110,7 +104,6 @@ function AntiStuck.LogDebug(message, data, player, level)
     end
 end
 
--- Lightweight helper for methods to push steps into the active anti-stuck session
 function AntiStuck.LogStep(status, title, details)
     if not (RARELOAD and RARELOAD.Debug) then return end
     local sess = AntiStuck._currentSession
@@ -118,7 +111,6 @@ function AntiStuck.LogStep(status, title, details)
     RARELOAD.Debug.AntiStuckStep(sess, status, title, details)
 end
 
--- Performance stats and optimizer
 AntiStuck.performanceStats = AntiStuck.performanceStats or {
     totalCalls = 0,
     successfulCalls = 0,
@@ -136,7 +128,6 @@ function AntiStuck.OptimizePerformance()
     if currentTime - (stats.lastOptimization or 0) < 60 then return end
     stats.lastOptimization = currentTime
 
-    -- Adjust method priorities based on success rates
     for methodName, successRate in pairs(stats.methodSuccessRates) do
         for _, method in ipairs(AntiStuck.methods or {}) do
             if method.func == methodName then

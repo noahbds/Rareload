@@ -389,6 +389,18 @@ if SERVER then
         print("[RARELOAD DEBUG]" .. message .. " is now " .. status)
 
         SaveAddonState()
+
+        -- If the addon was just enabled, immediately load persisted player positions from disk
+        -- so users don't have to change map to get their last saved respawn points back.
+        if settingKey == 'addonEnabled' and RARELOAD.settings[settingKey] then
+            if EnsureFolderExists then EnsureFolderExists() end
+            if RARELOAD.LoadPlayerPositions then
+                RARELOAD.LoadPlayerPositions()
+                if RARELOAD.settings.debugEnabled then
+                    print("[RARELOAD DEBUG] Addon enabled at runtime: reloaded saved player positions from disk")
+                end
+            end
+        end
     end
 
     -- I don't remember what this function does but it's probably important

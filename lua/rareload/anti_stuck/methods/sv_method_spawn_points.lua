@@ -24,13 +24,13 @@ function AntiStuck.TrySpawnPoints(pos, ply)
     end)
     for _, pointData in ipairs(sortedPoints) do
         local testPos = pointData.pos
-        local isStuck, reason = AntiStuck.IsPositionStuck(testPos, ply, false) -- Not original position
+        local isStuck, reason = AntiStuck.IsPositionStuck(testPos, ply, false)
         if not isStuck then
             return testPos, AntiStuck.UNSTUCK_METHODS.SPAWN_POINTS
         end
         for offset = zStep, maxZ, zStep do
             local elevatedPos = testPos + Vector(0, 0, offset)
-            local isStuck, reason = AntiStuck.IsPositionStuck(elevatedPos, ply, false) -- Not original position
+            local isStuck, reason = AntiStuck.IsPositionStuck(elevatedPos, ply, false)
             if not isStuck then
                 return elevatedPos, AntiStuck.UNSTUCK_METHODS.SPAWN_POINTS
             end
@@ -39,11 +39,10 @@ function AntiStuck.TrySpawnPoints(pos, ply)
     return nil, AntiStuck.UNSTUCK_METHODS.NONE
 end
 
--- Register method with proper configuration
 if AntiStuck.RegisterMethod then
     AntiStuck.RegisterMethod("TrySpawnPoints", AntiStuck.TrySpawnPoints, {
         description = "Fallback to map-defined spawn points with validity checking",
-        priority = 70, -- Lower priority - fallback method
+        priority = 70,
         timeout = 2.0,
         retries = 1
     })

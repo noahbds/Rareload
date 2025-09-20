@@ -1,7 +1,6 @@
 include("rareload/client/entity_viewer/cl_entity_viewer_theme.lua")
 include("rareload/utils/rareload_fonts.lua")
 include("rareload/client/entity_viewer/cl_entity_viewer_utils.lua")
--- Ensure dependent panels are loaded in correct order
 include("rareload/client/entity_viewer/cl_entity_viewer_modify_panel.lua")
 include("rareload/client/entity_viewer/cl_entity_viewer_info_panel.lua")
 include("rareload/client/entity_viewer/cl_entity_viewer_create_category.lua")
@@ -15,8 +14,8 @@ local VIEWER_SETTINGS = {
     autoRefresh = false,
     refreshInterval = 5,
     showAdvancedInfo = true,
-    viewDensity = "comfortable", -- comfortable | compact
-    sortMode = "Class",          -- Class | Distance | Health
+    viewDensity = "comfortable",
+    sortMode = "Class",
     lastSize = { w = 0, h = 0 },
     lastTab = 1
 }
@@ -39,7 +38,6 @@ end
 LoadViewerSettings()
 
 function OpenEntityViewer(ply)
-    -- Ensure our custom fonts are registered exactly once on the client
     if RARELOAD and RARELOAD.RegisterFonts and not RARELOAD._fontsInit then
         RARELOAD.RegisterFonts()
         RARELOAD._fontsInit = true
@@ -98,7 +96,6 @@ function OpenEntityViewer(ply)
 
     local oldClose = frame.Close
     frame.Close = function(self)
-        -- persist size
         local cw, ch = self:GetSize()
         VIEWER_SETTINGS.lastSize = { w = cw, h = ch }
         SaveViewerSettings()
@@ -115,7 +112,6 @@ function OpenEntityViewer(ply)
 
     frame.OnRemove = function()
         entityViewerFrame = nil
-        -- Safety: remove global shortcut hook when the viewer is destroyed
         hook.Remove("Think", "RareloadEntityViewerShortcut")
     end
 
@@ -147,7 +143,6 @@ function OpenEntityViewer(ply)
     actionsPanel:Dock(FILL)
     actionsPanel.Paint = function() end
 
-    -- Sort selector
     ---@type DComboBox
     local sortCombo = vgui.Create("DComboBox", actionsPanel)
     sortCombo:Dock(RIGHT)
@@ -162,7 +157,6 @@ function OpenEntityViewer(ply)
         surface.SetDrawColor(THEME.border)
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
-    -- Watch for sort selection changes without overriding class methods
     do
         local lastVal = sortCombo:GetValue()
         timer.Create("RareloadSortWatch", 0.15, 0, function()
@@ -183,7 +177,6 @@ function OpenEntityViewer(ply)
         end)
     end
 
-    -- Compact view toggle
     local densityBtn = CreateActionButton(actionsPanel, "Toggle Density", "icon16/application_view_tile.png",
         THEME.textSecondary,
         "Toggle compact view")
@@ -285,7 +278,6 @@ function OpenEntityViewer(ply)
     tabs.Paint = function(self, tw, th)
         draw.RoundedBox(8, 0, 0, tw, th, THEME.surface)
     end
-    -- store on frame for later access in Close
     frame._tabs = tabs
 
     local function CreateModernTab(title, icon, isNPCTab)
@@ -423,7 +415,6 @@ function OpenEntityViewer(ply)
     local entityScroll, entitySheet = CreateModernTab("Entities", "icon16/bricks.png", false)
     local npcScroll, npcSheet = CreateModernTab("NPCs", "icon16/user.png", true)
 
-    -- restore previously selected tab
     timer.Simple(0, function()
         if IsValid(tabs) and tabs.SetActiveTab and entitySheet and npcSheet then
             local idx = math.Clamp(tonumber(VIEWER_SETTINGS.lastTab or 1) or 1, 1, 2)
@@ -514,12 +505,6 @@ function OpenEntityViewer(ply)
             local playerCard = CreateStatsCard(statsContainer, "PLAYERS", totalPlayers, "with data")
             playerCard:Dock(LEFT)
             playerCard:DockMargin(0, 0, 12, 0)
-            if countedEntities > 0 then
-                local avgHP = math.floor(totalHealth / countedEntities)
-                local hpCard = CreateStatsCard(statsContainer, "AVG HP", avgHP, tostring(countedEntities) .. " with HP")
-                hpCard:Dock(LEFT)
-                hpCard:DockMargin(0, 0, 12, 0)
-            end
             if entitySheet and entitySheet.Tab and entitySheet.Tab.Text then
                 entitySheet.Tab.Text:SetText("Entities (" .. entityCount .. ")")
             end
@@ -552,7 +537,6 @@ function OpenEntityViewer(ply)
         end
     end
 
-    -- Debounced search without injecting fields into the DTextEntry object
     do
         local lastSearchValue = searchBar:GetValue()
         timer.Create("RareloadSearchInput", 0.1, 0, function()
@@ -586,7 +570,6 @@ function OpenEntityViewer(ply)
 
     UpdateAutoRefresh()
 
-    -- Debounce persisting size to disk while dragging
     local function DebouncedSaveSize(w, h)
         timer.Remove("RareloadViewerSizeSave")
         timer.Create("RareloadViewerSizeSave", 0.35, 1, function()
@@ -601,7 +584,6 @@ function OpenEntityViewer(ply)
             self:SetSize(math.min(w, maxW), math.min(h, maxH))
             self:Center()
         end
-        -- Size search bar proportionally to container width
         local proportionalWidth = math.floor(searchContainer:GetWide() * 0.45)
         searchPanel:SetWide(math.Clamp(proportionalWidth, 250, 420))
         headerContainer:InvalidateLayout(true)
@@ -615,9 +597,7 @@ function OpenEntityViewer(ply)
         timer.Remove("RareloadSearch")
         timer.Remove("RareloadViewerAutoRefresh")
         timer.Remove("RareloadViewerSizeSave")
-        -- Also ensure our global shortcut hook is gone (idempotent)
         hook.Remove("Think", "RareloadEntityViewerShortcut")
-        -- persist last selected tab
         if IsValid(tabs) and tabs.GetActiveTab and entitySheet and npcSheet then
             local active = tabs:GetActiveTab()
             if active == (npcSheet and npcSheet.Tab) then
@@ -629,7 +609,7 @@ function OpenEntityViewer(ply)
         end
     end
 
-    if not ConVarExists("rareload_teleport_to") then
+    if not RARELOAD._teleportCmdAdded then
         concommand.Add("rareload_teleport_to", function(ply, cmd, args)
             if not IsValid(ply) or not ply:IsPlayer() then return end
             local x, y, z = tonumber(args[1]), tonumber(args[2]), tonumber(args[3])
@@ -639,9 +619,9 @@ function OpenEntityViewer(ply)
             net.WriteVector(pos)
             net.SendToServer()
         end)
+        RARELOAD._teleportCmdAdded = true
     end
 
-    -- Keyboard shortcuts: F7 to open, Ctrl+F focus search, Ctrl+R refresh
     local lastKeyComboTime = 0
     hook.Add("Think", "RareloadEntityViewerShortcut", function()
         if input.IsKeyDown(KEY_F7) and not gui.IsGameUIVisible() then
@@ -766,7 +746,6 @@ function OpenSettingsPanel()
     end
     SaveViewerSettings()
 
-    -- If interval changes while auto-refresh is on, restart the timer with new interval
     if intervalSlider and intervalSlider.OnValueChanged then
         local originalHandler = intervalSlider.OnValueChanged
         intervalSlider.OnValueChanged = function(self, val)

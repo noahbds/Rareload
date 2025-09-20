@@ -9,10 +9,8 @@ end)
 
 hook.Add("CreateMove", "RARELOAD_SavedPanels_CamLock", function(cmd)
     if SED.InteractionState.active or CurTime() - SED.LeaveTime < 0.5 then
-        -- In interaction or shortly after leaving, block +use to avoid picking entities
         cmd:RemoveKey(IN_USE)
     elseif SED.LookingAtPanelUntil and CurTime() <= SED.LookingAtPanelUntil then
-        -- Only while aiming at the 3D2D frame, prevent pickup/use on the underlying entity
         cmd:RemoveKey(IN_USE)
     end
     if not SED.InteractionState.active then return end
@@ -49,7 +47,6 @@ hook.Add("PlayerBindPress", "RARELOAD_InteractScroll", function(ply, bind, press
 end)
 
 hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", function()
-    -- Only process panels when debug mode is enabled
     if not (RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled) then return end
 
     local currentTime = CurTime()

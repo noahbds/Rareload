@@ -1,165 +1,176 @@
-# RareLoad - Advanced Position & State Management for Garry's Mod
+# Rareload — Position, Inventory, and World State for Garry's Mod
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/noahbds/rareload)
-[![GMod](https://img.shields.io/badge/GMod-Compatible-green.svg)](https://gmod.facepunch.com/)
+Version: 2.0.0
 
-RareLoad is a comprehensive Garry's Mod addon that provides advanced position saving, inventory management, and world state persistence. Perfect for roleplay servers, creative building, and any scenario where you need reliable state management.
+Rareload lets players save and restore their position/angles and persist inventory, ammo, map entities, and NPCs. It includes an advanced anti-stuck system with a full profile/settings UI, an admin permission panel, an entity viewer, and in-game debug/visualization tools.
 
-## 🌟 Key Features
+## Features
 
-### 🎯 **Position & Movement Management**
+- Position & angles
+  - Save targeted or current position and your eye angles
+  - History cache with “restore previous position” (tool reload)
+  - Auto-save timer with on-screen countdown/progress and “Auto Saved!” feedback
+- Inventory & player state
+  - Retain inventory, global inventory (shared across maps), ammo, health, armor
+- World state
+  - Persist map entities and NPCs (with per-map storage)
+- Anti-stuck system
+  - Multi-method resolver (cached positions, displacement, nav graph, map entities, space scan, world brushes, grid, spawn points, emergency teleport)
+  - Configurable settings & priorities
+  - Profile system (create, save, load, apply profiles on client)
+  - Debug panel (server-authorized)
+- Admin & tools
+  - Admin permissions panel (role-like granular flags)
+  - Entity Viewer (inspect/modify saved entities/NPCs)
+  - Phantom visualization of saved positions (debug)
+- Networking & UI
+  - Toolscreen with status, feature list, countdown, and reload-state overlay
+  - Settings broadcast/sync to clients
 
-- **Smart Position Saving**: Save your exact location, camera angles, and movement type with a single click
-- **Auto-Save System**: Configurable automatic position saving at custom intervals
-- **Anti-Stuck Technology**: Advanced spawn protection prevents getting stuck in walls or falling through the world
-- **Water & Ground Detection**: Automatically finds safe spawn points if your saved location becomes unsafe
-- **Movement Type Persistence**: Maintain noclip, fly mode, or walking state after respawn
+## Toolgun: Rareload Tool
 
-### 🎒 **Advanced Inventory System**
+- Left click: Save a respawn position at the targeted location
+- Right click: Save a respawn position at your current location
+- Reload: Restore the previous saved position (uses history)
 
-- **Complete Inventory Retention**: Keep all weapons and items after death or map reload
-- **Ammunition Persistence**: Retain ammo counts and clip states for all weapons
-- **Global Inventory**: Share inventory across different maps (optional)
-- **Active Weapon Memory**: Automatically selects your last held weapon on respawn
-- **Health & Armor Saving**: Maintain your health and armor values
+Tool menu (Utilities > Rareload > Rareload Configuration):
 
-### 🌍 **World State Management**
+- Toggles
+  - Enable Rareload (addonEnabled)
+  - Anti-stuck system (spawnModeEnabled)
+  - Auto save (autoSaveEnabled)
+  - Keep Inventory (retainInventory)
+  - Keep Global Inventory (retainGlobalInventory)
+  - Keep Health & Armor (retainHealthArmor)
+  - Keep Ammo (retainAmmo)
+  - Keep Map Entities (retainMapEntities)
+  - Keep Map NPCs (retainMapNPCs)
+  - No custom respawn at death (nocustomrespawnatdeath)
+  - Debug Mode (debugEnabled)
+- Sliders
+  - Auto Save Interval (autoSaveInterval)
+  - Auto Save Angle Tolerance (angleTolerance)
+  - Position History Size (maxHistorySize)
+- Actions
+  - Save Position now
+  - Open Anti-Stuck Debug Panel
+  - Open Entity Viewer
 
-- **Entity Persistence**: Save and restore props, vehicles, and custom entities
-- **NPC Management**: Complete NPC saving with AI states, relationships, and squads
-- **Vehicle Support**: Save vehicles with their properties and states
-- **Relationship Preservation**: Maintain NPC-to-NPC and NPC-to-player relationships
-- **Squad System**: Automatically restore NPC squads and formations
+Notes:
 
-### 🛠 **Professional Admin Tools**
+- Vehicle/vehicle state toggles exist in code but are currently disabled.
 
-- **Entity Viewer**: Browse, search, and manage all saved entities and NPCs
-- **Advanced Admin Panel**: Comprehensive permission management interface
-- **Real-time Debugging**: Detailed logging and phantom visualization system
-- **Bulk Operations**: Efficient mass save/load operations
-- **Data Export/Import**: JSON-based data management
+## Anti-Stuck System
 
-### 🔒 **Enterprise-Grade Permission System**
+- Multiple resolution methods with tunable priorities
+- Client-side profile system (create, save, apply, list)
+- Settings buckets (general/search/navigation/grid/spiral/vertical/offsets/methods)
+- Debug access (admins) via command and tool button
 
-- **Role-Based Access**: Predefined roles (Guest, Player, VIP, Trusted, Moderator, Admin)
-- **Granular Permissions**: 25+ individual permissions for fine-tuned control
-- **Permission Categories**: Organized into logical groups (Basic, Tools, Save/Load, Inventory, World, Automation, Admin)
-- **Individual Overrides**: Custom permissions per player beyond their role
-- **Dependency Management**: Automatic permission dependency resolution
+Open debug panel (admin):
 
-## 🎮 Getting Started
+- rareload_open_antistuck_debug
 
-### Installation
+Profile data:
 
-1. Subscribe to the addon on the Steam Workshop
-2. Restart your Garry's Mod server
-3. Configure permissions using `/rareload_admin` (admins only)
+- Stored under data/rareload/anti_stuck_profiles/\*.json
+- Current profile pointer in data/rareload/anti_stuck_current.json
 
-### Basic Usage
+## Entity Viewer
 
-- **Save Position**: Use the RareLoad toolgun or `/save_position`
-- **Auto-Save**: Enable in tool menu or with `/rareload_auto_save`
-- **Admin Panel**: Access with `/rareload_admin` (requires admin permissions)
-- **Entity Viewer**: Press F7 or use `/entity_viewer_open` (admin only)
+- Inspect saved entities and NPCs per-map
+- Edit JSON in a validated, formatted editor
+- Open from tool menu or:
+  - entity_viewer_open
 
-## 🔧 Configuration
+## Admin Permissions
 
-### Tool Menu Settings
+Defined permissions:
 
-Access all settings through the RareLoad tool in your toolgun menu:
+- USE_TOOL — Can use the Rareload toolgun
+- SAVE_POSITION — Can save position
+- LOAD_POSITION — Can load saved position
+- KEEP_INVENTORY — Can retain inventory
+- MANAGE_ENTITIES — Can manage saved entities/NPCs
+- ADMIN_PANEL — Can access admin panel
+- RARELOAD_TOGGLE — Can toggle addon settings
+- ENTITY_VIEWER — Can open the entity viewer
+- RARELOAD_SPAWN — Allowed to spawn with Rareload features
 
-- **Position Saving**: Enable/disable position and angle saving
-- **Auto-Save**: Configure automatic saving with custom intervals
-- **Inventory Options**: Control weapon, ammo, and health retention
-- **World Persistence**: Manage entity, NPC, and vehicle saving
-- **Debug Mode**: Enable detailed logging and visual feedback
+Admin panel files are included client-side; access requires server permission. Permission plumbing is initialized on server start.
 
-### Permission Roles
+## Commands
 
-| Role          | Description       | Key Permissions                             |
-| ------------- | ----------------- | ------------------------------------------- |
-| **Guest**     | Minimal access    | Basic spawning only                         |
-| **Player**    | Standard features | Position saving, basic inventory            |
-| **VIP**       | Premium features  | Auto-save, full inventory, global inventory |
-| **Trusted**   | World management  | Entity saving, NPC management               |
-| **Moderator** | Advanced tools    | Vehicle management, bulk operations         |
-| **Admin**     | Full control      | All permissions, admin panel access         |
+User actions:
 
-## 🎯 Advanced Features
+- save_position — Save your current position (also used by right click)
+- entity_viewer_open — Open Entity Viewer (if permitted)
 
-### Smart Anti-Stuck System
+Toggles (server-side handlers):
 
-RareLoad includes sophisticated spawn protection:
+- rareload_rareload — Enable/disable addon
+- rareload_spawn_mode — Enable/disable anti-stuck system
+- rareload_auto_save — Enable/disable auto position saving
+- rareload_retain_inventory — Keep inventory
+- rareload_retain_global_inventory — Keep global inventory
+- rareload_retain_health_armor — Keep health & armor
+- rareload_retain_ammo — Keep ammo
+- rareload_retain_map_entities — Keep map entities
+- rareload_retain_map_npcs — Keep map NPCs
+- rareload_nocustomrespawnatdeath — Disable custom respawn on death
+- rareload_debug — Toggle debug mode
+- rareload_debug_cmd — Auxiliary debug toggle
 
-- **Wall Detection**: Prevents spawning inside solid objects
-- **Ground Finding**: Automatically locates walkable surfaces
-- **Water Avoidance**: Moves spawn points away from water
-- **Fallback Safety**: Uses map spawn points if all else fails
+Settings:
 
-### Entity Management
+- set_auto_save_interval <seconds>
+- set_angle_tolerance <degrees>
+- set_history_size <count>
+- set_max_distance <units> (used by some systems)
 
-- **Proximity Saving**: Save entities within a configurable radius
-- **Ownership Tracking**: Respects CPPI ownership for multiplayer servers
-- **Property Preservation**: Maintains colors, materials, bodygroups, and physics states
-- **Performance Optimization**: Batch processing for large entity counts
+Anti-stuck:
 
-### Debug & Development Tools
+- rareload_open_antistuck_debug — Open debug panel (admin)
 
-- **Phantom System**: Visual representations of saved positions
-- **Detailed Logging**: Comprehensive debug information
-- **Performance Metrics**: Timing and efficiency statistics
-- **Data Validation**: Automatic error detection and recovery
+Settings broadcast (server only):
 
-## 📋 Console Commands
+- rareload_broadcast_settings
 
-### User Commands
+Note: Command availability depends on permissions and server installation.
 
-```
-save_position              - Save current position and state
-rareload_spawn_mode        - Toggle movement type saving
-rareload_auto_save         - Toggle automatic saving
-rareload_retain_inventory  - Toggle inventory retention
-```
+## Data & Storage
 
-### Admin Commands
+- Addon settings: data/rareload/addon_state.json
+- Per-map player positions: data/rareload/player*positions*<map>.json
+- Global inventory: data/rareload/global_inventory.json
+- Anti-stuck profiles: data/rareload/anti_stuck_profiles/\*.json
+- Current anti-stuck profile: data/rareload/anti_stuck_current.json
 
-```
-rareload_admin            - Open admin permission panel
-entity_viewer_open        - Open entity/NPC browser
-rareload_debug            - Toggle debug mode
-set_auto_save_interval    - Set auto-save timing
-```
+## Visual Debug
 
-## 🔍 Technical Specifications
+- Toolscreen: shows addon status, features, and auto-save progress bar
+- Reload overlay: shows whether previous position data exists
+- Phantoms: ghost models rendered at saved positions (when debug enabled)
 
-### Performance
+## Installation
 
-- **Optimized Loading**: Batch processing with configurable delays
-- **Memory Efficient**: Smart caching and cleanup systems
-- **Network Optimized**: Compressed data transmission
-- **Scalable**: Handles hundreds of entities and players
+- Install on server and/or client
+- Restart GMod/server
+- Access Toolgun > Utilities > Rareload > Rareload Configuration
+- Ensure permissions are configured for your admins/players
 
-### Compatibility
+## Troubleshooting
 
-- **Multiplayer Ready**: Full server/client architecture
-- **Addon Friendly**: Works with most other addons
-- **Map Independent**: Separate data storage per map
-- **Version Safe**: Automatic migration for updates
+- Not spawning correctly: enable debug and use anti-stuck debug panel
+- No previous position: the reload overlay will indicate “No Position Data”
+- Entities/NPCs missing: verify map entity/NPC toggles are enabled and permissions allow management
+- Global inventory not persisting: ensure retainGlobalInventory is enabled
+- Permissions: server must initialize permission system; only permitted users can toggle settings or access tools
 
-### Data Storage
+## Credits
 
-- **JSON Format**: Human-readable configuration files
-- **Per-Map Storage**: Separate save files for each map
-- **Backup System**: Automatic data validation and recovery
-- **Export/Import**: Easy data management and transfer
+Created by Noahbds
 
-## 🐛 Troubleshooting
-
-### Common Issues
-
-- **Spawning in walls**: Enable debug mode to see spawn calculations
-- **Missing inventory**: Check player permissions for inventory retention
-- **Entities not saving**: Verify entity ownership and permissions
 - **Performance issues**: Adjust batch sizes and intervals in settings
 
 ### Debug Information

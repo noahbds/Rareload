@@ -4,7 +4,6 @@ RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 local AntiStuck = RARELOAD.AntiStuck
 
--- Server-side profile system interface
 AntiStuck.ProfileSystem = AntiStuck.ProfileSystem or {
     profilesDir = "rareload/anti_stuck_profiles/",
     currentProfile = "default",

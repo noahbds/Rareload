@@ -6,7 +6,6 @@ if CLIENT then
     end
 
     local includes = {
-        "rareload/client/antistuck/cl_anti_stuck_panel.lua",
         "rareload/client/antistuck/cl_anti_stuck_theme.lua",
         "rareload/client/antistuck/cl_anti_stuck_data.lua",
         "rareload/client/antistuck/cl_anti_stuck_components.lua",

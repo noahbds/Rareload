@@ -172,7 +172,6 @@ function SED.HandleInteractionInput()
             end
         end
     else
-        -- Only allow entering interaction when the player is aiming at the 3D2D panel (candidate set by panel hit-test)
         if SED.CandidateEnt and SED.KeyPressed(SED.INTERACT_KEY) and SED.InteractModifierDown() and not SED.PlayerIsHoldingSomething() then
             SED.EnterInteraction(SED.CandidateEnt, SED.CandidateIsNPC, SED.CandidateID)
         end

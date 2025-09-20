@@ -1,5 +1,3 @@
--- Depth-sorted 3D2D panel renderer
-
 RARELOAD.DepthRenderer = RARELOAD.DepthRenderer or {}
 RARELOAD.DepthRenderer.renderQueue = {}
 RARELOAD.DepthRenderer.MAX_DISTANCE = 15000
@@ -18,14 +16,12 @@ local _LocalPlayer = LocalPlayer
 
 local maxDistSqr = RARELOAD.DepthRenderer.MAX_DISTANCE * RARELOAD.DepthRenderer.MAX_DISTANCE
 
--- Optional helper to change max distance at runtime without reload
 function RARELOAD.DepthRenderer.SetMaxDistance(dist)
     dist = tonumber(dist) or RARELOAD.DepthRenderer.MAX_DISTANCE
     RARELOAD.DepthRenderer.MAX_DISTANCE = dist
     maxDistSqr = dist * dist
 end
 
--- Adds a render item to the queue for depth-sorted rendering
 function RARELOAD.DepthRenderer.AddRenderItem(pos, renderFunction, itemType, priorityOrOpts)
     if not pos or not renderFunction then return end
 
@@ -63,7 +59,6 @@ function RARELOAD.DepthRenderer.AddRenderItem(pos, renderFunction, itemType, pri
     })
 end
 
--- Processes and renders all queued items in depth-sorted order
 function RARELOAD.DepthRenderer.ProcessRenderQueue()
     local queue = RARELOAD.DepthRenderer.renderQueue
     local n = #queue

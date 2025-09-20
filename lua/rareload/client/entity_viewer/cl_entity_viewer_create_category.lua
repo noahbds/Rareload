@@ -1,13 +1,9 @@
 local highlightAllActive = false
 
--- Ensure data utils are available for parsing positions
 if not RARELOAD or not RARELOAD.DataUtils then
     include("rareload/utils/rareload_data_utils.lua")
 end
 
--- sortMode: "Class" | "Distance" | "Health"
--- playerPos: Vector or nil
--- options: { compact = boolean }
 function CreateCategory(parent, title, dataList, isNPC, filter, sortMode, playerPos, options)
     if not dataList or #dataList == 0 then return nil end
 
@@ -27,7 +23,6 @@ function CreateCategory(parent, title, dataList, isNPC, filter, sortMode, player
 
     if #dataList == 0 then return nil end
 
-    -- Sorting
     sortMode = sortMode or "Class"
     if sortMode == "Distance" and IsValid(LocalPlayer()) and playerPos then
         local function getDist(item)
@@ -51,7 +46,7 @@ function CreateCategory(parent, title, dataList, isNPC, filter, sortMode, player
             if ha == hb then
                 return (a.class or "") < (b.class or "")
             end
-            return ha > hb -- higher first
+            return ha > hb
         end)
     else
         table.sort(dataList, function(a, b)
@@ -72,7 +67,6 @@ function CreateCategory(parent, title, dataList, isNPC, filter, sortMode, player
     end
 
     local compact = options and options.compact
-    -- Match CreateInfoPanel heights to avoid clipped content or excess space
     local baseItemHeight = compact and 220 or 280
     local minItemHeight = compact and 180 or 240
     local maxItemHeight = compact and 260 or 320
@@ -96,8 +90,6 @@ function CreateCategory(parent, title, dataList, isNPC, filter, sortMode, player
     local batchActionsHeight = 40
     local marginHeight = 8
     local maxVisibleItems = math.min(itemCount, 8)
-    -- Compute height based on card header + actions + estimated item heights,
-    -- but cap to avoid super-tall categories causing nested scroll issue
     local contentHeight = maxVisibleItems * (itemHeight + marginHeight) + batchActionsHeight
 
     mainContainer:SetTall(headerHeight)
@@ -308,7 +300,6 @@ function CreateCategory(parent, title, dataList, isNPC, filter, sortMode, player
         end
     end)
 
-    -- Draw based on current toggle state
     highlightBtn.Paint = function(self, w, h)
         local baseColor = highlightAllActive and Color(255, 140, 0) or Color(255, 220, 80)
         local btnColor = self:IsHovered() and Color(baseColor.r * 1.2, baseColor.g * 1.2, baseColor.b * 1.2) or baseColor

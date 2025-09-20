@@ -1,6 +1,5 @@
 local AntiStuck = RARELOAD.AntiStuck
 
--- Ensure map helper is loaded (correct relative path – no leading 'lua/')
 include("rareload/anti_stuck/sv_anti_stuck_map.lua")
 
 function AntiStuck.TryMapEntities(pos, ply)

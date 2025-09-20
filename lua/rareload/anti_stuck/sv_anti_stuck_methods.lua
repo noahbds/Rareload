@@ -2,12 +2,10 @@ local RARELOAD = RARELOAD or {}
 local AntiStuck = RARELOAD.AntiStuck or {}
 RARELOAD.AntiStuck = AntiStuck
 
--- Method system with better structure and validation
-AntiStuck.methodRegistry = AntiStuck.methodRegistry or {} -- Stores method objects
-AntiStuck.methods = AntiStuck.methods or {}               -- Stores execution order and config
-AntiStuck.methodStats = AntiStuck.methodStats or {}       -- Performance tracking
+AntiStuck.methodRegistry = AntiStuck.methodRegistry or {}
+AntiStuck.methods = AntiStuck.methods or {}
+AntiStuck.methodStats = AntiStuck.methodStats or {}
 
--- Method result constants
 AntiStuck.UNSTUCK_METHODS = {
     NONE = 0,
     SUCCESS = 1,
@@ -15,17 +13,14 @@ AntiStuck.UNSTUCK_METHODS = {
     FAILED = 3
 }
 
--- Method interface validation
 local function ValidateMethodInterface(func)
     if type(func) ~= "function" then return false, "Not a function" end
 
-    -- Test call to check interface (with dummy data)
     local testPos = Vector(0, 0, 0)
     local ok, result1, result2 = pcall(func, testPos, nil)
 
     if not ok then return false, "Function call failed: " .. tostring(result1) end
 
-    -- Methods can return nil when they fail to find a position, that's valid
     if result1 ~= nil and type(result1) ~= "Vector" then
         return false, "First return must be Vector or nil"
     end
@@ -37,7 +32,6 @@ local function ValidateMethodInterface(func)
     return true, "Valid"
 end
 
--- Improved method registration with validation
 function AntiStuck.RegisterMethod(name, func, config)
     if not name or type(name) ~= "string" then
         local msg = "Invalid method name: " .. tostring(name)
@@ -49,7 +43,6 @@ function AntiStuck.RegisterMethod(name, func, config)
         return false
     end
 
-    -- Validate method interface
     local isValid, errorMsg = ValidateMethodInterface(func)
     if not isValid then
         local msg = "Invalid method interface for '" .. name .. "': " .. errorMsg
@@ -61,7 +54,6 @@ function AntiStuck.RegisterMethod(name, func, config)
         return false
     end
 
-    -- Create method object with metadata
     AntiStuck.methodRegistry[name] = {
         func = func,
         name = name,
@@ -73,7 +65,6 @@ function AntiStuck.RegisterMethod(name, func, config)
         registeredAt = os.time()
     }
 
-    -- Initialize stats
     AntiStuck.methodStats[name] = {
         calls = 0,
         successes = 0,
@@ -91,7 +82,6 @@ function AntiStuck.RegisterMethod(name, func, config)
     return true
 end
 
--- Improved method getter with error handling
 function AntiStuck.GetMethod(name)
     if not name then return nil end
     local methodObj = AntiStuck.methodRegistry[name]
@@ -101,11 +91,9 @@ function AntiStuck.GetMethod(name)
     return nil
 end
 
--- Execute a method with performance tracking and error handling
 function AntiStuck.ExecuteMethod(methodName, originalPos, ply)
     local method = AntiStuck.methodRegistry[methodName]
     if not method then
-        -- Keep a minimal, clear log for missing method, but avoid noisy prints
         if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
             RARELOAD.Debug.AntiStuck("Method not found", { methodName = tostring(methodName) })
         end
@@ -120,7 +108,6 @@ function AntiStuck.ExecuteMethod(methodName, originalPos, ply)
     local success, pos, methodResult = pcall(method.func, originalPos, ply)
     local duration = SysTime() - startTime
 
-    -- Update performance stats
     stats.totalTime = stats.totalTime + duration
     stats.avgTime = stats.totalTime / stats.calls
 
@@ -129,14 +116,11 @@ function AntiStuck.ExecuteMethod(methodName, originalPos, ply)
         return pos, methodResult or AntiStuck.UNSTUCK_METHODS.SUCCESS
     else
         stats.failures = stats.failures + 1
-        -- Do not emit a second failure log here; the resolver/session already logs per-method failures.
-        -- Still propagate a meaningful result code when available.
         local resultCode = methodResult or AntiStuck.UNSTUCK_METHODS.FAILED
         return nil, resultCode
     end
 end
 
--- Get method performance statistics
 function AntiStuck.GetMethodStats(methodName)
     if methodName then
         return AntiStuck.methodStats[methodName]
@@ -145,7 +129,6 @@ function AntiStuck.GetMethodStats(methodName)
     end
 end
 
--- Reset method statistics
 function AntiStuck.ResetMethodStats(methodName)
     if methodName then
         AntiStuck.methodStats[methodName] = {
@@ -163,7 +146,6 @@ function AntiStuck.ResetMethodStats(methodName)
     end
 end
 
--- Emergency fallback method with improved interface
 AntiStuck.emergencyFallbackMethod = function(originalPos, ply)
     if RARELOAD.settings and RARELOAD.settings.debugEnabled then
         print("[RARELOAD ANTI-STUCK] Using emergency fallback method")
@@ -171,22 +153,20 @@ AntiStuck.emergencyFallbackMethod = function(originalPos, ply)
 
     local offset = 50
     local testPositions = {
-        originalPos + Vector(0, 0, 40), -- Try above first
+        originalPos + Vector(0, 0, 40),
         originalPos + Vector(offset, 0, 0),
         originalPos + Vector(-offset, 0, 0),
         originalPos + Vector(0, offset, 0),
         originalPos + Vector(0, -offset, 0),
-        originalPos + Vector(0, 0, 100), -- Higher up
+        originalPos + Vector(0, 0, 100),
     }
 
     for i, pos in ipairs(testPositions) do
         if util.IsInWorld(pos) then
-            -- Use the improved position check if available
             local isStuck = false
             if AntiStuck.IsPositionStuck then
                 isStuck = AntiStuck.IsPositionStuck(pos, ply, false)
             else
-                -- Fallback to basic trace check
                 local tr = util.TraceLine({
                     start = pos + Vector(0, 0, 20),
                     endpos = pos - Vector(0, 0, 100),
@@ -213,7 +193,6 @@ AntiStuck.emergencyFallbackMethod = function(originalPos, ply)
         end
     end
 
-    -- Final fallback - high altitude
     return Vector(0, 0, 4096), AntiStuck.UNSTUCK_METHODS.PARTIAL
 end
 

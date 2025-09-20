@@ -10,7 +10,6 @@ if not RARELOAD or not RARELOAD.DataUtils then
     include("rareload/utils/rareload_data_utils.lua")
 end
 
--- Load shared deterministic ID / hash utilities (used by savers) if not already present
 if not (RARELOAD.Util and RARELOAD.Util.GenerateDeterministicID) then
     if file.Exists("rareload/core/rareload_state_utils.lua", "LUA") then
         include("rareload/core/rareload_state_utils.lua")
@@ -70,7 +69,6 @@ function RARELOAD.CoerceVector(pos)
     end
 
     if result then
-        -- Cap cache size to avoid unbounded growth
         if vectorCacheCount > 512 then
             vectorCache = {}
             vectorCacheCount = 0
@@ -399,7 +397,6 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
             end
         end
 
-        -- Physics & movement restore
         do
             local phys = npc:GetPhysicsObject()
             if IsValid(phys) then
@@ -428,7 +425,6 @@ function RARELOAD.SpawnNPC(npcData, spawnedNPCsByID, pendingRelations)
             end
         end
 
-        -- Core types & flags
         if npcData.moveType and npc.SetMoveType then pcall(function() npc:SetMoveType(npcData.moveType) end) end
         if npcData.solidType and npc.SetSolid then pcall(function() npc:SetSolid(npcData.solidType) end) end
         if npcData.hullType then pcall(function() if npc.SetHullType then npc:SetHullType(npcData.hullType) end end) end
@@ -835,7 +831,6 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
     local groups = {}
     local squadStats = { total = 0, formed = 0, conflicts = 0, renamed = 0, split = 0 }
 
-    -- Helper: safe disposition check (treat errors as friendly to avoid over-splitting)
     local function SafeDisposition(a, b)
         if not (IsValid(a) and IsValid(b) and a.Disposition) then return D_LI end
         local ok, disp = pcall(function() return a:Disposition(b) end)
@@ -843,7 +838,6 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
         return D_LI
     end
 
-    -- Build a one-pass index of map NPCs by squad name to avoid repeated full scans
     local squadIndex = {}
     for _, e in ipairs(ents.GetAll()) do
         if IsValid(e) and e:IsNPC() then
@@ -856,7 +850,6 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
         end
     end
 
-    -- Helper: check if map has any NPCs (outside our component) with the same squad name
     local function MapHasForeignSquadMembers(name, ourSet)
         if not name or name == "" then return false end
         local list = squadIndex[name]
@@ -867,13 +860,11 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
         return false
     end
 
-    -- Helper: generate deterministic unique suffix from first member id
     local function SquadSuffix(firstNPC)
         local id = (IsValid(firstNPC) and firstNPC.RareloadUniqueID) or tostring(firstNPC)
         return string.sub(util.CRC(tostring(id)), 1, 6)
     end
 
-    -- Build groups keyed by saved squad name (prefer explicit npcData.squad)
     for _, npc in pairs(spawnedNPCsByID) do
         if not IsValid(npc) then continue end
         local npcData = npc.RareloadData
@@ -887,9 +878,7 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
         squadStats.total = squadStats.total + 1
     end
 
-    -- For each saved squad name, partition hostile members into separate components and form squads
     for baseName, members in pairs(groups) do
-        -- Build adjacency for non-hostile relationships among members
         local adj = {}
         local indexMap = {}
         for i, npc in ipairs(members) do
@@ -916,7 +905,6 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
         end
         if conflicts > 0 then squadStats.conflicts = squadStats.conflicts + 1 end
 
-        -- Find connected components (friendliness graph)
         local visited = {}
         local components = {}
         for i = 1, #members do
@@ -941,11 +929,8 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
         if #components == 0 and #members > 0 then components = { members } end
         if #components > 1 then squadStats.split = squadStats.split + (#components - 1) end
 
-        -- Assign squads per component
         for idx, comp in ipairs(components) do
-            -- Choose squad name; avoid collisions with foreign map squads
             local leader = comp[1]
-            -- Prefer saved leader if marked
             for _, n in ipairs(comp) do
                 if IsValid(n) and n.RareloadData and n.RareloadData.squadLeader then
                     leader = n
@@ -964,7 +949,6 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
                 finalName = finalName .. "_" .. tostring(idx)
             end
 
-            -- Enforce friendly relations within squad component
             for i = 1, #comp do
                 local a = comp[i]
                 if not IsValid(a) then goto continue_inner end
@@ -977,11 +961,9 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID)
                 ::continue_inner::
             end
 
-            -- Clear any previous squad and assign the final one
             for _, n in ipairs(comp) do
                 if not IsValid(n) then goto continue_assign end
                 n:Fire("ClearSquad", "", 0)
-                -- Use both input and fallback KeyValue in case input is unsupported
                 n:Fire("setsquad", finalName, 0.05)
                 if n.SetKeyValue then pcall(function() n:SetKeyValue("squadname", finalName) end) end
                 ::continue_assign::
@@ -1150,10 +1132,8 @@ net.Receive("RareloadRespawnNPC", function(len, ply)
     end
 end)
 
--- Ensure entity restore happens before we teleport or spawn NPCs by saved ID
 RARELOAD._EntitiesRestored = RARELOAD._EntitiesRestored or false
 
--- Helper: get Rareload ID from an NPC
 function RARELOAD.GetNPCID(npc)
     if not IsValid(npc) then return nil end
     if npc.RareloadUniqueID and npc.RareloadUniqueID ~= "" then return npc.RareloadUniqueID end
@@ -1164,7 +1144,6 @@ function RARELOAD.GetNPCID(npc)
     return nil
 end
 
--- Helper: find an existing NPC by saved ID
 function RARELOAD.FindNPCByID(id)
     if not id then return nil end
     for _, e in ipairs(ents.GetAll()) do
@@ -1176,21 +1155,17 @@ function RARELOAD.FindNPCByID(id)
     return nil
 end
 
--- Helper: normalize angle from saved data (string/table/Angle)
 local function NormalizeAngle(a)
     if a == nil then return nil end
     if isangle and isangle(a) then return a end
-    -- Try shared utils first
     if RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.ToAngle then
         local ok, ang = pcall(RARELOAD.DataUtils.ToAngle, a)
         if ok and (isangle and isangle(ang)) then return ang end
     end
-    -- Fallback: attempt engine conversion from string
     if isstring(a) then
         local ok, ang = pcall(util.StringToType, a, "Angle")
         if ok and (isangle and isangle(ang)) then return ang end
     end
-    -- Fallback: table with x,y,z
     if istable(a) then
         local x = a.x ~= nil and a.x or a[1]
         local y = a.y ~= nil and a.y or a[2]
@@ -1202,11 +1177,9 @@ local function NormalizeAngle(a)
     return nil
 end
 
--- Sync an existing NPC to saved pos/ang/health
 function RARELOAD.SyncExistingNPCWithSaved(npc, saved)
     if not (IsValid(npc) and saved) then return false end
 
-    -- Position
     if saved.pos then
         local pos = RARELOAD.CoerceVector and RARELOAD.CoerceVector(saved.pos) or nil
         if not pos and istable(saved.pos) and saved.pos.x and saved.pos.y and saved.pos.z then
@@ -1222,13 +1195,11 @@ function RARELOAD.SyncExistingNPCWithSaved(npc, saved)
         end
     end
 
-    -- Angles
     if saved.ang ~= nil then
         local ang = NormalizeAngle(saved.ang)
         if ang then pcall(function() npc:SetAngles(ang) end) end
     end
 
-    -- Health (set max first if provided; if only health is provided and it exceeds max, bump max)
     local maxH = tonumber(saved.maxHealth)
     local hp = tonumber(saved.health)
     if maxH and maxH > 0 and npc.SetMaxHealth then pcall(function() npc:SetMaxHealth(maxH) end) end
@@ -1239,7 +1210,6 @@ function RARELOAD.SyncExistingNPCWithSaved(npc, saved)
         pcall(function() npc:SetHealth(hp) end)
     end
 
-    -- Markers
     npc.SavedByRareload = true
     npc.SpawnedByRareload = npc.SpawnedByRareload or false
     if saved.id then
@@ -1250,15 +1220,12 @@ function RARELOAD.SyncExistingNPCWithSaved(npc, saved)
     return true
 end
 
--- Main: After entities are restored, teleport or spawn NPCs by saved ID
 function RARELOAD.RestoreOrSyncNPCsAfterEntities()
     if not SavedInfo or not istable(SavedInfo.npcs) or #SavedInfo.npcs == 0 then return end
 
     local spawnedByID = {}
     local pendingRelations = {}
     local stats = { restored = 0, spawned = 0 }
-
-    -- Build a one-time index of existing NPCs by Rareload ID to avoid repeated global scans
     local existingByID = {}
     for _, e in ipairs(ents.GetAll()) do
         if IsValid(e) and e:IsNPC() then
@@ -1267,7 +1234,6 @@ function RARELOAD.RestoreOrSyncNPCsAfterEntities()
         end
     end
 
-    -- First pass: sync any existing NPCs with matching saved IDs
     for _, data in ipairs(SavedInfo.npcs) do
         if data and data.id then
             local npc = existingByID[data.id]
@@ -1280,13 +1246,11 @@ function RARELOAD.RestoreOrSyncNPCsAfterEntities()
         end
     end
 
-    -- Second pass: spawn missing NPCs (batch to avoid stalls)
     local toSpawn = {}
     for _, data in ipairs(SavedInfo.npcs) do
         if data and data.id then
             if not spawnedByID[data.id] then table.insert(toSpawn, data) end
         else
-            -- If no ID, fall back to spawning by data
             table.insert(toSpawn, data)
         end
     end
@@ -1314,7 +1278,6 @@ function RARELOAD.RestoreOrSyncNPCsAfterEntities()
         if i <= #toSpawn then
             timer.Simple(interval, ProcessBatch)
         else
-            -- After all spawns, restore relationships/targets/squads
             if RARELOAD.RestoreNPCRelationships then
                 local agg = { relationshipsRestored = 0, targetsSet = 0, schedulesRestored = 0 }
                 RARELOAD.RestoreNPCRelationships(pendingRelations, spawnedByID, agg)
@@ -1325,11 +1288,9 @@ function RARELOAD.RestoreOrSyncNPCsAfterEntities()
     if #toSpawn > 0 then ProcessBatch() end
 end
 
--- Trigger NPC restore/sync strictly after entities are restored
 hook.Add("RareloadEntitiesRestored", "RARELOAD_SyncNPCsAfterEntities", function(_stats)
     RARELOAD._EntitiesRestored = true
     timer.Simple(0, function()
-        -- Defer to next tick to ensure entity post-spawn adjustments are done
         RARELOAD.RestoreOrSyncNPCsAfterEntities()
     end)
 end)

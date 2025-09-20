@@ -2,7 +2,6 @@ RARELOAD = RARELOAD or {}
 RARELOAD.AdminPanel = RARELOAD.AdminPanel or {}
 RARELOAD.AdminPanel.Permissions = RARELOAD.AdminPanel.Permissions or {}
 
--- Create the permissions panel
 function RARELOAD.AdminPanel.Permissions.Create(parent, onSavePermissions)
     local THEME = RARELOAD.AdminPanel.Theme.COLORS
     local DrawRoundedBoxEx = RARELOAD.AdminPanel.Theme.DrawRoundedBoxEx

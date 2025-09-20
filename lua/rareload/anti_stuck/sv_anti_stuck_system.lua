@@ -2,7 +2,6 @@ RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 
 if SERVER then
-    -- This file now only ensures the system initializes once. All includes are handled elsewhere.
     RARELOAD.AntiStuck.Initialized = RARELOAD.AntiStuck.Initialized or false
     local function EnsureInit()
         if RARELOAD.AntiStuck.Initialized then return end

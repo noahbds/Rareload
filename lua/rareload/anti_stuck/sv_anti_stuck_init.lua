@@ -1,5 +1,3 @@
--- Anti-Stuck System Initializer - Simplified
-
 RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 
