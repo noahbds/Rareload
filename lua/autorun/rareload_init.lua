@@ -1,66 +1,90 @@
 -- RARELOAD Addon Initialization
-
 RARELOAD = RARELOAD or {}
-RARELOAD.version = "2.0"
+RARELOAD.version = "2.1"
+
+-- 1. Shared Debug Config
+-- This must be loaded FIRST so both Server and Client know the Debug Levels/Colors
+if file.Exists("rareload/shared/sh_debug_config.lua", "LUA") then
+    AddCSLuaFile("rareload/shared/sh_debug_config.lua")
+    include("rareload/shared/sh_debug_config.lua")
+end
 
 if SERVER then
+    -- 2. Server Debug System
+    include("rareload/debug/sv_debug_config.lua") -- Legacy config table
+    include("rareload/debug/sv_debug_logging.lua") -- Improved networking logger
+    
+    -- Send Client Visuals
+    AddCSLuaFile("rareload/client/debug/cl_debug_visuals.lua")
+
+    -- Load Utilities
     AddCSLuaFile("rareload/shared/permissions_def.lua")
     AddCSLuaFile("rareload/utils/rareload_fonts.lua")
     AddCSLuaFile("rareload/utils/rareload_data_utils.lua")
     AddCSLuaFile("rareload/utils/vector_serialization.lua")
     AddCSLuaFile("rareload/client/shared/depth_sorted_renderer.lua")
+    
+    -- Load UI Components
     AddCSLuaFile("rareload/ui/rareload_ui.lua")
     AddCSLuaFile("rareload/ui/rareload_toolscreen.lua")
-    AddCSLuaFile("rareload/client/admin/admin_panel.lua")
-    AddCSLuaFile("rareload/client/admin/admin_theme.lua")
-    AddCSLuaFile("rareload/client/admin/admin_networking.lua")
-    AddCSLuaFile("rareload/client/admin/admin_utils.lua")
-    AddCSLuaFile("rareload/client/admin/admin_player_list.lua")
-    AddCSLuaFile("rareload/client/admin/admin_permissions.lua")
-    AddCSLuaFile("rareload/client/admin/admin_panel_main.lua")
-    AddCSLuaFile("rareload/client/phantom/cl_phantom_core.lua")
-    AddCSLuaFile("rareload/client/phantom/cl_phantom_hook.lua")
-    AddCSLuaFile("rareload/client/phantom/cl_phantom_info.lua")
-    AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer.lua")
-    AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_create_category.lua")
-    AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_info_panel.lua")
-    AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_json_editor.lua")
-    AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_main.lua")
-    AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_modify_panel.lua")
-    AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_theme.lua")
-    AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_utils.lua")
-    AddCSLuaFile("rareload/client/saved_entity_display/SED_init.lua")
-    AddCSLuaFile("rareload/client/saved_entity_display/SED_entity_tracking.lua")
-    AddCSLuaFile("rareload/client/saved_entity_display/SED_render_utils.lua")
-    AddCSLuaFile("rareload/client/saved_entity_display/SED_panel_builder.lua")
-    AddCSLuaFile("rareload/client/saved_entity_display/SED_panel_renderer.lua")
-    AddCSLuaFile("rareload/client/saved_entity_display/SED_interaction_system.lua")
-    AddCSLuaFile("rareload/client/saved_entity_display/SED_hooks.lua")
-    AddCSLuaFile("rareload/client/saved_entity_display/SED_loader.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_rareload_antistuck_init.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_components.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_data.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_events.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_method_list.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_panel_main.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_theme.lua")
-    AddCSLuaFile("rareload/client/antistuck/profile/cl_profile_system.lua")
-    AddCSLuaFile("rareload/client/antistuck/profile/cl_profile_manager.lua")
-    AddCSLuaFile("rareload/client/antistuck/profile/cl_profile_dialog.lua")
-    AddCSLuaFile("rareload/client/antistuck/profile/cl_profile_test.lua")
-    AddCSLuaFile("rareload/client/antistuck/settings/cl_settings_defaults.lua")
-    AddCSLuaFile("rareload/client/antistuck/settings/cl_settings_utils.lua")
-    AddCSLuaFile("rareload/client/antistuck/settings/cl_settings_panel.lua")
-    AddCSLuaFile("rareload/client/antistuck/settings/cl_settings_net.lua")
-end
+    
+    -- Load Client Modules (Admin, Phantom, Entity Viewer, SED, Anti-Stuck)
+    local clientModules = {
+        "rareload/client/admin/admin_panel.lua",
+        "rareload/client/admin/admin_theme.lua",
+        "rareload/client/admin/admin_networking.lua",
+        "rareload/client/admin/admin_utils.lua",
+        "rareload/client/admin/admin_player_list.lua",
+        "rareload/client/admin/admin_permissions.lua",
+        "rareload/client/admin/admin_panel_main.lua",
+        "rareload/client/phantom/cl_phantom_core.lua",
+        "rareload/client/phantom/cl_phantom_hook.lua",
+        "rareload/client/phantom/cl_phantom_info.lua",
+        "rareload/client/entity_viewer/cl_entity_viewer.lua",
+        "rareload/client/entity_viewer/cl_entity_viewer_create_category.lua",
+        "rareload/client/entity_viewer/cl_entity_viewer_info_panel.lua",
+        "rareload/client/entity_viewer/cl_entity_viewer_json_editor.lua",
+        "rareload/client/entity_viewer/cl_entity_viewer_main.lua",
+        "rareload/client/entity_viewer/cl_entity_viewer_modify_panel.lua",
+        "rareload/client/entity_viewer/cl_entity_viewer_theme.lua",
+        "rareload/client/entity_viewer/cl_entity_viewer_utils.lua",
+        "rareload/client/saved_entity_display/SED_init.lua",
+        "rareload/client/saved_entity_display/SED_entity_tracking.lua",
+        "rareload/client/saved_entity_display/SED_render_utils.lua",
+        "rareload/client/saved_entity_display/SED_panel_builder.lua",
+        "rareload/client/saved_entity_display/SED_panel_renderer.lua",
+        "rareload/client/saved_entity_display/SED_interaction_system.lua",
+        "rareload/client/saved_entity_display/SED_hooks.lua",
+        "rareload/client/saved_entity_display/SED_loader.lua",
+        "rareload/client/antistuck/cl_rareload_antistuck_init.lua",
+        "rareload/client/antistuck/cl_anti_stuck_components.lua",
+        "rareload/client/antistuck/cl_anti_stuck_data.lua",
+        "rareload/client/antistuck/cl_anti_stuck_events.lua",
+        "rareload/client/antistuck/cl_anti_stuck_method_list.lua",
+        "rareload/client/antistuck/cl_anti_stuck_panel_main.lua",
+        "rareload/client/antistuck/cl_anti_stuck_theme.lua",
+        "rareload/client/antistuck/profile/cl_profile_system.lua",
+        "rareload/client/antistuck/profile/cl_profile_manager.lua",
+        "rareload/client/antistuck/profile/cl_profile_dialog.lua",
+        "rareload/client/antistuck/profile/cl_profile_test.lua",
+        "rareload/client/antistuck/settings/cl_settings_defaults.lua",
+        "rareload/client/antistuck/settings/cl_settings_utils.lua",
+        "rareload/client/antistuck/settings/cl_settings_panel.lua",
+        "rareload/client/antistuck/settings/cl_settings_net.lua"
+    }
+    
+    for _, file in ipairs(clientModules) do
+        AddCSLuaFile(file)
+    end
 
-include("rareload/shared/permissions_def.lua")
-
-if SERVER then
+    -- Load Server Logic
+    include("rareload/shared/permissions_def.lua")
     include("rareload/core/rareload_core.lua")
     include("rareload/core/sv_rareload.lua")
     include("rareload/core/sv_rareload_hooks.lua")
     include("rareload/core/sv_sed_npc_freeze.lua")
+    
+    -- Save Helpers
     include("rareload/core/save_helpers/rareload_save_ammo.lua")
     include("rareload/core/save_helpers/rareload_save_entities.lua")
     include("rareload/core/save_helpers/rareload_save_inventory.lua")
@@ -68,12 +92,16 @@ if SERVER then
     include("rareload/core/save_helpers/rareload_save_vehicle_state.lua")
     include("rareload/core/save_helpers/rareload_save_vehicles.lua")
     include("rareload/core/save_helpers/rareload_position_history.lua")
+    
+    -- Respawn Handlers
     include("rareload/core/respawn_handlers/sv_rareload_handler_entities.lua")
     include("rareload/core/respawn_handlers/sv_rareload_handler_global_inventory.lua")
     include("rareload/core/respawn_handlers/sv_rareload_handler_inventory.lua")
     include("rareload/core/respawn_handlers/sv_rareload_handler_npc.lua")
     include("rareload/core/respawn_handlers/sv_rareload_handler_player_spawn.lua")
     include("rareload/core/respawn_handlers/sv_rareload_handler_vehicles.lua")
+    
+    -- Commands
     include("rareload/core/commands/bot_spawn_entity.lua")
     include("rareload/core/commands/check_admin_status.lua")
     include("rareload/core/commands/save_bot_position.lua")
@@ -96,17 +124,21 @@ if SERVER then
     include("rareload/core/commands/toggle_retain_vehicle_state.lua")
     include("rareload/core/commands/toggle_retain_vehicles.lua")
     include("rareload/core/commands/toggle_spawn_mode.lua")
-    include("rareload/debug/sv_debug_config.lua")
+    
+    -- Debug Logic (Server Side - Additional Formatters)
     include("rareload/debug/sv_debug_formatters.lua")
-    include("rareload/debug/sv_debug_logging.lua")
     include("rareload/debug/sv_debug_specialized.lua")
     include("rareload/debug/sv_debug_utils.lua")
     include("rareload/debug/sv_rareload_debug.lua")
+    
+    -- Utils
     include("rareload/utils/rareload_autosave.lua")
     include("rareload/utils/rareload_position_cache.lua")
     include("rareload/utils/rareload_reload_data.lua")
     include("rareload/utils/rareload_teleport.lua")
     include("rareload/utils/sv_rareload_commands.lua")
+    
+    -- Admin & Anti-Stuck
     include("rareload/admin/rareload_permissions.lua")
     include("rareload/admin/sv_rareload_admin_utils.lua")
     include("rareload/anti_stuck/sv_deepcopy_utils.lua")
@@ -117,6 +149,8 @@ if SERVER then
     include("rareload/anti_stuck/sv_anti_stuck_profile.lua")
     include("rareload/anti_stuck/sv_anti_stuck_map.lua")
     include("rareload/anti_stuck/sv_anti_stuck_nav.lua")
+    
+    -- Anti-Stuck Methods
     include("rareload/anti_stuck/methods/sv_method_cachedpos.lua")
     include("rareload/anti_stuck/methods/sv_method_displacement.lua")
     include("rareload/anti_stuck/methods/sv_method_emergency_teleport.lua")
@@ -126,6 +160,8 @@ if SERVER then
     include("rareload/anti_stuck/methods/sv_method_spawn_points.lua")
     include("rareload/anti_stuck/methods/sv_method_world_brushes.lua")
     include("rareload/anti_stuck/methods/sv_method_systematic_grid.lua")
+    
+    -- Anti-Stuck Core
     include("rareload/anti_stuck/sv_anti_stuck_methods_loader.lua")
     include("rareload/anti_stuck/sv_anti_stuck_core.lua")
     include("rareload/anti_stuck/sv_anti_stuck_resolver.lua")
@@ -133,9 +169,16 @@ if SERVER then
     include("rareload/anti_stuck/sv_anti_stuck_commands.lua")
     include("rareload/anti_stuck/sv_anti_stuck_system.lua")
     include("rareload/anti_stuck/sv_anti_stuck_init.lua")
+    
+    -- Tool
     include("weapons/gmod_tool/stools/rareload_tool.lua")
+    
     print("[RARELOAD] Server-side files loaded successfully!")
+
 elseif CLIENT then
+    -- 3. Client Debug System (Visuals & HUD)
+    include("rareload/client/debug/cl_debug_visuals.lua")
+
     include("rareload/shared/permissions_def.lua")
     include("rareload/utils/rareload_fonts.lua")
 
@@ -143,6 +186,7 @@ elseif CLIENT then
         RARELOAD.RegisterFonts()
     end
 
+    -- Load Client Modules
     include("rareload/client/shared/depth_sorted_renderer.lua")
     include("rareload/ui/rareload_ui.lua")
     include("rareload/ui/rareload_toolscreen.lua")
