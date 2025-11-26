@@ -1,33 +1,40 @@
 return function(ply)
     local vehicles = {}
-    for _, vehicle in ipairs(ents.FindByClass("prop_vehicle_*")) do
-        if IsValid(vehicle) then
-            local owner = vehicle:CPPIGetOwner()
-            if (IsValid(owner) and owner:IsPlayer()) or vehicle.SpawnedByRareload then
-                local vehicleData = {
-                    class = vehicle:GetClass(),
-                    model = vehicle:GetModel(),
-                    pos = { x = vehicle:GetPos().x, y = vehicle:GetPos().y, z = vehicle:GetPos().z },
-                    ang = { p = vehicle:GetAngles().p, y = vehicle:GetAngles().y, r = vehicle:GetAngles().r },
-                    health = vehicle:Health(),
-                    skin = vehicle:GetSkin(),
-                    bodygroups = {},
-                    color = vehicle:GetColor(),
-                    frozen = IsValid(vehicle:GetPhysicsObject()) and not vehicle:GetPhysicsObject():IsMotionEnabled(),
-                    owner = IsValid(owner) and owner:SteamID() or nil
-                }
-                for i = 0, vehicle:GetNumBodyGroups() - 1 do
-                    vehicleData.bodygroups[i] = vehicle:GetBodygroup(i)
+    local count = 0
+
+    for _, veh in ipairs(ents.GetAll()) do
+        if IsValid(veh) and veh:IsVehicle() then
+            local owner = (isfunction(veh.CPPIGetOwner) and veh:CPPIGetOwner()) or nil
+            local ownerValid = IsValid(owner) and (owner == ply or owner:IsBot())
+            local spawnedByRareload = veh.SpawnedByRareload == true
+
+            if ownerValid or spawnedByRareload then
+                local dupData = duplicator.CopyEntTable(veh)
+
+                if dupData then
+                    count = count + 1
+                    
+                    local vehEntry = {
+                        duplicatorData = dupData,
+                        
+                        class = veh:GetClass(),
+                        model = veh:GetModel(),
+                        pos = veh:GetPos(),
+                        ang = veh:GetAngles(),
+                        owner = IsValid(owner) and owner:SteamID() or nil,
+                        
+                        isVehicle = true
+                    }
+                    
+                    table.insert(vehicles, vehEntry)
                 end
-                if vehicle.GetVehicleParams then
-                    local params = vehicle:GetVehicleParams()
-                    if params then
-                        vehicleData.vehicleParams = params
-                    end
-                end
-                table.insert(vehicles, vehicleData)
             end
         end
     end
+
+    if RARELOAD.settings and RARELOAD.settings.debugEnabled then
+        print("[RARELOAD] Saved " .. count .. " vehicles.")
+    end
+
     return vehicles
 end

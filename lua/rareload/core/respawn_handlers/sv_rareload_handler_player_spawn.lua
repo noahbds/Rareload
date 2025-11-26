@@ -1,4 +1,3 @@
----@diagnostic disable: inject-field, undefined-field
 if not RARELOAD or not RARELOAD.DataUtils then
     include("rareload/utils/rareload_data_utils.lua")
 end
