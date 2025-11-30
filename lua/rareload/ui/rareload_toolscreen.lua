@@ -8,38 +8,13 @@ RARELOAD.lastMoveTime = RARELOAD.lastMoveTime or 0
 RARELOAD.showAutoSaveMessage = RARELOAD.showAutoSaveMessage or false
 RARELOAD.autoSaveMessageTime = RARELOAD.autoSaveMessageTime or 0
 
+-- Ensure theme utils are present
+if not RARELOAD.Theme or not RARELOAD.Theme.BuildToolscreenColors then
+    include("rareload/client/shared/theme_utils.lua")
+end
+
 local TOOL_UI = {
-    COLORS = {
-        BG = Color(30, 30, 35),
-        ENABLED = Color(40, 210, 40),
-        DISABLED = Color(210, 40, 40),
-        HEADER = Color(40, 90, 180),
-        TEXT_LIGHT = Color(255, 255, 255),
-        TEXT_DARK = Color(15, 15, 15),
-        VERSION = Color(150, 150, 150, 180),
-        PROGRESS = {
-            BG_OUTER = Color(25, 25, 30),
-            BG_INNER = Color(35, 35, 40),
-            LOW = Color(35, 185, 35),
-            MEDIUM = Color(185, 185, 35),
-            HIGH = Color(185, 65, 35),
-            STEP = Color(255, 255, 255, 40),
-            SHINE = Color(255, 255, 255)
-        },
-        TEXT = {
-            NORMAL = Color(225, 225, 225),
-            WARNING = Color(255, 255, 0),
-            URGENT_1 = Color(255, 100, 0),
-            URGENT_2 = Color(255, 220, 0),
-            SAVED = Color(60, 255, 60),
-            SHADOW = Color(0, 0, 0, 180)
-        },
-        AUTO_SAVE_MESSAGE = Color(60, 255, 60, 255),
-        EMOJI = {
-            DATA_FOUND = Color(40, 210, 40),
-            NO_DATA = Color(210, 40, 40)
-        }
-    },
+    COLORS = RARELOAD.Theme.BuildToolscreenColors(),
     ANIMATION = {
         SAVE_MESSAGE_DURATION = 5,
         PULSE_THRESHOLD = 3,
@@ -52,6 +27,12 @@ local TOOL_UI = {
         BAR_HEIGHT = 20
     }
 }
+
+if RARELOAD.Theme and RARELOAD.Theme.OnChanged then
+    RARELOAD.Theme.OnChanged("toolscreen_theme", function()
+        TOOL_UI.COLORS = RARELOAD.Theme.BuildToolscreenColors()
+    end)
+end
 
 local ToolScreen = {}
 

@@ -404,3 +404,84 @@ RARELOAD.PosTableToString = RARELOAD.DataUtils.PositionToString
 RARELOAD.AngTableToString = RARELOAD.DataUtils.AngleToString
 RARELOAD.FormatPositionForJSON = RARELOAD.DataUtils.FormatPositionForJSON
 RARELOAD.FormatAngleForJSON = RARELOAD.DataUtils.FormatAngleForJSON
+
+-- ============================
+-- DATA STORAGE FUNCTIONS
+-- ============================
+
+local function GetSaveFilePath()
+    return "rareload/player_data_" .. game.GetMap() .. ".json"
+end
+
+--[[
+    Saves a specific block of data for a player.
+    - ply: The player entity to save for.
+    - dataType: A string key for the data block (e.g., "entities", "npcs").
+    - data: The Lua table or dupe object to save.
+]]
+function RARELOAD.DataUtils.SaveDataForPlayer(ply, dataType, data)
+    if not IsValid(ply) or not dataType or not data then return false end
+
+    local filePath = GetSaveFilePath()
+    local steamID = ply:SteamID64()
+    local mapName = game.GetMap()
+
+    local fileData = {}
+    if file.Exists(filePath, "DATA") then
+        local content = file.Read(filePath, "DATA")
+        local ok, tbl = pcall(util.JSONToTable, content)
+        if ok and tbl then
+            fileData = tbl
+        end
+    end
+
+    -- Initialize structure
+    fileData[mapName] = fileData[mapName] or {}
+    fileData[mapName][steamID] = fileData[mapName][steamID] or {}
+
+    -- Save the data
+    fileData[mapName][steamID][dataType] = data
+    
+    -- Also save player's last position and angle for context
+    fileData[mapName][steamID].pos = RARELOAD.DataUtils.ToPositionTable(ply:GetPos())
+    fileData[mapName][steamID].ang = RARELOAD.DataUtils.ToAngleTable(ply:GetAngles())
+
+    local json = util.TableToJSON(fileData, true)
+    if not json then
+        print("[RARELOAD ERROR] Failed to serialize player data to JSON.")
+        return false
+    end
+    
+    file.Write(filePath, json)
+    return true
+end
+
+--[[
+    Loads a specific block of data for a player.
+    - ply: The player entity to load for.
+    - dataType: A string key for the data block (e.g., "entities", "npcs").
+    - Returns the data block, or nil if not found.
+]]
+function RARELOAD.DataUtils.LoadDataForPlayer(ply, dataType)
+    if not IsValid(ply) or not dataType then return nil end
+
+    local filePath = GetSaveFilePath()
+    if not file.Exists(filePath, "DATA") then return nil end
+
+    local steamID = ply:SteamID64()
+    local mapName = game.GetMap()
+
+    local content = file.Read(filePath, "DATA")
+    if not content or content == "" then return nil end
+
+    local ok, fileData = pcall(util.JSONToTable, content)
+    if not ok or not fileData or not fileData[mapName] or not fileData[mapName][steamID] then
+        return nil
+    end
+
+    return fileData[mapName][steamID][dataType]
+end
+
+-- For backwards compatibility, expose them on the RARELOAD table directly
+RARELOAD.SaveDataForPlayer = RARELOAD.DataUtils.SaveDataForPlayer
+RARELOAD.LoadDataForPlayer = RARELOAD.DataUtils.LoadDataForPlayer

@@ -48,12 +48,30 @@ SED.LastFrameRenderCount = 0
 SED.FrameRenderBudget = 0.003
 SED.lpCache = nil
 SED.lastPlayerCheck = 0
+-- Optional theme utils for light/dark awareness
+if not RARELOAD.Theme or not RARELOAD.Theme.IsLightMode then
+    if file.Exists("rareload/client/shared/theme_utils.lua", "LUA") then
+        include("rareload/client/shared/theme_utils.lua")
+    end
+end
+
+-- Default (dark) theme
 SED.THEME = _G.THEME or {
     background = Color(20, 20, 30, 220),
     header = Color(30, 30, 45, 255),
     border = Color(70, 130, 180, 255),
     text = Color(220, 220, 255)
 }
+
+-- Light mode overrides
+if RARELOAD.Theme and RARELOAD.Theme.IsLightMode and RARELOAD.Theme.IsLightMode() then
+    SED.THEME = {
+        background = Color(248, 249, 251, 230),
+        header = Color(236, 239, 242, 255),
+        border = Color(120, 160, 210, 255),
+        text = Color(25, 30, 36)
+    }
+end
 
 SED.ENT_CATEGORIES = {
     { "basic",     "Basic",      Color(64, 152, 255) },

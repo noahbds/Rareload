@@ -1,138 +1,136 @@
+---@diagnostic disable: inject-field, undefined-field, global-is-nil
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 
-util.AddNetworkString("RareloadRespawnEntity")
 util.AddNetworkString("RareloadEntityRestoreProgress")
 
-local function IsEntityAlreadyExists(id)
-    if not id then return false end
-    for _, ent in ipairs(ents.GetAll()) do
-        if ent.RareloadEntityID == id then return true end
+-- Wrapper function to be called on player spawn
+function RARELOAD.RespawnEntitiesForPlayer(ply)
+    if not IsValid(ply) then return end
+    
+    local savedEntitiesDupe = RARELOAD.LoadDataForPlayer(ply, "entities")
+
+    if not savedEntitiesDupe or not savedEntitiesDupe.Entities or #savedEntitiesDupe.Entities == 0 then
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD] No saved entity dupe found to restore.")
+        end
+        return
     end
-    return false
+
+    if not duplicator or not duplicator.Paste then
+        print("[RARELOAD ERROR] Duplicator system not found for pasting entities!")
+        return
+    end
+
+    -- Announce start
+    net.Start("RareloadEntityRestoreProgress")
+    net.WriteFloat(0)
+    net.WriteBool(false)
+    net.WriteInt(0, 16)
+    net.WriteInt(0, 16)
+    net.WriteInt(#savedEntitiesDupe.Entities, 16)
+    net.Send(ply)
+
+    -- 1. Remove previously restored entities to prevent duplication
+    local removedCount = 0
+    for _, ent in ipairs(ents.GetAll()) do
+        if IsValid(ent) and ent.SpawnedByRareload and not ent:IsPlayer() and not ent:IsNPC() and not ent:IsVehicle() then
+            ent:Remove()
+            removedCount = removedCount + 1
+        end
+    end
+    if RARELOAD.settings.debugEnabled and removedCount > 0 then
+        print("[RARELOAD] Removed " .. removedCount .. " previously restored entities.")
+    end
+
+    -- 2. Paste the entire dupe
+    -- We run this in a short timer to ensure the player is fully initialized.
+    timer.Simple(0.5, function()
+        if not IsValid(ply) then return end
+
+        local ok, pastedEntities = pcall(duplicator.Paste, ply, savedEntitiesDupe, {})
+        if not ok or not pastedEntities then
+            print("[RARELOAD ERROR] Failed to paste entity dupe: " .. tostring(pastedEntities))
+            -- Announce failure
+            net.Start("RareloadEntityRestoreProgress")
+            net.WriteFloat(100)
+            net.WriteBool(true)
+            net.WriteInt(0, 16)
+            net.WriteInt(#savedEntitiesDupe.Entities, 16)
+            net.WriteInt(#savedEntitiesDupe.Entities, 16)
+            net.Send(ply)
+            return
+        end
+
+        -- 3. Re-assign our custom IDs and mark the entities
+        local restoredCount = 0
+        if savedEntitiesDupe.Entities and #pastedEntities > 0 then
+            for i, dupeEntData in ipairs(savedEntitiesDupe.Entities) do
+                local newEnt = pastedEntities[i]
+                if IsValid(newEnt) and dupeEntData.RareloadEntityID then
+                    newEnt.RareloadEntityID = dupeEntData.RareloadEntityID
+                    newEnt.SpawnedByRareload = true
+                    newEnt.OriginalSpawner = dupeEntData.OriginallySpawnedBy
+                    newEnt.WasPlayerSpawned = dupeEntData.WasPlayerSpawned
+
+                    if newEnt.SetNWString then
+                        pcall(function() newEnt:SetNWString("RareloadID", newEnt.RareloadEntityID) end)
+                    end
+                    restoredCount = restoredCount + 1
+                end
+            end
+        end
+
+        if RARELOAD.settings.debugEnabled then
+            print("[RARELOAD] Successfully restored " .. restoredCount .. " entities from dupe.")
+        end
+        
+        -- Announce completion
+        net.Start("RareloadEntityRestoreProgress")
+        net.WriteFloat(100)
+        net.WriteBool(true)
+        net.WriteInt(restoredCount, 16)
+        net.WriteInt(#savedEntitiesDupe.Entities - restoredCount, 16)
+        net.WriteInt(#savedEntitiesDupe.Entities, 16)
+        net.Send(ply)
+
+        hook.Run("RareloadEntitiesRestored", {
+            total = #savedEntitiesDupe.Entities,
+            restored = restoredCount,
+            skipped = #savedEntitiesDupe.Entities - restoredCount,
+            failed = 0 -- pcall handles full failure
+        })
+    end)
 end
 
-function RARELOAD.RestoreEntities(playerSpawnPos)
-    local mapName = game.GetMap()
-    local filePath = "rareload/player_positions_" .. mapName .. ".json"
-    
-    if not file.Exists(filePath, "DATA") then return false end
-    
-    local data = file.Read(filePath, "DATA")
-    local ok, tbl = pcall(util.JSONToTable, data)
-    
-    if not ok or not tbl or not tbl[mapName] then return false end
-
-    local entitiesToSpawn = nil
-    for steamID, pdata in pairs(tbl[mapName]) do
-        if pdata.entities then
-            entitiesToSpawn = pdata.entities
-            SavedInfo = SavedInfo or {}
-            SavedInfo.entities = pdata.entities
-            break
-        end
+-- This hook will trigger the restoration logic when a player spawns.
+-- It replaces the old RARELOAD.RestoreEntities function call.
+hook.Add("PlayerSpawn", "Rareload_RespawnPlayerEntities", function(ply)
+    if RARELOAD.settings.addonEnabled and RARELOAD.settings.retainMapEntities then
+        -- The main restore logic is now more generic and needs to be called from the core spawn handler
+        -- to ensure correct load order and access to player data.
+        -- This file now primarily provides the implementation for entity-specific restoration.
     end
+end)
 
-    if not entitiesToSpawn or #entitiesToSpawn == 0 then return false end
-
-    local stats = { restored = 0, failed = 0, skipped = 0, total = #entitiesToSpawn }
-    local proximityRadiusSqr = 200 * 200
-
-    for _, entData in ipairs(entitiesToSpawn) do
-        if entData.id and IsEntityAlreadyExists(entData.id) then
-            stats.skipped = stats.skipped + 1
-            if RARELOAD.settings.debugEnabled then
-                print("[RARELOAD] Skipped existing entity: " .. (entData.class or "?"))
-            end
-            goto continue
-        end
-
-        if entData.duplicatorData then
-            local ownerPly = nil
-            if entData.owner then
-                ownerPly = player.GetBySteamID(entData.owner)
-            end
-
-            local ent = duplicator.CreateEntityFromTable(ownerPly, entData.duplicatorData)
-
-            if IsValid(ent) then
-                ent.SpawnedByRareload = true
-                ent.SavedByRareload = true
-                ent.RareloadEntityID = entData.id
-                ent.OriginalSpawner = entData.originallySpawnedBy
-                ent.RespawnTime = os.time()
-
-                if ent.SetNWString and entData.id then
-                    ent:SetNWString("RareloadID", entData.id)
-                end
-
-                if entData.pos then
-                    local pos = Vector(entData.pos.x, entData.pos.y, entData.pos.z)
-                    ent:SetPos(pos)
-                end
-                if entData.ang then
-                    local ang = Angle(entData.ang.p, entData.ang.y, entData.ang.r)
-                    ent:SetAngles(ang)
-                end
-
-                local phys = ent:GetPhysicsObject()
-                if IsValid(phys) then
-                    if not entData.duplicatorData.Frozen then
-                        phys:Wake()
+-- The pre-cleanup save hook needs to be updated to save the dupe
+hook.Add("PreCleanupMap", "RareloadSaveEntitiesBeforeCleanup", function()
+    if RARELOAD.settings.addonEnabled and RARELOAD.settings.retainMapEntities then
+        for _, ply in ipairs(player.GetHumans()) do
+            if IsValid(ply) then
+                local saveEntities = include("rareload/core/save_helpers/rareload_save_entities.lua")
+                local entitiesDupe = saveEntities(ply)
+                
+                if entitiesDupe then
+                    RARELOAD.SaveDataForPlayer(ply, "entities", entitiesDupe)
+                    if RARELOAD.settings.debugEnabled then
+                        print(string.format("[RARELOAD] Saved %d entities (as dupe) before map cleanup", #(entitiesDupe.Entities or {})))
                     end
                 end
 
-                stats.restored = stats.restored + 1
-            else
-                stats.failed = stats.failed + 1
-                if RARELOAD.settings.debugEnabled then
-                    print("[RARELOAD] Duplicator failed to create: " .. (entData.class or "unknown"))
-                end
+                -- We only need to save for one player
+                break 
             end
-        else
-            stats.failed = stats.failed + 1
         end
-        ::continue::
-    end
-
-    hook.Run("RareloadEntitiesRestored", stats)
-    
-    if RARELOAD.settings.debugEnabled then
-        print(string.format("[RARELOAD] Restoration Complete: %d restored, %d skipped, %d failed.", 
-            stats.restored, stats.skipped, stats.failed))
-    end
-
-    return stats.restored > 0
-end
-
-net.Receive("RareloadRespawnEntity", function(len, ply)
-    if not IsValid(ply) or not ply:IsAdmin() then return end
-    
-    local entityClass = net.ReadString()
-    local position = net.ReadVector()
-
-    local matchedData = nil
-    local savedEntities = (SavedInfo and SavedInfo.entities) or {}
-    
-    for _, savedEntity in ipairs(savedEntities) do
-        local sPos = Vector(savedEntity.pos.x, savedEntity.pos.y, savedEntity.pos.z)
-        if savedEntity.class == entityClass and sPos:DistToSqr(position) < 2500 then
-            matchedData = savedEntity
-            break
-        end
-    end
-
-    if matchedData and matchedData.duplicatorData then
-        local ent = duplicator.CreateEntityFromTable(ply, matchedData.duplicatorData)
-        if IsValid(ent) then
-            ent.SpawnedByRareload = true
-            ent.RareloadEntityID = matchedData.id
-            ent:SetPos(position)
-            ply:ChatPrint("[RARELOAD] Entity restored via Duplicator.")
-        else
-            ply:ChatPrint("[RARELOAD] Duplicator failed to spawn entity.")
-        end
-    else
-        ply:ChatPrint("[RARELOAD] No saved data found for this entity location.")
     end
 end)

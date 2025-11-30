@@ -24,6 +24,10 @@ end
 
 if CLIENT then
     RARELOAD = RARELOAD or {}
+    -- Include theme utils (client only)
+    if not RARELOAD.Theme or not RARELOAD.Theme.BuildMainTheme then
+        include("rareload/client/shared/theme_utils.lua")
+    end
 
     function RARELOAD.CheckPermission(ply, permName)
         if ply:IsSuperAdmin() then
@@ -38,45 +42,13 @@ if CLIENT then
     end
 end
 
-RareloadUI.Theme = {
-    Colors = {
-        Background = Color(30, 30, 35, 230),
-        Panel = Color(40, 40, 45, 245),
-        Accent = Color(65, 145, 255),
-        Danger = Color(255, 70, 70),
-        Success = Color(70, 200, 120),
-        Text = {
-            Primary = Color(245, 245, 245),
-            Secondary = Color(180, 180, 190),
-            Disabled = Color(120, 120, 130)
-        },
-        Button = {
-            Normal = Color(60, 60, 70),
-            Hover = Color(70, 70, 80),
-            Active = Color(50, 50, 60),
-            Selected = Color(65, 145, 255)
-        },
-        Slider = {
-            Track = Color(50, 50, 55),
-            Groove = Color(65, 145, 255),
-            Knob = Color(225, 225, 235),
-            KnobHover = Color(255, 255, 255)
-        },
-        Separator = Color(60, 60, 70)
-    },
-    Sizes = {
-        CornerRadius = 6,
-        ButtonHeight = 40,
-        SliderHeight = 6,
-        KnobSize = 16,
-        Padding = 15,
-        Margin = 10
-    },
-    Animation = {
-        Speed = 6,
-        Bounce = 0.2
-    }
-}
+RareloadUI.Theme = CLIENT and (RARELOAD.Theme.BuildMainTheme and RARELOAD.Theme.BuildMainTheme() or {}) or {}
+
+if CLIENT and RARELOAD.Theme and RARELOAD.Theme.OnChanged then
+    RARELOAD.Theme.OnChanged("ui_main", function()
+        RareloadUI.Theme = RARELOAD.Theme.BuildMainTheme()
+    end)
+end
 
 function RareloadUI.DrawRoundedBox(x, y, w, h, radius, color)
     draw.RoundedBox(radius, x, y, w, h, color)

@@ -1,5 +1,6 @@
 RARELOAD = RARELOAD or {}
 
+-- Shared routine to save a player's respawn point and related state
 local function ensureDataUtils()
     if not RARELOAD or not RARELOAD.DataUtils then
         include("rareload/utils/rareload_data_utils.lua")
@@ -53,6 +54,7 @@ local save_npcs = include("rareload/core/save_helpers/rareload_save_npcs.lua")
 local save_ammo = include("rareload/core/save_helpers/rareload_save_ammo.lua")
 local save_vehicle_state = include("rareload/core/save_helpers/rareload_save_vehicle_state.lua")
 
+-- This function saves a player's respawn point and related state (this is the most important things of the addon)
 function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     opts = opts or {}
     if not IsValid(ply) then return false, "invalid player" end

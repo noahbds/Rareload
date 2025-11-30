@@ -1,55 +1,79 @@
+--- @class RARELOAD
 RARELOAD = RARELOAD or nil
 RARELOAD.settings = RARELOAD.settings or {}
 
+-- This function is called when the addon need to restore inventory from a save file. Allow to restore weapons, ammo, etc.
 function RARELOAD.RestoreInventory(ply)
-    if not IsValid(ply) then return end
     ply:StripWeapons()
 
-    if not SavedInfo or not SavedInfo.inventory then return end
+    local debugMessages = {
+        adminOnly = {},
+        notRegistered = {},
+        givenWeapons = {}
+    }
+    local debugFlags = {
+        adminOnly = false,
+        notRegistered = false,
+        givenWeapons = false
+    }
 
-    for _, wepData in ipairs(SavedInfo.inventory) do
-        local success = false
-        local class = nil
+    for _, weaponClass in ipairs(SavedInfo.inventory) do
+        local weaponInfo = weapons.Get(weaponClass)
+        local canGiveWeapon = weaponInfo and (weaponInfo.Spawnable or weaponInfo.AdminOnly)
 
-        if type(wepData) == "table" then
-            class = wepData.class
-            
-            if wepData.duplicatorData then
-                local wep = duplicator.CreateEntityFromTable(ply, wepData.duplicatorData)
-                
-                if IsValid(wep) then
-                    wep:SetPos(ply:GetPos())
-                    wep:Spawn()
-                    wep:Activate()
-                    
-                    if wep.Equip then pcall(wep.Equip, wep, ply) end
-                    
-                    if wepData.clip1 and wep.SetClip1 and wep:Clip1() == -1 then 
-                        wep:SetClip1(wepData.clip1) 
-                    end
-                    if wepData.clip2 and wep.SetClip2 and wep:Clip2() == -1 then 
-                        wep:SetClip2(wepData.clip2) 
-                    end
-                    
-                    success = true
+        if not canGiveWeapon then
+            if RARELOAD.settings.debugEnabled then
+                if weaponInfo then
+                    debugFlags.adminOnly = true
+                    table.insert(debugMessages.adminOnly,
+                        "Weapon " .. weaponClass .. " is not spawnable and not admin-only.")
+                else
+                    debugFlags.notRegistered = true
+                    table.insert(debugMessages.notRegistered, "Weapon " .. weaponClass .. " is not registered.")
                 end
             end
-
-            if not success and class then
-                ply:Give(class)
-                local wep = ply:GetWeapon(class)
-                if IsValid(wep) then
-                    if wepData.clip1 then wep:SetClip1(wepData.clip1) end
-                    if wepData.clip2 then wep:SetClip2(wepData.clip2) end
+        else
+            ply:Give(weaponClass)
+            if ply:HasWeapon(weaponClass) then
+                if RARELOAD.settings.debugEnabled then
+                    debugFlags.givenWeapons = true
+                    table.insert(debugMessages.givenWeapons, "Successfully gave weapon: " .. weaponClass)
                 end
-            end
+            elseif RARELOAD.settings.debugEnabled then
+                debugFlags.givenWeapons = true
+                table.insert(debugMessages.givenWeapons, "Failed to give weapon: " .. weaponClass)
 
-        elseif type(wepData) == "string" then
-            ply:Give(wepData)
+                local weaponDetails = {
+                    "Weapon Info: " .. tostring(weaponInfo),
+                    "Weapon Base: " .. tostring(weaponInfo.Base),
+                    "PrintName: " .. tostring(weaponInfo.PrintName),
+                    "Spawnable: " .. tostring(weaponInfo.Spawnable),
+                    "AdminOnly: " .. tostring(weaponInfo.AdminOnly),
+                    "Primary Ammo: " .. tostring(weaponInfo.Primary and weaponInfo.Primary.Ammo or "N/A"),
+                    "Secondary Ammo: " .. tostring(weaponInfo.Secondary and weaponInfo.Secondary.Ammo or "N/A"),
+                    "Clip Size: " .. tostring(weaponInfo.Primary and weaponInfo.Primary.ClipSize or "N/A"),
+                    "Default Clip: " .. tostring(weaponInfo.Primary and weaponInfo.Primary.DefaultClip or "N/A"),
+                    "Max Clip: " .. tostring(weaponInfo.Primary and weaponInfo.Primary.MaxClip or "N/A"),
+                    "Max Ammo: " .. tostring(weaponInfo.Primary and weaponInfo.Primary.MaxAmmo or "N/A")
+                }
+                table.Add(debugMessages.givenWeapons, weaponDetails)
+            end
         end
     end
-    
-    if RARELOAD.settings.debugEnabled then
-        print("[RARELOAD] Restored inventory for " .. ply:Nick())
+    if RARELOAD.Debug and RARELOAD.Debug.LogWeaponMessages then
+        RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
+    elseif RARELOAD.settings.debugEnabled then
+        if debugFlags.adminOnly then
+            print("[RARELOAD DEBUG] Admin-only weapons not given: " .. table.concat(debugMessages.adminOnly, ", "))
+        end
+        if debugFlags.notRegistered and not RARELOAD.settings.retainGlobalInventory then
+            print("[RARELOAD DEBUG] Unregistered Global weapons: " .. table.concat(debugMessages.notRegistered, ", "))
+        end
+        if debugFlags.givenWeapons then
+            print("[RARELOAD DEBUG] Weapon results: ")
+            for _, msg in ipairs(debugMessages.givenWeapons) do
+                print("[RARELOAD DEBUG] - " .. msg)
+            end
+        end
     end
 end

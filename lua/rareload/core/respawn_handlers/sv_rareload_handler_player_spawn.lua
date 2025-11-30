@@ -1,3 +1,4 @@
+---@diagnostic disable: inject-field, undefined-field
 if not RARELOAD or not RARELOAD.DataUtils then
     include("rareload/utils/rareload_data_utils.lua")
 end
@@ -238,8 +239,8 @@ function RARELOAD.HandlePlayerSpawn(ply)
             RARELOAD.Debug.FlushClipRestoreBuffer()
         end)
     end
-    if Settings.retainVehicles and SavedInfo.vehicles then
-        RARELOAD.RestoreVehicles()
+    if Settings.retainVehicles and SavedInfo.vehicles and SavedInfo.vehicles.Entities then
+        RARELOAD.RespawnVehiclesForPlayer(ply)
     end
     if Settings.retainVehicleState and SavedInfo.vehicleState then
         local vehicleData = SavedInfo.vehicleState
@@ -257,19 +258,11 @@ function RARELOAD.HandlePlayerSpawn(ply)
             end
         end)
     end
-    if Settings.retainMapEntities and SavedInfo.entities then
-        local playerPos = SavedInfo.pos
-        local spawnedCloseEntities = RARELOAD.RestoreEntities(playerPos)
-        if spawnedCloseEntities and Settings.spawnModeEnabled then
-            timer.Simple(0.05, function()
-                if IsValid(ply) then
-                    SetPlayerPositionAndEyeAngles(ply, SavedInfo)
-                end
-            end)
-        end
+    if Settings.retainMapEntities and SavedInfo.entities and SavedInfo.entities.Entities then
+        RARELOAD.RespawnEntitiesForPlayer(ply)
     end
-    if Settings.retainMapNPCs and SavedInfo.npcs and #SavedInfo.npcs > 0 then
-        RARELOAD.RestoreNPCs()
+    if Settings.retainMapNPCs and SavedInfo.npcs and SavedInfo.npcs.Entities and #SavedInfo.npcs.Entities > 0 then
+        RARELOAD.RespawnNPCsForPlayer(ply)
     end
     local activeWeaponToRestore = nil
     if RARELOAD.settings.retainGlobalInventory then

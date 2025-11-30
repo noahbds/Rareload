@@ -1,3 +1,11 @@
+-- Optional light/dark awareness
+RARELOAD = RARELOAD or {}
+if not RARELOAD.Theme or not RARELOAD.Theme.IsLightMode then
+    if file.Exists("rareload/client/shared/theme_utils.lua", "LUA") then
+        include("rareload/client/shared/theme_utils.lua")
+    end
+end
+
 THEME = {
     -- Base Material Design colors
     background = Color(18, 20, 24),
@@ -67,6 +75,56 @@ THEME = {
     text = Color(255, 255, 255),
     textDark = Color(97, 106, 117)
 }
+
+local function applyLightOverrides()
+    if not (RARELOAD.Theme and RARELOAD.Theme.IsLightMode and RARELOAD.Theme.IsLightMode()) then return end
+
+    THEME.background = Color(246, 248, 251)
+    THEME.backgroundDark = Color(232, 236, 241)
+    THEME.surface = Color(236, 240, 245)
+    THEME.surfaceVariant = Color(226, 231, 238)
+    THEME.surfaceHigh = Color(218, 224, 232)
+
+    THEME.primary = Color(65, 120, 235)
+    THEME.primaryDark = Color(55, 105, 215)
+    THEME.primaryLight = Color(95, 150, 245)
+    THEME.primaryContainer = Color(215, 225, 245)
+
+    THEME.secondary = Color(84, 160, 96)
+    THEME.secondaryDark = Color(72, 140, 86)
+    THEME.accent = THEME.primary
+
+    THEME.textPrimary = Color(22, 26, 30)
+    THEME.textSecondary = Color(85, 95, 105)
+    THEME.textTertiary = Color(120, 130, 140)
+    THEME.textDisabled = Color(160, 165, 170)
+
+    THEME.hover = Color(220, 225, 232)
+    THEME.pressed = Color(205, 210, 218)
+    THEME.focus = Color(65, 120, 235, 50)
+    THEME.selected = Color(65, 120, 235, 25)
+
+    THEME.border = Color(190, 196, 205)
+    THEME.borderLight = Color(200, 207, 216)
+    THEME.divider = Color(200, 206, 214)
+    THEME.outline = Color(65, 120, 235, 120)
+
+    -- keep entity colors and health colors as-is for contrast
+    THEME.header = THEME.surface
+    THEME.panel = THEME.surface
+    THEME.panelHighlight = THEME.surfaceVariant
+    THEME.dangerAccent = Color(210, 60, 60)
+    THEME.text = THEME.textPrimary
+    THEME.textDark = THEME.textSecondary
+end
+
+applyLightOverrides()
+
+if RARELOAD.Theme and RARELOAD.Theme.OnChanged then
+    RARELOAD.Theme.OnChanged("entity_viewer_theme", function()
+        applyLightOverrides()
+    end)
+end
 
 function THEME:GetHealthColor(health, maxHealth)
     if not health or not maxHealth or maxHealth <= 0 then
