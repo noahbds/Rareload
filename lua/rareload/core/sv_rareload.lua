@@ -11,10 +11,10 @@ if SERVER then
             retainGlobalInventory = false,
             retainHealthArmor = false,
             retainAmmo = false,
-            retainVehicleState = false,
+            retainVehicleState = false, -- BROKEN
             retainMapEntities = false,
             retainMapNPCs = false,
-            retainVehicles = false,
+            retainVehicles = false, -- BROKEN
             nocustomrespawnatdeath = false,
             debugEnabled = false,
             maxHistorySize = 10,

@@ -4,17 +4,31 @@ RARELOAD.Debug = RARELOAD.Debug or {}
 
 local MapName = game.GetMap()
 
-function RARELOAD.SavePlayerPositionOnDisconnect(ply)
-    if not IsValid(ply) then return end
-    
-    -- Ensure the main save function is available
-    if not RARELOAD.SaveRespawnPoint then
-        include("rareload/core/save_helpers/rareload_save_point.lua")
+function RARELOAD.LoadPlayerPositions()
+    local filePath = "rareload/player_positions_" .. MapName .. ".json"
+    if file.Exists(filePath, "DATA") then
+        local data = file.Read(filePath, "DATA")
+        if data then
+            local status, result = pcall(util.JSONToTable, data)
+            if status then
+                RARELOAD.playerPositions = result
+            else
+                print("[RARELOAD DEBUG] Error parsing JSON: " .. result)
+            end
+        else
+            print("[RARELOAD DEBUG] File is empty: " .. filePath)
+        end
+    else
+        print("[RARELOAD DEBUG] File does not exist: " .. filePath)
     end
+end
 
-    if RARELOAD.SaveRespawnPoint then
-        RARELOAD.SaveRespawnPoint(ply, ply:GetPos(), ply:EyeAngles(), { whereMsg = "disconnect" })
-    end
+function RARELOAD.SavePlayerPositionOnDisconnect(ply)
+    RARELOAD.playerPositions[MapName] = RARELOAD.playerPositions[MapName] or {}
+    RARELOAD.playerPositions[MapName][ply:SteamID()] = {
+        pos = ply:GetPos(),
+        moveType = ply:GetMoveType(),
+    }
 end
 
 local function loadSettings()

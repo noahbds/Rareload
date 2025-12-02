@@ -1,96 +1,94 @@
----@diagnostic disable: inject-field, undefined-field
+-- FOR NOW THIS SYSTEM DOES NOT WORK WELL, SO IT'S NOT SHOWN IN THE TOOL MENU
+
+
+---@class RARELOAD
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 
-if not (RARELOAD.DataUtils and RARELOAD.DataUtils.LoadDataForPlayer) then
-    if file.Exists("rareload/utils/rareload_data_utils.lua", "LUA") then
-        include("rareload/utils/rareload_data_utils.lua")
-    end
-end
+-- BROKEN
+-- This function is called when the addon need to restore vehicles from a save file. Allow to restore vehicles, their health, color, etc.
+function RARELOAD.RestoreVehicles()
+    timer.Simple(1, function()
+        local vehicleCount = 0
+        for _, vehicleData in ipairs(SavedInfo.vehicles) do
+            local exists = false
+            for _, ent in ipairs(ents.FindInSphere(vehicleData.pos, 50)) do
+                if ent:GetClass() == vehicleData.class and ent:GetModel() == vehicleData.model then
+                    exists = true
+                    break
+                end
+            end
 
--- Wrapper function to be called on player spawn
-function RARELOAD.RespawnVehiclesForPlayer(ply, data)
-    if not IsValid(ply) then return end
+            if not exists then
+                local success, vehicle = pcall(function()
+                    local veh = ents.Create(vehicleData.class)
+                    if not IsValid(veh) then return nil end
 
-    -- Use passed data or fallback
-    local savedVehiclesDupe = data or RARELOAD.LoadDataForPlayer(ply, "vehicles")
-
-    if not savedVehiclesDupe or not savedVehiclesDupe.Entities or next(savedVehiclesDupe.Entities) == nil then
-        if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD] No saved vehicle dupe found to restore.")
-        end
-        return
-    end
-
-    if not duplicator or not duplicator.Paste then
-        print("[RARELOAD ERROR] Duplicator system not found for pasting vehicles!")
-        return
-    end
-
-    -- 1. Remove previously restored vehicles to prevent duplication
-    local removedCount = 0
-    for _, ent in ipairs(ents.GetAll()) do
-        if IsValid(ent) and ent.SpawnedByRareload and ent:IsVehicle() then
-            ent:Remove()
-            removedCount = removedCount + 1
-        end
-    end
-    if RARELOAD.settings.debugEnabled and removedCount > 0 then
-        print("[RARELOAD] Removed " .. removedCount .. " previously restored vehicles.")
-    end
-
-    -- 2. Paste the entire dupe
-    timer.Simple(0.7, function() -- Stagger vehicle spawn slightly after entities
-        if not IsValid(ply) then return end
-
-        local ok, pastedVehicles = pcall(duplicator.Paste, ply, savedVehiclesDupe, {})
-        if not ok or not pastedVehicles then
-            print("[RARELOAD ERROR] Failed to paste vehicle dupe: " .. tostring(pastedVehicles))
-            return
-        end
-
-        -- 3. Re-assign our custom IDs and mark the entities
-        local restoredCount = 0
-        if savedVehiclesDupe.Entities and table.Count(pastedVehicles) > 0 then
-            for i, dupeVehData in pairs(savedVehiclesDupe.Entities) do
-                local newVeh = pastedVehicles[i]
-                if IsValid(newVeh) and dupeVehData.RareloadVehicleID then
-                    newVeh.RareloadVehicleID = dupeVehData.RareloadVehicleID
-                    newVeh.SpawnedByRareload = true
-                    newVeh.OriginalSpawner = dupeVehData.OriginallySpawnedBy
-
-                    if newVeh.SetNWString then
-                        pcall(function() newVeh:SetNWString("RareloadID", newVeh.RareloadVehicleID) end)
+                    if type(vehicleData.pos) == "table" and vehicleData.pos.x and vehicleData.pos.y and vehicleData.pos.z then
+                        veh:SetPos(Vector(vehicleData.pos.x, vehicleData.pos.y, vehicleData.pos.z))
+                    else
+                        veh:SetPos(vehicleData.pos)
                     end
-                    restoredCount = restoredCount + 1
+                    if type(vehicleData.ang) == "table" and vehicleData.ang.p and vehicleData.ang.y and vehicleData.ang.r then
+                        veh:SetAngles(Angle(vehicleData.ang.p, vehicleData.ang.y, vehicleData.ang.r))
+                    else
+                        veh:SetAngles(vehicleData.ang)
+                    end
+                    veh:SetModel(vehicleData.model)
+                    veh:Spawn()
+                    veh:Activate()
+
+                    veh:SetHealth(vehicleData.health or 100)
+                    veh:SetSkin(vehicleData.skin or 0)
+                    veh:SetColor(vehicleData.color or Color(255, 255, 255, 255))
+
+                    if vehicleData.bodygroups then
+                        for id, value in pairs(vehicleData.bodygroups) do
+                            ---@diagnostic disable-next-line: param-type-mismatch
+                            veh:SetBodygroup(tonumber(id), value)
+                        end
+                    end
+
+                    local phys = veh:GetPhysicsObject()
+                    if IsValid(phys) and vehicleData.frozen then
+                        phys:EnableMotion(false)
+                    end
+
+                    ---@diagnostic disable-next-line: undefined-field
+                    if vehicleData.vehicleParams and veh.SetVehicleParams then
+                        ---@diagnostic disable-next-line: undefined-field
+                        veh:SetVehicleParams(vehicleData.vehicleParams)
+                    end
+
+                    ---@diagnostic disable-next-line: inject-field
+                    veh.SpawnedByRareload = true
+
+                    if vehicleData.owner then
+                        for _, p in ipairs(player.GetAll()) do
+                            if p:SteamID() == vehicleData.owner then
+                                ---@diagnostic disable-next-line: undefined-field
+                                if veh.CPPISetOwner then
+                                    ---@diagnostic disable-next-line: undefined-field
+                                    veh:CPPISetOwner(p)
+                                end
+                                break
+                            end
+                        end
+                    end
+
+                    return veh
+                end)
+
+                if success and IsValid(vehicle) then
+                    vehicleCount = vehicleCount + 1
+                elseif RARELOAD.settings.DebugEnabled then
+                    print("[RARELOAD DEBUG] Failed to create vehicle: " .. vehicleData.class)
                 end
             end
         end
 
-        if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD] Successfully restored " .. restoredCount .. " vehicles from dupe.")
+        if RARELOAD.settings.DebugEnabled and vehicleCount > 0 then
+            print("[RARELOAD DEBUG] Restored " .. vehicleCount .. " vehicles")
         end
     end)
 end
-
--- The pre-cleanup save hook needs to be updated to save the dupe
-hook.Add("PreCleanupMap", "RareloadSaveVehiclesBeforeCleanup", function()
-    if RARELOAD.settings.addonEnabled and RARELOAD.settings.retainVehicles then
-        for _, ply in ipairs(player.GetHumans()) do
-            if IsValid(ply) then
-                local saveVehicles = include("rareload/core/save_helpers/rareload_save_vehicles.lua")
-                local vehiclesDupe = saveVehicles(ply)
-
-                if vehiclesDupe then
-                    RARELOAD.SaveDataForPlayer(ply, "vehicles", vehiclesDupe)
-                    if RARELOAD.settings.debugEnabled then
-                        print(string.format("[RARELOAD] Saved %d vehicles (as dupe) before map cleanup", #(vehiclesDupe.Entities or {})))
-                    end
-                end
-
-                -- We only need to save for one player
-                break 
-            end
-        end
-    end
-end)

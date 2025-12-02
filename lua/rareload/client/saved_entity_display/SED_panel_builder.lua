@@ -103,6 +103,11 @@ function SED.BuildPanelData(saved, ent, isNPC)
         add("saved", "Saved By Rareload", saved.SavedByRareload and "Yes" or "No", Color(200, 150, 200))
     end
 
+    -- New duplicator indicator
+    if saved.SavedViaDuplicator ~= nil then
+        add("saved", "Saved via Duplicator", saved.SavedViaDuplicator and "Yes" or "No", Color(100, 150, 255))
+    end
+
     -- Physics data
     if saved.physics and istable(saved.physics) then
         local phys = saved.physics

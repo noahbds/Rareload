@@ -52,7 +52,9 @@ if SERVER then
         LoadAddonState()
         if not RARELOAD.settings.addonEnabled then return end
         EnsureFolderExists()
-
+        if RARELOAD.LoadPlayerPositions then
+            RARELOAD.LoadPlayerPositions()
+        end
     end)
 
     hook.Add("PlayerDisconnect", "SavePlayerPositionDisconnect", function(ply)

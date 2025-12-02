@@ -52,7 +52,7 @@ local save_vehicles = include("rareload/core/save_helpers/rareload_save_vehicles
 local save_entities = include("rareload/core/save_helpers/rareload_save_entities.lua")
 local save_npcs = include("rareload/core/save_helpers/rareload_save_npcs.lua")
 local save_ammo = include("rareload/core/save_helpers/rareload_save_ammo.lua")
-
+local save_vehicle_state = include("rareload/core/save_helpers/rareload_save_vehicle_state.lua")
 
 -- This function saves a player's respawn point and related state (this is the most important things of the addon)
 function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
@@ -140,6 +140,9 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         playerData.vehicles = save_vehicles(ply)
     end
 
+    if RARELOAD.settings.retainVehicleState and ply:InVehicle() then
+        playerData.vehicleState = save_vehicle_state(ply)
+    end
 
     if RARELOAD.settings.retainMapEntities then
         playerData.entities = save_entities(ply)
@@ -155,7 +158,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
 
     RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
     local success, err = pcall(function()
-        file.Write("rareload/player_data_" .. mapName .. ".json", util.TableToJSON(RARELOAD.playerPositions, true))
+        file.Write("rareload/player_positions_" .. mapName .. ".json", util.TableToJSON(RARELOAD.playerPositions, true))
     end)
 
     if not success then

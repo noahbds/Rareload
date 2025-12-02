@@ -275,6 +275,11 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction, options)
         table.insert(sections[1].items, { "Health", healthText, healthColor })
     end
 
+    -- Duplicator snapshot indicator
+    if data.SavedViaDuplicator ~= nil then
+        table.insert(sections[1].items, { "Duplicator", data.SavedViaDuplicator and "Yes" or "No", THEME.textSecondary })
+    end
+
     if not RARELOAD or not RARELOAD.DataUtils then
         include("rareload/utils/rareload_data_utils.lua")
     end
