@@ -61,7 +61,7 @@ return function(ply)
         return nil
     end
 
-    local dupe = duplicator.Copy(entitiesToSave, true)
+    local dupe = duplicator.Copy(entitiesToSave)
 
     if not dupe or not dupe.Entities then
         if RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled then
@@ -71,12 +71,13 @@ return function(ply)
     end
 
     -- Inject our custom IDs and other metadata into the dupe structure
-    for i, ent in ipairs(entitiesToSave) do
+    for _, ent in ipairs(entitiesToSave) do
         if not ent.RareloadEntityID then
             ent.RareloadEntityID = GenerateEntityUniqueID(ent)
         end
 
-        local dupeEnt = dupe.Entities[i]
+        -- FIX: Access dupe.Entities using the Entity Index
+        local dupeEnt = dupe.Entities[ent:EntIndex()]
         if dupeEnt then
             dupeEnt.RareloadEntityID = ent.RareloadEntityID
             dupeEnt.OriginallySpawnedBy = ent.OriginalSpawner or GetOwnerSteamID(ent:CPPIGetOwner())

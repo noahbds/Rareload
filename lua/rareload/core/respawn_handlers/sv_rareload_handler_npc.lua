@@ -14,12 +14,13 @@ if not (RARELOAD.DataUtils and RARELOAD.DataUtils.LoadDataForPlayer) then
 end
 
 -- Wrapper function to be called on player spawn
-function RARELOAD.RespawnNPCsForPlayer(ply)
+function RARELOAD.RespawnNPCsForPlayer(ply, data)
     if not IsValid(ply) then return end
 
-    local savedNPCsDupe = RARELOAD.LoadDataForPlayer(ply, "npcs")
+    -- Use passed data or fallback
+    local savedNPCsDupe = data or RARELOAD.LoadDataForPlayer(ply, "npcs")
 
-    if not savedNPCsDupe or not savedNPCsDupe.Entities or #savedNPCsDupe.Entities == 0 then
+    if not savedNPCsDupe or not savedNPCsDupe.Entities or next(savedNPCsDupe.Entities) == nil then
         if RARELOAD.settings.debugEnabled then
             print("[RARELOAD] No saved NPC dupe found to restore.")
         end
@@ -55,15 +56,15 @@ function RARELOAD.RespawnNPCsForPlayer(ply)
 
         -- 3. Build ID map and attach AI data
         local spawnedNPCsByID = {}
-        if savedNPCsDupe.Entities and #pastedNPCs > 0 then
-            for i, dupeNpcData in ipairs(savedNPCsDupe.Entities) do
+        if savedNPCsDupe.Entities and table.Count(pastedNPCs) > 0 then
+            for i, dupeNpcData in pairs(savedNPCsDupe.Entities) do
                 local newNPC = pastedNPCs[i]
                 if IsValid(newNPC) and dupeNpcData.RareloadUniqueID then
                     newNPC.RareloadUniqueID = dupeNpcData.RareloadUniqueID
                     newNPC.SpawnedByRareload = true
                     newNPC.OriginalSpawner = dupeNpcData.OriginallySpawnedBy
                     newNPC.WasPlayerSpawned = dupeNpcData.WasPlayerSpawned
-                    
+
                     -- Attach the AI data block for the restoration functions to use
                     newNPC.RareloadAI = dupeNpcData.RareloadAI
 
@@ -174,7 +175,7 @@ function RARELOAD.RestoreNPCTargetsAndSchedules(spawnedNPCsByID, stats)
         if aiData.weaponProficiency and npc.SetCurrentWeaponProficiency then
             pcall(function() npc:SetCurrentWeaponProficiency(aiData.weaponProficiency) end)
         end
-        
+
         -- Restore VJ Follow behavior
         if aiData.vjFollow and aiData.vjFollow.isFollowing and aiData.vjFollow.target then
             timer.Simple(0.2, function()
@@ -185,7 +186,7 @@ function RARELOAD.RestoreNPCTargetsAndSchedules(spawnedNPCsByID, stats)
                 elseif aiData.vjFollow.target.type == "npc" then
                     target = spawnedNPCsByID[aiData.vjFollow.target.id]
                 end
-                
+
                 if IsValid(target) and npc.VJ_DoFollow then
                     pcall(npc.VJ_DoFollow, npc, target, true)
                 end
@@ -218,7 +219,7 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID, stats)
                     npc:Fire("ClearSquad", "", 0)
                 end
             end
-            
+
             -- Add them all to the same squad.
             -- The duplicator should have handled constraints, but AI relationships are tricky.
             -- This re-establishes them explicitly.
@@ -229,7 +230,7 @@ function RARELOAD.RestoreSquads(spawnedNPCsByID, stats)
                         npc:Fire("SetSquad", name, 0)
                     end
                 end
-                
+
                 -- Form relationships within the squad
                 for _, npc1 in ipairs(members) do
                     for _, npc2 in ipairs(members) do
@@ -253,7 +254,7 @@ hook.Add("PreCleanupMap", "RareloadSaveNPCsBeforeCleanup", function()
             if IsValid(ply) then
                 local saveNPCs = include("rareload/core/save_helpers/rareload_save_npcs.lua")
                 local npcsDupe = saveNPCs(ply)
-                
+
                 if npcsDupe then
                     RARELOAD.SaveDataForPlayer(ply, "npcs", npcsDupe)
                     if RARELOAD.settings.debugEnabled then

@@ -176,7 +176,7 @@ return function(ply)
         return nil
     end
 
-    local dupe = duplicator.Copy(npcsToSave, true)
+    local dupe = duplicator.Copy(npcsToSave)
 
     if not dupe or not dupe.Entities then
         if RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled then
@@ -188,8 +188,9 @@ return function(ply)
     local players = player.GetAll()
 
     -- Inject our custom IDs and complex AI data into the dupe structure
-    for i, npc in ipairs(npcsToSave) do
-        local dupeNpc = dupe.Entities[i]
+    for _, npc in ipairs(npcsToSave) do
+        -- FIX: Access dupe.Entities using the Entity Index
+        local dupeNpc = dupe.Entities[npc:EntIndex()]
         if not dupeNpc then continue end
         
         if not npc.RareloadUniqueID then

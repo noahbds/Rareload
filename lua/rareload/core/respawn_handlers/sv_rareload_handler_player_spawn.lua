@@ -3,36 +3,16 @@ if not RARELOAD or not RARELOAD.DataUtils then
     include("rareload/utils/rareload_data_utils.lua")
 end
 
+-- Include the specific respawn handlers so their functions are available.
+include("rareload/core/respawn_handlers/sv_rareload_handler_entities.lua")
+include("rareload/core/respawn_handlers/sv_rareload_handler_npc.lua")
+include("rareload/core/respawn_handlers/sv_rareload_handler_vehicles.lua")
+
+
 function RARELOAD.HandlePlayerSpawn(ply)
     if not RARELOAD.settings.addonEnabled then return end
     if not IsValid(ply) then return end
-    RARELOAD.playerPositions = RARELOAD.playerPositions or {}
-    do
-        local mapName = game.GetMap()
-        local hasAnyForMap = RARELOAD.playerPositions[mapName]
-            and next(RARELOAD.playerPositions[mapName]) ~= nil
-        if not hasAnyForMap and RARELOAD.LoadPlayerPositions then
-            RARELOAD.LoadPlayerPositions()
-        end
-    end
-    if not RARELOAD.AntiStuck then
-        include("rareload/anti_stuck/sv_anti_stuck_init.lua")
-        if RARELOAD.AntiStuck and RARELOAD.AntiStuck.Initialize then
-            RARELOAD.AntiStuck.Initialize()
-            if RARELOAD.AntiStuck.LoadMethodPriorities then
-                RARELOAD.AntiStuck.LoadMethodPriorities(true)
-            end
-        end
-    end
-    local Settings = RARELOAD.settings
-    if not Settings then
-        print("[RARELOAD] Error: Settings not loaded, cannot handle player spawn.")
-        return
-    end
-    local DebugEnabled = Settings.debugEnabled
-    local SteamID = ply:SteamID()
-    local MapName = game.GetMap()
-    SavedInfo = RARELOAD.playerPositions[MapName] and RARELOAD.playerPositions[MapName][SteamID]
+    SavedInfo = RARELOAD.LoadAllDataForPlayer(ply)
     RARELOAD.Debug.LogSpawnInfo(ply)
     RARELOAD.Debug.LogInventory(ply)
     if not SavedInfo then return end
@@ -240,13 +220,14 @@ function RARELOAD.HandlePlayerSpawn(ply)
         end)
     end
     if Settings.retainVehicles and SavedInfo.vehicles and SavedInfo.vehicles.Entities then
-        RARELOAD.RespawnVehiclesForPlayer(ply)
+        RARELOAD.RespawnVehiclesForPlayer(ply, SavedInfo.vehicles)
     end
     if Settings.retainVehicleState and SavedInfo.vehicleState then
         local vehicleData = SavedInfo.vehicleState
         timer.Simple(1.5, function()
             if not IsValid(ply) then return end
-            for _, ent in ipairs(ents.FindInSphere(vehicleData.pos, 50)) do
+            local searchPos = Vector(vehicleData.pos.x, vehicleData.pos.y, vehicleData.pos.z)
+            for _, ent in ipairs(ents.FindInSphere(searchPos, 50)) do
                 if ent:GetClass() == vehicleData.class then
                     timer.Simple(0.2, function()
                         if IsValid(ply) and IsValid(ent) then
@@ -259,10 +240,10 @@ function RARELOAD.HandlePlayerSpawn(ply)
         end)
     end
     if Settings.retainMapEntities and SavedInfo.entities and SavedInfo.entities.Entities then
-        RARELOAD.RespawnEntitiesForPlayer(ply)
+        RARELOAD.RespawnEntitiesForPlayer(ply, SavedInfo.entities)
     end
-    if Settings.retainMapNPCs and SavedInfo.npcs and SavedInfo.npcs.Entities and #SavedInfo.npcs.Entities > 0 then
-        RARELOAD.RespawnNPCsForPlayer(ply)
+    if Settings.retainMapNPCs and SavedInfo.npcs and SavedInfo.npcs.Entities and next(SavedInfo.npcs.Entities) ~= nil then
+        RARELOAD.RespawnNPCsForPlayer(ply, SavedInfo.npcs)
     end
     local activeWeaponToRestore = nil
     if RARELOAD.settings.retainGlobalInventory then

@@ -5,12 +5,13 @@ RARELOAD.settings = RARELOAD.settings or {}
 util.AddNetworkString("RareloadEntityRestoreProgress")
 
 -- Wrapper function to be called on player spawn
-function RARELOAD.RespawnEntitiesForPlayer(ply)
+function RARELOAD.RespawnEntitiesForPlayer(ply, data)
     if not IsValid(ply) then return end
-    
-    local savedEntitiesDupe = RARELOAD.LoadDataForPlayer(ply, "entities")
 
-    if not savedEntitiesDupe or not savedEntitiesDupe.Entities or #savedEntitiesDupe.Entities == 0 then
+    -- Use passed data (from player_positions) or fallback to player_data file
+    local savedEntitiesDupe = data or RARELOAD.LoadDataForPlayer(ply, "entities")
+
+    if not savedEntitiesDupe or not savedEntitiesDupe.Entities or next(savedEntitiesDupe.Entities) == nil then
         if RARELOAD.settings.debugEnabled then
             print("[RARELOAD] No saved entity dupe found to restore.")
         end
@@ -64,8 +65,8 @@ function RARELOAD.RespawnEntitiesForPlayer(ply)
 
         -- 3. Re-assign our custom IDs and mark the entities
         local restoredCount = 0
-        if savedEntitiesDupe.Entities and #pastedEntities > 0 then
-            for i, dupeEntData in ipairs(savedEntitiesDupe.Entities) do
+        if savedEntitiesDupe.Entities and table.Count(pastedEntities) > 0 then
+            for i, dupeEntData in pairs(savedEntitiesDupe.Entities) do
                 local newEnt = pastedEntities[i]
                 if IsValid(newEnt) and dupeEntData.RareloadEntityID then
                     newEnt.RareloadEntityID = dupeEntData.RareloadEntityID
@@ -84,7 +85,7 @@ function RARELOAD.RespawnEntitiesForPlayer(ply)
         if RARELOAD.settings.debugEnabled then
             print("[RARELOAD] Successfully restored " .. restoredCount .. " entities from dupe.")
         end
-        
+
         -- Announce completion
         net.Start("RareloadEntityRestoreProgress")
         net.WriteFloat(100)
@@ -120,7 +121,7 @@ hook.Add("PreCleanupMap", "RareloadSaveEntitiesBeforeCleanup", function()
             if IsValid(ply) then
                 local saveEntities = include("rareload/core/save_helpers/rareload_save_entities.lua")
                 local entitiesDupe = saveEntities(ply)
-                
+
                 if entitiesDupe then
                     RARELOAD.SaveDataForPlayer(ply, "entities", entitiesDupe)
                     if RARELOAD.settings.debugEnabled then

@@ -59,6 +59,7 @@ include("rareload/shared/permissions_def.lua")
 
 if SERVER then
     include("rareload/core/rareload_core.lua")
+    include("rareload/core/rareload_state_utils.lua")
     include("rareload/core/sv_rareload.lua")
     include("rareload/core/sv_rareload_hooks.lua")
     include("rareload/core/sv_sed_npc_freeze.lua")
@@ -138,19 +139,21 @@ if SERVER then
     print("[RARELOAD] Server-side files loaded successfully!")
 elseif CLIENT then
     include("rareload/shared/permissions_def.lua")
+    include("rareload/utils/rareload_data_utils.lua")
+    include("rareload/utils/vector_serialization.lua")
     include("rareload/utils/rareload_fonts.lua")
 
     if RARELOAD.RegisterFonts then
         RARELOAD.RegisterFonts()
     end
 
+    include("rareload/client/shared/theme_utils.lua")
     include("rareload/client/shared/depth_sorted_renderer.lua")
     include("rareload/ui/rareload_ui.lua")
     include("rareload/ui/rareload_toolscreen.lua")
     include("rareload/client/admin/admin_panel.lua")
     include("rareload/client/phantom/cl_phantom_core.lua")
     include("rareload/client/phantom/cl_phantom_hook.lua")
-    include("rareload/client/phantom/cl_phantom_info.lua")
     include("rareload/client/entity_viewer/cl_entity_viewer.lua")
     include("rareload/client/entity_viewer/cl_entity_viewer_create_category.lua")
     include("rareload/client/entity_viewer/cl_entity_viewer_info_panel.lua")
@@ -160,6 +163,7 @@ elseif CLIENT then
     include("rareload/client/entity_viewer/cl_entity_viewer_theme.lua")
     include("rareload/client/entity_viewer/cl_entity_viewer_utils.lua")
     include("rareload/client/saved_entity_display/SED_loader.lua")
+    include("rareload/client/phantom/cl_phantom_info.lua")
     include("rareload/client/antistuck/cl_rareload_antistuck_init.lua")
     include("rareload/client/antistuck/cl_anti_stuck_components.lua")
     include("rareload/client/antistuck/cl_anti_stuck_data.lua")

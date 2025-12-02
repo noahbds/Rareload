@@ -9,12 +9,13 @@ if not (RARELOAD.DataUtils and RARELOAD.DataUtils.LoadDataForPlayer) then
 end
 
 -- Wrapper function to be called on player spawn
-function RARELOAD.RespawnVehiclesForPlayer(ply)
+function RARELOAD.RespawnVehiclesForPlayer(ply, data)
     if not IsValid(ply) then return end
-    
-    local savedVehiclesDupe = RARELOAD.LoadDataForPlayer(ply, "vehicles")
 
-    if not savedVehiclesDupe or not savedVehiclesDupe.Entities or #savedVehiclesDupe.Entities == 0 then
+    -- Use passed data or fallback
+    local savedVehiclesDupe = data or RARELOAD.LoadDataForPlayer(ply, "vehicles")
+
+    if not savedVehiclesDupe or not savedVehiclesDupe.Entities or next(savedVehiclesDupe.Entities) == nil then
         if RARELOAD.settings.debugEnabled then
             print("[RARELOAD] No saved vehicle dupe found to restore.")
         end
@@ -50,8 +51,8 @@ function RARELOAD.RespawnVehiclesForPlayer(ply)
 
         -- 3. Re-assign our custom IDs and mark the entities
         local restoredCount = 0
-        if savedVehiclesDupe.Entities and #pastedVehicles > 0 then
-            for i, dupeVehData in ipairs(savedVehiclesDupe.Entities) do
+        if savedVehiclesDupe.Entities and table.Count(pastedVehicles) > 0 then
+            for i, dupeVehData in pairs(savedVehiclesDupe.Entities) do
                 local newVeh = pastedVehicles[i]
                 if IsValid(newVeh) and dupeVehData.RareloadVehicleID then
                     newVeh.RareloadVehicleID = dupeVehData.RareloadVehicleID
@@ -79,7 +80,7 @@ hook.Add("PreCleanupMap", "RareloadSaveVehiclesBeforeCleanup", function()
             if IsValid(ply) then
                 local saveVehicles = include("rareload/core/save_helpers/rareload_save_vehicles.lua")
                 local vehiclesDupe = saveVehicles(ply)
-                
+
                 if vehiclesDupe then
                     RARELOAD.SaveDataForPlayer(ply, "vehicles", vehiclesDupe)
                     if RARELOAD.settings.debugEnabled then

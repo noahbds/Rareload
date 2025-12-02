@@ -485,3 +485,29 @@ end
 -- For backwards compatibility, expose them on the RARELOAD table directly
 RARELOAD.SaveDataForPlayer = RARELOAD.DataUtils.SaveDataForPlayer
 RARELOAD.LoadDataForPlayer = RARELOAD.DataUtils.LoadDataForPlayer
+
+--[[
+    Loads the entire data block for a player for the current map.
+    - ply: The player entity to load for.
+    - Returns the entire player data table, or nil if not found.
+]]
+function RARELOAD.DataUtils.LoadAllDataForPlayer(ply)
+    if not IsValid(ply) then return nil end
+
+    local filePath = GetSaveFilePath()
+    if not file.Exists(filePath, "DATA") then return nil end
+
+    local steamID = ply:SteamID64()
+    local mapName = game.GetMap()
+
+    local content = file.Read(filePath, "DATA")
+    if not content or content == "" then return nil end
+
+    local ok, fileData = pcall(util.JSONToTable, content)
+    if not ok or not fileData or not fileData[mapName] then
+        return nil
+    end
+
+    return fileData[mapName][steamID]
+end
+RARELOAD.LoadAllDataForPlayer = RARELOAD.DataUtils.LoadAllDataForPlayer

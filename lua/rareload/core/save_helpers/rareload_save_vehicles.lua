@@ -54,7 +54,7 @@ return function(ply)
         return nil
     end
 
-    local dupe = duplicator.Copy(vehiclesToSave, true)
+    local dupe = duplicator.Copy(vehiclesToSave)
 
     if not dupe or not dupe.Entities then
         if RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled then
@@ -64,12 +64,13 @@ return function(ply)
     end
 
     -- Inject our custom IDs and other metadata into the dupe structure
-    for i, vehicle in ipairs(vehiclesToSave) do
+    for _, vehicle in ipairs(vehiclesToSave) do
         if not vehicle.RareloadVehicleID then
             vehicle.RareloadVehicleID = GenerateVehicleUniqueID(vehicle)
         end
         
-        local dupeVeh = dupe.Entities[i]
+        -- FIX: Access dupe.Entities using the Entity Index
+        local dupeVeh = dupe.Entities[vehicle:EntIndex()]
         if dupeVeh then
             dupeVeh.RareloadVehicleID = vehicle.RareloadVehicleID
             dupeVeh.OriginallySpawnedBy = GetOwnerSteamID(vehicle:CPPIGetOwner())
