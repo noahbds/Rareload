@@ -108,6 +108,13 @@ local THEME             = (RARELOAD and RARELOAD.SavedEntityDisplay and RARELOAD
         text = Color(220, 220, 255),
     }
 
+-- Compatibility with new Entity Viewer Theme
+if THEME then
+    THEME.header = THEME.header or THEME.backgroundDark or Color(30, 30, 45, 255)
+    THEME.text = THEME.text or THEME.textPrimary or Color(220, 220, 255)
+    THEME.border = THEME.border or Color(70, 130, 180, 255)
+end
+
 local SEDRef            = RARELOAD and RARELOAD.SavedEntityDisplay
 local SURF_SetFont      = (SEDRef and SEDRef.surface_SetFont) or surface.SetFont
 local SURF_GetTextSize  = (SEDRef and SEDRef.surface_GetTextSize) or surface.GetTextSize

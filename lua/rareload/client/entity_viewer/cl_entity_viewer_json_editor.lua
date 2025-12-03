@@ -192,6 +192,19 @@ local function FormatJSON(data, indent)
     local nextIndentStr = string.rep("  ", indent + 1)
 
     if type(data) == "table" then
+        -- Check if it's an empty table first
+        local isEmpty = true
+        for _ in pairs(data) do
+            isEmpty = false
+            break
+        end
+        
+        if isEmpty then
+            -- For empty tables, check if the original was an array
+            -- We'll default to [] for empty tables as it's more common
+            return "[]"
+        end
+        
         local isArray = true
         local count = 0
 
@@ -203,7 +216,7 @@ local function FormatJSON(data, indent)
             end
         end
 
-        if isArray and count > 0 then
+        if isArray then
             local result = "[\n"
             for i = 1, count do
                 result = result .. nextIndentStr .. FormatJSON(data[i], indent + 1)
@@ -248,6 +261,13 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
     local panel = vgui.Create("DPanel", parent)
     panel:Dock(FILL)
     panel.Paint = function() end
+
+    local function getLineHeight()
+        surface.SetFont("RareloadEditor")
+        local _, h = surface.GetTextSize("Wg")
+        return math.max(h, 18)
+    end
+
     if data.pos then
         data.pos = RARELOAD.DataUtils.FormatPositionForJSON(data.pos, 4)
     end
@@ -258,9 +278,15 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
 
     local formattedJSON = FormatJSON(data)
 
-    local editorContainer = vgui.Create("DPanel", panel)
-    editorContainer:Dock(FILL)
-    editorContainer:DockMargin(0, 0, 0, 60)
+    -- Shared scroll so line numbers and text move together
+    local editorScroll = vgui.Create("DScrollPanel", panel)
+    editorScroll:Dock(FILL)
+    editorScroll:DockMargin(0, 0, 0, 60)
+    
+    local editorContainer = vgui.Create("DPanel", editorScroll:GetCanvas())
+    editorContainer:Dock(TOP)
+    editorContainer:SetTall(600)
+    editorContainer:DockMargin(0, 0, 0, 0)
     editorContainer.Paint = function(self, w, h)
         draw.RoundedBox(8, 0, 0, w, h, SYNTAX_COLORS.background)
         surface.SetDrawColor(100, 100, 120, 150)
@@ -273,9 +299,14 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
     textEntry:DockMargin(0, 8, 8, 8)
     textEntry:SetMultiline(true)
     textEntry:SetFont("RareloadEditor")
+    -- Ensure one visual line per logical line for accurate numbering
+    if textEntry.SetWrap then textEntry:SetWrap(false) end
     textEntry:SetUpdateOnType(true)
     textEntry:SetValue(formattedJSON)
     textEntry:SetTextColor(Color(220, 220, 230))
+    textEntry:SetDrawBackground(false)
+    textEntry:SetPaintBackground(false)
+    textEntry:SetCursorColor(Color(255, 255, 255))
 
     local lineNumbers = vgui.Create("DPanel", editorContainer)
     lineNumbers:SetWide(60)
@@ -287,14 +318,22 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
 
         local text = textEntry and textEntry:GetValue() or ""
         local lines = string.Split(text, "\n")
+        local lineHeight = getLineHeight()
+        local scroll = 0
+        if editorScroll and editorScroll:GetVBar() then
+            scroll = editorScroll:GetVBar():GetScroll() or 0
+        end
+        local startLine = math.floor(scroll / lineHeight) + 1
+        local visibleHeight = editorScroll and editorScroll:GetTall() or h
+        -- Ensure visibleHeight is at least something reasonable if GetTall returns 0
+        if visibleHeight < 50 then visibleHeight = 600 end
+        
+        local visibleLines = math.ceil(visibleHeight / lineHeight) + 2
+        local endLine = math.min(#lines, startLine + visibleLines)
 
-        surface.SetFont("RareloadEditorSmall")
-        for i = 1, #lines do
-            local y = (i - 1) * 20 + 8
-            if y < h then
-                draw.SimpleText(tostring(i), "RareloadEditorSmall", w - 8, y, SYNTAX_COLORS.line_number, TEXT_ALIGN_RIGHT,
-                    TEXT_ALIGN_TOP)
-            end
+        for i = startLine, endLine do
+            local y = (i - 1) * lineHeight + 8
+            draw.SimpleText(tostring(i), "RareloadEditorSmall", w - 8, y, SYNTAX_COLORS.line_number, TEXT_ALIGN_RIGHT, TEXT_ALIGN_TOP)
         end
     end
 
@@ -302,56 +341,71 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
     local lastValidJSON = formattedJSON
     local validationTimer = nil
 
+    -- Override Paint completely to control background
     textEntry.Paint = function(self, w, h)
-        draw.RoundedBox(4, 0, 0, w, h, Color(25, 25, 35))
-
-        if not self:HasFocus() then
-            local text = self:GetValue()
-            local lines = string.Split(text, "\n")
-            local lineHeight = 20
-
-            tokens = TokenizeJSON(text)
-
-            local charX, charY = 8, 8
-            local textPos = 1
-
-            for lineNum, line in ipairs(lines) do
-                charX = 8
-                charY = (lineNum - 1) * lineHeight + 8
-
-                if charY < h + lineHeight and charY > -lineHeight then
-                    for i = 1, #line do
-                        local char = string.sub(line, i, i)
-                        local color = SYNTAX_COLORS.punctuation
-
-                        for _, token in ipairs(tokens) do
-                            if textPos >= token.start and textPos <= token.stop then
-                                color = SYNTAX_COLORS[token.type] or SYNTAX_COLORS.punctuation
-                                break
-                            end
-                        end
-
-                        surface.SetFont("RareloadEditor")
-                        surface.SetTextColor(color.r, color.g, color.b, color.a or 255)
-                        surface.SetTextPos(charX, charY)
-                        surface.DrawText(char)
-
-                        local charWidth = surface.GetTextSize(char) or 8
-                        charX = charX + charWidth
-                        textPos = textPos + 1
-                    end
-                    textPos = textPos + 1
-                end
-            end
-
-            return
-        end
-
-        derma.SkinHook("Paint", "TextEntry", self, w, h)
+        -- Draw dark background first
+        draw.RoundedBox(4, 0, 0, w, h, SYNTAX_COLORS.background)
+        
+        -- Let derma draw the text and cursor with our dark background
+        self:DrawTextEntryText(self:GetTextColor(), self:GetHighlightColor(), self:GetCursorColor())
+        -- Highlight current line
+        local caret = self.GetCaretPos and self:GetCaretPos() or 0
+        local text = self:GetValue() or ""
+        local before = string.sub(text, 1, caret)
+        local lineIndex = select(2, string.gsub(string.sub(before, 1, #before), "\n", "\n")) + 1
+        local lineHeight = getLineHeight()
+        local y = (lineIndex - 1) * lineHeight
+        surface.SetDrawColor(60, 60, 80, 60)
+        surface.DrawRect(60, y, w - 60, lineHeight)
     end
 
     local function updateHeight()
-        lineNumbers:InvalidateLayout()
+        if not IsValid(textEntry) or not IsValid(editorContainer) then return end
+        local text = textEntry:GetValue() or ""
+        local _, count = string.gsub(text, "\n", "")
+        local lineCount = count + 1
+        local lineHeight = getLineHeight()
+        -- Add extra buffer to ensure we never cut off the last lines
+        local needed = (lineCount * lineHeight) + 400
+        
+        if editorContainer:GetTall() < needed then
+            editorContainer:SetTall(needed)
+            if IsValid(editorScroll) then editorScroll:InvalidateLayout(true) end
+        end
+        if IsValid(lineNumbers) then lineNumbers:InvalidateLayout(true) end
+    end
+
+    -- Ensure height is updated when text changes or on init
+    textEntry.OnValueChange = function(self)
+        if validationTimer then timer.Remove(validationTimer) end
+        validationTimer = timer.Simple(0.3, function()
+            validateJSON()
+            tokens = TokenizeJSON(self:GetValue())
+            self:InvalidateLayout()
+            if IsValid(lineNumbers) then lineNumbers:InvalidateLayout(true) end
+            scrollToCaret()
+        end)
+        -- Update height immediately to prevent scroll lock
+        updateHeight()
+    end
+
+    local function scrollToCaret()
+        if not IsValid(textEntry) or not IsValid(editorScroll) then return end
+        local caret = textEntry.GetCaretPos and textEntry:GetCaretPos() or 0
+        local text = textEntry:GetValue() or ""
+        local before = string.sub(text, 1, caret)
+        local lineIndex = select(2, string.gsub(before, "\n", "")) + 1
+        local lineHeight = getLineHeight()
+        local vbar = editorScroll:GetVBar()
+        if not vbar then return end
+        local scroll = vbar:GetScroll() or 0
+        local viewportH = editorScroll:GetTall()
+        local y = (lineIndex - 1) * lineHeight
+        if y < scroll then
+            vbar:SetScroll(y)
+        elseif (y + lineHeight) > (scroll + viewportH) then
+            vbar:SetScroll((y + lineHeight) - viewportH)
+        end
     end
 
     updateHeight()
@@ -379,23 +433,32 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
             statusPanel.Paint = function(self, w, h)
                 draw.RoundedBox(6, 0, 0, w, h, Color(100, 200, 100, 40))
                 surface.SetDrawColor(100, 200, 100, 180)
-                surface.SetMaterial(Material("icon16/tick.png"))
-                surface.DrawTexturedRect(8, h / 2 - 8, 16, 16)
+                local mat = Material("icon16/tick.png")
+                if not mat:IsError() then
+                    surface.SetMaterial(mat)
+                    surface.DrawTexturedRect(8, h / 2 - 8, 16, 16)
+                end
             end
             lastValidJSON = jsonText
             return true, result
         else
-            local errorMsg = tostring(result or "Unknown error")
-            if string.len(errorMsg) > 60 then
-                errorMsg = string.sub(errorMsg, 1, 60) .. "..."
+            local errorMsg = "Invalid JSON syntax"
+            if result and type(result) == "string" then
+                errorMsg = tostring(result)
+                if string.len(errorMsg) > 60 then
+                    errorMsg = string.sub(errorMsg, 1, 60) .. "..."
+                end
             end
             statusLabel:SetText("✗ " .. errorMsg)
             statusLabel:SetTextColor(Color(255, 100, 100))
             statusPanel.Paint = function(self, w, h)
                 draw.RoundedBox(6, 0, 0, w, h, Color(255, 100, 100, 40))
                 surface.SetDrawColor(255, 100, 100, 180)
-                surface.SetMaterial(Material("icon16/exclamation.png"))
-                surface.DrawTexturedRect(8, h / 2 - 8, 16, 16)
+                local mat = Material("icon16/exclamation.png")
+                if not mat:IsError() then
+                    surface.SetMaterial(mat)
+                    surface.DrawTexturedRect(8, h / 2 - 8, 16, 16)
+                end
             end
             return false, nil
         end
@@ -405,9 +468,28 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
         if validationTimer then timer.Remove(validationTimer) end
         validationTimer = timer.Simple(0.3, function()
             validateJSON()
-            updateHeight()
             tokens = TokenizeJSON(self:GetValue())
             self:InvalidateLayout()
+            if IsValid(lineNumbers) then lineNumbers:InvalidateLayout(true) end
+            scrollToCaret()
+        end)
+        -- Update height immediately to prevent scroll lock
+        updateHeight()
+    end
+
+    -- Keep scroll synced when navigating with arrow keys and Enter
+    textEntry.OnKeyCodeTyped = function(self, code)
+        -- Update height when adding/removing lines
+        if code == KEY_ENTER or code == KEY_BACKSPACE or code == KEY_DELETE then
+            timer.Simple(0, function()
+                if not IsValid(self) then return end
+                updateHeight()
+            end)
+        end
+        -- After movement, ensure caret is in view
+        timer.Simple(0, function()
+            scrollToCaret()
+            if IsValid(lineNumbers) then lineNumbers:InvalidateLayout(true) end
         end)
     end
 

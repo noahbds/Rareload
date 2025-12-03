@@ -54,12 +54,8 @@ end)
 hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", function()
     if not (RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled) then return end
 
-    local currentTime = CurTime()
-
-    if currentTime - SED.lastPlayerCheck > 7.5 then
-        SED.lpCache = LocalPlayer()
-        SED.lastPlayerCheck = currentTime
-    end
+    -- Optimization: Update LocalPlayer cache every frame to ensure validity
+    SED.lpCache = LocalPlayer()
     if not IsValid(SED.lpCache) then return end
 
     SED.CandidateEnt, SED.CandidateIsNPC, SED.CandidateID, SED.CandidateYawDiff = nil, nil, nil, nil

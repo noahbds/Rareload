@@ -37,6 +37,7 @@ if SERVER then
     AddCSLuaFile("rareload/client/saved_entity_display/SED_render_utils.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_panel_builder.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_panel_renderer.lua")
+    AddCSLuaFile("rareload/client/saved_entity_display/SED_panel_queue.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_interaction_system.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_hooks.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_loader.lua")

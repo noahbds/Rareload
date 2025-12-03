@@ -502,30 +502,68 @@ function CreateModifyDataButton(actionsPanel, data, isNPC, onAction)
                     local fileOk, rawData = pcall(util.JSONToTable, file.Read(filePath, "DATA"))
                     if fileOk and rawData and rawData[mapName] then
                         for playerId, playerData in pairs(rawData[mapName]) do
-                            local arr = isNPC and playerData.npcs or playerData.entities
-                            if arr then
-                                for i, ent in ipairs(arr) do
-                                    local entCopy = table.Copy(ent)
-                                    local dataCopy = table.Copy(data)
-                                    if type(entCopy.pos) == "string" then
-                                        entCopy.pos = ParsePosString(entCopy.pos)
-                                    end
-                                    if type(dataCopy.pos) == "string" then
-                                        dataCopy.pos = ParsePosString(dataCopy.pos)
-                                    end
-                                    if ent.class == data.class and entCopy.pos and dataCopy.pos and
-                                        math.abs(entCopy.pos.x - dataCopy.pos.x) < 0.1 and
-                                        math.abs(entCopy.pos.y - dataCopy.pos.y) < 0.1 and
-                                        math.abs(entCopy.pos.z - dataCopy.pos.z) < 0.1 then
-                                        if newData.pos then
-                                            newData.pos = RARELOAD.DataUtils.FormatPositionForJSON(newData.pos, 4)
+                            local container = isNPC and playerData.npcs or playerData.entities
+                            local entityMap = container
+                            
+                            -- Handle Duplicator Format
+                            if container and container.__duplicator and container.__duplicator.payload and container.__duplicator.payload.Entities then
+                                entityMap = container.__duplicator.payload.Entities
+                            end
+
+                            if entityMap then
+                                for k, ent in pairs(entityMap) do
+                                    if k ~= "__duplicator" then
+                                        -- Check match using original key if available, or fuzzy match
+                                        local isMatch = false
+                                        if data.__originalKey and tostring(k) == tostring(data.__originalKey) then
+                                            isMatch = true
+                                        else
+                                            -- Fallback fuzzy match
+                                            local eClass = ent.Class or ent.class
+                                            local dClass = data.class
+                                            
+                                            local ePos = ent.Pos or ent.pos
+                                            local dPos = data.pos
+                                            
+                                            if eClass == dClass and ePos and dPos then
+                                                local ep = RARELOAD.DataUtils.ToPositionTable(ePos)
+                                                local dp = RARELOAD.DataUtils.ToPositionTable(dPos)
+                                                if ep and dp and math.abs(ep.x - dp.x) < 0.1 and math.abs(ep.y - dp.y) < 0.1 and math.abs(ep.z - dp.z) < 0.1 then
+                                                    isMatch = true
+                                                end
+                                            end
                                         end
-                                        if newData.ang then
-                                            newData.ang = RARELOAD.DataUtils.FormatAngleForJSON(newData.ang, 4)
+
+                                        if isMatch then
+                                            -- Helper to update a field if it exists in target (preserving case), or default to lowercase
+                                            local function UpdateField(target, keyLower, keyUpper, value)
+                                                if target[keyUpper] ~= nil then
+                                                    target[keyUpper] = value
+                                                else
+                                                    target[keyLower] = value
+                                                end
+                                            end
+                                            
+                                            -- Update Pos
+                                            if newData.pos then
+                                                local posObj = RARELOAD.DataUtils.ConvertToPositionObject(newData.pos)
+                                                UpdateField(entityMap[k], "pos", "Pos", posObj)
+                                            end
+                                            
+                                            -- Update Angle
+                                            if newData.ang then
+                                                local angObj = RARELOAD.DataUtils.ToAngleTable(newData.ang)
+                                                UpdateField(entityMap[k], "ang", "Angle", angObj)
+                                            end
+                                            
+                                            -- Update other fields
+                                            if newData.health then UpdateField(entityMap[k], "health", "CurHealth", newData.health) end
+                                            if newData.skin then UpdateField(entityMap[k], "skin", "Skin", newData.skin) end
+                                            if newData.model then UpdateField(entityMap[k], "model", "Model", newData.model) end
+
+                                            success = true
+                                            break
                                         end
-                                        arr[i] = newData
-                                        success = true
-                                        break
                                     end
                                 end
                             end

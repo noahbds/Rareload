@@ -32,11 +32,26 @@ function ShowNextNotification()
     notifPanel:SetAlpha(0)
     notifPanel:AlphaTo(255, 0.2, 0)
     notifPanel.Paint = function(self, w, h)
-        local col = notif.type == NOTIFY_ERROR and Color(255, 60, 60, 230)
-            or notif.type == NOTIFY_HINT and Color(90, 180, 255, 230)
-            or Color(60, 180, 120, 230)
-        DrawShadowedPanel(0, 0, w, h, 12, col, Color(0, 0, 0, 120))
-        draw.SimpleText(notif.message, "RareloadText", 18, h / 2, color_white, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        THEME:DrawBlur(self, 2)
+        
+        local col = THEME.surface
+        local accent = THEME.primary
+        
+        if notif.type == NOTIFY_ERROR then accent = THEME.error
+        elseif notif.type == NOTIFY_HINT then accent = THEME.info
+        elseif notif.type == NOTIFY_GENERIC then accent = THEME.success
+        end
+        
+        draw.RoundedBox(12, 0, 0, w, h, THEME.surface)
+        draw.RoundedBox(12, 0, 0, w, h, Color(0,0,0,100)) -- Darken slightly
+        
+        -- Accent strip
+        draw.RoundedBoxEx(12, 0, 0, 6, h, accent, true, false, true, false)
+        
+        draw.SimpleText(notif.message, "RareloadBody", 24, h / 2, THEME.textPrimary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        
+        surface.SetDrawColor(THEME.border)
+        surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
 
     surface.PlaySound(notif.type == NOTIFY_ERROR and "buttons/button10.wav" or "buttons/button15.wav")
@@ -72,21 +87,17 @@ function CreateModernSearchBar(parent)
     local searchBar = vgui.Create("DTextEntry", container)
     searchBar:SetPos(36, 8)
     searchBar:SetSize(200, 24)
-    searchBar:SetPlaceholderText("Search entities and NPCs...")
+    searchBar:SetPlaceholderText("Search entities...")
     searchBar:SetFont("RareloadBody")
     searchBar:SetTextColor(THEME.textPrimary)
+    searchBar:SetDrawBackground(false) -- Important for custom look
     searchBar.Paint = function(self, w, h)
-        surface.SetDrawColor(THEME.backgroundDark)
-        surface.DrawRect(0, 0, w, h)
-
+        -- Let DTextEntry draw text only
         if self:GetPlaceholderText() and self:GetValue() == "" then
-            draw.SimpleText(self:GetPlaceholderText(), self:GetFont(), 4, h / 2,
+            draw.SimpleText(self:GetPlaceholderText(), self:GetFont(), 0, h / 2,
                 THEME.textTertiary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         end
         self:DrawTextEntryText(THEME.textPrimary, THEME.primary, THEME.textPrimary)
-
-        surface.SetDrawColor(THEME.border)
-        surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
 
     container.PerformLayout = function(self, w, h)
@@ -131,7 +142,7 @@ function CreateStatsCard(parent, title, value, subtitle)
     card:SetSize(100, 60)
 
     card.Paint = function(self, w, h)
-        THEME:DrawCard(0, 0, w, h, 2)
+        THEME:DrawCard(0, 0, w, h, THEME.surface)
 
         draw.SimpleText(title, "RareloadCaption", w / 2, 8,
             THEME.textSecondary, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
