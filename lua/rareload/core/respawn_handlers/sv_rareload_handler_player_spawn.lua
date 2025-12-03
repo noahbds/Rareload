@@ -3,6 +3,15 @@ if not RARELOAD or not RARELOAD.DataUtils then
     include("rareload/utils/rareload_data_utils.lua")
 end
 
+local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
+
+local function HasSnapshotData(bucket)
+    if SnapshotUtils.HasSnapshot(bucket) then
+        return true
+    end
+    return istable(bucket) and #bucket > 0
+end
+
 function RARELOAD.HandlePlayerSpawn(ply)
     if not RARELOAD.settings.addonEnabled then return end
     if not IsValid(ply) then return end
@@ -269,7 +278,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
             end)
         end
     end
-    if Settings.retainMapNPCs and SavedInfo.npcs and #SavedInfo.npcs > 0 then
+    if Settings.retainMapNPCs and HasSnapshotData(SavedInfo.npcs) then
         RARELOAD.RestoreNPCs()
     end
     local activeWeaponToRestore = nil

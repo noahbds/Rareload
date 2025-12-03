@@ -23,6 +23,8 @@ PHANTOM_CATEGORIES = {
     { "stats",     "Statistics",              Color(147, 112, 219) }
 }
 
+local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
+
 local MAX_ITEMS_HIGH_LOD = 50
 local MAX_ITEMS_MED_LOD = 20
 local MAX_ITEMS_LOW_LOD = 10
@@ -333,7 +335,8 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
         end
     end
 
-    processGroupedDataLOD(SavedInfo.entities, {
+    local savedEntities = SnapshotUtils.GetSummary(SavedInfo.entities, { category = "entity" }) or {}
+    processGroupedDataLOD(savedEntities, {
         totalLabel = "Total Entities",
         totalColor = Color(255, 180, 180),
         pattern = "[^_]+_(.+)",
@@ -341,7 +344,8 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
         entryColor = Color(255, 180, 180)
     })
 
-    processGroupedDataLOD(SavedInfo.npcs, {
+    local savedNPCs = SnapshotUtils.GetSummary(SavedInfo.npcs, { category = "npc" }) or {}
+    processGroupedDataLOD(savedNPCs, {
         totalLabel = "Total NPCs",
         totalColor = Color(200, 255, 200),
         pattern = "npc_(.+)",
@@ -352,10 +356,10 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
     table.insert(data.stats, { "Health", math.floor(SavedInfo.health or 0), Color(255, 180, 180) })
     table.insert(data.stats, { "Armor", math.floor(SavedInfo.armor or 0), Color(180, 180, 255) })
 
-    if lodLevel <= 2 and SavedInfo.npcs and #SavedInfo.npcs > 0 then
+    if lodLevel <= 2 and savedNPCs and #savedNPCs > 0 then
         local totalHealth = 0
-        for i = 1, math.min(#SavedInfo.npcs, 50) do
-            totalHealth = totalHealth + (SavedInfo.npcs[i].health or 0)
+        for i = 1, math.min(#savedNPCs, 50) do
+            totalHealth = totalHealth + (savedNPCs[i].health or 0)
         end
         table.insert(data.stats, { "Total NPC Health", math.floor(totalHealth), Color(200, 255, 200) })
     end

@@ -53,6 +53,40 @@ local save_entities = include("rareload/core/save_helpers/rareload_save_entities
 local save_npcs = include("rareload/core/save_helpers/rareload_save_npcs.lua")
 local save_ammo = include("rareload/core/save_helpers/rareload_save_ammo.lua")
 local save_vehicle_state = include("rareload/core/save_helpers/rareload_save_vehicle_state.lua")
+local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
+
+local function NeedsDuplicatorUpgrade(bucket)
+    if not SnapshotUtils.HasSnapshot(bucket) then
+        return false
+    end
+
+    for key in pairs(bucket) do
+        if key ~= "__duplicator" then
+            return true
+        end
+    end
+
+    local snapshot = bucket.__duplicator
+    if not snapshot or not istable(snapshot._indexMap) or next(snapshot._indexMap) == nil then
+        return true
+    end
+
+    return false
+end
+
+local function NeedsStructuralUpgrade(oldData)
+    if not istable(oldData) then return false end
+
+    if NeedsDuplicatorUpgrade(oldData.entities) then
+        return true
+    end
+
+    if NeedsDuplicatorUpgrade(oldData.npcs) then
+        return true
+    end
+
+    return false
+end
 
 -- This function saves a player's respawn point and related state (this is the most important things of the addon)
 function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
@@ -93,6 +127,8 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     end
 
     local oldData = RARELOAD.playerPositions[mapName][ply:SteamID()]
+    local legacyDataFound = NeedsStructuralUpgrade(oldData)
+
     if oldData and not RARELOAD.settings.autoSaveEnabled then
         local inventoryUnchanged = not RARELOAD.settings.retainInventory or
             listsEqualAsMultisets(oldData.inventory or {}, newInventory)
@@ -101,7 +137,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         local angSame = angTablesEqual(oldData.ang, newAng)
         local weaponSame = (oldData.activeWeapon == newActiveWeapon)
 
-        if posSame and angSame and weaponSame and inventoryUnchanged then
+        if posSame and angSame and weaponSame and inventoryUnchanged and not legacyDataFound then
             return true, "unchanged"
         else
             local message = "[RARELOAD] Overwriting previous save: Position, Camera"
@@ -145,11 +181,21 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     end
 
     if RARELOAD.settings.retainMapEntities then
-        playerData.entities = save_entities(ply)
+        local entityBucket = SnapshotUtils.NormalizeBucketForSave(save_entities(ply))
+        if entityBucket then
+            playerData.entities = entityBucket
+        else
+            playerData.entities = nil
+        end
     end
 
     if RARELOAD.settings.retainMapNPCs then
-        playerData.npcs = save_npcs(ply)
+        local npcBucket = SnapshotUtils.NormalizeBucketForSave(save_npcs(ply))
+        if npcBucket then
+            playerData.npcs = npcBucket
+        else
+            playerData.npcs = nil
+        end
     end
 
     if RARELOAD.CacheCurrentPositionData then

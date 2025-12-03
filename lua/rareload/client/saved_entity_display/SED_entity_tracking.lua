@@ -1,3 +1,16 @@
+local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
+
+local function ingestSaved(target, bucket, opts)
+    if not istable(bucket) then return end
+    local list = SnapshotUtils.GetSummary(bucket, opts) or {}
+    for _, saved in ipairs(list) do
+        if istable(saved) and saved.id then
+            saved._ownerSteamID = opts.owner
+            target[saved.id] = saved
+        end
+    end
+end
+
 function SED.RebuildSavedLookup()
     local map = game.GetMap()
     if not (RARELOAD.playerPositions and map) then return end
@@ -7,20 +20,16 @@ function SED.RebuildSavedLookup()
     for ownerSteamID, pdata in pairs(RARELOAD.playerPositions[map] or {}) do
         if istable(pdata) then
             if istable(pdata.entities) then
-                for _, saved in ipairs(pdata.entities) do
-                    if istable(saved) and saved.id then
-                        saved._ownerSteamID = ownerSteamID
-                        SED.SAVED_ENTITIES_BY_ID[saved.id] = saved
-                    end
-                end
+                ingestSaved(SED.SAVED_ENTITIES_BY_ID, pdata.entities, {
+                    category = "entity",
+                    owner = ownerSteamID
+                })
             end
             if istable(pdata.npcs) then
-                for _, saved in ipairs(pdata.npcs) do
-                    if istable(saved) and saved.id then
-                        saved._ownerSteamID = ownerSteamID
-                        SED.SAVED_NPCS_BY_ID[saved.id] = saved
-                    end
-                end
+                ingestSaved(SED.SAVED_NPCS_BY_ID, pdata.npcs, {
+                    category = "npc",
+                    owner = ownerSteamID
+                })
             end
         end
     end

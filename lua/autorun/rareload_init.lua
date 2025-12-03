@@ -5,6 +5,8 @@ RARELOAD.version = "2.0"
 
 if SERVER then
     AddCSLuaFile("rareload/shared/permissions_def.lua")
+    AddCSLuaFile("rareload/core/save_helpers/rareload_duplicator_utils.lua")
+    AddCSLuaFile("rareload/shared/rareload_snapshot_utils.lua")
     AddCSLuaFile("rareload/utils/rareload_fonts.lua")
     AddCSLuaFile("rareload/utils/rareload_data_utils.lua")
     AddCSLuaFile("rareload/utils/vector_serialization.lua")

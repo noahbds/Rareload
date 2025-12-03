@@ -27,6 +27,7 @@ local function GetOwnerSteamID(owner)
 end
 
 local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
+local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 
 -- Duplicator-driven only: old per-entity save logic removed.
 
@@ -113,54 +114,13 @@ return function(ply)
         return {}
     end
 
-    local payload = DuplicatorBridge.DeserializePayload(duplicatorSnapshot.payload) or {}
-    local entList = payload.Entities or {}
-    local built = {}
-    for _, dupEnt in pairs(entList) do
-        local e = {}
-        e.class = dupEnt.Class or dupEnt.class or dupEnt.ClassName or dupEnt.Class
-        -- Map position
-        if dupEnt.Pos then
-            local p = dupEnt.Pos
-            e.pos = { x = p.x or 0, y = p.y or 0, z = p.z or 0 }
-        end
-        -- Map angle
-        if dupEnt.Angle or dupEnt.Ang then
-            local a = dupEnt.Angle or dupEnt.Ang
-            e.ang = { p = a.p or 0, y = a.y or 0, r = a.r or 0 }
-        end
-        e.id = dupEnt.RareloadEntityID or dupEnt.RareloadID
-        e.model = dupEnt.Model or dupEnt.model
-        e.skin = dupEnt.Skin or dupEnt.skin
-        if dupEnt.BodyG then
-            e.bodygroups = dupEnt.BodyG
-        end
-        if dupEnt._DuplicatedColor then
-            local c = dupEnt._DuplicatedColor
-            e.color = { r = c.r or 255, g = c.g or 255, b = c.b or 255, a = c.a or 255 }
-        end
-        if dupEnt.CurHealth ~= nil then e.health = dupEnt.CurHealth end
-        if dupEnt.MaxHealth ~= nil then e.maxHealth = dupEnt.MaxHealth end
-        if dupEnt.Name then e.name = dupEnt.Name end
-        if dupEnt._DuplicatedMaterial then e.material = dupEnt._DuplicatedMaterial end
-        if dupEnt.OriginalSpawner then e.originallySpawnedBy = dupEnt.OriginalSpawner end
-        if dupEnt.SavedAt then
-            e.spawnTime = dupEnt.SavedAt
-        else
-            e.spawnTime = duplicatorSnapshot.savedAt
-        end
-        e.SavedViaDuplicator = true
-
-        if RARELOAD.Util and RARELOAD.Util.GenerateEntityStateHash then
-            e.stateHash = RARELOAD.Util.GenerateEntityStateHash(e)
-        end
-
-        table.insert(built, e)
-    end
+    SnapshotUtils.EnsureIndexMap(duplicatorSnapshot, {
+        category = "entity",
+        idPrefix = "entity"
+    })
     
-    -- Preserve the duplicator snapshot while building the entity list
-    entities = built
-    entities.__duplicator = duplicatorSnapshot
+    local result = {}
+    rawset(result, "__duplicator", duplicatorSnapshot)
 
     if RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled then
         print("[RARELOAD DEBUG] Saved " ..
@@ -173,5 +133,5 @@ return function(ply)
         end
     end
 
-    return entities
+    return result
 end

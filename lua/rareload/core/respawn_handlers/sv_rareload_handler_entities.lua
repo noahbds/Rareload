@@ -21,6 +21,7 @@ if not (RARELOAD.Util and RARELOAD.Util.GenerateEntityStateHash) then
 end
 
 local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
+local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 
 local function CountTableEntries(tbl)
     if not istable(tbl) then return 0 end
@@ -60,6 +61,11 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
         return false 
     end
 
+    SnapshotUtils.EnsureIndexMap(snapshot, {
+        category = "entity",
+        idPrefix = "entity"
+    })
+
     -- Convert playerSpawnPos to Vector if it's a table
     local spawnPos = nil
     if playerSpawnPos then
@@ -84,9 +90,12 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
     
     if RARELOAD.settings.debugEnabled then
         print(string.format("[RARELOAD DEBUG] Restoring %d entities from duplicator snapshot", snapshot.entityCount or 0))
-        print(string.format("[RARELOAD DEBUG] Owner: %s", (IsValid(owner) and owner:Nick()) and owner:Nick() or "none"))
+        print(string.format("[RARELOAD DEBUG] Owner: %s", IsValid(owner) and owner:Nick() or "none"))
     end
     
+    -- Build index map from duplicator entity index to saved entity ID
+    local indexToID = snapshot._indexMap or {}
+
     local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, { player = owner })
     local spawnedClose = false
     if not ok then
@@ -106,12 +115,22 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
         print(string.format("[RARELOAD DEBUG] Duplicator created %d entities", stats.restored))
     end
 
-    -- Mark restored entities and compute proximity
+    -- Mark restored entities, assign IDs, and compute proximity
     local radiusSq = ENTITY_RESTORATION.PROXIMITY_RADIUS * ENTITY_RESTORATION.PROXIMITY_RADIUS
-    for _, ent in pairs(created) do
+    for dupIndex, ent in pairs(created) do
         if IsValid(ent) then
             ent.SpawnedByRareload = true
             ent.SavedViaDuplicator = true
+            
+            -- Assign the RareloadID from saved data
+            local savedID = indexToID[dupIndex]
+            if savedID then
+                ent.RareloadEntityID = savedID
+                if ent.SetNWString then
+                    pcall(ent.SetNWString, ent, "RareloadID", savedID)
+                end
+            end
+            
             if IsValid(owner) and ent.CPPISetOwner then pcall(ent.CPPISetOwner, ent, owner) end
             if spawnPos and ent.GetPos and (ent:GetPos():DistToSqr(spawnPos) <= radiusSq) then
                 spawnedClose = true
@@ -152,7 +171,11 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
     end
 
     local matchedData = nil
-    local savedEntities = SavedInfo and SavedInfo.entities or {}
+    local savedEntitiesBucket = SavedInfo and SavedInfo.entities or {}
+    local savedEntities = SnapshotUtils.GetSummary(savedEntitiesBucket, {
+        category = "entity",
+        idPrefix = "entity"
+    }) or {}
     local searchRadiusSqr = 150 * 150
 
     for _, savedEntity in ipairs(savedEntities) do
@@ -341,7 +364,8 @@ hook.Add("PreCleanupMap", "RareloadSaveEntitiesBeforeCleanup", function()
                 SavedInfo.entities = saveEntities(ply)
 
                 if RARELOAD.settings.debugEnabled then
-                    print(string.format("[RARELOAD] Saved %d entities before map cleanup", #(SavedInfo.entities or {})))
+                    local summary = SnapshotUtils.GetSummary(SavedInfo.entities, { category = "entity" }) or {}
+                    print(string.format("[RARELOAD] Saved %d entities before map cleanup", #summary))
                 end
 
                 break
