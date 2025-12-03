@@ -46,6 +46,9 @@ function SEDFreeze.FreezeNPC(npc, player)
     npc:SetPlaybackRate(0)
     npc:SetMoveType(MOVETYPE_NONE)
     npc:SetSolid(SOLID_BBOX)
+    npc:AddFlags(FL_FROZEN)
+    npc:StopMoving()
+    -- npc:SetTarget(NULL) -- Causing issues with NULL entity
     npc:SetKeyValue("spawnflags", tostring(bit.bor(npc:GetSpawnFlags(), SF_NPC_WAIT_TILL_SEEN, SF_NPC_GAG)))
     npc:SetEnemy(NULL)
     npc:ClearEnemyMemory()
@@ -71,6 +74,7 @@ function SEDFreeze.UnfreezeNPC(npc, player)
         return false
     end
 
+    npc:RemoveFlags(FL_FROZEN)
     npc:SetMoveType(MOVETYPE_STEP)
     npc:SetSolid(SOLID_BBOX)
 

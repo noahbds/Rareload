@@ -7,8 +7,6 @@ function SED.DrawSavedPanel(ent, saved, isNPC)
     if not IsValid(SED.lpCache) then return end
 
     local eyePos = SED.lpCache:EyePos()
-    local eyeForward = SED.lpCache:EyeAngles():Forward()
-    local eyeForward = SED.lpCache:EyeAngles():Forward()
     local pos = ent:GetPos()
 
     local renderParams = SED.CalculateEntityRenderParams(ent)
@@ -46,6 +44,8 @@ function SED.DrawSavedPanel(ent, saved, isNPC)
     local isDistant = effectiveDistance > (renderParams.isLarge and 1200 or 600)
     local isVeryDistant = effectiveDistance > (renderParams.isLarge and 1500 or 800)
     local currentLOD = isVeryDistant and 3 or (isDistant and 2 or (isMediumDistant and 1 or 0))
+    
+    -- LOD Logic for bounds
     do
         if renderParams.isLarge or renderParams.isMassive then
             local centerLocal = (renderParams.obbMin + renderParams.obbMax) * 0.5
@@ -64,10 +64,12 @@ function SED.DrawSavedPanel(ent, saved, isNPC)
         end
     end
 
+    -- Recalculate LOD based on refined distance
     isMediumDistant = effectiveDistance > (renderParams.isLarge and 800 or 400)
     isDistant = effectiveDistance > (renderParams.isLarge and 1200 or 600)
     isVeryDistant = effectiveDistance > (renderParams.isLarge and 1500 or 800)
     currentLOD = isVeryDistant and 3 or (isDistant and 2 or (isMediumDistant and 1 or 0))
+    
     cache.lod = cache.lod or {}
     local previousLOD = cache.lod[activeCat]
     if previousLOD ~= nil and previousLOD ~= currentLOD then
@@ -86,14 +88,16 @@ function SED.DrawSavedPanel(ent, saved, isNPC)
 
     local lineHeight = currentLOD >= 2 and 16 or 18
     local titleHeight = currentLOD >= 2 and 28 or 36
-    local tabHeight = currentLOD >= 2 and 18 or 22
+    local tabHeight = currentLOD >= 2 and 24 or 32 -- Taller tabs for sidebar
+    local sidebarWidth = currentLOD >= 2 and 80 or 110
 
-    local width = cache.widths[activeCat] or 360
+    local width = cache.widths[activeCat] or 400
     if not cache.widths[activeCat] then
         local font = currentLOD >= 2 and "Trebuchet18" or "Trebuchet18"
         SED.surface_SetFont(font)
         width = 300
         local maxContentWidth = 0
+        local maxLabelW = 0
 
         for i = 1, math.min(#lines, currentLOD == 0 and 15 or currentLOD == 1 and 10 or 5) do
             local l = lines[i]
@@ -105,6 +109,8 @@ function SED.DrawSavedPanel(ent, saved, isNPC)
                 local w2, h2 = SED.surface_GetTextSize(value)
                 w1 = w1 or 0
                 w2 = w2 or 0
+                
+                maxLabelW = math.max(maxLabelW, w1)
 
                 local lineContentWidth = w1 + w2 + (currentLOD >= 2 and 120 or 170)
                 maxContentWidth = math.max(maxContentWidth, lineContentWidth)
@@ -116,15 +122,16 @@ function SED.DrawSavedPanel(ent, saved, isNPC)
         end
 
         width = math.max(width, maxContentWidth)
+        
+        -- Add sidebar width to the calculated content width
+        width = width + sidebarWidth
 
-        local minTabWidth = currentLOD >= 2 and 40 or 60
-        local minWidthForTabs = #categories * minTabWidth
-        width = math.max(width, minWidthForTabs)
-
-        local maxWidth = currentLOD >= 2 and 500 or (renderParams.isLarge and 900 or 750)
-        local minWidth = currentLOD >= 2 and 250 or 340
+        local maxWidth = currentLOD >= 2 and 600 or (renderParams.isLarge and 1000 or 850)
+        local minWidth = currentLOD >= 2 and 300 or 450
         width = math.Clamp(width, minWidth, maxWidth)
         cache.widths[activeCat] = width
+        cache.maxLabelWidths = cache.maxLabelWidths or {}
+        cache.maxLabelWidths[activeCat] = maxLabelW
         cache._wrap = cache._wrap or {}
         cache._wrap[activeCat] = nil
     end
@@ -138,7 +145,25 @@ function SED.DrawSavedPanel(ent, saved, isNPC)
 
     local visibleLines = math.min(#lines - currentScroll, maxVisibleLines)
     local contentHeight = visibleLines * lineHeight + 12
-    local panelHeight = titleHeight + tabHeight + contentHeight + 18
+    
+    -- Ensure panel is tall enough for the sidebar tabs (showing max 3 at a time)
+    local maxVisibleTabs = 3
+    local visibleTabCount = math.min(#categories, maxVisibleTabs)
+    local minSidebarHeight = visibleTabCount * tabHeight + 24 -- +24 for arrows padding
+    
+    local calculatedHeight = titleHeight + contentHeight + 18
+    local targetHeight = math.max(calculatedHeight, titleHeight + minSidebarHeight)
+    local targetWidth = width
+
+    -- Smooth resize
+    cache.curWidth = cache.curWidth or targetWidth
+    cache.curHeight = cache.curHeight or targetHeight
+    
+    cache.curWidth = Lerp(FrameTime() * 10, cache.curWidth, targetWidth)
+    cache.curHeight = Lerp(FrameTime() * 10, cache.curHeight, targetHeight)
+    
+    local panelHeight = cache.curHeight
+    width = cache.curWidth
 
     local dir = (pos - eyePos)
     dir:Normalize()
@@ -227,70 +252,242 @@ function SED.DrawSavedPanel(ent, saved, isNPC)
     local renderOk = pcall(function()
         cam.Start3D2D(drawPos, ang, scale)
 
+        -- Modern UI Style
+        local bgAlpha = currentLOD >= 2 and 230 or 250
+        local bgColor = Color(15, 18, 24, bgAlpha)
+        local headerColor = Color(25, 30, 40, 255)
+        local sidebarColor = Color(20, 24, 30, 255)
+        local accentColor = Color(60, 140, 220, 255)
+
+        -- Drop shadow
         if currentLOD < 2 then
-            SED.surface_SetDrawColor(0, 0, 0, 130)
+            SED.surface_SetDrawColor(0, 0, 0, 150)
             surface.DrawRect(offsetX + 4, offsetY + 4, width, panelHeight)
         end
 
-        local bgAlpha = currentLOD >= 2 and 200 or 240
-        SED.draw_RoundedBox(currentLOD >= 2 and 6 or 10, offsetX, offsetY, width, panelHeight, Color(15, 18, 26, bgAlpha))
+        -- Main Background
+        SED.draw_RoundedBox(8, offsetX, offsetY, width, panelHeight, bgColor)
 
+        -- Header Background
+        SED.draw_RoundedBox(8, offsetX, offsetY, width, titleHeight, headerColor)
+        -- Fix rounded corners at bottom of header
+        SED.surface_SetDrawColor(headerColor.r, headerColor.g, headerColor.b, headerColor.a)
+        surface.DrawRect(offsetX, offsetY + titleHeight/2, width, titleHeight/2)
+
+        -- Sidebar Background
+        SED.surface_SetDrawColor(sidebarColor.r, sidebarColor.g, sidebarColor.b, sidebarColor.a)
+        surface.DrawRect(offsetX, offsetY + titleHeight, sidebarWidth, panelHeight - titleHeight)
+        
+        -- Sidebar Separator Line
+        SED.surface_SetDrawColor(35, 40, 50, 255)
+        surface.DrawRect(offsetX + sidebarWidth, offsetY + titleHeight, 1, panelHeight - titleHeight)
+
+        -- Header Accent Line
+        SED.surface_SetDrawColor(accentColor.r, accentColor.g, accentColor.b, accentColor.a)
+        surface.DrawRect(offsetX, offsetY + titleHeight - 2, width, 2)
+
+        -- Border
         if currentLOD < 2 then
-            SED.draw_RoundedBox(10, offsetX + 2, offsetY + 2, width - 4, panelHeight - 4, Color(26, 30, 40, 245))
-
-            for i = 0, 1 do
-                SED.surface_SetDrawColor(SED.THEME.border.r, SED.THEME.border.g, SED.THEME.border.b, 170 - i * 90)
-                surface.DrawOutlinedRect(offsetX + i, offsetY + i, width - i * 2, panelHeight - i * 2, 1)
-            end
+            SED.surface_SetDrawColor(accentColor.r, accentColor.g, accentColor.b, 100)
+            surface.DrawOutlinedRect(offsetX, offsetY, width, panelHeight, 1)
         end
-
-        SED.surface_SetDrawColor(SED.THEME.header.r, SED.THEME.header.g, SED.THEME.header.b, bgAlpha)
-        surface.DrawRect(offsetX, offsetY, width, titleHeight)
 
         local title = isNPC and "Saved NPC" or "Saved Entity"
         local titleFont = currentLOD >= 2 and "Trebuchet18" or "Trebuchet24"
-        SED.draw_SimpleText(title, titleFont, offsetX + 12, offsetY + titleHeight / 2, Color(240, 240, 255),
+        SED.draw_SimpleText(title, titleFont, offsetX + 12, offsetY + titleHeight / 2 - 1, Color(255, 255, 255),
             TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER)
+        
+        -- VJ Base badge
+        local isVJBase = false
+        if IsValid(ent) then
+            isVJBase = ((ent.IsVJBaseSNPC == true) or (ent.VJ_ID_Living == true) or (ent.IsVJBaseSNPC_Human == true)) and (ent.Base ~= nil)
+        elseif saved then
+            isVJBase = (saved.IsVJBaseSNPC == true) or (saved.VJ_ID_Living == true) or (saved.IsVJBaseSNPC_Human == true)
+        end
+
+        if isNPC and isVJBase and currentLOD < 2 then
+            local titleW = SED.surface_GetTextSize(title) or 0
+            local badgeX = offsetX + 16 + titleW + 10
+            local badgeY = offsetY + titleHeight / 2 - 9
+            
+            -- Badge background with glow
+            SED.draw_RoundedBox(5, badgeX - 1, badgeY - 1, 44, 18, Color(40, 160, 100, 150))
+            SED.draw_RoundedBox(4, badgeX, badgeY, 42, 16, Color(60, 200, 120, 220))
+            
+            -- Badge text
+            SED.draw_SimpleText("VJ", "Trebuchet18", badgeX + 21, badgeY + 8, Color(255, 255, 255, 250), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        end
 
         if currentLOD < 2 then
-            local maxHP = saved.maxHealth or 0
-            local curHP = saved.health or 0
+            local maxHP = saved.MaxHealth or saved.maxHealth or 0
+            local curHP = saved.CurHealth or saved.health or 0
+            local armor = saved.armor or 0
+            
             if maxHP > 0 then
-                local barW = math.min(180, width - 200)
+                local barW = math.min(210, width - 220)
                 local hpFrac = math.Clamp(curHP / maxHP, 0, 1)
-                local bx = offsetX + width - barW - 16
-                local by = offsetY + 8
-                SED.draw_RoundedBox(4, bx, by, barW, 14, Color(35, 40, 52, 190))
-                SED.draw_RoundedBox(4, bx + 1, by + 1, (barW - 2) * hpFrac, 12,
-                    Color(120 + 100 * (1 - hpFrac), 220 * hpFrac, 90, 230))
-                SED.draw_SimpleText(curHP .. "/" .. maxHP, "Trebuchet18", bx + barW / 2, by + 7, Color(230, 230, 240),
-                    TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                local bx = offsetX + width - barW - 14
+                local by = offsetY + 9
+                
+                -- Health bar background with border
+                SED.draw_RoundedBox(5, bx - 1, by - 1, barW + 2, 18, Color(60, 80, 100, 180))
+                SED.draw_RoundedBox(4, bx, by, barW, 16, Color(25, 30, 38, 220))
+                
+                -- Health bar fill with smooth gradient (green > yellow > red)
+                local r, g = 100, 220
+                if hpFrac < 0.5 then
+                    r = 220 + (hpFrac * 2) * -120
+                    g = 220
+                elseif hpFrac >= 0.5 then
+                    r = 100
+                    g = 220 - (hpFrac - 0.5) * 2 * -80
+                end
+                
+                local fillW = (barW - 2) * hpFrac
+                if fillW > 0 then
+                    SED.draw_RoundedBox(4, bx + 1, by + 1, fillW, 14, Color(r, g, 70, 245))
+                    -- Add shine effect on top half
+                    SED.surface_SetDrawColor(255, 255, 255, 30)
+                    surface.DrawRect(bx + 1, by + 1, fillW, 7)
+                end
+                
+                -- Health text with better contrast
+                local hpText = curHP .. "/" .. maxHP .. " (" .. math.floor(hpFrac * 100) .. "%)"
+                SED.draw_SimpleText(hpText, "Trebuchet18", bx + barW / 2, by + 8, Color(245, 248, 252), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                
+                -- Armor bar if present
+                if armor > 0 then
+                    local aby = by + 20
+                    local armorBarW = math.min(barW * 0.7, 140)
+                    local abx = bx + (barW - armorBarW) / 2
+                    
+                    -- Armor background
+                    SED.draw_RoundedBox(4, abx - 1, aby - 1, armorBarW + 2, 12, Color(60, 90, 130, 180))
+                    SED.draw_RoundedBox(3, abx, aby, armorBarW, 10, Color(25, 30, 40, 220))
+                    
+                    -- Armor fill
+                    SED.draw_RoundedBox(3, abx + 1, aby + 1, armorBarW - 2, 8, Color(90, 150, 255, 230))
+                    SED.surface_SetDrawColor(150, 200, 255, 40)
+                    surface.DrawRect(abx + 1, aby + 1, armorBarW - 2, 4)
+                    
+                    -- NO EMOJI
+                    SED.draw_SimpleText("Armor: " .. armor, "Trebuchet18", abx + armorBarW / 2, aby + 5, Color(240, 245, 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                end
             end
         end
 
-        local tabY = offsetY + titleHeight
-        local tabWidth = width / #categories
+        -- Sidebar Tabs
+        local tabStartY = offsetY + titleHeight + 12 -- Start a bit lower to make room for up arrow
+        
+        -- Calculate visible range
+        local activeIndex = 1
         for i, cat in ipairs(categories) do
+            if cat[1] == activeCat then activeIndex = i break end
+        end
+        
+        local maxVisibleTabs = 3
+        local visibleCount = math.min(#categories, maxVisibleTabs)
+        
+        -- Calculate target scroll position (centered around active tab)
+        local targetScroll = activeIndex - 2 -- Center the active tab (2nd position in 3 visible slots)
+        
+        -- Clamp target scroll
+        if targetScroll < 0 then targetScroll = 0 end
+        if targetScroll > #categories - visibleCount then targetScroll = #categories - visibleCount end
+        
+        -- Animate scroll position
+        cache.sidebarScroll = cache.sidebarScroll or targetScroll
+        cache.sidebarScroll = Lerp(FrameTime() * 10, cache.sidebarScroll, targetScroll)
+        
+        -- Use animated scroll for rendering
+        local currentScrollPos = cache.sidebarScroll
+        local startIndex = math.floor(currentScrollPos) + 1
+        local endIndex = math.ceil(currentScrollPos + visibleCount)
+        
+        -- Clamp indices for safety
+        if startIndex < 1 then startIndex = 1 end
+        if endIndex > #categories then endIndex = #categories end
+
+        -- Up Arrow
+        if currentScrollPos > 0.1 then
+             SED.draw_SimpleText("▲", "Trebuchet18", offsetX + sidebarWidth/2, tabStartY - 8, Color(150, 160, 170, 100), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        end
+
+        -- Use Stencil to clip sidebar content
+        render.SetStencilWriteMask( 0xFF )
+        render.SetStencilTestMask( 0xFF )
+        render.SetStencilReferenceValue( 0 )
+        render.SetStencilCompareFunction( STENCIL_ALWAYS )
+        render.SetStencilPassOperation( STENCIL_KEEP )
+        render.SetStencilFailOperation( STENCIL_KEEP )
+        render.SetStencilZFailOperation( STENCIL_KEEP )
+        render.ClearStencil()
+
+        render.SetStencilEnable( true )
+        render.SetStencilReferenceValue( 1 )
+        render.SetStencilCompareFunction( STENCIL_ALWAYS )
+        render.SetStencilPassOperation( STENCIL_REPLACE )
+
+        -- Draw mask (the sidebar area)
+        surface.DrawRect(offsetX, offsetY + titleHeight, sidebarWidth, panelHeight - titleHeight)
+
+        render.SetStencilCompareFunction( STENCIL_EQUAL )
+        render.SetStencilPassOperation( STENCIL_KEEP )
+
+        -- Draw Active Tab Background & Indicator (Animated)
+        local activeCol = Color(255, 255, 255)
+        local foundActive = false
+        for i, cat in ipairs(categories) do
+            if cat[1] == activeCat then
+                activeCol = cat[3]
+                foundActive = true
+                break
+            end
+        end
+
+        if foundActive then
+             -- Calculate Y based on animated scroll position
+             local activeRelIndex = (activeIndex - 1) - currentScrollPos
+             local activeTabY = tabStartY + activeRelIndex * tabHeight
+             
+             SED.surface_SetDrawColor(activeCol.r, activeCol.g, activeCol.b, 40)
+             surface.DrawRect(offsetX, activeTabY, sidebarWidth, tabHeight)
+             
+             SED.surface_SetDrawColor(activeCol.r, activeCol.g, activeCol.b, 255)
+             surface.DrawRect(offsetX, activeTabY, 3, tabHeight)
+        end
+
+        for i = startIndex, endIndex do
+            local cat = categories[i]
             local catId, name, col = cat[1], cat[2], cat[3]
-            local tabX = offsetX + (i - 1) * tabWidth
+            
+            local relativeIndex = (i - 1) - currentScrollPos
+            local tabX = offsetX
+            local tabY = tabStartY + relativeIndex * tabHeight
             local active = (catId == activeCat)
 
-            SED.surface_SetDrawColor(col.r * (active and 0.6 or 0.25), col.g * (active and 0.6 or 0.25),
-                col.b * (active and 0.6 or 0.25), active and 230 or 130)
-            surface.DrawRect(tabX, tabY, tabWidth, tabHeight)
+            -- Tab Separator
+            SED.surface_SetDrawColor(30, 35, 45, 100)
+            surface.DrawRect(tabX + 4, tabY + tabHeight - 1, sidebarWidth - 8, 1)
 
-            if active and currentLOD < 2 then
-                SED.surface_SetDrawColor(col.r, col.g, col.b, 255)
-                surface.DrawOutlinedRect(tabX, tabY, tabWidth, tabHeight, 1)
-            end
-
+            -- Tab text
             local tabFont = currentLOD >= 2 and "Trebuchet18" or "Trebuchet18"
-            SED.draw_SimpleText(name, tabFont, tabX + tabWidth / 2, tabY + tabHeight / 2,
-                active and Color(255, 255, 255) or Color(205, 205, 205), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            local textColor = active and col or Color(150, 160, 170, 200)
+            
+            -- Left align text in sidebar
+            SED.draw_SimpleText(name, tabFont, tabX + 10, tabY + tabHeight / 2, textColor, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        end
+        
+        render.SetStencilEnable( false )
+        
+        -- Down Arrow
+        if currentScrollPos < (#categories - visibleCount - 0.1) then
+             local arrowY = tabStartY + visibleCount * tabHeight + 8
+             SED.draw_SimpleText("▼", "Trebuchet18", offsetX + sidebarWidth/2, arrowY, Color(150, 160, 170, 100), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
 
-        local startY = tabY + tabHeight + 6
+        local startY = offsetY + titleHeight + 8
         local contentFont = currentLOD >= 2 and "Trebuchet18" or "Trebuchet18"
         SED.surface_SetFont(contentFont)
 
@@ -340,9 +537,16 @@ function SED.DrawSavedPanel(ent, saved, isNPC)
             return result
         end
 
-        local labelX = offsetX + (currentLOD >= 2 and 8 or 14)
-        local valueX = offsetX + (currentLOD >= 2 and 120 or 180)
-        local maxValueWidth = width - valueX + offsetX - 20
+        -- Adjust content position for sidebar
+        local contentOffsetX = sidebarWidth
+        local labelX = offsetX + contentOffsetX + (currentLOD >= 2 and 12 or 16)
+        
+        local maxLabelW = cache.maxLabelWidths and cache.maxLabelWidths[activeCat] or 100
+        local valuePadding = 24
+        local valueX = labelX + maxLabelW + valuePadding
+        
+        local maxValueWidth = width - contentOffsetX - (valueX - (offsetX + contentOffsetX)) - 24
+        
         local currentY = startY
         local renderedLines = 0
 
@@ -358,18 +562,20 @@ function SED.DrawSavedPanel(ent, saved, isNPC)
                 wrappedValue = { unpack(wrappedValue, 1, lineCount) }
             end
 
+            -- Row background (alternating with subtle highlight)
             if currentLOD < 2 and (i + currentScroll) % 2 == 0 then
                 local bgHeight = lineCount * lineHeight
-                SED.surface_SetDrawColor(40, 48, 62, 95)
-                surface.DrawRect(offsetX + 6, currentY - 2, width - 12, bgHeight)
+                SED.draw_RoundedBox(2, offsetX + contentOffsetX + 8, currentY - 3, width - contentOffsetX - 16, bgHeight + 4, Color(32, 38, 48, 100))
             end
 
-            SED.draw_SimpleText((l[1] or "") .. ":", contentFont, labelX, currentY, Color(210, 210, 215), TEXT_ALIGN_LEFT,
-                TEXT_ALIGN_TOP)
+            -- Label with colon
+            local labelColor = Color(200, 210, 225, 255)
+            SED.draw_SimpleText((l[1] or "") .. ":", contentFont, labelX, currentY, labelColor, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
 
+            -- Value lines (wrapped)
             for j, valueLine in ipairs(wrappedValue) do
-                SED.draw_SimpleText(valueLine, contentFont, valueX, currentY + (j - 1) * lineHeight,
-                    l[3] or SED.THEME.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+                local valueColor = l[3] or Color(240, 245, 250)
+                SED.draw_SimpleText(valueLine, contentFont, valueX, currentY + (j - 1) * lineHeight, valueColor, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
             end
 
             currentY = currentY + lineCount * lineHeight
@@ -379,14 +585,22 @@ function SED.DrawSavedPanel(ent, saved, isNPC)
         end
 
         if maxScrollLines > 0 and currentLOD < 2 then
-            local barW = 5
-            local barX = offsetX + width - barW - 10
-            local barY = startY - 2
+            local barW = 6
+            local barX = offsetX + width - barW - 8
+            local barY = startY - 4
             local barH = contentHeight - 4
-            SED.draw_RoundedBox(3, barX, barY, barW, barH, Color(30, 34, 44, 185))
-            local handleH = math.max(16, barH * (visibleLines / #lines))
+            
+            -- Scrollbar track
+            SED.draw_RoundedBox(3, barX, barY, barW, barH, Color(25, 30, 40, 200))
+            
+            -- Scrollbar handle
+            local handleH = math.max(20, barH * (visibleLines / #lines))
             local handleY = barY + (barH - handleH) * (currentScroll / maxScrollLines)
-            SED.draw_RoundedBox(3, barX, handleY, barW, handleH, Color(90, 150, 230, 220))
+            SED.draw_RoundedBox(3, barX, handleY, barW, handleH, Color(80, 140, 200, 200))
+            
+            -- Handle highlight
+            SED.surface_SetDrawColor(120, 180, 240, 80)
+            surface.DrawRect(barX, handleY, barW, handleH / 2)
         end
 
         cam.End3D2D()

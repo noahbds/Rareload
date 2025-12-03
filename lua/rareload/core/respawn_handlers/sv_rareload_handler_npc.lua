@@ -155,6 +155,19 @@ function RARELOAD.RestoreNPCs()
         local indexToID = snapshot._indexMap or {}
         
         local owner = FindSnapshotOwner(snapshot)
+
+        -- Check for existing NPCs to prevent duplication
+        local existingIDs = {}
+        for _, ent in ipairs(ents.GetAll()) do
+            if ent.RareloadNPCID then
+                existingIDs[ent.RareloadNPCID] = true
+            else
+                local nwID = ent:GetNWString("RareloadID", "")
+                if nwID ~= "" then
+                    existingIDs[nwID] = true
+                end
+            end
+        end
         
         if debugEnabled then
             RARELOAD.Debug.Log("INFO", "Restoring NPCs from duplicator snapshot", {
@@ -163,7 +176,19 @@ function RARELOAD.RestoreNPCs()
             })
         end
         
-        local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, { player = owner })
+        local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, { 
+            player = owner,
+            filter = function(index, entData)
+                local id = indexToID[index]
+                if id and existingIDs[id] then
+                    if debugEnabled then
+                        RARELOAD.Debug.Log("INFO", "Skipping existing NPC", { "ID: " .. id })
+                    end
+                    return false
+                end
+                return true
+            end
+        })
         if not ok then
             stats.endTime = SysTime()
             if debugEnabled then

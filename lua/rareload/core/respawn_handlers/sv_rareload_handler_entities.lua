@@ -96,7 +96,32 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
     -- Build index map from duplicator entity index to saved entity ID
     local indexToID = snapshot._indexMap or {}
 
-    local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, { player = owner })
+    -- Check for existing entities to prevent duplication
+    local existingIDs = {}
+    for _, ent in ipairs(ents.GetAll()) do
+        if ent.RareloadEntityID then
+            existingIDs[ent.RareloadEntityID] = true
+        else
+            local nwID = ent:GetNWString("RareloadID", "")
+            if nwID ~= "" then
+                existingIDs[nwID] = true
+            end
+        end
+    end
+
+    local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, { 
+        player = owner,
+        filter = function(index, entData)
+            local id = indexToID[index]
+            if id and existingIDs[id] then
+                if RARELOAD.settings.debugEnabled then
+                    print("[RARELOAD DEBUG] Skipping existing entity: " .. id)
+                end
+                return false
+            end
+            return true
+        end
+    })
     local spawnedClose = false
     if not ok then
         stats.failed = stats.failed + 1

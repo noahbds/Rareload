@@ -14,6 +14,11 @@ hook.Add("CreateMove", "RARELOAD_SavedPanels_CamLock", function(cmd)
         cmd:RemoveKey(IN_USE)
     end
     if not SED.InteractionState.active then return end
+
+    -- Disable player movement and buttons during interaction
+    cmd:ClearButtons()
+    cmd:ClearMovement()
+
     local ent = SED.InteractionState.ent
     if not IsValid(ent) then return end
     SED.lpCache = SED.lpCache or LocalPlayer()

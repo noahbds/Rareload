@@ -76,23 +76,23 @@ local function iterateSnapshot(snapshot, opts, callback)
             id = string.format("%s_%s", idPrefix, tostring(dupIndex))
         end
 
-        local summary = {
-            id = id,
-            class = entityDef.Class or entityDef.NPCName or entityDef.class or "unknown",
-            model = entityDef.Model,
-            name = entityDef.Name,
-            skin = entityDef.Skin,
-            SavedViaDuplicator = true,
-            _fromSnapshot = true,
-            spawnTime = snapshot.savedAt,
-            owner = snapshot.ownerSteamID or snapshot.ownerSteamID64,
-            originallySpawnedBy = entityDef.OriginalSpawner or snapshot.ownerSteamID,
-            maxHealth = entityDef.MaxHealth,
-            health = entityDef.CurHealth or entityDef.MaxHealth,
-            pos = copyVector(entityDef.Pos),
-            ang = copyAngle(entityDef.Angle or entityDef.Ang),
-            stateHash = entityDef.RareloadStateHash or entityDef.StateHash
-        }
+        local summary = table.Copy(entityDef)
+        
+        summary.id = id
+        summary.class = entityDef.Class or entityDef.NPCName or entityDef.class or "unknown"
+        summary.model = entityDef.Model
+        summary.name = entityDef.Name
+        summary.skin = entityDef.Skin
+        summary.SavedViaDuplicator = true
+        summary._fromSnapshot = true
+        summary.spawnTime = snapshot.savedAt
+        summary.owner = snapshot.ownerSteamID or snapshot.ownerSteamID64
+        summary.originallySpawnedBy = entityDef.OriginalSpawner or snapshot.ownerSteamID
+        summary.maxHealth = entityDef.MaxHealth
+        summary.health = entityDef.CurHealth or entityDef.MaxHealth
+        summary.pos = copyVector(entityDef.Pos)
+        summary.ang = copyAngle(entityDef.Angle or entityDef.Ang)
+        summary.stateHash = entityDef.RareloadStateHash or entityDef.StateHash
 
         if category == "npc" then
             summary.npcName = entityDef.NPCName or summary.class

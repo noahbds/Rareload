@@ -201,6 +201,19 @@ function Bridge.RestoreSnapshot(snapshot, opts)
         return false, "unable to decode duplicator payload"
     end
 
+    if opts.filter and isfunction(opts.filter) then
+        local filteredCount = 0
+        for k, v in pairs(payload.Entities) do
+            if not opts.filter(k, v) then
+                payload.Entities[k] = nil
+                filteredCount = filteredCount + 1
+            end
+        end
+        if RARELOAD.settings and RARELOAD.settings.debugEnabled and filteredCount > 0 then
+            print(string.format("[RARELOAD DEBUG] Filtered out %d entities from snapshot", filteredCount))
+        end
+    end
+
     resetDuplicatorFrame()
 
     local pastePlayer = (IsValid(opts.player) and opts.player) or NULL

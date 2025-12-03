@@ -133,8 +133,9 @@ function SED.HandleInteractionInput()
             local categoryList = isNPC and SED.NPC_CATEGORIES or SED.ENT_CATEGORIES
             local scrollTable = isNPC and SED.PanelScroll.npcs or SED.PanelScroll.entities
 
-            if SED.KeyPressed(KEY_RIGHT) or SED.KeyPressed(KEY_LEFT) then
-                local dir = (input.IsKeyDown(KEY_RIGHT) and not input.IsKeyDown(KEY_LEFT)) and 1 or -1
+            -- Tab Navigation (Up/Down)
+            if SED.KeyPressed(KEY_DOWN) or SED.KeyPressed(KEY_UP) then
+                local dir = (input.IsKeyDown(KEY_DOWN) and not input.IsKeyDown(KEY_UP)) and 1 or -1
                 local currentIdx = 1
 
                 for i, cat in ipairs(categoryList) do
@@ -155,9 +156,10 @@ function SED.HandleInteractionInput()
                 scrollTable[interactionID .. "_" .. cache.activeCat] = 0
             end
 
+            -- Content Scrolling (Left/Right)
             local scrollDelta = SED.ScrollDelta
-            if input.IsKeyDown(KEY_UP) then scrollDelta = scrollDelta - SED.SCROLL_SPEED end
-            if input.IsKeyDown(KEY_DOWN) then scrollDelta = scrollDelta + SED.SCROLL_SPEED end
+            if input.IsKeyDown(KEY_LEFT) then scrollDelta = scrollDelta - SED.SCROLL_SPEED end
+            if input.IsKeyDown(KEY_RIGHT) then scrollDelta = scrollDelta + SED.SCROLL_SPEED end
 
             if scrollDelta ~= 0 then
                 local scrollKey = interactionID .. "_" .. cache.activeCat
