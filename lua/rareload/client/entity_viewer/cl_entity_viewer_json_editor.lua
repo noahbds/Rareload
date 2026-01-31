@@ -192,7 +192,6 @@ local function FormatJSON(data, indent)
     local nextIndentStr = string.rep("  ", indent + 1)
 
     if type(data) == "table" then
-        -- Check if it's an empty table first
         local isEmpty = true
         for _ in pairs(data) do
             isEmpty = false
@@ -200,8 +199,6 @@ local function FormatJSON(data, indent)
         end
         
         if isEmpty then
-            -- For empty tables, check if the original was an array
-            -- We'll default to [] for empty tables as it's more common
             return "[]"
         end
         
@@ -278,7 +275,6 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
 
     local formattedJSON = FormatJSON(data)
 
-    -- Shared scroll so line numbers and text move together
     local editorScroll = vgui.Create("DScrollPanel", panel)
     editorScroll:Dock(FILL)
     editorScroll:DockMargin(0, 0, 0, 60)
@@ -293,13 +289,11 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
         surface.DrawOutlinedRect(0, 0, w, h, 2)
     end
 
-    ---@class DTextEntry
     local textEntry = vgui.Create("DTextEntry", editorContainer)
     textEntry:Dock(FILL)
     textEntry:DockMargin(0, 8, 8, 8)
     textEntry:SetMultiline(true)
     textEntry:SetFont("RareloadEditor")
-    -- Ensure one visual line per logical line for accurate numbering
     if textEntry.SetWrap then textEntry:SetWrap(false) end
     textEntry:SetUpdateOnType(true)
     textEntry:SetValue(formattedJSON)
@@ -325,7 +319,6 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
         end
         local startLine = math.floor(scroll / lineHeight) + 1
         local visibleHeight = editorScroll and editorScroll:GetTall() or h
-        -- Ensure visibleHeight is at least something reasonable if GetTall returns 0
         if visibleHeight < 50 then visibleHeight = 600 end
         
         local visibleLines = math.ceil(visibleHeight / lineHeight) + 2
@@ -341,14 +334,10 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
     local lastValidJSON = formattedJSON
     local validationTimer = nil
 
-    -- Override Paint completely to control background
     textEntry.Paint = function(self, w, h)
-        -- Draw dark background first
         draw.RoundedBox(4, 0, 0, w, h, SYNTAX_COLORS.background)
         
-        -- Let derma draw the text and cursor with our dark background
         self:DrawTextEntryText(self:GetTextColor(), self:GetHighlightColor(), self:GetCursorColor())
-        -- Highlight current line
         local caret = self.GetCaretPos and self:GetCaretPos() or 0
         local text = self:GetValue() or ""
         local before = string.sub(text, 1, caret)
@@ -365,7 +354,6 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
         local _, count = string.gsub(text, "\n", "")
         local lineCount = count + 1
         local lineHeight = getLineHeight()
-        -- Add extra buffer to ensure we never cut off the last lines
         local needed = (lineCount * lineHeight) + 400
         
         if editorContainer:GetTall() < needed then
@@ -375,7 +363,6 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
         if IsValid(lineNumbers) then lineNumbers:InvalidateLayout(true) end
     end
 
-    -- Ensure height is updated when text changes or on init
     textEntry.OnValueChange = function(self)
         if validationTimer then timer.Remove(validationTimer) end
         validationTimer = timer.Simple(0.3, function()
@@ -385,7 +372,6 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
             if IsValid(lineNumbers) then lineNumbers:InvalidateLayout(true) end
             scrollToCaret()
         end)
-        -- Update height immediately to prevent scroll lock
         updateHeight()
     end
 
@@ -464,29 +450,13 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
         end
     end
 
-    textEntry.OnValueChange = function(self)
-        if validationTimer then timer.Remove(validationTimer) end
-        validationTimer = timer.Simple(0.3, function()
-            validateJSON()
-            tokens = TokenizeJSON(self:GetValue())
-            self:InvalidateLayout()
-            if IsValid(lineNumbers) then lineNumbers:InvalidateLayout(true) end
-            scrollToCaret()
-        end)
-        -- Update height immediately to prevent scroll lock
-        updateHeight()
-    end
-
-    -- Keep scroll synced when navigating with arrow keys and Enter
     textEntry.OnKeyCodeTyped = function(self, code)
-        -- Update height when adding/removing lines
         if code == KEY_ENTER or code == KEY_BACKSPACE or code == KEY_DELETE then
             timer.Simple(0, function()
                 if not IsValid(self) then return end
                 updateHeight()
             end)
         end
-        -- After movement, ensure caret is in view
         timer.Simple(0, function()
             scrollToCaret()
             if IsValid(lineNumbers) then lineNumbers:InvalidateLayout(true) end

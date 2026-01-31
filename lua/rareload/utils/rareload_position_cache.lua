@@ -2,13 +2,7 @@ local MapName = game.GetMap()
 local cacheFile = "rareload/cached_pos_" .. MapName .. ".json"
 local CACHE_VERSION = 2
 
--- Load centralized conversion functions
-if not RARELOAD or not RARELOAD.DataUtils then
-    include("rareload/utils/rareload_data_utils.lua")
-end
-
--- Note: We're using centralized data utility functions directly
--- from RARELOAD.DataUtils instead of creating local wrapper functions
+-- Using centralized data utility functions from RARELOAD.DataUtils
 
 local function LoadCachedPositions()
     if not file.Exists(cacheFile, "DATA") then return { version = CACHE_VERSION, positions = {} } end

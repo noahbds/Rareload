@@ -1,10 +1,10 @@
--- Optional light/dark awareness
+-- Rareload Entity Viewer Theme
+-- Modern Dark Theme with smooth animations
+
+local draw, surface, render = draw, surface, render
+local Color, Lerp = Color, Lerp
+
 RARELOAD = RARELOAD or {}
-if not RARELOAD.Theme or not RARELOAD.Theme.IsLightMode then
-    if file.Exists("rareload/client/shared/theme_utils.lua", "LUA") then
-        include("rareload/client/shared/theme_utils.lua")
-    end
-end
 
 THEME = {
     -- Modern Dark Theme (Discord/VSCode inspired)
@@ -64,6 +64,7 @@ THEME = {
 -- Helper to draw a blur rect
 local blurMat = Material("pp/blurscreen")
 function THEME:DrawBlur(panel, amount)
+    if not IsValid(panel) then return end
     local x, y = panel:LocalToScreen(0, 0)
     local scrW, scrH = ScrW(), ScrH()
     surface.SetDrawColor(255, 255, 255)
@@ -84,10 +85,10 @@ function THEME:DrawCard(x, y, w, h, color, hover)
     if hover then
         draw.RoundedBox(8, x, y, w, h, Color(255, 255, 255, 5))
         surface.SetDrawColor(self.primary)
-        surface.DrawOutlinedRect(x, y, w, h, 2) -- Highlight border
+        surface.DrawOutlinedRect(x, y, w, h, 2)
     else
         surface.SetDrawColor(0, 0, 0, 50)
-        surface.DrawOutlinedRect(x, y, w, h, 1) -- Subtle border
+        surface.DrawOutlinedRect(x, y, w, h, 1)
     end
 end
 
@@ -105,13 +106,14 @@ function THEME:GetEntityTypeColor(class)
     local lower = string.lower(class)
     if string.find(lower, "npc") then return self.entity.npc
     elseif string.find(lower, "weapon") then return self.entity.weapon
-    elseif string.find(lower, "vehicle") then return self.entity.vehicle
+    elseif string.find(lower, "vehicle") or string.find(lower, "jeep") or string.find(lower, "airboat") then return self.entity.vehicle
     elseif string.find(lower, "prop") then return self.entity.physics
     else return self.entity.default end
 end
 
 function THEME:LerpColor(fraction, from, to)
     if not isnumber(fraction) or not from or not to then return from or Color(255,255,255) end
+    fraction = math.Clamp(fraction, 0, 1)
     return Color(
         Lerp(fraction, from.r, to.r),
         Lerp(fraction, from.g, to.g),
@@ -119,4 +121,7 @@ function THEME:LerpColor(fraction, from, to)
         Lerp(fraction, from.a or 255, to.a or 255)
     )
 end
+
+-- Alias for entity viewer
+EV_THEME = THEME
 

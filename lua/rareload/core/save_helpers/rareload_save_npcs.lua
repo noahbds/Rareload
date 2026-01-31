@@ -25,22 +25,35 @@ local function DebugLog(msg, ...)
     end
 end
 
+-- Include ownership system
+if not RARELOAD or not RARELOAD.Ownership then
+    include("rareload/utils/rareload_ownership.lua")
+end
+
 local function GetEntityOwner(ent)
     if not IsValid(ent) then return nil end
-    local owner
-    if isfunction(ent.CPPIGetOwner) then
-        local ok, o = pcall(ent.CPPIGetOwner, ent)
-        if ok and IsValid(o) and o:IsPlayer() then owner = o end
+    
+    -- Use our ownership system first
+    if RARELOAD.Ownership and RARELOAD.Ownership.GetOwner then
+        local owner = RARELOAD.Ownership.GetOwner(ent)
+        if IsValid(owner) and owner:IsPlayer() then
+            return owner
+        end
     end
-    if not IsValid(owner) and ent.GetOwner then
+    
+    -- Fallback: Check entity's GetOwner
+    if ent.GetOwner then
         local o = ent:GetOwner()
-        if IsValid(o) and o:IsPlayer() then owner = o end
+        if IsValid(o) and o:IsPlayer() then return o end
     end
-    if not IsValid(owner) and ent.GetNWEntity then
-        local o = ent:GetNWEntity("Owner")
-        if IsValid(o) and o:IsPlayer() then owner = o end
+    
+    -- Fallback: Check networked entity
+    if ent.GetNWEntity then
+        local o = ent:GetNWEntity("RareloadOwner")
+        if IsValid(o) and o:IsPlayer() then return o end
     end
-    return owner
+    
+    return nil
 end
 
 -- Shared deterministic helpers (load once)

@@ -2,6 +2,12 @@
 ---@diagnostic disable: undefined-field, inject-field, need-check-nil
 
 if not RARELOAD then RARELOAD = {} end
+
+-- Include ownership system
+if not RARELOAD.Ownership then
+    include("rareload/utils/rareload_ownership.lua")
+end
+
 if not (RARELOAD.Util and RARELOAD.Util.GenerateDeterministicID) then
     if file.Exists("rareload/core/rareload_state_utils.lua", "LUA") then
         include("rareload/core/rareload_state_utils.lua")
@@ -64,7 +70,7 @@ return function(ply)
 
     for _, ent in ipairs(ents.GetAll()) do
         if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() and not ent:IsVehicle() then
-            local owner = (isfunction(ent.CPPIGetOwner) and ent:CPPIGetOwner()) or nil
+            local owner = RARELOAD.Ownership and RARELOAD.Ownership.GetOwner(ent) or nil
             local isOwnerBot = false
             if IsValid(owner) and owner.IsBot then
                 local ok, res = pcall(function() return owner:IsBot() end)

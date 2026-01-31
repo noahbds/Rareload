@@ -7,7 +7,6 @@ local MAT_DELETE_ICON = Material("icon16/image_delete.png")
 local MAT_TELEPORT = Material("icon16/arrow_right.png")
 local MAT_COPY = Material("icon16/page_copy.png")
 
--- Helper for detail rows
 local function AddDetailRow(parent, label, value, color)
     local row = vgui.Create("DPanel", parent)
     row:Dock(TOP)
@@ -19,7 +18,7 @@ local function AddDetailRow(parent, label, value, color)
 
     local lbl = vgui.Create("DLabel", row)
     lbl:SetText(label)
-    lbl:SetFont("RareloadLabel") -- Ensure this font exists or use default
+    lbl:SetFont("RareloadLabel")
     lbl:SetTextColor(THEME.textSecondary)
     lbl:Dock(LEFT)
     lbl:DockMargin(12, 0, 0, 0)
@@ -69,7 +68,6 @@ local function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
 
-    -- Tab System
     local tabContainer = vgui.Create("DPanel", frame)
     tabContainer:SetPos(0, 60)
     tabContainer:SetSize(650, 40)
@@ -106,7 +104,6 @@ local function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
             contentPanel:Clear()
             
             if id == "info" then
-                -- Info Tab Content
                 local scroll = vgui.Create("DScrollPanel", contentPanel)
                 scroll:Dock(FILL)
                 scroll:DockMargin(20, 10, 20, 10)
@@ -133,10 +130,8 @@ local function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
                 
                 if data.skin then AddDetailRow(scroll, "Skin", data.skin, THEME.textSecondary) end
             elseif id == "json" then
-                -- JSON Editor Tab
                 if RARELOAD and RARELOAD.JSONEditor and RARELOAD.JSONEditor.Create then
                     RARELOAD.JSONEditor.Create(contentPanel, data.rawData or data, isNPC, function(newData)
-                        -- Persist changes back to disk
                         local map = game.GetMap()
                         local filename = "rareload/player_positions_" .. map .. ".json"
                         if not file.Exists(filename, "DATA") then
@@ -156,18 +151,14 @@ local function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
                             return
                         end
 
-                        -- Helper: recursively replace entity by RareloadNPCID
                         local targetId = newData.RareloadNPCID or (data.rawData and data.rawData.RareloadNPCID)
                         local function replaceById(node)
                             if not istable(node) then return false end
-                            -- Direct entity match
                             if node.RareloadNPCID and node.RareloadNPCID == targetId then
-                                -- Overwrite all fields in-place
                                 for k in pairs(node) do node[k] = nil end
                                 for k, v in pairs(newData) do node[k] = v end
                                 return true
                             end
-                            -- Recurse into tables and arrays
                             for k, v in pairs(node) do
                                 if istable(v) then
                                     if replaceById(v) then return true end
@@ -191,9 +182,7 @@ local function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
                         file.Write(filename, out)
                         ShowNotification("JSON saved", NOTIFY_GENERIC)
                         if onAction then onAction(newData) end
-                        -- Optionally refresh list
                         if OpenEntityViewer then
-                            -- reopen to refresh
                             OpenEntityViewer()
                         end
                     end)
@@ -214,7 +203,6 @@ local function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
     CreateTab("Info", "info", 20)
     CreateTab("JSON Editor", "json", 130)
 
-    -- Trigger initial tab load
     contentPanel:Clear()
     local scroll = vgui.Create("DScrollPanel", contentPanel)
     scroll:Dock(FILL)
@@ -242,7 +230,6 @@ local function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
     
     if data.skin then AddDetailRow(scroll, "Skin", data.skin, THEME.textSecondary) end
 
-    -- Action Bar
     local actions = vgui.Create("DPanel", frame)
     actions:Dock(BOTTOM)
     actions:SetTall(60)
@@ -292,10 +279,8 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
         local hovered = self:IsHovered()
         hoverFraction = Lerp(FrameTime() * 10, hoverFraction, hovered and 1 or 0)
         
-        -- Background
         THEME:DrawCard(0, 0, w, h, THEME.surface, hovered)
         
-        -- Type Strip
         draw.RoundedBoxEx(8, 0, h-4, w, 4, typeColor, false, false, true, true)
     end
 
@@ -303,7 +288,6 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
         CreateDetailsPanel(data, isNPC, onDeleted, onAction)
     end
 
-    -- Model Preview
     local modelPanel = vgui.Create("DModelPanel", card)
     modelPanel:SetPos(0, 0)
     modelPanel:SetSize(200, 160)
@@ -315,10 +299,21 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
         if IsValid(ent) then
             local min, max = ent:GetRenderBounds()
             local center = (min + max) * 0.5
-            local size = max:Distance(min)
+            local sizeX = max.x - min.x
+            local sizeY = max.y - min.y
+            local sizeZ = max.z - min.z
+            local size = math.max(sizeX, sizeY, sizeZ)
+            
+            local fov = 40
+            local dist = (size * 1.3) / math.tan(math.rad(fov / 2))
+            
             modelPanel:SetLookAt(center)
-            modelPanel:SetCamPos(center + Vector(size * 0.8, size * 0.6, size * 0.4))
-            modelPanel:SetFOV(45)
+            modelPanel:SetCamPos(center + Vector(dist * 0.5, dist * 0.4, dist * 0.35))
+            modelPanel:SetFOV(fov)
+            
+            modelPanel.LayoutEntity = function(self, ent)
+                ent:SetAngles(Angle(0, RealTime() * 30, 0))
+            end
         end
     else
         modelPanel.Paint = function(self, w, h)
@@ -327,14 +322,12 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
         end
     end
 
-    -- Info Container
     local info = vgui.Create("DPanel", card)
     info:SetPos(0, 160)
     info:SetSize(200, 100)
     info:SetMouseInputEnabled(false)
     info.Paint = function() end
 
-    -- Name
     local name = data.class or "Unknown"
     if string.len(name) > 20 then name = string.sub(name, 1, 18) .. "..." end
     
@@ -346,7 +339,6 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
     lblName:SetSize(180, 20)
     lblName:SetContentAlignment(5)
 
-    -- Health Bar
     if data.health then
         local hp = tonumber(data.health) or 0
         local maxHp = tonumber(data.maxHealth) or hp
@@ -362,7 +354,6 @@ function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
         end
     end
 
-    -- Distance
     if data.pos and IsValid(LocalPlayer()) then
         local dist = math.Round(LocalPlayer():GetPos():Distance(Vector(data.pos.x, data.pos.y, data.pos.z)))
         local lblDist = vgui.Create("DLabel", info)

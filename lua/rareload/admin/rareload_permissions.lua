@@ -303,7 +303,7 @@ if SERVER then
             if mainData then
                 local jsonData = util.TableToJSON({
                     metadata = {
-                        version = "2.0",
+                        version = "2.1",
                         timestamp = backupTime,
                         format = "normalized"
                     },
@@ -494,13 +494,12 @@ if SERVER then
                     end
                 end
 
-                if playerData.nick == "Unknown Player" and _G.ULib and _G.ULib.ucl and _G.ULib.ucl.users and _G.ULib.ucl.users[steamID] then
-                    local ulxData = _G.ULib.ucl.users[steamID]
-                    if ulxData.name then
-                        playerData.nick = ulxData.name
-                    end
-                    if ulxData.time and ulxData.time.last then
-                        playerData.lastSeen = ulxData.time.last
+                if playerData.nick == "Unknown Player" then
+                    if sql.TableExists("rareload_player_data") then
+                        local storedData = sql.QueryRow("SELECT nick FROM rareload_player_data WHERE steamid = " .. sql.SQLStr(steamID))
+                        if storedData and storedData.nick then
+                            playerData.nick = storedData.nick
+                        end
                     end
                 end
 
@@ -573,9 +572,8 @@ if SERVER then
                 if ply:IsSuperAdmin() then
                     hasAccess = true
                 else
-                    local ULib = _G.ULib
-                    if ULib and ULib.ucl and ULib.ucl.query then
-                        hasAccess = ULib.ucl.query(ply, "rareload_admin")
+                    if RARELOAD.AdminSecurity and RARELOAD.AdminSecurity.CheckAdminSystemAccess then
+                        hasAccess = RARELOAD.AdminSecurity.CheckAdminSystemAccess(ply, "ADMIN_PANEL")
                     else
                         hasAccess = RARELOAD.Permissions.HasPermission(ply, "ADMIN_PANEL")
                     end

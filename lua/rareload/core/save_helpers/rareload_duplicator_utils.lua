@@ -179,9 +179,8 @@ local function defaultPostProcess(createdEntities, owner)
             ent.SavedByRareload = true
             ent.SavedViaDuplicator = true
             ent.RestoreTime = os.time()
-            if owner and ent.CPPISetOwner then
-                pcall(ent.CPPISetOwner, ent, owner)
-            end
+            -- Note: Ownership is set by the calling handler to avoid duplication
+            -- and allow custom ownership logic per entity type
         end
     end
 end
@@ -209,9 +208,7 @@ function Bridge.RestoreSnapshot(snapshot, opts)
                 filteredCount = filteredCount + 1
             end
         end
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled and filteredCount > 0 then
-            print(string.format("[RARELOAD DEBUG] Filtered out %d entities from snapshot", filteredCount))
-        end
+        -- Note: Filtering summary is logged by the calling handler (entity/NPC handler)
     end
 
     resetDuplicatorFrame()

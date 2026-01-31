@@ -1,8 +1,13 @@
+-- Include ownership system
+if not RARELOAD or not RARELOAD.Ownership then
+    include("rareload/utils/rareload_ownership.lua")
+end
+
 return function(ply)
     local vehicles = {}
     for _, vehicle in ipairs(ents.FindByClass("prop_vehicle_*")) do
         if IsValid(vehicle) then
-            local owner = vehicle:CPPIGetOwner()
+            local owner = RARELOAD.Ownership.GetOwner(vehicle)
             if (IsValid(owner) and owner:IsPlayer()) or vehicle.SpawnedByRareload then
                 local vehicleData = {
                     class = vehicle:GetClass(),

@@ -25,13 +25,11 @@ TOOL.ConfigName             = ""
 if SERVER then
     AddCSLuaFile("rareload/ui/rareload_ui.lua")
     AddCSLuaFile("rareload/ui/rareload_toolscreen.lua")
-    util.AddNetworkString("RareloadToolReloadState")
-    util.AddNetworkString("CreatePlayerPhantom")
-    util.AddNetworkString("RareloadRequestAntiStuckConfig")
-    util.AddNetworkString("RareloadAntiStuckConfig")
-    util.AddNetworkString("RareloadUpdateAntiStuckConfig")
-
     AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_panel_main.lua")
+    
+    -- Tool-specific network strings
+    util.AddNetworkString("RareloadToolReloadState")
+    util.AddNetworkString("RareloadUpdateAntiStuckConfig")
 
     RARELOAD.save_inventory = include("rareload/core/save_helpers/rareload_save_inventory.lua")
     RARELOAD.save_vehicles = include("rareload/core/save_helpers/rareload_save_vehicles.lua")
@@ -75,25 +73,6 @@ if CLIENT then
     end)
 end
 
-if CLIENT then
-    net.Receive("RareloadSettingsSync", function()
-        local json = net.ReadString()
-        local settings = util.JSONToTable(json)
-        if settings then
-            RARELOAD.settings = settings
-            if IsValid(RareloadUI.LastPanel) then
-                local pnl = RareloadUI.LastPanel
-                timer.Simple(0, function()
-                    if IsValid(pnl) then
-                        pnl:InvalidateChildren(false)
-                        pnl:InvalidateLayout(true)
-                    end
-                end)
-            end
-        end
-    end)
-end
-
 local function loadAddonSettings()
     local addonStateFilePath = "rareload/addon_state.json"
 
@@ -113,10 +92,6 @@ local function loadAddonSettings()
 
     RARELOAD.settings = settings
     return true, nil
-end
-
-if not RARELOAD or not RARELOAD.DataUtils then
-    include("rareload/utils/rareload_data_utils.lua")
 end
 
 local function toVecTable(vec)
@@ -263,135 +238,173 @@ function TOOL.BuildCPanel(panel)
 
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
 
-    panel:AddControl("Label", {
-        Text = "Main settings for the Rareload tool",
-    })
+    -- Custom styled panel background
+    panel.Paint = function(self, w, h)
+        surface.SetDrawColor(35, 39, 47, 255)
+        surface.DrawRect(0, 0, w, h)
+    end
 
-    RareloadUI.CreateButton(panel, "Toggle Rareload", "rareload_rareload",
-        "Enable or disable Rareload", "addonEnabled")
+    -- Header with branding
+    local headerPanel = vgui.Create("DPanel", panel)
+    headerPanel:Dock(TOP)
+    headerPanel:DockMargin(5, 5, 5, 8)
+    headerPanel:SetTall(50)
+    headerPanel.Paint = function(self, w, h)
+        -- Gradient background
+        RareloadUI.DrawRoundedBox(0, 0, w, h, 8, Color(45, 50, 60, 255))
+        
+        -- Accent line
+        surface.SetDrawColor(RareloadUI.Theme.Colors.Accent)
+        surface.DrawRect(0, h - 3, w, 3)
+        
+        -- Title
+        draw.SimpleText("RARELOAD", "RareloadUI.Title", 12, h/2 - 6, RareloadUI.Theme.Colors.Text.Primary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText("Configuration Panel", "RareloadUI.Small", 12, h/2 + 10, RareloadUI.Theme.Colors.Text.Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        
+        -- Version badge
+        draw.SimpleText("v2.1", "RareloadUI.Small", w - 12, h/2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+    end
 
-    RareloadUI.CreateButton(panel, "Toggle Anti-stuck system", "rareload_spawn_mode",
-        "Enable or disable anti-stuck system", "spawnModeEnabled")
+    -- ═══════════════════════════════════════════════════════════════
+    -- CORE SETTINGS CATEGORY
+    -- ═══════════════════════════════════════════════════════════════
+    local coreCategory = RareloadUI.CreateCategory(panel, "Core Settings", "icon16/cog.png", true)
+    
+    local toggleRareload = RareloadUI.CreateToggleSwitch(coreCategory.Content, "Enable Rareload", "sv_rareload_enabled", "Master switch to enable/disable the addon")
+    coreCategory:AddItem(toggleRareload)
+    
+    local toggleAntiStuck = RareloadUI.CreateToggleSwitch(coreCategory.Content, "Anti-Stuck System", "sv_rareload_spawn_mode", "Prevents spawning inside objects")
+    coreCategory:AddItem(toggleAntiStuck)
+    
+    local toggleAutoSave = RareloadUI.CreateToggleSwitch(coreCategory.Content, "Auto Save Position", "sv_rareload_auto_save", "Automatically saves position periodically")
+    coreCategory:AddItem(toggleAutoSave)
+    
+    local toggleNoCustomDeath = RareloadUI.CreateToggleSwitch(coreCategory.Content, "No Custom Respawn at Death", "sv_rareload_no_custom_death", "Disable custom respawn when dying")
+    coreCategory:AddItem(toggleNoCustomDeath)
 
-    RareloadUI.CreateButton(panel, "Toggle Auto Save", "rareload_auto_save",
-        "Enable or disable auto saving position", "autoSaveEnabled")
+    -- ═══════════════════════════════════════════════════════════════
+    -- PLAYER STATE CATEGORY
+    -- ═══════════════════════════════════════════════════════════════
+    local playerCategory = RareloadUI.CreateCategory(panel, "Player State Retention", "icon16/user.png", true)
+    
+    local toggleHealth = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Health & Armor", "sv_rareload_keep_health", "Restore health and armor on respawn")
+    playerCategory:AddItem(toggleHealth)
+    
+    local toggleStates = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Player States", "sv_rareload_keep_states", "Restore godmode, notarget, noclip, frozen")
+    playerCategory:AddItem(toggleStates)
+    
+    local toggleInventory = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Inventory", "sv_rareload_keep_inventory", "Restore weapons on respawn")
+    playerCategory:AddItem(toggleInventory)
+    
+    local toggleAmmo = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Ammo", "sv_rareload_keep_ammo", "Restore ammunition on respawn")
+    playerCategory:AddItem(toggleAmmo)
+    
+    local toggleGlobalInv = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Global Inventory", "sv_rareload_global_inventory", "Share inventory across all players")
+    playerCategory:AddItem(toggleGlobalInv)
 
-    RareloadUI.CreateButton(panel, "Toggle Keep Inventory", "rareload_retain_inventory",
-        "Enable or disable retaining inventory", "retainInventory")
+    -- ═══════════════════════════════════════════════════════════════
+    -- MAP ENTITIES CATEGORY
+    -- ═══════════════════════════════════════════════════════════════
+    local mapCategory = RareloadUI.CreateCategory(panel, "Map Entities", "icon16/map.png", false)
+    
+    local toggleMapEnts = RareloadUI.CreateToggleSwitch(mapCategory.Content, "Keep Map Entities", "sv_rareload_keep_map_entities", "Restore map entities on respawn")
+    mapCategory:AddItem(toggleMapEnts)
+    
+    local toggleMapNPCs = RareloadUI.CreateToggleSwitch(mapCategory.Content, "Keep Map NPCs", "sv_rareload_keep_map_npcs", "Restore NPCs on respawn")
+    mapCategory:AddItem(toggleMapNPCs)
 
-    RareloadUI.CreateButton(panel, "Toggle Keep Health and Armor", "rareload_retain_health_armor",
-        "Enable or disable retaining health and armor", "retainHealthArmor")
-
-    RareloadUI.CreateButton(panel, "Toggle Keep Ammo", "rareload_retain_ammo",
-        "Enable or disable retaining ammo", "retainAmmo")
-
-    -- RareloadUI.CreateButton(panel, "Toggle Keep Vehicles", "rareload_retain_vehicles",
-    --      "Enable or disable retaining vehicles", "retainVehicle")
-
-    -- RareloadUI.CreateButton(panel, "Toggle Keep Vehicle State", "rareload_retain_vehicle_state",
-    --     "Enable or disable retaining vehicle state", "retainVehicleState")
-
-    RareloadUI.CreateButton(panel, "Toggle Keep Map Entities", "rareload_retain_map_entities",
-        "Enable or disable retaining map entities", "retainMapEntities")
-
-    RareloadUI.CreateButton(panel, "Toggle Keep Map NPCs", "rareload_retain_map_npcs",
-        "Enable or disable retaining map NPCs", "retainMapNPCs")
-
-    RareloadUI.CreateButton(panel, "Toggle No Custom Death at spawn", "rareload_nocustomrespawnatdeath",
-        "Enable or disable custom respawn at death", "nocustomrespawnatdeath")
-
-    RareloadUI.CreateButton(panel, "Toggle Debug", "rareload_debug",
-        "Enable or disable debug mode", "debugEnabled")
-
-    RareloadUI.CreateButton(panel, "Toggle Global Inventory", "rareload_retain_global_inventory",
-        "Enable or disable global inventory", "retainGlobalInventory")
-
-    RareloadUI.CreateActionButton(
-        panel,
-        "Save Position",
-        "save_position",
-        "Manually save your current position now"
-    )
-
-    RareloadUI.CreateSeparator(panel)
-
-    panel:AddControl("Label", {
-        Text = "Slider Settings",
-        Description = "Adjust the settings below to customize the Rareload tool"
-    })
-
-
-    RareloadUI.CreateSlider(
-        panel,
+    -- ═══════════════════════════════════════════════════════════════
+    -- TIMING SETTINGS CATEGORY
+    -- ═══════════════════════════════════════════════════════════════
+    local timingCategory = RareloadUI.CreateCategory(panel, "Timing & Limits", "icon16/time.png", false)
+    
+    local sliderInterval = RareloadUI.CreateCompactSlider(
+        timingCategory.Content,
         "Auto Save Interval",
-        "Number of seconds between each automatic position save",
-        "set_auto_save_interval",
+        "Seconds between automatic saves",
+        "sv_rareload_auto_save_interval",
         1, 60, 0,
-        RARELOAD.settings.autoSaveInterval or 2,
+        5,
         "s"
     )
-
-    --  RareloadUI.CreateSlider(
-    --      panel,
-    --      "Max Distance",
-    --      "Maximum distance (in units) at which saved entities will be restored",
-    --      "set_max_distance",
-    --      1, 1000, 0,
-    --      RARELOAD.settings.maxDistance or 50,
-    --      "u"
-    --  )
-
-    RareloadUI.CreateSlider(
-        panel,
-        "Auto Save Angle Tolerance",
-        "Angle tolerance (in degrees) for entity restoration",
-        "set_angle_tolerance",
-        1, 360, 1,
-        RARELOAD.settings.angleTolerance or 100.0,
+    timingCategory:AddItem(sliderInterval)
+    
+    local sliderAngle = RareloadUI.CreateCompactSlider(
+        timingCategory.Content,
+        "Angle Tolerance",
+        "Degrees of tolerance for entity restoration",
+        "sv_rareload_angle_tolerance",
+        1, 360, 0,
+        100,
         "°"
     )
-
-    RareloadUI.CreateSlider(
-        panel,
+    timingCategory:AddItem(sliderAngle)
+    
+    local sliderHistory = RareloadUI.CreateCompactSlider(
+        timingCategory.Content,
         "History Size",
-        "Maximum number of position history cache entries",
-        "set_history_size",
+        "Maximum position cache entries",
+        "sv_rareload_history_size",
         1, 150, 0,
-        RARELOAD.settings.maxHistorySize or 10
+        125,
+        ""
     )
+    timingCategory:AddItem(sliderHistory)
 
-    RareloadUI.CreateSeparator(panel)
+    -- ═══════════════════════════════════════════════════════════════
+    -- ACTIONS CATEGORY
+    -- ═══════════════════════════════════════════════════════════════
+    local actionsCategory = RareloadUI.CreateCategory(panel, "Quick Actions", "icon16/lightning.png", true)
+    
+    local saveBtn = RareloadUI.CreateModernButton(
+        actionsCategory.Content, 
+        "Save Current Position", 
+        "icon16/disk.png", 
+        function()
+            RunConsoleCommand("save_position")
+        end,
+        Color(76, 175, 80)
+    )
+    actionsCategory:AddItem(saveBtn)
 
-    panel:AddControl("Label", {
-        Text = "Anti-Stuck Debugging Tools",
-        Description = "Tools for testing and configuring the anti-stuck system"
-    })
+    -- ═══════════════════════════════════════════════════════════════
+    -- DEBUG TOOLS CATEGORY
+    -- ═══════════════════════════════════════════════════════════════
+    local debugCategory = RareloadUI.CreateCategory(panel, "Debug & Tools", "icon16/wrench.png", false)
+    
+    local toggleDebug = RareloadUI.CreateToggleSwitch(debugCategory.Content, "Debug Mode", "sv_rareload_debug", "Enable debug logging in console")
+    debugCategory:AddItem(toggleDebug)
+    
+    local antiStuckBtn = RareloadUI.CreateModernButton(
+        debugCategory.Content, 
+        "Anti-Stuck Debug Panel", 
+        "icon16/bug.png", 
+        function()
+            RunConsoleCommand("rareload_open_antistuck_debug")
+        end,
+        Color(255, 152, 0)
+    )
+    debugCategory:AddItem(antiStuckBtn)
+    
+    local entityViewerBtn = RareloadUI.CreateModernButton(
+        debugCategory.Content, 
+        "Entity Viewer", 
+        "icon16/application_view_list.png", 
+        function()
+            RunConsoleCommand("entity_viewer_open")
+        end,
+        Color(33, 150, 243)
+    )
+    debugCategory:AddItem(entityViewerBtn)
 
-    local debugBtn = vgui.Create("DButton", panel)
-    debugBtn:SetText("Open Anti-Stuck Debug Panel")
-    debugBtn:SetSize(200, 25)
-    debugBtn:Dock(TOP)
-    debugBtn:DockMargin(5, 5, 5, 5)
-    debugBtn.DoClick = function()
-        RunConsoleCommand("rareload_open_antistuck_debug")
+    -- Footer credit
+    local footerPanel = vgui.Create("DPanel", panel)
+    footerPanel:Dock(TOP)
+    footerPanel:DockMargin(5, 10, 5, 5)
+    footerPanel:SetTall(24)
+    footerPanel.Paint = function(_, w, h)
+        draw.SimpleText("Made by Noahbds", "RareloadUI.Small", w/2, h/2, Color(100, 105, 115), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
-    panel:AddItem(debugBtn)
-
-    RareloadUI.CreateSeparator(panel)
-
-    panel:AddControl("Label", {
-        Text = "Entity Viewer to manage saved entities and npcs",
-    })
-
-    local entv = vgui.Create("DButton", panel)
-    entv:SetText("Open Entity Viewer")
-    entv:SetSize(200, 25)
-    entv:Dock(TOP)
-    entv:DockMargin(5, 5, 5, 5)
-    entv.DoClick = function()
-        RunConsoleCommand("entity_viewer_open")
-    end
-    panel:AddItem(entv)
 end
 
 ---@diagnostic disable: param-type-mismatch, assign-type-mismatch, inject-field, undefined-field

@@ -29,11 +29,15 @@ local groundTrace = {
 }
 
 function AntiStuck.TryDisplacement(pos, ply)
+    if not pos or not IsValid(ply) then
+        return nil, AntiStuck.UNSTUCK_METHODS and AntiStuck.UNSTUCK_METHODS.NONE or 0
+    end
+    
     local maxDistance = (AntiStuck.mapBounds and math.max(AntiStuck.mapBounds.maxs.x - AntiStuck.mapBounds.mins.x, AntiStuck.mapBounds.maxs.y - AntiStuck.mapBounds.mins.y) * 0.25) or
-        (AntiStuck.CONFIG.HORIZONTAL_SEARCH_RANGE or 2048)
-    local safeDistance = AntiStuck.CONFIG.SAFE_DISTANCE or 64
+        (AntiStuck.CONFIG and AntiStuck.CONFIG.HORIZONTAL_SEARCH_RANGE or 2048)
+    local safeDistance = (AntiStuck.CONFIG and AntiStuck.CONFIG.SAFE_DISTANCE) or 64
     local stepSize = (AntiStuck.CONFIG and AntiStuck.CONFIG.DISPLACEMENT_STEP_SIZE) or
-        ((AntiStuck.CONFIG.SAFE_DISTANCE or 64) * 2)
+        (safeDistance * 2)
     local maxHeight = (AntiStuck.CONFIG and AntiStuck.CONFIG.DISPLACEMENT_MAX_HEIGHT) or 1000
 
     groundTrace.filter = ply
@@ -54,7 +58,7 @@ function AntiStuck.TryDisplacement(pos, ply)
 
                     local ground = util.TraceLine(groundTrace)
 
-                    if ground.Hit then
+                    if ground and ground.Hit then
                         local finalPos = ground.HitPos + Vector(0, 0, 16)
                         if util.IsInWorld(finalPos) then
                             local isStuck = AntiStuck.IsPositionStuck(finalPos, ply, false)

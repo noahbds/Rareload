@@ -1,11 +1,6 @@
 local highlightAllActive = false
 
-if not RARELOAD or not RARELOAD.DataUtils then
-    include("rareload/utils/rareload_data_utils.lua")
-end
-
 function CreateCategory(parent, title, dataList, isNPC, filter, sortMode, playerPos, options)
-    -- Normalize dataList
     local items = {}
     if dataList then
         for k, v in pairs(dataList) do
@@ -18,7 +13,6 @@ function CreateCategory(parent, title, dataList, isNPC, filter, sortMode, player
 
     if #items == 0 then return nil end
 
-    -- Filter
     local filteredData = {}
     if filter and filter ~= "" then
         local lowerFilter = string.lower(filter)
@@ -37,7 +31,6 @@ function CreateCategory(parent, title, dataList, isNPC, filter, sortMode, player
     if #items == 0 then return nil end
     dataList = items
 
-    -- Sort
     sortMode = sortMode or "Class"
     if sortMode == "Distance" and IsValid(LocalPlayer()) and playerPos then
         local function getDist(item)
@@ -111,7 +104,6 @@ function CreateCategory(parent, title, dataList, isNPC, filter, sortMode, player
     contentContainer:Dock(TOP)
     contentContainer.Paint = function() end
     
-    -- Use DIconLayout for grid view
     local layout = vgui.Create("DIconLayout", contentContainer)
     layout:Dock(TOP)
     layout:SetSpaceX(8)
@@ -119,11 +111,10 @@ function CreateCategory(parent, title, dataList, isNPC, filter, sortMode, player
     layout:SetBorder(12)
     layout:SetLayoutDir(LEFT)
 
-    -- Function to update height
     local function UpdateHeight()
         if not IsValid(mainContainer) then return end
         layout:Layout()
-        local contentH = layout:GetTall() + 24 -- padding
+        local contentH = layout:GetTall() + 24
         contentContainer:SetTall(contentH)
         mainContainer:SetTall(isExpanded and (headerHeight + contentH) or headerHeight)
         if parent.InvalidateLayout then parent:InvalidateLayout(true) end
@@ -136,16 +127,13 @@ function CreateCategory(parent, title, dataList, isNPC, filter, sortMode, player
         surface.PlaySound("ui/buttonclick.wav")
     end
 
-    -- Populate grid
     for _, data in ipairs(dataList) do
         local card = CreateInfoPanel(layout, data, isNPC, function(deletedData)
-            -- Handle deletion
              for i = #dataList, 1, -1 do
                 if dataList[i] == deletedData then
                     table.remove(dataList, i)
                 end
             end
-            -- Update file (simplified for brevity, same logic as before)
             local mapName = game.GetMap()
             local filePath = "rareload/player_positions_" .. mapName .. ".json"
             if file.Exists(filePath, "DATA") then
@@ -174,7 +162,6 @@ function CreateCategory(parent, title, dataList, isNPC, filter, sortMode, player
         end, nil, options)
     end
 
-    -- Initial height update
     timer.Simple(0, UpdateHeight)
     
     return mainContainer

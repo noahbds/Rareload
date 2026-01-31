@@ -5,10 +5,7 @@ RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 local AntiStuck = RARELOAD.AntiStuck
 local PS = AntiStuck.ProfileSystem
 
-util.AddNetworkString("RareloadRequestAntiStuckConfig")
-util.AddNetworkString("RareloadAntiStuckConfig")
 util.AddNetworkString("RareloadAntiStuckMethods")
-util.AddNetworkString("RareloadOpenAntiStuckDebug")
 util.AddNetworkString("RareloadAntiStuckSettings")
 util.AddNetworkString("RareloadShareAntiStuckProfile")
 util.AddNetworkString("RareloadReceiveSharedProfile")

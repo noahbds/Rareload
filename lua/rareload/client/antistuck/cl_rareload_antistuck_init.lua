@@ -1,5 +1,4 @@
 if CLIENT then
-    -- Load profile system (correct path)
     local profileSuccess = pcall(include, "rareload/client/antistuck/profile/cl_profile_system.lua")
     if not profileSuccess then
         print("[RARELOAD] ERROR: Failed to load profile system")
@@ -13,10 +12,8 @@ if CLIENT then
         "rareload/client/antistuck/cl_anti_stuck_method_list.lua",
         "rareload/client/antistuck/cl_anti_stuck_events.lua",
         "rareload/client/entity_viewer/cl_entity_viewer_theme.lua",
-        -- Profile UI modules (correct paths)
         "rareload/client/antistuck/profile/cl_profile_manager.lua",
         "rareload/client/antistuck/profile/cl_profile_dialog.lua",
-        -- Settings modules
         "rareload/client/antistuck/settings/cl_settings_defaults.lua",
         "rareload/client/antistuck/settings/cl_settings_utils.lua",
         "rareload/client/antistuck/settings/cl_settings_panel.lua",

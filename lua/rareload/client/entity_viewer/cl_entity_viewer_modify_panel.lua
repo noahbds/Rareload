@@ -1,4 +1,4 @@
-include("rareload/utils/vector_serialization.lua")
+-- Data utilities are loaded via rareload_init.lua
 
 local draw, surface, string, math, util, file, net, timer, IsValid, pairs, ipairs, tostring =
     draw, surface, string, math, util, file, net, timer, IsValid, pairs, ipairs, tostring
@@ -21,9 +21,9 @@ local MAT_DISK                                                                  
 local KEYWORD_PATTERN                                                                       = "^(true|false|null)"
 local LHEIGHT                                                                               = 28
 
-local ParsePosString                                                                        = RARELOAD.ParsePosString
-local PosTableToString                                                                      = RARELOAD.PosTableToString
-local AngTableToString                                                                      = RARELOAD.AngTableToString
+local ParsePosString                                                                        = RARELOAD.DataUtils.ParsePositionString
+local PosTableToString                                                                      = RARELOAD.DataUtils.PositionToString
+local AngTableToString                                                                      = RARELOAD.DataUtils.AngleToString
 
 function CreateModifyDataButton(actionsPanel, data, isNPC, onAction)
     local modifyBtn = CreateStyledButton(actionsPanel, "Modify Data", "icon16/pencil.png", THEME.warning, function()
@@ -505,7 +505,6 @@ function CreateModifyDataButton(actionsPanel, data, isNPC, onAction)
                             local container = isNPC and playerData.npcs or playerData.entities
                             local entityMap = container
                             
-                            -- Handle Duplicator Format
                             if container and container.__duplicator and container.__duplicator.payload and container.__duplicator.payload.Entities then
                                 entityMap = container.__duplicator.payload.Entities
                             end
@@ -513,12 +512,10 @@ function CreateModifyDataButton(actionsPanel, data, isNPC, onAction)
                             if entityMap then
                                 for k, ent in pairs(entityMap) do
                                     if k ~= "__duplicator" then
-                                        -- Check match using original key if available, or fuzzy match
                                         local isMatch = false
                                         if data.__originalKey and tostring(k) == tostring(data.__originalKey) then
                                             isMatch = true
                                         else
-                                            -- Fallback fuzzy match
                                             local eClass = ent.Class or ent.class
                                             local dClass = data.class
                                             
@@ -535,7 +532,6 @@ function CreateModifyDataButton(actionsPanel, data, isNPC, onAction)
                                         end
 
                                         if isMatch then
-                                            -- Helper to update a field if it exists in target (preserving case), or default to lowercase
                                             local function UpdateField(target, keyLower, keyUpper, value)
                                                 if target[keyUpper] ~= nil then
                                                     target[keyUpper] = value
@@ -544,19 +540,16 @@ function CreateModifyDataButton(actionsPanel, data, isNPC, onAction)
                                                 end
                                             end
                                             
-                                            -- Update Pos
                                             if newData.pos then
                                                 local posObj = RARELOAD.DataUtils.ConvertToPositionObject(newData.pos)
                                                 UpdateField(entityMap[k], "pos", "Pos", posObj)
                                             end
                                             
-                                            -- Update Angle
                                             if newData.ang then
                                                 local angObj = RARELOAD.DataUtils.ToAngleTable(newData.ang)
                                                 UpdateField(entityMap[k], "ang", "Angle", angObj)
                                             end
                                             
-                                            -- Update other fields
                                             if newData.health then UpdateField(entityMap[k], "health", "CurHealth", newData.health) end
                                             if newData.skin then UpdateField(entityMap[k], "skin", "Skin", newData.skin) end
                                             if newData.model then UpdateField(entityMap[k], "model", "Model", newData.model) end

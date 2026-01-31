@@ -5,12 +5,6 @@ if SERVER then
     util.AddNetworkString("RareloadPlayerMoved")
     util.AddNetworkString("RareloadSyncAutoSaveTime")
 
-    local function ensureDataUtils()
-        if not RARELOAD or not RARELOAD.DataUtils then
-            include("rareload/utils/rareload_data_utils.lua")
-        end
-    end
-
     local Autosave = {
         lastMove = {},
         lastSave = {},
@@ -59,7 +53,6 @@ if SERVER then
     end
 
     local function stateChangedEnough(ply, lastData)
-        ensureDataUtils()
         local pos = ply:GetPos()
         local ang = ply:EyeAngles()
 

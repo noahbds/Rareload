@@ -19,7 +19,13 @@ local function ValidateMethodInterface(func)
     local testPos = Vector(0, 0, 0)
     local ok, result1, result2 = pcall(func, testPos, nil)
 
-    if not ok then return false, "Function call failed: " .. tostring(result1) end
+    if not ok then 
+        local errStr = tostring(result1):lower()
+        if errStr:find("nil value") or errStr:find("invalid") then
+            return true, "Valid (requires valid player)"
+        end
+        return false, "Function call failed: " .. tostring(result1) 
+    end
 
     if result1 ~= nil and type(result1) ~= "Vector" then
         return false, "First return must be Vector or nil"

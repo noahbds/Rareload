@@ -1,6 +1,4 @@
 -- Rareload theme utilities: centralizes dark/light palettes and switching
--- Light mode support is controlled by client cvar: rareload_ui_theme
---   -1 = auto (fallback dark), 0 = dark, 1 = light
 
 RARELOAD = RARELOAD or {}
 RARELOAD.Theme = RARELOAD.Theme or {}
@@ -39,40 +37,29 @@ THEMES.dark = {
 }
 
 THEMES.light = {
-    -- Generic text (darker for light bg)
     textPrimary = Color(20, 24, 28),
     textSecondary = Color(85, 95, 105),
     textDisabled = Color(150, 155, 160),
-
-    -- Surfaces
     bg = Color(248, 249, 251, 245),
     panel = Color(236, 239, 242, 255),
     panelAlt = Color(228, 232, 238, 255),
     separator = Color(210, 214, 220),
-
-    -- UI controls
     button = { normal = Color(230, 233, 238), hover = Color(222, 226, 232), active = Color(210, 214, 220) },
     slider = { track = Color(215, 219, 225), groove = Color(65, 120, 235), knob = Color(120, 125, 135), knobHover = Color(80, 85, 95) },
-
-    -- Accents / status (slightly toned)
     accent = Color(65, 120, 235),
     accentHover = Color(80, 135, 245),
     success = Color(42, 160, 90),
     warning = Color(210, 160, 50),
     danger = Color(210, 60, 60),
 
-    -- Shadows/overlays
     shadow = Color(0, 0, 0, 120),
     overlay = Color(255, 255, 255, 200)
 }
 
--- Setting and detection
 local cvTheme = CreateClientConVar("rareload_ui_theme", "-1", true, false,
     "Rareload UI theme (-1=auto, 0=dark, 1=light)")
 
 local function detectLightMode()
-    -- Heuristic detection placeholder: default to dark for now.
-    -- If in future GMod exposes a light/dark skin flag, hook it here.
     return false
 end
 
@@ -87,7 +74,6 @@ local function choose()
     return RARELOAD.Theme.IsLightMode() and THEMES.light or THEMES.dark
 end
 
--- Builders provide shapes used by various modules without requiring refactors
 function RARELOAD.Theme.BuildMainTheme()
     local t = choose()
     return {

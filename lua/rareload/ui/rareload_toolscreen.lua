@@ -8,7 +8,6 @@ RARELOAD.lastMoveTime = RARELOAD.lastMoveTime or 0
 RARELOAD.showAutoSaveMessage = RARELOAD.showAutoSaveMessage or false
 RARELOAD.autoSaveMessageTime = RARELOAD.autoSaveMessageTime or 0
 
--- Ensure theme utils are present
 if not RARELOAD.Theme or not RARELOAD.Theme.BuildToolscreenColors then
     include("rareload/client/shared/theme_utils.lua")
 end
@@ -43,6 +42,7 @@ local FEATURES = {
     { name = "Save Global Inventory", key = "retainGlobalInventory", kind = "bool" },
     { name = "Save Ammo",             key = "retainAmmo",            kind = "bool" },
     { name = "Save Health and Armor", key = "retainHealthArmor",     kind = "bool" },
+    { name = "Save Player States",    key = "retainPlayerStates",    kind = "bool" },
     { name = "Save Entities",         key = "retainMapEntities",     kind = "bool" },
     { name = "Save NPCs",             key = "retainMapNPCs",         kind = "bool" },
     { name = "Debug Mode",            key = "debugEnabled",          kind = "bool" },
@@ -386,13 +386,11 @@ local function drawReloadStateImage(width, height)
     end
 end
 
--- Add optional offsetX, offsetY so we can render inside a frame without drawing at (0,0) on screen
 function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offsetX, offsetY)
     cam.Start2D()
     width = width or 256
     height = height or 256
 
-    -- Optional 2D translation to panel top-left in screen space (used by frame rendering)
     local ox = tonumber(offsetX) or 0
     local oy = tonumber(offsetY) or 0
     local pushed = false
@@ -531,7 +529,6 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
 
     render.SetScissorRect(0, 0, 0, 0, false)
 
-    -- Progress / auto-save bar
     if settings.autoSaveEnabled and settings.autoSaveInterval then
         local currentTime = CurTime()
         local lastSave = RARELOAD.serverLastSaveTime or 0
@@ -571,9 +568,8 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
         end
     end
 
-    -- Version / reload-state
     if not RARELOAD.reloadImageState then
-        draw.SimpleText("v2.0", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT,
+        draw.SimpleText("v2.1", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT,
             TEXT_ALIGN_BOTTOM)
     else
         drawReloadStateImage(width, height)
@@ -617,7 +613,6 @@ if CLIENT then
         frame:Center()
         frame:MakePopup()
         frame.Paint = function(self, w, h)
-            -- Keep frame chrome minimal; content is fully drawn by ToolScreen
             draw.RoundedBox(0, 0, 0, w, h, Color(0, 0, 0, 150))
         end
 
@@ -625,7 +620,6 @@ if CLIENT then
         canvas:Dock(FILL)
         canvas:DockMargin(1, 1, 1, 1)
         canvas.Paint = function(self, w, h)
-            -- Get the panel’s screen-space position to translate ToolScreen draw calls
             local sx, sy = self:LocalToScreen(0, 0)
             ToolScreen.Draw(self, w, h, RARELOAD, _LoadAddonSettingsForFrame, sx, sy)
             ToolScreen.EndDraw()

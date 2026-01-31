@@ -1,3 +1,6 @@
+-- Anti-Stuck Method List - Modern Glass Design
+-- Handles method list rendering and drag-drop functionality
+
 RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuckDebug = RARELOAD.AntiStuckDebug or {}
 RARELOAD.AntiStuckMethodList = RARELOAD.AntiStuckMethodList or {}
@@ -13,26 +16,17 @@ function RARELOAD.AntiStuckDebug.RefreshMethodList()
     timer.Simple(0, function()
         RARELOAD.AntiStuckDebug._refreshScheduled = nil
 
-        if not RARELOAD or not RARELOAD.AntiStuckDebug then
-            print("[RARELOAD] Error: AntiStuckDebug namespace not initialized")
-            return
-        end
+        if not RARELOAD or not RARELOAD.AntiStuckDebug then return end
 
         local parent = RARELOAD.AntiStuckDebug.methodContainer
         local searchBox = RARELOAD.AntiStuckDebug.searchBox
 
-        if not parent or not IsValid(parent) then
-            print("[RARELOAD] Error: Method container not valid")
-            return
-        end
+        if not parent or not IsValid(parent) then return end
 
         parent:Clear()
 
         local methods = RARELOAD.AntiStuckData and RARELOAD.AntiStuckData.GetMethods() or {}
-        if #methods == 0 then
-            print("[RARELOAD] Warning: No methods available")
-            return
-        end
+        if #methods == 0 then return end
 
         local search = searchBox and IsValid(searchBox) and searchBox:GetValue():lower() or ""
 
@@ -79,19 +73,22 @@ function RARELOAD.AntiStuckDebug.RefreshMethodList()
 
         if #visible == 0 and search ~= "" then
             local THEME = getTheme()
-            local noResults = vgui.Create("DLabel", parent)
-            noResults:SetText("No methods match your search")
-            noResults:SetFont("RareloadText")
-            noResults:SetTextColor(THEME.textSecondary)
-            noResults:SetContentAlignment(5)
-            noResults:SetTall(60)
+            local noResults = vgui.Create("DPanel", parent)
+            noResults:SetTall(80)
             noResults:Dock(TOP)
-            noResults:DockMargin(20, 20, 20, 0)
+            noResults:DockMargin(16, 20, 16, 0)
+            noResults.Paint = function(self, w, h)
+                local t = getTheme()
+                draw.RoundedBox(10, 0, 0, w, h, t.surface)
+                if RARELOAD.AntiStuckTheme and RARELOAD.AntiStuckTheme.DrawIcon then
+                    RARELOAD.AntiStuckTheme.DrawIcon("search", w / 2, h / 2 - 10, 24, t.textMuted, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                end
+                draw.SimpleText("No methods match your search", "RareloadText", w / 2, h / 2 + 15, t.textMuted, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            end
         end
     end)
 end
 
--- Drag and drop functionality for method panels
 function RARELOAD.AntiStuckMethodList.SetupDragDrop(pnl, visIndex, visible, dragState, panels, parent)
     pnl.OnMousePressed = function(self, mc)
         if mc == MOUSE_LEFT then
@@ -159,7 +156,6 @@ function RARELOAD.AntiStuckMethodList.SetupDragDrop(pnl, visIndex, visible, drag
         end
     end
 
-    -- function for drag animation
     pnl.Think = function(self)
         if dragState.dragging == self then
             local x, y = parent:ScreenToLocal(gui.MouseX(), gui.MouseY())

@@ -98,29 +98,62 @@ function RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
     if not hasMessages then return end
 
     local logEntries = {}
-
-    if debugFlags.adminOnly and #debugMessages.adminOnly > 0 then
-        table.insert(logEntries, "=== Admin-Only Weapons Not Given ===")
-        for _, msg in ipairs(debugMessages.adminOnly) do
-            table.insert(logEntries, msg)
-        end
-    end
-
-    if debugFlags.notRegistered and #debugMessages.notRegistered > 0 then
-        table.insert(logEntries, "=== Unregistered Weapons ===")
-        for _, msg in ipairs(debugMessages.notRegistered) do
-            table.insert(logEntries, msg)
-        end
-    end
-
+    
+    -- Count successful and failed weapons for summary
+    local successCount = 0
+    local failedCount = 0
+    local successWeapons = {}
+    local failedWeapons = {}
+    
     if debugFlags.givenWeapons and #debugMessages.givenWeapons > 0 then
-        table.insert(logEntries, "=== Weapon Assignment Results ===")
         for _, msg in ipairs(debugMessages.givenWeapons) do
-            table.insert(logEntries, msg)
+            if string.find(msg, "^Successfully") then
+                successCount = successCount + 1
+                local weaponName = string.match(msg, "Successfully gave weapon: (.+)") or msg
+                table.insert(successWeapons, weaponName)
+            elseif string.find(msg, "^Failed") then
+                failedCount = failedCount + 1
+                local weaponName = string.match(msg, "Failed to give weapon: (.+)") or msg
+                table.insert(failedWeapons, weaponName)
+            end
         end
     end
 
-    RARELOAD.Debug.Log("INFO", "Weapon Restoration Results", logEntries)
+    -- Admin-only weapons (just a count + list)
+    if debugFlags.adminOnly and #debugMessages.adminOnly > 0 then
+        local adminWeapons = {}
+        for _, msg in ipairs(debugMessages.adminOnly) do
+            local weapon = string.match(msg, "Weapon ([%w_]+)")
+            if weapon then table.insert(adminWeapons, weapon) end
+        end
+        if #adminWeapons > 0 then
+            table.insert(logEntries, "Admin-Only (" .. #adminWeapons .. "): " .. table.concat(adminWeapons, ", "))
+        end
+    end
+
+    -- Unregistered weapons - just list them (engine weapons are normal)
+    if debugFlags.notRegistered and #debugMessages.notRegistered > 0 then
+        local unregWeapons = {}
+        for _, msg in ipairs(debugMessages.notRegistered) do
+            local weapon = string.match(msg, "Weapon ([%w_]+)")
+            if weapon then table.insert(unregWeapons, weapon) end
+        end
+        if #unregWeapons > 0 then
+            table.insert(logEntries, "Engine/Unregistered (" .. #unregWeapons .. "): " .. table.concat(unregWeapons, ", "))
+        end
+    end
+
+    -- Summary of given weapons
+    if successCount > 0 then
+        table.insert(logEntries, "Given (" .. successCount .. "): " .. table.concat(successWeapons, ", "))
+    end
+    if failedCount > 0 then
+        table.insert(logEntries, "Failed (" .. failedCount .. "): " .. table.concat(failedWeapons, ", "))
+    end
+
+    if #logEntries > 0 then
+        RARELOAD.Debug.Log("INFO", "Weapon Restoration Summary", logEntries)
+    end
 end
 
 function RARELOAD.Debug.LogPositionSave(ply, position, reason)

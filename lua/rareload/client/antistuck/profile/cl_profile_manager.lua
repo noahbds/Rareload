@@ -334,26 +334,30 @@ function PM.ShowModernContextMenu(profile)
     end
 
     if not profile.isCurrent then
-        local activateOption = menu:AddOption("🚀 Activate Profile")
+        local activateOption = menu:AddOption("Activate Profile")
+        activateOption:SetIcon("icon16/accept.png")
         activateOption.DoClick = function()
             PM.ActivateProfile(profile.name)
         end
     end
 
-    local duplicateOption = menu:AddOption("📋 Duplicate Profile")
+    local duplicateOption = menu:AddOption("Duplicate Profile")
+    duplicateOption:SetIcon("icon16/page_copy.png")
     duplicateOption.DoClick = function()
         PM.DuplicateProfile(profile.name)
     end
 
     if profile.name ~= "default" then
-        local renameOption = menu:AddOption("✏️ Rename Profile")
+        local renameOption = menu:AddOption("Rename Profile")
+        renameOption:SetIcon("icon16/pencil.png")
         renameOption.DoClick = function()
             PM.RenameProfile(profile.name)
         end
 
         menu:AddSpacer()
 
-        local deleteOption = menu:AddOption("🗑️ Delete Profile")
+        local deleteOption = menu:AddOption("Delete Profile")
+        deleteOption:SetIcon("icon16/bin_closed.png")
         deleteOption.DoClick = function()
             PM.DeleteProfile(profile.name)
         end
@@ -361,7 +365,8 @@ function PM.ShowModernContextMenu(profile)
 
     menu:AddSpacer()
 
-    local exportOption = menu:AddOption("💾 Export Profile")
+    local exportOption = menu:AddOption("Export Profile")
+    exportOption:SetIcon("icon16/disk.png")
     exportOption.DoClick = function()
         PM.ExportProfile(profile.name)
     end
@@ -597,7 +602,7 @@ function PM.Create()
     PM._frame = frame
 
     -- Close button (positioned safely within frame bounds)
-    local closeBtn = PM.CreateSimpleButton(frame, "✕", frameW - 50, 10, 35, 35, PM.COLORS.danger, function()
+    local closeBtn = PM.CreateSimpleButton(frame, "X", frameW - 50, 10, 35, 35, PM.COLORS.danger, function()
         frame:Close()
     end)
 
@@ -617,7 +622,7 @@ function PM.Create()
     local searchBox = vgui.Create("DTextEntry", frame)
     searchBox:SetSize(250, 30)
     searchBox:SetPos(20, 70)
-    searchBox:SetPlaceholderText("🔍 Search profiles...")
+    searchBox:SetPlaceholderText("Search profiles...")
     searchBox:SetValue(PM._searchText)
 
     -- debounce search
@@ -706,7 +711,7 @@ function PM.ActivateProfile(profileName, callback)
 
     local success, err = RARELOAD.AntiStuck.ProfileSystem.SetCurrentProfile(profileName)
     if success then
-        notification.AddLegacy("✓ Activated profile: " .. profileName, NOTIFY_GENERIC, 3)
+        notification.AddLegacy("Activated profile: " .. profileName, NOTIFY_GENERIC, 3)
         PM._lastCacheUpdate = 0 -- Force cache refresh
         PM.RefreshList()
         if callback then callback(true) end
@@ -757,7 +762,7 @@ function PM.CreateNewProfile()
 
             local success, err = RARELOAD.AntiStuck.ProfileSystem.SaveProfile(name, newProfile)
             if success then
-                notification.AddLegacy("✓ Profile created successfully", NOTIFY_GENERIC, 3)
+                notification.AddLegacy("Profile created successfully", NOTIFY_GENERIC, 3)
                 PM._lastCacheUpdate = 0
                 PM.RefreshList()
             else
@@ -803,7 +808,7 @@ function PM.DuplicateProfile(profileName)
 
             local success, err = RARELOAD.AntiStuck.ProfileSystem.SaveProfile(newName, newProfile)
             if success then
-                notification.AddLegacy("✓ Profile duplicated successfully", NOTIFY_GENERIC, 3)
+                notification.AddLegacy("Profile duplicated successfully", NOTIFY_GENERIC, 3)
                 PM._lastCacheUpdate = 0
                 PM.RefreshList()
             else
@@ -852,7 +857,7 @@ function PM.RenameProfile(profileName)
                 if PM._selectedProfile == profileName then
                     PM._selectedProfile = newName
                 end
-                notification.AddLegacy("✓ Profile renamed successfully", NOTIFY_GENERIC, 3)
+                notification.AddLegacy("Profile renamed successfully", NOTIFY_GENERIC, 3)
                 PM._lastCacheUpdate = 0
                 PM.RefreshList()
             else
@@ -880,7 +885,7 @@ function PM.DeleteProfile(profileName)
         function()
             local success, err = RARELOAD.AntiStuck.ProfileSystem.DeleteProfile(profileName)
             if success then
-                notification.AddLegacy("✓ Profile deleted successfully", NOTIFY_GENERIC, 3)
+                notification.AddLegacy("Profile deleted successfully", NOTIFY_GENERIC, 3)
                 if PM._selectedProfile == profileName then
                     PM._selectedProfile = nil
                     PM.UpdateDetailPanel(nil)
@@ -909,7 +914,7 @@ function PM.ExportProfile(profileName)
 
     local exportData = util.TableToJSON(profile, true)
     SetClipboardText(exportData)
-    notification.AddLegacy("✓ Profile data copied to clipboard", NOTIFY_GENERIC, 3)
+    notification.AddLegacy("Profile data copied to clipboard", NOTIFY_GENERIC, 3)
 end
 
 function PM.ImportProfile()
@@ -938,7 +943,7 @@ function PM.ImportProfile()
 
             local result, err = RARELOAD.AntiStuck.ProfileSystem.SaveProfile(profile.name, profile)
             if result then
-                notification.AddLegacy("✓ Profile imported successfully", NOTIFY_GENERIC, 3)
+                notification.AddLegacy("Profile imported successfully", NOTIFY_GENERIC, 3)
                 PM._lastCacheUpdate = 0
                 PM.RefreshList()
             else

@@ -1,13 +1,7 @@
 RARELOAD = RARELOAD or {}
+RARELOAD.settings = RARELOAD.settings or {}
 
 -- Shared routine to save a player's respawn point and related state
-local function ensureDataUtils()
-    if not RARELOAD or not RARELOAD.DataUtils then
-        include("rareload/utils/rareload_data_utils.lua")
-    end
-end
-
-ensureDataUtils()
 
 local function toVecTable(vec)
     return RARELOAD.DataUtils.ToPositionTable(vec) or { x = 0, y = 0, z = 0 }
@@ -162,6 +156,27 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         activeWeapon = newActiveWeapon,
         inventory = newInventory,
     }
+
+    -- Save player states (godmode, notarget, etc.)
+    if RARELOAD.settings.retainPlayerStates then
+        playerData.playerStates = {
+            godmode = ply:HasGodMode(),
+            notarget = ply:IsFlagSet(FL_NOTARGET),
+            frozen = ply:IsFrozen(),
+            noclip = ply:GetMoveType() == MOVETYPE_NOCLIP,
+        }
+        
+        if RARELOAD.settings.debugEnabled then
+            local states = {}
+            if playerData.playerStates.godmode then table.insert(states, "godmode") end
+            if playerData.playerStates.notarget then table.insert(states, "notarget") end
+            if playerData.playerStates.frozen then table.insert(states, "frozen") end
+            if playerData.playerStates.noclip then table.insert(states, "noclip") end
+            if #states > 0 then
+                print("[RARELOAD DEBUG] Saved player states: " .. table.concat(states, ", "))
+            end
+        end
+    end
 
     if RARELOAD.settings.retainHealthArmor then
         playerData.health = ply:Health()

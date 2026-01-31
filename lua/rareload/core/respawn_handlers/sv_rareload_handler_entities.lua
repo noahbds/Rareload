@@ -66,7 +66,6 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
         idPrefix = "entity"
     })
 
-    -- Convert playerSpawnPos to Vector if it's a table
     local spawnPos = nil
     if playerSpawnPos then
         if isvector(playerSpawnPos) then
@@ -93,10 +92,8 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
         print(string.format("[RARELOAD DEBUG] Owner: %s", IsValid(owner) and owner:Nick() or "none"))
     end
     
-    -- Build index map from duplicator entity index to saved entity ID
     local indexToID = snapshot._indexMap or {}
 
-    -- Check for existing entities to prevent duplication
     local existingIDs = {}
     for _, ent in ipairs(ents.GetAll()) do
         if ent.RareloadEntityID then
@@ -109,19 +106,24 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
         end
     end
 
+    local skippedEntities = {}
+    
     local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, { 
         player = owner,
         filter = function(index, entData)
             local id = indexToID[index]
             if id and existingIDs[id] then
-                if RARELOAD.settings.debugEnabled then
-                    print("[RARELOAD DEBUG] Skipping existing entity: " .. id)
-                end
+                table.insert(skippedEntities, id)
                 return false
             end
             return true
         end
     })
+    
+    if RARELOAD.settings.debugEnabled and #skippedEntities > 0 then
+        print(string.format("[RARELOAD DEBUG] Skipped %d existing entities (already on map)", #skippedEntities))
+    end
+    
     local spawnedClose = false
     if not ok then
         stats.failed = stats.failed + 1
@@ -140,14 +142,12 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
         print(string.format("[RARELOAD DEBUG] Duplicator created %d entities", stats.restored))
     end
 
-    -- Mark restored entities, assign IDs, and compute proximity
     local radiusSq = ENTITY_RESTORATION.PROXIMITY_RADIUS * ENTITY_RESTORATION.PROXIMITY_RADIUS
     for dupIndex, ent in pairs(created) do
         if IsValid(ent) then
             ent.SpawnedByRareload = true
             ent.SavedViaDuplicator = true
             
-            -- Assign the RareloadID from saved data
             local savedID = indexToID[dupIndex]
             if savedID then
                 ent.RareloadEntityID = savedID
@@ -156,7 +156,9 @@ function RARELOAD.RestoreEntities(playerSpawnPos)
                 end
             end
             
-            if IsValid(owner) and ent.CPPISetOwner then pcall(ent.CPPISetOwner, ent, owner) end
+            if IsValid(owner) and RARELOAD.Ownership then
+                RARELOAD.Ownership.SetOwner(ent, owner)
+            end
             if spawnPos and ent.GetPos and (ent:GetPos():DistToSqr(spawnPos) <= radiusSq) then
                 spawnedClose = true
             end
@@ -336,8 +338,8 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
 
         if success and IsValid(entity) then
             if entity then
-                if entity.CPPISetOwner then
-                    entity:CPPISetOwner(ply)
+                if RARELOAD.Ownership then
+                    RARELOAD.Ownership.SetOwner(entity, ply)
                 end
             end
 
@@ -349,8 +351,8 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
                 basicEntity:Spawn()
                 basicEntity:Activate()
 
-                if basicEntity.CPPISetOwner then
-                    basicEntity:CPPISetOwner(ply)
+                if RARELOAD.Ownership then
+                    RARELOAD.Ownership.SetOwner(basicEntity, ply)
                 end
 
                 basicEntity.SpawnedByRareload = true
@@ -368,8 +370,8 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
             entity:Activate()
             entity.SpawnedByRareload = true
 
-            if entity.CPPISetOwner then
-                entity:CPPISetOwner(ply)
+            if RARELOAD.Ownership then
+                RARELOAD.Ownership.SetOwner(entity, ply)
             end
 
             ply:ChatPrint("[RARELOAD] Entity " ..

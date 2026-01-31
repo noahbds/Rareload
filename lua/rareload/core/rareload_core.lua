@@ -31,14 +31,6 @@ function RARELOAD.SavePlayerPositionOnDisconnect(ply)
     }
 end
 
-local function loadSettings()
-    local settingsFilePath = "rareload/addon_state.json"
-    if file.Exists(settingsFilePath, "DATA") then
-        local json = file.Read(settingsFilePath, "DATA")
-        RARELOAD.settings = util.JSONToTable(json)
-    end
-end
-
 function RARELOAD.UpdateClientPhantoms(ply, pos, ang)
     if not IsValid(ply) then return end
 
@@ -54,11 +46,6 @@ function RARELOAD.UpdateClientPhantoms(ply, pos, ang)
     end
 
     RARELOAD.playerPositions[MapName][steamID].playermodel = currentModel
-
-    -- Load centralized conversion functions
-    if not RARELOAD or not RARELOAD.DataUtils then
-        include("rareload/utils/rareload_data_utils.lua")
-    end
 
     local vectorPos = RARELOAD.DataUtils.ToVector(pos)
     if not vectorPos then
@@ -78,11 +65,9 @@ function RARELOAD.UpdateClientPhantoms(ply, pos, ang)
     net.WriteString(currentModel)
     net.Broadcast()
 
-    if RARELOAD.settings.debugEnabled then
+    if RARELOAD.settings and RARELOAD.settings.debugEnabled then
         print("[RARELOAD DEBUG] Broadcasting phantom update for " .. steamID)
         print("[RARELOAD DEBUG] Model: " .. currentModel)
         print("[RARELOAD DEBUG] Position: " .. tostring(vectorPos))
     end
 end
-
-loadSettings()

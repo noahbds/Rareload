@@ -1,15 +1,15 @@
 -- RARELOAD Addon Initialization
 
 RARELOAD = RARELOAD or {}
-RARELOAD.version = "2.0"
+RARELOAD.version = "2.1"
 
 if SERVER then
     AddCSLuaFile("rareload/shared/permissions_def.lua")
+    AddCSLuaFile("rareload/shared/rareload_convars.lua")
     AddCSLuaFile("rareload/core/save_helpers/rareload_duplicator_utils.lua")
     AddCSLuaFile("rareload/shared/rareload_snapshot_utils.lua")
     AddCSLuaFile("rareload/utils/rareload_fonts.lua")
     AddCSLuaFile("rareload/utils/rareload_data_utils.lua")
-    AddCSLuaFile("rareload/utils/vector_serialization.lua")
     AddCSLuaFile("rareload/client/shared/theme_utils.lua")
     AddCSLuaFile("rareload/client/shared/depth_sorted_renderer.lua")
     AddCSLuaFile("rareload/ui/rareload_ui.lua")
@@ -59,8 +59,11 @@ if SERVER then
 end
 
 include("rareload/shared/permissions_def.lua")
+include("rareload/shared/rareload_convars.lua")
+include("rareload/utils/rareload_data_utils.lua")
 
 if SERVER then
+    include("rareload/utils/rareload_ownership.lua")
     include("rareload/core/rareload_core.lua")
     include("rareload/core/rareload_state_utils.lua")
     include("rareload/core/sv_rareload.lua")
@@ -83,24 +86,6 @@ if SERVER then
     include("rareload/core/commands/check_admin_status.lua")
     include("rareload/core/commands/save_bot_position.lua")
     include("rareload/core/commands/save_position.lua")
-    include("rareload/core/commands/set_angle_tolerance.lua")
-    include("rareload/core/commands/set_auto_save_interval.lua")
-    include("rareload/core/commands/set_history_size.lua")
-    include("rareload/core/commands/set_max_distance.lua")
-    include("rareload/core/commands/toggle_addon.lua")
-    include("rareload/core/commands/toggle_auto_save.lua")
-    include("rareload/core/commands/toggle_debug.lua")
-    include("rareload/core/commands/toggle_debug_cmd.lua")
-    include("rareload/core/commands/toggle_nocustomrespawnatdeath.lua")
-    include("rareload/core/commands/toggle_retain_ammo.lua")
-    include("rareload/core/commands/toggle_retain_global_inventory.lua")
-    include("rareload/core/commands/toggle_retain_health_armor.lua")
-    include("rareload/core/commands/toggle_retain_inventory.lua")
-    include("rareload/core/commands/toggle_retain_map_entities.lua")
-    include("rareload/core/commands/toggle_retain_map_npcs.lua")
-    include("rareload/core/commands/toggle_retain_vehicle_state.lua")
-    include("rareload/core/commands/toggle_retain_vehicles.lua")
-    include("rareload/core/commands/toggle_spawn_mode.lua")
     include("rareload/debug/sv_debug_config.lua")
     include("rareload/debug/sv_debug_formatters.lua")
     include("rareload/debug/sv_debug_logging.lua")
@@ -141,9 +126,6 @@ if SERVER then
     include("weapons/gmod_tool/stools/rareload_tool.lua")
     print("[RARELOAD] Server-side files loaded successfully!")
 elseif CLIENT then
-    include("rareload/shared/permissions_def.lua")
-    include("rareload/utils/rareload_data_utils.lua")
-    include("rareload/utils/vector_serialization.lua")
     include("rareload/utils/rareload_fonts.lua")
 
     if RARELOAD.RegisterFonts then
@@ -194,12 +176,3 @@ if SERVER then
 end
 
 print("[RARELOAD] Initialization complete - Version " .. RARELOAD.version)
-
-if SERVER then
-    concommand.Add("rareload_broadcast_settings", function(ply)
-        if IsValid(ply) and not ply:IsAdmin() then return end
-        if RareloadUI and RareloadUI.BroadcastSettings then
-            RareloadUI.BroadcastSettings()
-        end
-    end)
-end

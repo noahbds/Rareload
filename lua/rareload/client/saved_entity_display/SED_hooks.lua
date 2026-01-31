@@ -15,7 +15,6 @@ hook.Add("CreateMove", "RARELOAD_SavedPanels_CamLock", function(cmd)
     end
     if not SED.InteractionState.active then return end
 
-    -- Disable player movement and buttons during interaction
     cmd:ClearButtons()
     cmd:ClearMovement()
 
@@ -54,7 +53,6 @@ end)
 hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", function()
     if not (RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled) then return end
 
-    -- Optimization: Update LocalPlayer cache every frame to ensure validity
     SED.lpCache = LocalPlayer()
     if not IsValid(SED.lpCache) then return end
 

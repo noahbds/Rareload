@@ -2,6 +2,8 @@
 -- This file helps verify that the improved profile system works correctly
 -- This is not useful for players, it is for development purposes only
 
+-- DEPRECATED: This test file is deprecated and will be removed in future versions.
+
 RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 RARELOAD.AntiStuck.ProfileSystem = RARELOAD.AntiStuck.ProfileSystem or {}

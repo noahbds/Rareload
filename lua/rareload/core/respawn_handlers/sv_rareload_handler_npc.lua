@@ -1,14 +1,9 @@
----@diagnostic disable: inject-field, undefined-field, need-check-nil, param-type-mismatch
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 local npcRestoreLogs = {}
 local debugEnabled = false
 
 util.AddNetworkString("RareloadRespawnNPC")
-
-if not RARELOAD or not RARELOAD.DataUtils then
-    include("rareload/utils/rareload_data_utils.lua")
-end
 
 if not (RARELOAD.Util and RARELOAD.Util.GenerateDeterministicID) then
     if file.Exists("rareload/core/rareload_state_utils.lua", "LUA") then
@@ -151,12 +146,9 @@ function RARELOAD.RestoreNPCs()
             endTime = 0
         }
         
-        -- Build index map from duplicator entity index to saved NPC ID
         local indexToID = snapshot._indexMap or {}
-        
         local owner = FindSnapshotOwner(snapshot)
 
-        -- Check for existing NPCs to prevent duplication
         local existingIDs = {}
         for _, ent in ipairs(ents.GetAll()) do
             if ent.RareloadNPCID then
@@ -176,19 +168,24 @@ function RARELOAD.RestoreNPCs()
             })
         end
         
+        local skippedNPCs = {}
+        
         local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, { 
             player = owner,
             filter = function(index, entData)
                 local id = indexToID[index]
                 if id and existingIDs[id] then
-                    if debugEnabled then
-                        RARELOAD.Debug.Log("INFO", "Skipping existing NPC", { "ID: " .. id })
-                    end
+                    table.insert(skippedNPCs, id)
                     return false
                 end
                 return true
             end
         })
+        
+        if debugEnabled and #skippedNPCs > 0 then
+            print(string.format("[RARELOAD DEBUG] Skipped %d existing NPCs (already on map)", #skippedNPCs))
+        end
+        
         if not ok then
             stats.endTime = SysTime()
             if debugEnabled then
@@ -205,7 +202,6 @@ function RARELOAD.RestoreNPCs()
                 npc.SpawnedByRareload = true
                 npc.SavedViaDuplicator = true
                 
-                -- Assign the RareloadID from saved data
                 local savedID = indexToID[dupIndex]
                 if savedID then
                     npc.RareloadNPCID = savedID
@@ -214,8 +210,8 @@ function RARELOAD.RestoreNPCs()
                     end
                 end
                 
-                if IsValid(owner) and npc.CPPISetOwner then
-                    pcall(npc.CPPISetOwner, npc, owner)
+                if IsValid(owner) and RARELOAD.Ownership then
+                    RARELOAD.Ownership.SetOwner(npc, owner)
                 end
                 stats.restored = stats.restored + 1
             end
@@ -276,7 +272,9 @@ net.Receive("RareloadRespawnNPC", function(len, ply)
         entity:Spawn()
         entity:Activate()
         entity.SpawnedByRareload = true
-        if entity.CPPISetOwner then pcall(function() entity:CPPISetOwner(ply) end) end
+        if RARELOAD.Ownership then
+            RARELOAD.Ownership.SetOwner(entity, ply)
+        end
         ply:ChatPrint("[RARELOAD] " .. entityClass .. " spawned")
     else
         ply:ChatPrint("[RARELOAD] Failed to spawn " .. entityClass)

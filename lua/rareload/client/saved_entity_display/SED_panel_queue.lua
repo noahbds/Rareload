@@ -1,6 +1,5 @@
--- SED panel queue and culling logic
+-- SED panel queue
 
--- Optimization: Reuse tables to reduce GC
 local queueItemPool = {}
 local queueItemPoolSize = 0
 local queueList = {}
@@ -43,7 +42,6 @@ function SED.QueueAllSavedPanels()
     local invalidEntities = {}
     local invalidNPCs = {}
 
-    -- Optimization: Localize variables for loop performance
     local TrackedEntities = SED.TrackedEntities
     local TrackedNPCs = SED.TrackedNPCs
     local SAVED_ENTITIES_BY_ID = SED.SAVED_ENTITIES_BY_ID
@@ -65,7 +63,6 @@ function SED.QueueAllSavedPanels()
 
                 local withinView = true
                 if CULL_VIEW_CONE then
-                    -- Optimization: Inline vector math to avoid object creation
                     local dx, dy, dz = entPos.x - eyePos.x, entPos.y - eyePos.y, entPos.z - eyePos.z
                     local lenSqr = dx*dx + dy*dy + dz*dz
                     if lenSqr > 0 then

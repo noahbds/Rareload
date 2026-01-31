@@ -394,18 +394,6 @@ function RARELOAD.DataUtils.FormatAngleForJSON(ang, precision)
 end
 
 -- ============================
--- BACKWARDS COMPATIBILITY
--- ============================
-
--- Alias the old function names for backwards compatibility
-RARELOAD.ParsePosString = RARELOAD.DataUtils.ParsePositionString
-RARELOAD.ParseAngString = RARELOAD.DataUtils.ParseAngleString
-RARELOAD.PosTableToString = RARELOAD.DataUtils.PositionToString
-RARELOAD.AngTableToString = RARELOAD.DataUtils.AngleToString
-RARELOAD.FormatPositionForJSON = RARELOAD.DataUtils.FormatPositionForJSON
-RARELOAD.FormatAngleForJSON = RARELOAD.DataUtils.FormatAngleForJSON
-
--- ============================
 -- DATA STORAGE FUNCTIONS
 -- ============================
 
@@ -482,10 +470,6 @@ function RARELOAD.DataUtils.LoadDataForPlayer(ply, dataType)
     return fileData[mapName][steamID][dataType]
 end
 
--- For backwards compatibility, expose them on the RARELOAD table directly
-RARELOAD.SaveDataForPlayer = RARELOAD.DataUtils.SaveDataForPlayer
-RARELOAD.LoadDataForPlayer = RARELOAD.DataUtils.LoadDataForPlayer
-
 --[[
     Loads the entire data block for a player for the current map.
     - ply: The player entity to load for.
@@ -510,4 +494,3 @@ function RARELOAD.DataUtils.LoadAllDataForPlayer(ply)
 
     return fileData[mapName][steamID]
 end
-RARELOAD.LoadAllDataForPlayer = RARELOAD.DataUtils.LoadAllDataForPlayer

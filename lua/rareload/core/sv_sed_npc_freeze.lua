@@ -1,6 +1,3 @@
--- NPC freezing system for Saved Entity Display
--- Handles freezing/unfreezing NPCs when players interact with SED panels
-
 if not SERVER then return end
 
 RARELOAD = RARELOAD or {}
@@ -13,9 +10,6 @@ SEDFreeze.PlayerInteractions = SEDFreeze.PlayerInteractions or {}
 util.AddNetworkString("SED_FreezeNPC")
 util.AddNetworkString("SED_UnfreezeNPC")
 
--- Freeze an NPC, this allow it to be safely manipulated without it running away or attacking,
--- useful for SED interaction, especially for hostile NPCs or npcs that might run away
--- (it prevent the SED panel to move when interacting with it)
 function SEDFreeze.FreezeNPC(npc, player)
     if not IsValid(npc) or not IsValid(player) then return false end
     if not npc:IsNPC() then return false end
@@ -24,7 +18,6 @@ function SEDFreeze.FreezeNPC(npc, player)
 
     if SEDFreeze.FrozenNPCs[entIndex] then return false end
 
-    -- might not get everything but it's allright
     local originalState = {
         scheduleType = npc:GetNPCState(),
         currentSchedule = npc:GetCurrentSchedule(),
@@ -34,24 +27,49 @@ function SEDFreeze.FreezeNPC(npc, player)
         movementActivity = npc:GetMovementActivity(),
         frozenBy = player,
         frozenTime = CurTime(),
-        originalSpawnFlags = npc:GetSpawnFlags()
+        originalSpawnFlags = npc:GetSpawnFlags(),
+        moveType = npc:GetMoveType(),
+        solidType = npc:GetSolid()
     }
 
     SEDFreeze.FrozenNPCs[entIndex] = originalState
     SEDFreeze.PlayerInteractions[player:UserID()] = entIndex
 
-    npc:SetNPCState(NPC_STATE_NONE)
-    npc:SetSchedule(SCHED_NONE)
-    npc:SetActivity(ACT_IDLE)
-    npc:SetPlaybackRate(0)
+    if npc.SetAIDisabled then
+        npc:SetAIDisabled(true)
+    end
+    
+    npc:AddFlags(FL_FROZEN)
     npc:SetMoveType(MOVETYPE_NONE)
     npc:SetSolid(SOLID_BBOX)
-    npc:AddFlags(FL_FROZEN)
     npc:StopMoving()
-    -- npc:SetTarget(NULL) -- Causing issues with NULL entity
-    npc:SetKeyValue("spawnflags", tostring(bit.bor(npc:GetSpawnFlags(), SF_NPC_WAIT_TILL_SEEN, SF_NPC_GAG)))
+    
+    npc:SetNPCState(NPC_STATE_IDLE)
+    
+    pcall(function() npc:SetSchedule(SCHED_IDLE_STAND) end)
+    
+    pcall(function() npc:SetActivity(ACT_IDLE) end)
+    npc:SetPlaybackRate(0)
+    
+    if npc.ClearGoal then
+        pcall(npc.ClearGoal, npc)
+    end
+    
+    pcall(function() npc:StopSound("*") end)
+    
+    pcall(function()
+        npc:SetKeyValue("spawnflags", tostring(bit.bor(npc:GetSpawnFlags(), SF_NPC_WAIT_TILL_SEEN, SF_NPC_GAG)))
+    end)
     npc:SetEnemy(NULL)
     npc:ClearEnemyMemory()
+    
+    if npc.CapabilitiesClear and npc.CapabilitiesGet then
+        local ok, caps = pcall(npc.CapabilitiesGet, npc)
+        if ok then
+            originalState.capabilities = caps
+            pcall(npc.CapabilitiesClear, npc)
+        end
+    end
 
     npc:EmitSound("common/null.wav", 0, 100, 0)
 
@@ -60,7 +78,6 @@ function SEDFreeze.FreezeNPC(npc, player)
     return true
 end
 
--- Unfreeze an NPC and restore its original state
 function SEDFreeze.UnfreezeNPC(npc, player)
     if not IsValid(npc) then return false end
     if not npc:IsNPC() then return false end
@@ -74,20 +91,30 @@ function SEDFreeze.UnfreezeNPC(npc, player)
         return false
     end
 
-    npc:RemoveFlags(FL_FROZEN)
-    npc:SetMoveType(MOVETYPE_STEP)
-    npc:SetSolid(SOLID_BBOX)
-
-    if originalState.originalSpawnFlags then
-        npc:SetKeyValue("spawnflags", tostring(originalState.originalSpawnFlags))
+    if npc.SetAIDisabled then
+        pcall(npc.SetAIDisabled, npc, false)
     end
 
-    if originalState.scheduleType then
-        npc:SetNPCState(originalState.scheduleType)
+    npc:RemoveFlags(FL_FROZEN)
+    npc:SetMoveType(originalState.moveType or MOVETYPE_STEP)
+    npc:SetSolid(originalState.solidType or SOLID_BBOX)
+
+    if originalState.originalSpawnFlags then
+        pcall(function()
+            npc:SetKeyValue("spawnflags", tostring(originalState.originalSpawnFlags))
+        end)
+    end
+
+    local stateToRestore = originalState.scheduleType
+    if stateToRestore == NPC_STATE_NONE then
+        stateToRestore = NPC_STATE_IDLE
+    end
+    if stateToRestore then
+        pcall(npc.SetNPCState, npc, stateToRestore)
     end
 
     if originalState.activity then
-        npc:SetActivity(originalState.activity)
+        pcall(npc.SetActivity, npc, originalState.activity)
     end
 
     if originalState.playbackRate then
@@ -95,12 +122,16 @@ function SEDFreeze.UnfreezeNPC(npc, player)
     end
 
     if originalState.sequence and originalState.sequence ~= npc:GetSequence() then
-        npc:SetSequence(originalState.sequence)
+        pcall(npc.SetSequence, npc, originalState.sequence)
+    end
+    
+    if originalState.capabilities and npc.CapabilitiesAdd then
+        pcall(npc.CapabilitiesAdd, npc, originalState.capabilities)
     end
 
     npc:ClearEnemyMemory()
 
-    npc:SetSchedule(SCHED_IDLE_STAND)
+    pcall(function() npc:SetSchedule(SCHED_IDLE_STAND) end)
 
     SEDFreeze.FrozenNPCs[entIndex] = nil
     if IsValid(player) then
@@ -177,7 +208,6 @@ timer.Create("SEDFreeze_Cleanup", 60, 0, function()
     end
 end)
 
--- Debug commands for testing (for me)
 concommand.Add("sed_freeze_test", function(ply, cmd, args)
     if not IsValid(ply) or not ply:IsAdmin() then return end
 

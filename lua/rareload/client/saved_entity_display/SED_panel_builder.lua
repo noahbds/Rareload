@@ -1,6 +1,3 @@
--- Panel data building and caching logic
-
--- Clear cache on reload to prevent stale data persistence
 if SED then
     SED.EntityPanelCache = {}
     SED.NPCPanelCache = {}
@@ -66,7 +63,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
         table.insert(cats[cat], { label, tostring(value), col or SED.THEME.text, opts })
     end
 
-    -- Basic info
     add("basic", isNPC and "NPC ID" or "Entity ID", saved.id)
     add("basic", "Class", saved.class)
     if saved.Model or saved.model then
@@ -76,7 +72,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
     if saved.owner or saved._ownerSteamID then add("basic", "Owner", saved.owner or saved._ownerSteamID) end
     if saved.spawnTime then add("basic", "Spawned", os.date("%H:%M:%S", saved.spawnTime)) end
 
-    -- Saved data
     if saved.pos then
         local p = saved.pos
         if istable(p) and p.x then
@@ -111,12 +106,10 @@ function SED.BuildPanelData(saved, ent, isNPC)
         add("saved", "Saved By Rareload", saved.SavedByRareload and "Yes" or "No", Color(200, 150, 200))
     end
 
-    -- New duplicator indicator
     if saved.SavedViaDuplicator ~= nil then
         add("saved", "Saved via Duplicator", saved.SavedViaDuplicator and "Yes" or "No", Color(100, 150, 255))
     end
 
-    -- Physics data
     if saved.physics and istable(saved.physics) then
         local phys = saved.physics
         if phys.exists ~= nil then add("saved", "Physics Exists", phys.exists and "Yes" or "No") end
@@ -128,19 +121,15 @@ function SED.BuildPanelData(saved, ent, isNPC)
         if phys.motionEnabled ~= nil then add("saved", "Motion Enabled", phys.motionEnabled and "Yes" or "No") end
     end
 
-    -- NPC specific saved data
     if isNPC then
-        -- VJ Base Detection - check multiple possible field names
         local isVJBase = false
         if IsValid(ent) then
-            -- Check for VJ flags AND ensure it's a scripted entity (has Base)
             isVJBase = ((ent.IsVJBaseSNPC == true) or (ent.VJ_ID_Living == true) or (ent.IsVJBaseSNPC_Human == true)) and (ent.Base ~= nil)
         else
             isVJBase = (saved.IsVJBaseSNPC == true) or (saved.VJ_ID_Living == true) or (saved.IsVJBaseSNPC_Human == true)
         end
         
         if isVJBase then
-            -- VJ Base Identity
             add("vjbase", "VJ Base NPC", "Detected", Color(100, 255, 150))
             if saved.PrintName and saved.PrintName ~= "" then 
                 add("vjbase", "Name", saved.PrintName, Color(255, 220, 100)) 
@@ -152,7 +141,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
                 add("vjbase", "Base", saved.Base, Color(180, 200, 220)) 
             end
             
-            -- VJ Immunities & Flags
             local immunities = {}
             if saved.Immune_Fire then table.insert(immunities, "Fire") end
             if saved.Immune_Bullet then table.insert(immunities, "Bullets") end
@@ -167,7 +155,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
             if saved.GodMode then add("vjbase", "God Mode", "Active", Color(255, 220, 0)) end
             if saved.IsVJBaseSNPC_Human then add("vjbase", "Type", "Human NPC", Color(255, 180, 120)) end
             
-            -- AI & Behavior
             if saved.Behavior ~= nil then
                 local behaviors = {[0]="Passive", [1]="Neutral", [2]="Aggressive"}
                 add("ai", "Behavior", behaviors[saved.Behavior] or tostring(saved.Behavior), Color(255, 200, 150))
@@ -185,7 +172,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
                 add("ai", "Status", "DEAD", Color(255, 50, 50)) 
             end
             
-            -- Vision/Detection
             if saved.SightDistance and saved.SightDistance > 0 then 
                 add("ai", "Sight Range", saved.SightDistance .. " units", Color(150, 220, 255)) 
             end
@@ -193,12 +179,10 @@ function SED.BuildPanelData(saved, ent, isNPC)
                 add("ai", "Sight Angle", saved.SightAngle .. "°", Color(150, 200, 255)) 
             end
             
-            -- Movement speeds
             if saved.TurningSpeed and saved.TurningSpeed > 0 then 
                 add("ai", "Turn Speed", saved.TurningSpeed, Color(200, 200, 255)) 
             end
             
-            -- Follow/Squad behavior
             if saved.FollowPlayer then 
                 add("ai", "Follow Player", saved.IsFollowing and "Yes (Active)" or "Yes (Inactive)", 
                     saved.IsFollowing and Color(100, 255, 150) or Color(150, 200, 255)) 
@@ -207,7 +191,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
                 add("ai", "Call For Help", "Enabled", Color(200, 220, 255)) 
             end
             
-            -- Weapons & Equipment
             if saved.Equipment and saved.Equipment ~= "" then 
                 local weaponName = saved.Equipment:gsub("weapon_", ""):gsub("_", " ")
                 add("weapons", "Equipped", weaponName, Color(255, 220, 100))
@@ -230,7 +213,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
                 add("weapons", "Accuracy", string.format("%.1f%%", saved.Weapon_Accuracy * 100), Color(200, 255, 200)) 
             end
             
-            -- Combat abilities
             if saved.HasMeleeAttack then
                 local dmg = saved.MeleeAttackDamage or "?"
                 local dist = saved.MeleeAttackDistance or "?"
@@ -246,7 +228,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
                 add("combat", "Medic", "Heals " .. healAmt .. " HP", Color(100, 255, 150))
             end
             
-            -- VJ NPC Classes (for relationships)
             if saved.VJ_NPC_Class and istable(saved.VJ_NPC_Class) then
                 local classes = {}
                 for _, cls in ipairs(saved.VJ_NPC_Class) do
@@ -259,7 +240,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
                 end
             end
             
-            -- Sound capabilities
             local sounds = {}
             if saved.HasIdleSounds then table.insert(sounds, "Idle") end
             if saved.HasAlertSounds then table.insert(sounds, "Alert") end
@@ -274,7 +254,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
                 add("sounds", "Pitch", saved.MainSoundPitchValue, Color(180, 200, 255)) 
             end
             
-            -- Blood & Gibs
             if saved.BloodColor and saved.BloodColor ~= "" then 
                 add("visual", "Blood", saved.BloodColor, Color(200, 100, 100)) 
             end
@@ -284,7 +263,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
         end
     end
 
-    -- Position data
     if saved.Pos or saved.pos then
         local p = saved.Pos or saved.pos
         if istable(p) and p.x then
@@ -298,7 +276,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
         end
     end
 
-    -- Live data
     if IsValid(ent) then
         local pos = ent:GetPos()
         local ang = ent:GetAngles()
@@ -311,7 +288,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
         end
     end
 
-    -- State information
     local maxHP = saved.MaxHealth or saved.maxHealth or 0
     local curHP = saved.CurHealth or saved.health or saved.Health or 0
     if IsValid(ent) and ent.Health then 
@@ -334,7 +310,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
         add("state", "Frozen", saved.frozen == nil and nil or (saved.frozen and "Yes" or "No"))
     end
 
-    -- NPC specific behavior and combat data
     if isNPC then
         if saved.squad then add("behavior", "Squad", saved.squad) end
         if saved.squadLeader ~= nil then add("behavior", "Leader", saved.squadLeader and "Yes" or "No") end
@@ -375,7 +350,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
         end
     end
 
-    -- Visual data
     add("visual", "Skin", saved.skin)
     if saved.bodygroups then add("visual", "Bodygroups", table.Count(saved.bodygroups)) end
     add("visual", "ModelScale", saved.modelScale)
@@ -387,7 +361,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
     end
     if saved.bloodColor then add("visual", "Blood", saved.bloodColor) end
 
-    -- Bodygroups
     if istable(saved.bodygroups) then
         local count = 0
         local limit = 24
@@ -401,7 +374,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
         end
     end
 
-    -- SubMaterials
     if istable(saved.subMaterials) then
         local count = 0
         local limit = 20
@@ -415,7 +387,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
         end
     end
 
-    -- Physics information
     if not isNPC then
         if istable(saved.frozenPhysics) then add("physics", "FrozenPhys", table.Count(saved.frozenPhysics)) end
         if saved.mass then add("physics", "Mass", saved.mass) end
@@ -431,12 +402,10 @@ function SED.BuildPanelData(saved, ent, isNPC)
         if saved.solidType then add("physics", "Solid", saved.solidType) end
     end
 
-    -- Ownership data
     if saved.spawnflags then add("ownership", "SpawnFlags", saved.spawnflags) end
     if saved.originallySpawnedBy then add("ownership", "SpawnedBy", saved.originallySpawnedBy) end
     if saved.ownerSteamID then add("ownership", "OwnerID", saved.ownerSteamID) end
 
-    -- KeyValues
     if istable(saved.keyvalues) or istable(saved.keyValues) then
         local kv = saved.keyvalues or saved.keyValues
         local added = 0
@@ -451,7 +420,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
         end
     end
 
-    -- Meta data (remaining fields)
     local used = {}
     for cname, list in pairs(cats) do
         for _, line in ipairs(list) do
@@ -492,7 +460,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
         end
     end
 
-    -- Bound total lines per category to avoid pathological frames
     local function clampCategory(catId)
         local list = cats[catId]
         if not list then return end
@@ -505,7 +472,6 @@ function SED.BuildPanelData(saved, ent, isNPC)
     end
     for k, _ in pairs(cats) do clampCategory(k) end
 
-    -- Preserve UI state from previous cache entry
     local oldEntry = panelCache[id]
     local oldActiveCat = (oldEntry and oldEntry.activeCat) or "basic"
     local oldAnimTabY = oldEntry and oldEntry.animTabY

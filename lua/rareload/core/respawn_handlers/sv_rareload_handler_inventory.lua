@@ -22,14 +22,20 @@ function RARELOAD.RestoreInventory(ply)
         local canGiveWeapon = weaponInfo and (weaponInfo.Spawnable or weaponInfo.AdminOnly)
 
         if not canGiveWeapon then
-            if RARELOAD.settings.debugEnabled then
+            ply:Give(weaponClass)
+            if ply:HasWeapon(weaponClass) then
+                if RARELOAD.settings.debugEnabled then
+                    debugFlags.givenWeapons = true
+                    table.insert(debugMessages.givenWeapons, "Successfully gave weapon: " .. weaponClass)
+                end
+            elseif RARELOAD.settings.debugEnabled then
                 if weaponInfo then
                     debugFlags.adminOnly = true
                     table.insert(debugMessages.adminOnly,
                         "Weapon " .. weaponClass .. " is not spawnable and not admin-only.")
                 else
                     debugFlags.notRegistered = true
-                    table.insert(debugMessages.notRegistered, "Weapon " .. weaponClass .. " is not registered.")
+                    table.insert(debugMessages.notRegistered, "Weapon " .. weaponClass .. " not in registry (may be engine weapon).")
                 end
             end
         else

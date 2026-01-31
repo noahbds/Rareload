@@ -10,6 +10,7 @@ if SERVER then
             retainInventory = false,
             retainGlobalInventory = false,
             retainHealthArmor = false,
+            retainPlayerStates = true,
             retainAmmo = false,
             retainVehicleState = false, -- BROKEN
             retainMapEntities = false,
@@ -26,25 +27,19 @@ if SERVER then
 
     -- Rareload is a Garry's Mod addon that allows players to respawn at their last saved position, camera orientation, and inventory.
     RARELOAD = RARELOAD or {}
-    -- The Rareload settings are what the addon will use to determine how it behaves.
     RARELOAD.settings = GetDefaultSettings()
     RARELOAD.Phantom = RARELOAD.Phantom or {}
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
     RARELOAD.globalInventory = RARELOAD.globalInventory or {}
     RARELOAD.lastSavedTime = 0
     MapName = game.GetMap()
-    RARELOAD.version = "2.0.0" -- Update this when we make changes to the addon that are released
+    RARELOAD.version = "2.1"
     ADDON_STATE_FILE_PATH = "rareload/addon_state.json"
     local lastDebugTime = 0
 
-    util.AddNetworkString("SyncData")
-    util.AddNetworkString("SyncPlayerPositions")
     util.AddNetworkString("RareloadOpenAntiStuckDebug")
-    util.AddNetworkString("RareloadAntiStuckConfig")
     util.AddNetworkString("RareloadAntiStuckPriorities")
-    util.AddNetworkString("RareloadRequestAntiStuckConfig")
 
-    -- Function to ensure the rareload folder exists, if not create it
     function EnsureFolderExists()
         local folderPath = "rareload"
         if not file.Exists(folderPath, "DATA") then
@@ -52,7 +47,6 @@ if SERVER then
         end
     end
 
-    -- Function to save addon state to file
     function SaveAddonState()
         local json = util.TableToJSON(RARELOAD.settings, true)
         local success, err = pcall(file.Write, ADDON_STATE_FILE_PATH, json)
@@ -60,8 +54,9 @@ if SERVER then
             print("[RARELOAD] Failed to save addon state: " .. err)
         end
     end
+    
+    RARELOAD.SaveAddonState = SaveAddonState
 
-    -- Function to load addon state from file
     function LoadAddonState()
         if file.Exists(ADDON_STATE_FILE_PATH, "DATA") then
             local json = file.Read(ADDON_STATE_FILE_PATH, "DATA")
@@ -83,6 +78,9 @@ if SERVER then
             EnsureFolderExists()
             SaveAddonState()
         end
+        
+        -- Trigger hook to sync ConVars with loaded settings
+        hook.Run("RareloadSettingsLoaded")
     end
 
     function SaveGlobalInventory()
@@ -103,7 +101,6 @@ if SERVER then
         end
     end
 
-    -- Function to load global inventory from file
     function LoadGlobalInventory()
         EnsureFolderExists()
 
@@ -150,30 +147,6 @@ if SERVER then
     ------------------------------------------------------------------------------------------------
     --[[ Anti-Stuck System for Player Spawning ]] --------------------------------------------------
     ------------------------------------------------------------------------------------------------
-
-    -- Legacy function - now redirects to new anti-stuck system
-    function IsWalkable(pos, ply)
-        if not RARELOAD.AntiStuck then
-            include("rareload/anti_stuck/sv_anti_stuck_init.lua")
-        end
-
-        local isStuck, reason = RARELOAD.AntiStuck.IsPositionStuck(pos, ply, true) -- Mark as original position
-        return not isStuck, pos
-    end
-
-    -- Legacy function - now redirects to new anti-stuck system
-    function FindWalkableGround(startPos, ply)
-        if not RARELOAD.AntiStuck then
-            include("rareload/anti_stuck/sv_anti_stuck_init.lua")
-        end
-
-        if RARELOAD.AntiStuck and RARELOAD.AntiStuck.Initialize and not RARELOAD.AntiStuck.Initialized then
-            RARELOAD.AntiStuck.Initialize()
-        end
-
-        local safePos, success = RARELOAD.AntiStuck.ResolveStuckPosition(startPos, ply)
-        return safePos
-    end
 
     -- Function to use anti-stuck system
     function SetPlayerPositionAndEyeAngles(ply, savedInfo)
@@ -256,11 +229,6 @@ if SERVER then
             timer.Simple(0.05, function()
                 if not IsValid(ply) then return end
 
-                -- Load centralized conversion functions
-                if not RARELOAD or not RARELOAD.DataUtils then
-                    include("rareload/utils/rareload_data_utils.lua")
-                end
-
                 local parsedAngle = RARELOAD.DataUtils.ToAngle(savedInfo.ang)
                 if parsedAngle then
                     ply:SetEyeAngles(parsedAngle)
@@ -318,11 +286,6 @@ if SERVER then
         timer.Simple(0.05, function()
             if not IsValid(ply) then return end
 
-            -- Load centralized conversion functions
-            if not RARELOAD or not RARELOAD.DataUtils then
-                include("rareload/utils/rareload_data_utils.lua")
-            end
-
             local parsedAngle = RARELOAD.DataUtils.ToAngle(savedInfo.ang)
             if parsedAngle then
                 ply:SetEyeAngles(parsedAngle)
@@ -347,12 +310,8 @@ if SERVER then
         RunConsoleCommand("save_position")
     end
 
-    -- This convert the eye angle table to a a single line (used for the 3D2D frame)
+    -- Convert eye angle table to string (used for 3D2D frame)
     function AngleToString(angle)
-        -- Use centralized formatting functions for consistency
-        if not RARELOAD or not RARELOAD.DataUtils then
-            include("rareload/utils/rareload_data_utils.lua")
-        end
         return RARELOAD.DataUtils.FormatAngleCompact(angle)
     end
 
@@ -372,34 +331,6 @@ if SERVER then
                 Phantom = RARELOAD.Phantom
             })
             net.Send(ply)
-        end
-    end
-
-    -- This function only purpose is to print a message in the console when a setting is changed (and change the setting)
-    function ToggleSetting(ply, settingKey, message)
-        if not RARELOAD.CheckPermission(ply, "RARELOAD_TOGGLE") then
-            ply:ChatPrint("[RARELOAD] You don't have permission to toggle settings.")
-            ply:EmitSound("buttons/button10.wav")
-            return
-        end
-
-        RARELOAD.settings[settingKey] = not RARELOAD.settings[settingKey]
-
-        local status = RARELOAD.settings[settingKey] and "enabled" or "disabled"
-        print("[RARELOAD DEBUG]" .. message .. " is now " .. status)
-
-        SaveAddonState()
-
-        -- If the addon was just enabled, immediately load persisted player positions from disk
-        -- so users don't have to change map to get their last saved respawn points back.
-        if settingKey == 'addonEnabled' and RARELOAD.settings[settingKey] then
-            if EnsureFolderExists then EnsureFolderExists() end
-            if RARELOAD.LoadPlayerPositions then
-                RARELOAD.LoadPlayerPositions()
-                if RARELOAD.settings.debugEnabled then
-                    print("[RARELOAD DEBUG] Addon enabled at runtime: reloaded saved player positions from disk")
-                end
-            end
         end
     end
 

@@ -1,6 +1,10 @@
 local AntiStuck = RARELOAD.AntiStuck
 
 function AntiStuck.TryEmergencyTeleport(pos, ply)
+    if not pos or not IsValid(ply) then
+        return nil, AntiStuck.UNSTUCK_METHODS and AntiStuck.UNSTUCK_METHODS.NONE or 0
+    end
+    
     local testPositions = {}
     local randomAttempts = (AntiStuck.CONFIG and AntiStuck.CONFIG.RANDOM_ATTEMPTS) or 50
     local safeRadius = (AntiStuck.CONFIG and AntiStuck.CONFIG.EMERGENCY_SAFE_RADIUS) or 200

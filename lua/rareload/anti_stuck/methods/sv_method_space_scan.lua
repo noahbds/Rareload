@@ -47,6 +47,10 @@ end
 InitializeSpiralDirections()
 
 function AntiStuck.Try3DSpaceScan(pos, ply)
+    if not pos or not IsValid(ply) then
+        return nil, AntiStuck.UNSTUCK_METHODS and AntiStuck.UNSTUCK_METHODS.NONE or 0
+    end
+    
     local config = AntiStuck.CONFIG or {}
     local safeDistance = config.SAFE_DISTANCE or 48
     local maxAttempts = math.min(config.MAX_UNSTUCK_ATTEMPTS or 35, 40)
@@ -71,7 +75,7 @@ function AntiStuck.Try3DSpaceScan(pos, ply)
 
         local ground = util.TraceLine(traceStructure)
 
-        if ground.Hit then
+        if ground and ground.Hit then
             local groundPos = ground.HitPos + vector_z16
             if util.IsInWorld(groundPos) then
                 local isStuck, reason = AntiStuck.IsPositionStuck(groundPos, ply, false)

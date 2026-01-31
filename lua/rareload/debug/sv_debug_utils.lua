@@ -17,11 +17,6 @@ function GetTimestamp()
     return os.date("%Y-%m-%d %H:%M:%S")
 end
 
--- Load centralized conversion functions
-if not RARELOAD or not RARELOAD.DataUtils then
-    include("rareload/utils/rareload_data_utils.lua")
-end
-
 function FormatValue(val)
     return RARELOAD.DataUtils.FormatValue(val)
 end

@@ -1,7 +1,4 @@
 ---@diagnostic disable: inject-field, undefined-field
-if not RARELOAD or not RARELOAD.DataUtils then
-    include("rareload/utils/rareload_data_utils.lua")
-end
 
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 
@@ -281,6 +278,41 @@ function RARELOAD.HandlePlayerSpawn(ply)
     if Settings.retainMapNPCs and HasSnapshotData(SavedInfo.npcs) then
         RARELOAD.RestoreNPCs()
     end
+    
+    -- NEW - Restore player states (godmode, notarget, etc.)
+    if Settings.retainPlayerStates and SavedInfo.playerStates then
+        timer.Simple(0.1, function()
+            if not IsValid(ply) then return end
+            
+            local states = SavedInfo.playerStates
+            local restoredStates = {}
+            
+            if states.godmode then
+                ply:GodEnable()
+                table.insert(restoredStates, "godmode")
+            end
+            
+            if states.notarget then
+                ply:SetNoTarget(true)
+                table.insert(restoredStates, "notarget")
+            end
+            
+            if states.frozen then
+                ply:Freeze(true)
+                table.insert(restoredStates, "frozen")
+            end
+            
+            if states.noclip and ply:GetMoveType() ~= MOVETYPE_NOCLIP then
+                ply:SetMoveType(MOVETYPE_NOCLIP)
+                table.insert(restoredStates, "noclip")
+            end
+            
+            if RARELOAD.settings.debugEnabled and #restoredStates > 0 then
+                print("[RARELOAD DEBUG] Restored player states: " .. table.concat(restoredStates, ", "))
+            end
+        end)
+    end
+    
     local activeWeaponToRestore = nil
     if RARELOAD.settings.retainGlobalInventory then
         if RARELOAD.globalInventory and RARELOAD.globalInventory[ply:SteamID()] then
