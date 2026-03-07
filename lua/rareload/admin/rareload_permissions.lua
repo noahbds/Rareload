@@ -303,7 +303,7 @@ if SERVER then
             if mainData then
                 local jsonData = util.TableToJSON({
                     metadata = {
-                        version = "2.1",
+                        version = "2.2",
                         timestamp = backupTime,
                         format = "normalized"
                     },
@@ -415,15 +415,14 @@ if SERVER then
         local columns = sql.Query("PRAGMA table_info(rareload_permissions)")
         if not columns then return false end
 
-        local hasRequiredColumns = false
+        local hasSteamid = false
+        local hasPermissions = false
         for _, col in ipairs(columns) do
-            if col.name == "steamid" and col.name == "permissions" then
-                hasRequiredColumns = true
-                break
-            end
+            if col.name == "steamid" then hasSteamid = true end
+            if col.name == "permissions" then hasPermissions = true end
         end
 
-        return hasRequiredColumns
+        return hasSteamid and hasPermissions
     end
 
     function RARELOAD.Permissions.RepairTable()

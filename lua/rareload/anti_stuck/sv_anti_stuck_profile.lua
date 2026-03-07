@@ -136,7 +136,7 @@ function PS.EnsureDefaultProfile()
             shared = false,
             mapSpecific = false,
             map = "",
-            version = "2.1",
+            version = "2.2",
             settings = RareloadDeepCopySettings(AntiStuck.DefaultSettings),
             methods = RareloadDeepCopyMethods(AntiStuck.DefaultMethods)
         }

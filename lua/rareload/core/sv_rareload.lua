@@ -33,7 +33,7 @@ if SERVER then
     RARELOAD.globalInventory = RARELOAD.globalInventory or {}
     RARELOAD.lastSavedTime = 0
     MapName = game.GetMap()
-    RARELOAD.version = "2.1"
+    RARELOAD.version = "2.2"
     ADDON_STATE_FILE_PATH = "rareload/addon_state.json"
     local lastDebugTime = 0
 

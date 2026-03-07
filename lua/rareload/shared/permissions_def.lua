@@ -48,5 +48,10 @@ RARELOAD.Permissions.DEFS = {
         name = "Rareload Spawn",
         desc = "Allowed to spawn with rareload features",
         default = false
+    },
+    DEBUG_MENU = {
+        name = "Debug Menu",
+        desc = "Can access the Debug & Tools section in the toolgun panel",
+        default = false
     }
 }

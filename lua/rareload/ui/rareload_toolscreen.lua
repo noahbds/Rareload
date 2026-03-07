@@ -569,7 +569,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
     end
 
     if not RARELOAD.reloadImageState then
-        draw.SimpleText("v2.1", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT,
+        draw.SimpleText("v2.2", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT,
             TEXT_ALIGN_BOTTOM)
     else
         drawReloadStateImage(width, height)

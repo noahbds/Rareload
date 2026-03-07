@@ -48,8 +48,6 @@ end)
 net.Receive("RareloadAdminPanelAvailable", function()
     local version = net.ReadString()
     RARELOAD.version = version
-    chat.AddText(Color(50, 255, 50),
-        "Rareload Admin Panel available. Type !rareloadadmin or use the console command rareload_admin to open it.")
 end)
 
 hook.Add("OnPlayerChat", "RareloadAdminPanelChatCommand", function(ply, text)

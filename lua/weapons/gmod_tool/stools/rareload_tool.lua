@@ -262,7 +262,7 @@ function TOOL.BuildCPanel(panel)
         draw.SimpleText("Configuration Panel", "RareloadUI.Small", 12, h/2 + 10, RareloadUI.Theme.Colors.Text.Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         
         -- Version badge
-        draw.SimpleText("v2.1", "RareloadUI.Small", w - 12, h/2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+        draw.SimpleText("v2.2", "RareloadUI.Small", w - 12, h/2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
     end
 
     -- ═══════════════════════════════════════════════════════════════
@@ -367,35 +367,50 @@ function TOOL.BuildCPanel(panel)
     )
     actionsCategory:AddItem(saveBtn)
 
+    if RARELOAD.CheckPermission(LocalPlayer(), "ADMIN_PANEL") then
+        local adminBtn = RareloadUI.CreateModernButton(
+            actionsCategory.Content,
+            "Open Admin Panel",
+            "icon16/shield.png",
+            function()
+                RunConsoleCommand("rareload_admin")
+            end,
+            Color(233, 30, 99)
+        )
+        actionsCategory:AddItem(adminBtn)
+    end
+
     -- ═══════════════════════════════════════════════════════════════
     -- DEBUG TOOLS CATEGORY
     -- ═══════════════════════════════════════════════════════════════
-    local debugCategory = RareloadUI.CreateCategory(panel, "Debug & Tools", "icon16/wrench.png", false)
-    
-    local toggleDebug = RareloadUI.CreateToggleSwitch(debugCategory.Content, "Debug Mode", "sv_rareload_debug", "Enable debug logging in console")
-    debugCategory:AddItem(toggleDebug)
-    
-    local antiStuckBtn = RareloadUI.CreateModernButton(
-        debugCategory.Content, 
-        "Anti-Stuck Debug Panel", 
-        "icon16/bug.png", 
-        function()
-            RunConsoleCommand("rareload_open_antistuck_debug")
-        end,
-        Color(255, 152, 0)
-    )
-    debugCategory:AddItem(antiStuckBtn)
-    
-    local entityViewerBtn = RareloadUI.CreateModernButton(
-        debugCategory.Content, 
-        "Entity Viewer", 
-        "icon16/application_view_list.png", 
-        function()
-            RunConsoleCommand("entity_viewer_open")
-        end,
-        Color(33, 150, 243)
-    )
-    debugCategory:AddItem(entityViewerBtn)
+    if RARELOAD.CheckPermission(LocalPlayer(), "DEBUG_MENU") then
+        local debugCategory = RareloadUI.CreateCategory(panel, "Debug & Tools", "icon16/wrench.png", false)
+        
+        local toggleDebug = RareloadUI.CreateToggleSwitch(debugCategory.Content, "Debug Mode", "sv_rareload_debug", "Enable debug logging in console")
+        debugCategory:AddItem(toggleDebug)
+        
+        local antiStuckBtn = RareloadUI.CreateModernButton(
+            debugCategory.Content, 
+            "Anti-Stuck Debug Panel", 
+            "icon16/bug.png", 
+            function()
+                RunConsoleCommand("rareload_open_antistuck_debug")
+            end,
+            Color(255, 152, 0)
+        )
+        debugCategory:AddItem(antiStuckBtn)
+        
+        local entityViewerBtn = RareloadUI.CreateModernButton(
+            debugCategory.Content, 
+            "Entity Viewer", 
+            "icon16/application_view_list.png", 
+            function()
+                RunConsoleCommand("entity_viewer_open")
+            end,
+            Color(33, 150, 243)
+        )
+        debugCategory:AddItem(entityViewerBtn)
+    end
 
     -- Footer credit
     local footerPanel = vgui.Create("DPanel", panel)
