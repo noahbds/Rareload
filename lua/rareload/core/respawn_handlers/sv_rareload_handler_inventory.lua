@@ -5,6 +5,10 @@ RARELOAD.settings = RARELOAD.settings or {}
 -- This function is called when the addon need to restore inventory from a save file. Allow to restore weapons, ammo, etc.
 function RARELOAD.RestoreInventory(ply, savedInfo)
     if not savedInfo or not savedInfo.inventory then return end
+    if RARELOAD.CheckPermission and (not RARELOAD.CheckPermission(ply, "KEEP_INVENTORY") or not RARELOAD.CheckPermission(ply, "RETAIN_INVENTORY")) then
+        return
+    end
+    local debugEnabled = RARELOAD.GetPlayerSetting(ply, "debugEnabled", false)
     ply:StripWeapons()
 
     local debugMessages = {
@@ -25,11 +29,11 @@ function RARELOAD.RestoreInventory(ply, savedInfo)
         if not canGiveWeapon then
             ply:Give(weaponClass)
             if ply:HasWeapon(weaponClass) then
-                if RARELOAD.settings.debugEnabled then
+                if debugEnabled then
                     debugFlags.givenWeapons = true
                     table.insert(debugMessages.givenWeapons, "Successfully gave weapon: " .. weaponClass)
                 end
-            elseif RARELOAD.settings.debugEnabled then
+            elseif debugEnabled then
                 if weaponInfo then
                     debugFlags.adminOnly = true
                     table.insert(debugMessages.adminOnly,
@@ -42,11 +46,11 @@ function RARELOAD.RestoreInventory(ply, savedInfo)
         else
             ply:Give(weaponClass)
             if ply:HasWeapon(weaponClass) then
-                if RARELOAD.settings.debugEnabled then
+                if debugEnabled then
                     debugFlags.givenWeapons = true
                     table.insert(debugMessages.givenWeapons, "Successfully gave weapon: " .. weaponClass)
                 end
-            elseif RARELOAD.settings.debugEnabled then
+            elseif debugEnabled then
                 debugFlags.givenWeapons = true
                 table.insert(debugMessages.givenWeapons, "Failed to give weapon: " .. weaponClass)
 
@@ -69,11 +73,11 @@ function RARELOAD.RestoreInventory(ply, savedInfo)
     end
     if RARELOAD.Debug and RARELOAD.Debug.LogWeaponMessages then
         RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
-    elseif RARELOAD.settings.debugEnabled then
+    elseif debugEnabled then
         if debugFlags.adminOnly then
             print("[RARELOAD DEBUG] Admin-only weapons not given: " .. table.concat(debugMessages.adminOnly, ", "))
         end
-        if debugFlags.notRegistered and not RARELOAD.settings.retainGlobalInventory then
+        if debugFlags.notRegistered and not RARELOAD.GetPlayerSetting(ply, "retainGlobalInventory", false) then
             print("[RARELOAD DEBUG] Unregistered Global weapons: " .. table.concat(debugMessages.notRegistered, ", "))
         end
         if debugFlags.givenWeapons then

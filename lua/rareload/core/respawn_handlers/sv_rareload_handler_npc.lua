@@ -96,7 +96,7 @@ function RARELOAD.CoerceVector(pos)
     return result
 end
 
-function RARELOAD.RestoreNPCs(savedInfo)
+function RARELOAD.RestoreNPCs(savedInfo, requestingPlayer)
     if not savedInfo or not istable(savedInfo.npcs) then
         if debugEnabled then
             RARELOAD.Debug.Log("INFO", "NPC Restoration Skipped", { "No NPCs to restore" })
@@ -124,7 +124,9 @@ function RARELOAD.RestoreNPCs(savedInfo)
 
         hook.Add("InitPostEntity", "RARELOAD_RestoreNPCs_OnReady", function()
             hook.Remove("InitPostEntity", "RARELOAD_RestoreNPCs_OnReady")
-            timer.Simple(RARELOAD.settings.npcRestoreDelay or 1, function() RARELOAD.RestoreNPCs(savedInfo) end)
+            timer.Simple(RARELOAD.settings.npcRestoreDelay or 1, function()
+                RARELOAD.RestoreNPCs(savedInfo, requestingPlayer)
+            end)
         end)
         return
     end
@@ -147,7 +149,7 @@ function RARELOAD.RestoreNPCs(savedInfo)
         }
         
         local indexToID = snapshot._indexMap or {}
-        local owner = FindSnapshotOwner(snapshot)
+        local targetOwner = IsValid(requestingPlayer) and requestingPlayer or FindSnapshotOwner(snapshot)
 
         local existingIDs = {}
         for _, ent in ipairs(ents.GetAll()) do
@@ -164,14 +166,16 @@ function RARELOAD.RestoreNPCs(savedInfo)
         if debugEnabled then
             RARELOAD.Debug.Log("INFO", "Restoring NPCs from duplicator snapshot", {
                 "NPC count: " .. (snapshot.entityCount or 0),
-                "Owner: " .. (IsValid(owner) and owner:Nick() or "none")
+                "Target owner: " .. (IsValid(targetOwner) and targetOwner:Nick() or "none")
             })
         end
         
         local skippedNPCs = {}
         
-        local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, { 
-            player = owner,
+        local restoreOptions = {
+            -- First try server context to avoid non-host sandbox/player-limit failures.
+            -- Ownership is re-applied explicitly per spawned NPC below.
+            player = nil,
             filter = function(index, entData)
                 local id = indexToID[index]
                 if id and existingIDs[id] then
@@ -180,7 +184,16 @@ function RARELOAD.RestoreNPCs(savedInfo)
                 end
                 return true
             end
-        })
+        }
+
+        local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, restoreOptions)
+        if (not ok) and IsValid(requestingPlayer) then
+            if debugEnabled then
+                RARELOAD.Debug.Log("WARN", "Server-context NPC restore failed, retrying with player context", { tostring(res) })
+            end
+            restoreOptions.player = requestingPlayer
+            ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, restoreOptions)
+        end
         
         if debugEnabled and #skippedNPCs > 0 then
             print(string.format("[RARELOAD DEBUG] Skipped %d existing NPCs (already on map)", #skippedNPCs))
@@ -210,8 +223,8 @@ function RARELOAD.RestoreNPCs(savedInfo)
                     end
                 end
                 
-                if IsValid(owner) and RARELOAD.Ownership then
-                    RARELOAD.Ownership.SetOwner(npc, owner)
+                if IsValid(targetOwner) and RARELOAD.Ownership then
+                    RARELOAD.Ownership.SetOwner(npc, targetOwner)
                 end
                 stats.restored = stats.restored + 1
             end

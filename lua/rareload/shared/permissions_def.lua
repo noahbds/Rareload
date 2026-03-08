@@ -19,8 +19,38 @@ RARELOAD.Permissions.DEFS = {
         default = true
     },
     KEEP_INVENTORY = {
-        name = "Keep Inventory",
-        desc = "Can keep their inventory when reloading/dying",
+        name = "Inventory Restore Master Switch",
+        desc = "Global gate: if disabled, no inventory restore is allowed (map + global)",
+        default = true
+    },
+    RETAIN_INVENTORY = {
+        name = "Map Inventory Restore",
+        desc = "Allows restoring map-specific inventory on respawn (requires master switch)",
+        default = true
+    },
+    RETAIN_GLOBAL_INVENTORY = {
+        name = "Global Inventory Restore",
+        desc = "Allows restoring cross-map global inventory on respawn (requires master switch)",
+        default = true
+    },
+    RETAIN_HEALTH_ARMOR = {
+        name = "Retain Health and Armor",
+        desc = "Can restore health and armor from saved data",
+        default = true
+    },
+    RETAIN_AMMO = {
+        name = "Retain Ammo",
+        desc = "Can restore ammo and clips from saved data",
+        default = true
+    },
+    RETAIN_PLAYER_STATES = {
+        name = "Retain Player States",
+        desc = "Can restore player states (godmode, notarget, noclip, frozen)",
+        default = true
+    },
+    EXECUTE_RARELOAD_COMMANDS = {
+        name = "Execute Rareload Commands",
+        desc = "Can run Rareload save/restore console commands",
         default = true
     },
     MANAGE_ENTITIES = {

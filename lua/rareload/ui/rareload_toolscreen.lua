@@ -2,6 +2,8 @@ local RareloadUI = include("rareload/ui/rareload_ui.lua")
 local GRADIENT_U = Material("vgui/gradient-u")
 local GRADIENT_R = Material("vgui/gradient-r")
 
+local DISABLE_ANIM = false
+
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 RARELOAD.lastMoveTime = RARELOAD.lastMoveTime or 0
@@ -354,7 +356,6 @@ local function drawReloadStateImage(width, height)
         return
     end
 
-    -- Static alpha and progress when animations disabled
     local alpha, animProgress
     if DISABLE_ANIM then
         alpha = 255
@@ -405,17 +406,18 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
     assert(RARELOAD, "RARELOAD table required")
     assert(loadAddonSettings, "loadAddonSettings function required")
 
-    if not RARELOAD.cachedSettings or RealTime() > (RARELOAD.nextCacheUpdate or 0) then
+    if not RARELOAD.settings or not next(RARELOAD.settings) then
         local success, err = pcall(loadAddonSettings)
         if not success then
             ErrorNoHalt("Failed to load addon state: " .. tostring(err))
             return
         end
-        RARELOAD.cachedSettings = table.Copy(RARELOAD.settings or {})
-        RARELOAD.nextCacheUpdate = RealTime() + 2
     end
 
-    local settings = RARELOAD.cachedSettings
+    local settings = RARELOAD.settings or {}
+    if CLIENT and RARELOAD.MySettings and next(RARELOAD.MySettings) then
+        settings = RARELOAD.MySettings
+    end
     local colors = TOOL_UI.COLORS
     local layout = TOOL_UI.LAYOUT
 
@@ -423,7 +425,6 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
     local currentTime = CurTime()
     local ft = FrameTime()
 
-    -- Animation timers: disabled => static values
     if DISABLE_ANIM then
         state.glowPhase = 0
         state.pulsePhase = 0
@@ -432,7 +433,6 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
         state.pulsePhase = (state.pulsePhase + ft * 6) % (math.pi * 2)
     end
 
-    -- Auto-scrolling: disabled => no movement
     local totalFeatureHeight = #FEATURES * layout.FEATURE_SPACING
     local visibleHeight = height - layout.FEATURE_START_Y - 30
     local maxScrollOffset = math.max(0, totalFeatureHeight - visibleHeight)
@@ -459,7 +459,6 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
         state.targetScrollOffset = 0
     end
 
-    -- Background and header (now drawn with the translation if present)
     surface.SetDrawColor(colors.BG)
     surface.DrawRect(0, 0, width, height)
     surface.SetDrawColor(colors.HEADER)
@@ -570,7 +569,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
     end
 
     if not RARELOAD.reloadImageState then
-        draw.SimpleText("v2.2", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT,
+        draw.SimpleText("v3.0", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT,
             TEXT_ALIGN_BOTTOM)
     else
         drawReloadStateImage(width, height)

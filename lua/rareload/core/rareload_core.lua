@@ -60,7 +60,7 @@ function RARELOAD.LoadPlayerPositions()
     EnsurePlayerPositionsDirs(mapName)
 
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
-    RARELOAD.playerPositions[mapName] = {}
+    RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
 
     local mapDir = "rareload/player_positions/" .. mapName
     local files = file.Find(mapDir .. "/*.json", "DATA") or {}

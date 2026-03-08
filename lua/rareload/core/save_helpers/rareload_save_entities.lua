@@ -32,6 +32,27 @@ local function GetOwnerSteamID(owner)
     return nil
 end
 
+local function IsEntityOwnedByPlayer(ent, ply)
+    if not IsValid(ent) or not IsValid(ply) then return false end
+
+    if RARELOAD.Ownership and RARELOAD.Ownership.IsOwner then
+        local ok, isOwner = pcall(RARELOAD.Ownership.IsOwner, ent, ply)
+        if ok and isOwner then
+            return true
+        end
+    end
+
+    if RARELOAD.Ownership and RARELOAD.Ownership.GetOwnerSteamID then
+        local ok, sid = pcall(RARELOAD.Ownership.GetOwnerSteamID, ent)
+        if ok and isstring(sid) and sid ~= "" and sid == ply:SteamID() then
+            return true
+        end
+    end
+
+    local owner = RARELOAD.Ownership and RARELOAD.Ownership.GetOwner and RARELOAD.Ownership.GetOwner(ent) or nil
+    return IsValid(owner) and owner == ply
+end
+
 local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 
@@ -71,14 +92,8 @@ return function(ply)
     for _, ent in ipairs(ents.GetAll()) do
         if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() and not ent:IsVehicle() then
             local owner = RARELOAD.Ownership and RARELOAD.Ownership.GetOwner(ent) or nil
-            local isOwnerBot = false
-            if IsValid(owner) and owner.IsBot then
-                local ok, res = pcall(function() return owner:IsBot() end)
-                if ok and res then isOwnerBot = true end
-            end
-            local ownerValid = IsValid(owner) and (isOwnerBot or owner == ply)
-            local spawnedByRareload = ent.SpawnedByRareload == true
-            if ownerValid or spawnedByRareload then
+            local ownerValid = IsEntityOwnedByPlayer(ent, ply)
+            if ownerValid then
                 count = count + 1
 
                 if not ent.RareloadEntityID then
@@ -99,12 +114,11 @@ return function(ply)
                     duplicatorTargets[#duplicatorTargets + 1] = ent
                 end
 
-                if not ent.OriginalSpawner then
-                    local sid = GetOwnerSteamID(owner)
-                    if sid then
-                        ---@diagnostic disable-next-line: inject-field
-                        ent.OriginalSpawner = sid
-                    end
+                local sid = GetOwnerSteamID(owner) or (RARELOAD.Ownership and RARELOAD.Ownership.GetOwnerSteamID and
+                    RARELOAD.Ownership.GetOwnerSteamID(ent)) or nil
+                if sid then
+                    ---@diagnostic disable-next-line: inject-field
+                    ent.OriginalSpawner = sid
                 end
 
             end

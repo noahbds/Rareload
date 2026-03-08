@@ -652,6 +652,12 @@ function RARELOAD.AntiStuck.ProfileSystem.LoadCurrentProfile()
 end
 
 function RARELOAD.AntiStuck.ProfileSystem.CreateDefaultProfile()
+    local defaultMethods = table.Copy(Default_Anti_Stuck_Methods or {})
+    for i, method in ipairs(defaultMethods) do
+        method.enabled = (method.enabled ~= false)
+        method.priority = method.priority or (i * 10)
+    end
+
     local defaultProfile = {
         name = DEFAULT_PROFILE_NAME,
         displayName = "Default Profile",
@@ -660,13 +666,7 @@ function RARELOAD.AntiStuck.ProfileSystem.CreateDefaultProfile()
         version = PROFILE_VERSION,
         created = os.time(),
         modified = os.time(),
-        methods = {
-            { name = "space_scan",         enabled = true, priority = 10 },
-            { name = "displacement",       enabled = true, priority = 20 },
-            { name = "spawn_points",       enabled = true, priority = 30 },
-            { name = "systematic_grid",    enabled = true, priority = 40 },
-            { name = "emergency_teleport", enabled = true, priority = 90 }
-        },
+        methods = defaultMethods,
         settings = {
             maxAttempts = 10,
             timeout = 5,

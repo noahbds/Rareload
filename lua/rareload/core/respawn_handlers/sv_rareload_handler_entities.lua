@@ -48,7 +48,7 @@ local function FindSnapshotOwner(snapshot)
 
     return nil
 end
-function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo)
+function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
     if not savedInfo or not istable(savedInfo.entities) then
         return false
     end
@@ -85,11 +85,11 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo)
         duplicatesRemoved = 0
     }
 
-    local owner = FindSnapshotOwner(snapshot)
+    local targetOwner = IsValid(requestingPlayer) and requestingPlayer or FindSnapshotOwner(snapshot)
     
     if RARELOAD.settings.debugEnabled then
         print(string.format("[RARELOAD DEBUG] Restoring %d entities from duplicator snapshot", snapshot.entityCount or 0))
-        print(string.format("[RARELOAD DEBUG] Owner: %s", IsValid(owner) and owner:Nick() or "none"))
+        print(string.format("[RARELOAD DEBUG] Target owner: %s", IsValid(targetOwner) and targetOwner:Nick() or "none"))
     end
     
     local indexToID = snapshot._indexMap or {}
@@ -108,8 +108,10 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo)
 
     local skippedEntities = {}
     
-    local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, { 
-        player = owner,
+    local restoreOptions = {
+        -- First try server context to avoid non-host sandbox/player-limit failures.
+        -- Ownership is re-applied explicitly per spawned entity below.
+        player = nil,
         filter = function(index, entData)
             local id = indexToID[index]
             if id and existingIDs[id] then
@@ -118,7 +120,16 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo)
             end
             return true
         end
-    })
+    }
+
+    local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, restoreOptions)
+    if (not ok) and IsValid(requestingPlayer) then
+        if RARELOAD.settings.debugEnabled then
+            print(string.format("[RARELOAD DEBUG] Server-context restore failed, retrying with player context: %s", tostring(res)))
+        end
+        restoreOptions.player = requestingPlayer
+        ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, restoreOptions)
+    end
     
     if RARELOAD.settings.debugEnabled and #skippedEntities > 0 then
         print(string.format("[RARELOAD DEBUG] Skipped %d existing entities (already on map)", #skippedEntities))
@@ -156,8 +167,8 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo)
                 end
             end
             
-            if IsValid(owner) and RARELOAD.Ownership then
-                RARELOAD.Ownership.SetOwner(ent, owner)
+            if IsValid(targetOwner) and RARELOAD.Ownership then
+                RARELOAD.Ownership.SetOwner(ent, targetOwner)
             end
             if spawnPos and ent.GetPos and (ent:GetPos():DistToSqr(spawnPos) <= radiusSq) then
                 spawnedClose = true
@@ -196,6 +207,12 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
         print(string.format("[RARELOAD] Admin %s respawning %s at %s",
             ply:Nick(), entityClass, tostring(position)))
     end
+
+    local mapName = game.GetMap()
+    local savedInfo = RARELOAD.playerPositions
+        and RARELOAD.playerPositions[mapName]
+        and RARELOAD.playerPositions[mapName][ply:SteamID()]
+        or nil
 
     local matchedData = nil
     local savedEntitiesBucket = savedInfo and savedInfo.entities or {}
@@ -383,19 +400,28 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
 end)
 
 hook.Add("PreCleanupMap", "RareloadSaveEntitiesBeforeCleanup", function()
-    if RARELOAD.settings.addonEnabled and RARELOAD.settings.retainMapEntities then
-        for _, ply in ipairs(player.GetHumans()) do
-            if IsValid(ply) then
-                local saveEntities = include("rareload/core/save_helpers/rareload_save_entities.lua")
-                SavedInfo = SavedInfo or {}
-                SavedInfo.entities = saveEntities(ply)
+    local saveEntities = include("rareload/core/save_helpers/rareload_save_entities.lua")
+    local mapName = game.GetMap()
+    RARELOAD.playerPositions = RARELOAD.playerPositions or {}
+    RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
 
-                if RARELOAD.settings.debugEnabled then
-                    local summary = SnapshotUtils.GetSummary(SavedInfo.entities, { category = "entity" }) or {}
-                    print(string.format("[RARELOAD] Saved %d entities before map cleanup", #summary))
-                end
+    for _, ply in ipairs(player.GetHumans()) do
+        if IsValid(ply)
+            and RARELOAD.GetPlayerSetting(ply, "addonEnabled", true)
+            and RARELOAD.GetPlayerSetting(ply, "retainMapEntities", true) then
+            local sid = ply:SteamID()
+            local saved = saveEntities(ply)
+            local pdata = RARELOAD.playerPositions[mapName][sid] or {}
+            pdata.entities = saved
+            RARELOAD.playerPositions[mapName][sid] = pdata
 
-                break
+            if RARELOAD.SavePlayerPositionEntry then
+                RARELOAD.SavePlayerPositionEntry(ply, pdata)
+            end
+
+            if RARELOAD.GetPlayerSetting(ply, "debugEnabled", false) then
+                local summary = SnapshotUtils.GetSummary(saved, { category = "entity" }) or {}
+                print(string.format("[RARELOAD] Saved %d entities before map cleanup for %s", #summary, sid))
             end
         end
     end

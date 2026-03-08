@@ -15,11 +15,6 @@ net.Receive("RareloadSyncPlayerSettings", function()
         
         -- Trigger hook for UI updates
         hook.Run("RareloadPlayerSettingsUpdated", settings)
-        
-        if RARELOAD.settings.debugEnabled then
-            print("[RARELOAD CLIENT] Received player settings:")
-            PrintTable(settings)
-        end
     end
 end)
 

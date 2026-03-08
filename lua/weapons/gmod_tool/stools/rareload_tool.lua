@@ -113,13 +113,18 @@ function TOOL:LeftClick(trace, ply)
 
     if CLIENT then return true end
 
-    if not RARELOAD.settings.addonEnabled then
+    if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then
         ply:ChatPrint("[RARELOAD] The Rareload addon is disabled.")
         return
     end
 
     if not RARELOAD.CheckPermission(ply, "USE_TOOL") then
         ply:ChatPrint("[RARELOAD] You don't have permission to use the Rareload tool.")
+        ply:EmitSound("buttons/button10.wav")
+        return false
+    end
+    if not RARELOAD.CheckPermission(ply, "EXECUTE_RARELOAD_COMMANDS") then
+        ply:ChatPrint("[RARELOAD] You don't have permission to use Rareload commands.")
         ply:EmitSound("buttons/button10.wav")
         return false
     end
@@ -133,13 +138,18 @@ function TOOL:RightClick()
 
     if CLIENT then return false end
 
-    if not RARELOAD.settings.addonEnabled then
+    if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then
         ply:ChatPrint("[RARELOAD] The Rareload addon is disabled.")
         return
     end
 
     if not RARELOAD.CheckPermission(ply, "USE_TOOL") then
         ply:ChatPrint("[RARELOAD] You don't have permission to use the Rareload tool.")
+        ply:EmitSound("buttons/button10.wav")
+        return false
+    end
+    if not RARELOAD.CheckPermission(ply, "EXECUTE_RARELOAD_COMMANDS") then
+        ply:ChatPrint("[RARELOAD] You don't have permission to use Rareload commands.")
         ply:EmitSound("buttons/button10.wav")
         return false
     end
@@ -153,13 +163,23 @@ function TOOL:Reload()
 
     if CLIENT then return true end
 
-    if not RARELOAD.settings.addonEnabled then
+    if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then
         ply:ChatPrint("[RARELOAD] The Rareload addon is disabled.")
         return false
     end
 
     if not RARELOAD.CheckPermission(ply, "USE_TOOL") then
         ply:ChatPrint("[RARELOAD] You don't have permission to use the Rareload tool.")
+        ply:EmitSound("buttons/button10.wav")
+        return false
+    end
+    if not RARELOAD.CheckPermission(ply, "EXECUTE_RARELOAD_COMMANDS") then
+        ply:ChatPrint("[RARELOAD] You don't have permission to use Rareload commands.")
+        ply:EmitSound("buttons/button10.wav")
+        return false
+    end
+    if not RARELOAD.CheckPermission(ply, "LOAD_POSITION") then
+        ply:ChatPrint("[RARELOAD] You don't have permission to load saved positions.")
         ply:EmitSound("buttons/button10.wav")
         return false
     end
@@ -185,7 +205,7 @@ function TOOL:Reload()
                 local remaining = RARELOAD.GetPositionHistory(steamID, mapName)
                 ply:ChatPrint("[RARELOAD] Restored previous position data. (" .. remaining .. " positions in history)")
 
-                if RARELOAD.settings.debugEnabled then
+                if RARELOAD.GetPlayerSetting(ply, "debugEnabled", false) then
                     net.Start("CreatePlayerPhantom")
                     net.WriteEntity(ply)
                     local pos = toVecTable(previousData.pos)
@@ -264,7 +284,7 @@ function TOOL.BuildCPanel(panel)
         draw.SimpleText("Configuration Panel", "RareloadUI.Small", 12, h/2 + 10, RareloadUI.Theme.Colors.Text.Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         
         -- Version badge
-        draw.SimpleText("v2.2", "RareloadUI.Small", w - 12, h/2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+        draw.SimpleText("v3.0", "RareloadUI.Small", w - 12, h/2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
     end
 
     -- ═══════════════════════════════════════════════════════════════

@@ -1,7 +1,7 @@
 -- RARELOAD Addon Initialization
 
 RARELOAD = RARELOAD or {}
-RARELOAD.version = "2.2"
+RARELOAD.version = "3.0.0"
 
 if SERVER then
     AddCSLuaFile("rareload/shared/permissions_def.lua")

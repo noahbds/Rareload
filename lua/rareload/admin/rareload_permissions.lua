@@ -335,7 +335,7 @@ if SERVER then
             if mainData then
                 local jsonData = util.TableToJSON({
                     metadata = {
-                        version = "2.2",
+                        version = "3.0",
                         timestamp = backupTime,
                         format = "normalized"
                     },

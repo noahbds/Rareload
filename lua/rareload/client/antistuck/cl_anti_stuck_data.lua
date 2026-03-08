@@ -2,6 +2,44 @@ RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuckData = RARELOAD.AntiStuckData or {}
 RARELOAD.AntiStuckData.Methods = RARELOAD.AntiStuckData.Methods or {}
 
+local function NormalizeMethodKey(str)
+    if not isstring(str) then return nil end
+    return string.lower(string.gsub(str, "[^%w]", ""))
+end
+
+local function BuildMethodLookup(methods)
+    local byKey = {}
+    methods = methods or {}
+
+    for _, m in ipairs(methods) do
+        if istable(m) then
+            local func = m.func
+            local name = m.name
+            local keyFunc = NormalizeMethodKey(func)
+            local keyName = NormalizeMethodKey(name)
+
+            if keyFunc then byKey[keyFunc] = { func = func, name = name } end
+            if keyName then byKey[keyName] = { func = func or name, name = name or func } end
+        end
+    end
+
+    return byKey
+end
+
+local function NormalizeMethodEntry(method, lookup)
+    if not istable(method) then return nil end
+
+    local candidate = method.func or method.methodFunc or method.id or method.method or method.name
+    local key = NormalizeMethodKey(candidate)
+    local resolved = key and lookup[key] or nil
+
+    local normalized = table.Copy(method)
+    normalized.func = normalized.func or (resolved and resolved.func) or candidate
+    normalized.name = normalized.name or (resolved and resolved.name) or tostring(normalized.func or "")
+
+    return normalized
+end
+
 function RARELOAD.AntiStuckData.GetMethods()
     if RARELOAD.AntiStuck.ProfileSystem and RARELOAD.AntiStuck.ProfileSystem.GetCurrentProfileMethods then
         local profileMethods = RARELOAD.AntiStuck.ProfileSystem.GetCurrentProfileMethods()
@@ -54,37 +92,60 @@ local function validateMethods(data)
         return false, "Methods must be a table"
     end
 
+    local lookup = BuildMethodLookup(Default_Anti_Stuck_Methods)
+    for _, m in ipairs(data) do
+        if istable(m) and m.func then
+            local k = NormalizeMethodKey(m.func)
+            if k and not lookup[k] then
+                lookup[k] = { func = m.func, name = m.name or m.func }
+            end
+        end
+        if istable(m) and m.name then
+            local k = NormalizeMethodKey(m.name)
+            if k and not lookup[k] then
+                lookup[k] = { func = m.func or m.name, name = m.name }
+            end
+        end
+    end
+
     local count = 0
-    for k, v in pairs(data) do
+    local normalized = {}
+    for k, v in ipairs(data) do
         if type(k) ~= "number" then
             return false, "Methods must be an array (numeric keys)"
         end
         if type(v) ~= "table" then
             return false, "Each method must be a table"
         end
-        if not v.func or type(v.func) ~= "string" then
+
+        local method = NormalizeMethodEntry(v, lookup)
+        if not method or not method.func or type(method.func) ~= "string" or method.func:Trim() == "" then
             return false, "Each method must have a valid 'func' field (string)"
         end
-        if not v.name or type(v.name) ~= "string" or v.name:Trim() == "" then
+        if not method.name or type(method.name) ~= "string" or method.name:Trim() == "" then
             return false, "Each method must have a valid 'name' field (non-empty string)"
         end
-        if v.enabled ~= nil and type(v.enabled) ~= "boolean" then
+        if method.enabled ~= nil and type(method.enabled) ~= "boolean" then
             return false, "Method 'enabled' field must be boolean or nil"
         end
+
+        table.insert(normalized, method)
         count = count + 1
     end
 
-    return count > 0, "Valid methods with " .. count .. " methods"
+    return count > 0, "Valid methods with " .. count .. " methods", normalized
 end
 
 function RARELOAD.AntiStuckData.SaveMethods(methodsOverride)
     local currentMethods = methodsOverride or RARELOAD.AntiStuckData.GetMethods()
-    local isValid, message = validateMethods(currentMethods)
+    local isValid, message, normalizedMethods = validateMethods(currentMethods)
     if not isValid then
         print("[RARELOAD] Error: Invalid methods data - " .. message)
         notification.AddLegacy("Methods validation failed: " .. message, NOTIFY_ERROR, 5)
         return false
     end
+
+    currentMethods = normalizedMethods or currentMethods
 
     print("[RARELOAD] Methods validation passed: " .. message)
 

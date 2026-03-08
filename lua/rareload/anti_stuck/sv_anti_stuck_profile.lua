@@ -11,6 +11,46 @@ AntiStuck.ProfileSystem = AntiStuck.ProfileSystem or {
 }
 local PS = AntiStuck.ProfileSystem
 
+local function NormalizeMethodKey(str)
+    if type(str) ~= "string" then return nil end
+    return string.lower(string.gsub(str, "[^%w]", ""))
+end
+
+local function BuildMethodLookup()
+    local lookup = {}
+
+    for _, m in ipairs(AntiStuck.DefaultMethods or {}) do
+        if type(m) == "table" then
+            if m.func then lookup[NormalizeMethodKey(m.func)] = { func = m.func, name = m.name or m.func } end
+            if m.name then lookup[NormalizeMethodKey(m.name)] = { func = m.func or m.name, name = m.name } end
+        end
+    end
+
+    for funcName, _ in pairs(AntiStuck.methodRegistry or {}) do
+        local key = NormalizeMethodKey(funcName)
+        if key and not lookup[key] then
+            lookup[key] = { func = funcName, name = funcName }
+        end
+    end
+
+    return lookup
+end
+
+local function NormalizeProfileMethod(method, lookup)
+    if type(method) ~= "table" then return nil end
+
+    local candidate = method.func or method.methodFunc or method.id or method.method or method.name
+    local key = NormalizeMethodKey(candidate)
+    local resolved = key and lookup[key] or nil
+
+    local normalized = table.Copy(method)
+    normalized.func = normalized.func or (resolved and resolved.func) or candidate
+    normalized.name = normalized.name or (resolved and resolved.name) or tostring(normalized.func or "")
+    if normalized.enabled == nil then normalized.enabled = true end
+
+    return normalized
+end
+
 function PS.LoadCurrentProfile()
     if file.Exists(PS.selectedProfileFile, "DATA") then
         local content = file.Read(PS.selectedProfileFile, "DATA")
@@ -45,9 +85,16 @@ function PS.ValidateProfileData(profileData)
         if type(profileData.methods) ~= "table" then
             return false, "methods must be a table"
         end
+
+        local lookup = BuildMethodLookup()
         for k, v in pairs(profileData.methods) do
             if type(k) ~= "number" then return false, "methods should be an array, not an object" end
-            if type(v) ~= "table" or not v.func or not v.name then
+
+            local normalized = NormalizeProfileMethod(v, lookup)
+            profileData.methods[k] = normalized
+
+            if type(normalized) ~= "table" or type(normalized.func) ~= "string" or normalized.func == "" or
+                type(normalized.name) ~= "string" or normalized.name == "" then
                 return false, "methods array contains invalid methods objects"
             end
         end
@@ -91,13 +138,18 @@ function PS.GetCurrentProfileMethods()
     PS.LoadCurrentProfile()
     local profile = PS.LoadProfile(PS.currentProfile)
     if profile and profile.methods then
+        local lookup = BuildMethodLookup()
         local valid = true
-        for _, v in ipairs(profile.methods) do
-            if type(v) ~= "table" or not v.func or not v.name then
+
+        for i, v in ipairs(profile.methods) do
+            local normalized = NormalizeProfileMethod(v, lookup)
+            profile.methods[i] = normalized
+            if type(normalized) ~= "table" or not normalized.func or not normalized.name then
                 valid = false
                 break
             end
         end
+
         if valid then
             return RareloadDeepCopyMethods(profile.methods)
         end
@@ -136,7 +188,7 @@ function PS.EnsureDefaultProfile()
             shared = false,
             mapSpecific = false,
             map = "",
-            version = "2.2",
+            version = "3.0",
             settings = RareloadDeepCopySettings(AntiStuck.DefaultSettings),
             methods = RareloadDeepCopyMethods(AntiStuck.DefaultMethods)
         }

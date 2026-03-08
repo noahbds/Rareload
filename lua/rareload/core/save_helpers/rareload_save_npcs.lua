@@ -6,7 +6,7 @@ RARELOAD.NPCSaver = RARELOAD.NPCSaver or {}
 
 local CONFIG = {
     DEBUG = true,
-    SAVE_PLAYER_OWNED_ONLY = false,
+    SAVE_PLAYER_OWNED_ONLY = true,
     MAX_NPCS_TO_SAVE = 500,
     SAVE_NPC_NPC_RELATIONS = true,
     MAX_RELATION_NPCS = 128,
@@ -36,7 +36,7 @@ local function GetEntityOwner(ent)
     -- Use our ownership system first
     if RARELOAD.Ownership and RARELOAD.Ownership.GetOwner then
         local owner = RARELOAD.Ownership.GetOwner(ent)
-        if IsValid(owner) and owner:IsPlayer() then
+        if IsValid(owner) then
             return owner
         end
     end
@@ -54,6 +54,27 @@ local function GetEntityOwner(ent)
     end
     
     return nil
+end
+
+local function IsNPCOwnedByPlayer(npc, ply)
+    if not IsValid(npc) or not IsValid(ply) then return false end
+
+    if RARELOAD.Ownership and RARELOAD.Ownership.IsOwner then
+        local ok, isOwner = pcall(RARELOAD.Ownership.IsOwner, npc, ply)
+        if ok and isOwner then
+            return true
+        end
+    end
+
+    if RARELOAD.Ownership and RARELOAD.Ownership.GetOwnerSteamID then
+        local ok, sid = pcall(RARELOAD.Ownership.GetOwnerSteamID, npc)
+        if ok and isstring(sid) and sid ~= "" and sid == ply:SteamID() then
+            return true
+        end
+    end
+
+    local owner = GetEntityOwner(npc)
+    return IsValid(owner) and owner == ply
 end
 
 -- Shared deterministic helpers (load once)
@@ -131,10 +152,7 @@ return function(ply)
         local npc = allNPCs[i]
         if not IsValid(npc) then continue end
 
-        local owner = GetEntityOwner(npc)
-        local isOwnerPlayer = false
-        if owner and owner.IsPlayer and owner:IsPlayer() then isOwnerPlayer = true end
-        local shouldSave = isOwnerPlayer or npc.SpawnedByRareload or not CONFIG.SAVE_PLAYER_OWNED_ONLY
+        local shouldSave = IsNPCOwnedByPlayer(npc, ply) or not CONFIG.SAVE_PLAYER_OWNED_ONLY
         if not shouldSave then continue end
 
         if not npc.RareloadNPCID then

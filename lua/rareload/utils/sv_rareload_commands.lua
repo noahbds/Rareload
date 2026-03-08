@@ -12,7 +12,6 @@ concommand.Add("save_position", load_command("save_position"))
 concommand.Add("save_bot_position", load_command("save_bot_position"))
 concommand.Add("bot_spawn_entity", load_command("bot_spawn_entity"))
 concommand.Add("check_admin_status", load_command("check_admin_status"))
-concommand.Add("rareload_admin", load_command("rareload_admin"))
 
 concommand.Add("rareload_test_antistuck", function(ply, cmd, args)
     if IsValid(ply) and not ply:IsAdmin() then

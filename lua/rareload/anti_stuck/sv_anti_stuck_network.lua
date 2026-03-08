@@ -52,19 +52,43 @@ function AntiStuck.SetupNetworking()
         local newMethods = net.ReadTable()
         if type(newMethods) ~= "table" or #newMethods == 0 then return end
 
-        local processed = {}
-        for i, method in ipairs(newMethods) do
-            if type(method) == "table" and method.func and method.name then
-                table.insert(processed, {
-                    name = method.name,
-                    description = method.description,
-                    enabled = method.enabled ~= false,
-                    priority = (i * 10),
-                    timeout = tonumber(method.timeout) or 1.0,
-                    func = method.func
-                })
+        local methodLookup = {}
+        for _, dm in ipairs(AntiStuck.DefaultMethods or {}) do
+            if dm.func then
+                methodLookup[string.lower(string.gsub(dm.func, "[^%w]", ""))] = dm
+            end
+            if dm.name then
+                methodLookup[string.lower(string.gsub(dm.name, "[^%w]", ""))] = dm
             end
         end
+
+        local processed = {}
+        for i, method in ipairs(newMethods) do
+            if type(method) == "table" then
+                local candidate = method.func or method.methodFunc or method.id or method.method or method.name
+                local key = type(candidate) == "string" and string.lower(string.gsub(candidate, "[^%w]", "")) or nil
+                local resolved = key and methodLookup[key] or nil
+                local funcName = method.func or (resolved and resolved.func) or candidate
+                local displayName = method.name or (resolved and resolved.name) or tostring(funcName or "")
+
+                if type(funcName) == "string" and funcName ~= "" and type(displayName) == "string" and displayName ~= "" then
+                    table.insert(processed, {
+                        name = displayName,
+                        description = method.description or (resolved and resolved.description) or "",
+                        enabled = method.enabled ~= false,
+                        priority = (i * 10),
+                        timeout = tonumber(method.timeout) or tonumber(resolved and resolved.timeout) or 1.0,
+                        func = funcName
+                    })
+                end
+            end
+        end
+
+        if #processed == 0 then
+            ply:ChatPrint("[RARELOAD] Error: Invalid methods data - no valid methods after normalization")
+            return
+        end
+
         AntiStuck.methods = processed
         AntiStuck.SaveMethods()
         if AntiStuck.InvalidateResolverCache then AntiStuck.InvalidateResolverCache() end

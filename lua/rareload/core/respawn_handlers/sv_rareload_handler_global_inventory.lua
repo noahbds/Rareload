@@ -4,17 +4,21 @@ RARELOAD.settings = RARELOAD.settings or {}
 RARELOAD.globalInventory = RARELOAD.globalInventory or {}
 
 function RARELOAD.RestoreGlobalInventory(ply)
+    if RARELOAD.CheckPermission and (not RARELOAD.CheckPermission(ply, "KEEP_INVENTORY") or not RARELOAD.CheckPermission(ply, "RETAIN_GLOBAL_INVENTORY")) then
+        return false
+    end
+    local debugEnabled = RARELOAD.GetPlayerSetting(ply, "debugEnabled", false)
     local steamID = ply:SteamID()
     local globalInventoryData = RARELOAD.globalInventory[steamID]
 
     if not globalInventoryData or not globalInventoryData.weapons then
-        if RARELOAD.settings.debugEnabled then
+        if debugEnabled then
             print("[RARELOAD DEBUG] No global inventory found for player: " .. ply:Nick() .. " (" .. steamID .. ")")
         end
         return
     end
 
-    if RARELOAD.settings.stripBeforeRestoring then
+    if RARELOAD.GetPlayerSetting(ply, "stripBeforeRestoring", false) then
         ply:StripWeapons()
     end
 
@@ -42,11 +46,11 @@ function RARELOAD.RestoreGlobalInventory(ply)
                 ply:Give(weaponClass)
                 if ply:HasWeapon(weaponClass) then
                     restoredCount = restoredCount + 1
-                    if RARELOAD.settings.debugEnabled then
+                    if debugEnabled then
                         debugFlags.givenWeapons = true
                         table.insert(debugMessages.givenWeapons, "Successfully gave weapon: " .. weaponClass)
                     end
-                elseif RARELOAD.settings.debugEnabled then
+                elseif debugEnabled then
                     if weaponInfo then
                         debugFlags.adminOnly = true
                         table.insert(debugMessages.adminOnly,
@@ -64,11 +68,11 @@ function RARELOAD.RestoreGlobalInventory(ply)
                 if ply:HasWeapon(weaponClass) then
                     restoredCount = restoredCount + 1
 
-                    if RARELOAD.settings.debugEnabled then
+                    if debugEnabled then
                         debugFlags.givenWeapons = true
                         table.insert(debugMessages.givenWeapons, "Successfully gave weapon: " .. weaponClass)
                     end
-                elseif RARELOAD.settings.debugEnabled then
+                elseif debugEnabled then
                     debugFlags.givenWeapons = true
                     table.insert(debugMessages.givenWeapons, "Failed to give weapon: " .. weaponClass)
 
@@ -83,21 +87,21 @@ function RARELOAD.RestoreGlobalInventory(ply)
                     }
                     table.Add(debugMessages.givenWeapons, weaponDetails)
                 end
-            elseif RARELOAD.settings.debugEnabled then
+            elseif debugEnabled then
                 table.insert(debugMessages.givenWeapons, "Player already has weapon: " .. weaponClass)
             end
         end
     end
 
 
-    if RARELOAD.settings.debugEnabled then
+    if debugEnabled then
         if RARELOAD.Debug and RARELOAD.Debug.LogWeaponMessages then
             RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
         else
             if debugFlags.adminOnly then
                 print("[RARELOAD DEBUG] Admin-only weapons not given: " .. table.concat(debugMessages.adminOnly, ", "))
             end
-            if debugFlags.notRegistered and not RARELOAD.settings.retainInventory then
+            if debugFlags.notRegistered and not RARELOAD.GetPlayerSetting(ply, "retainInventory", true) then
                 print("[RARELOAD DEBUG] Unregistered weapons: " .. table.concat(debugMessages.notRegistered, ", "))
             end
             if debugFlags.givenWeapons then
@@ -114,7 +118,7 @@ function RARELOAD.RestoreGlobalInventory(ply)
             if IsValid(ply) and ply:HasWeapon(globalInventoryData.activeWeapon) then
                 ply:SelectWeapon(globalInventoryData.activeWeapon)
 
-                if RARELOAD.settings.debugEnabled then
+                if RARELOAD.GetPlayerSetting(ply, "debugEnabled", false) then
                     print("[RARELOAD DEBUG] Selected active weapon: " .. globalInventoryData.activeWeapon)
                 end
             end
@@ -126,7 +130,9 @@ end
 
 hook.Add("PlayerSpawn", "RARELOAD_RestoreGlobalInventory", function(ply)
     timer.Simple(0.5, function()
-        if not IsValid(ply) or not RARELOAD.settings.retainGlobalInventory then return end
+        if not IsValid(ply) then return end
+        if RARELOAD.CheckPermission and (not RARELOAD.CheckPermission(ply, "KEEP_INVENTORY") or not RARELOAD.CheckPermission(ply, "RETAIN_GLOBAL_INVENTORY")) then return end
+        if not RARELOAD.GetPlayerSetting(ply, "retainGlobalInventory", false) then return end
         RARELOAD._lastGlobalRestore = RARELOAD._lastGlobalRestore or {}
         local sid = ply:SteamID()
         local now = CurTime()

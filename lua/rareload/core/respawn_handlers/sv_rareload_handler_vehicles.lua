@@ -7,7 +7,7 @@ RARELOAD.settings = RARELOAD.settings or {}
 
 -- FIX IN PROGRESS
 -- This function is called when the addon need to restore vehicles from a save file. Allow to restore vehicles, their health, color, etc.
-function RARELOAD.RestoreVehicles(savedInfo)
+function RARELOAD.RestoreVehicles(savedInfo, requestingPlayer)
     if not savedInfo or not savedInfo.vehicles then return end
     timer.Simple(1, function()
         local vehicleCount = 0
@@ -64,7 +64,9 @@ function RARELOAD.RestoreVehicles(savedInfo)
                     ---@diagnostic disable-next-line: inject-field
                     veh.SpawnedByRareload = true
 
-                    if vehicleData.owner then
+                    if IsValid(requestingPlayer) and RARELOAD.Ownership then
+                        RARELOAD.Ownership.SetOwner(veh, requestingPlayer)
+                    elseif vehicleData.owner then
                         for _, p in ipairs(player.GetAll()) do
                             if p:SteamID() == vehicleData.owner then
                                 if RARELOAD.Ownership then

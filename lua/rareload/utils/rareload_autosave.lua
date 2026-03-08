@@ -10,17 +10,20 @@ if SERVER then
         lastSave = {},
         jitter = {},
         lastMoveNotify = {},
-        timerName = "Rareload_AutoSaveTick",
-        cachedEnabled = nil,
-        cachedInterval = nil
+        timerName = "Rareload_AutoSaveTick"
     }
 
     local function getSteamID(ply)
         return IsValid(ply) and ply:SteamID() or nil
     end
 
-    local function settings()
-        return RARELOAD and RARELOAD.settings or {}
+    local function getSetting(ply, key, default)
+        if RARELOAD and RARELOAD.GetPlayerSetting and IsValid(ply) then
+            return RARELOAD.GetPlayerSetting(ply, key, default)
+        end
+        local s = RARELOAD and RARELOAD.settings or {}
+        if s[key] ~= nil then return s[key] end
+        return default
     end
 
     local function now()
@@ -68,9 +71,9 @@ if SERVER then
             math.abs(ang.r - lastAng.r)
         )
 
-        local s = settings()
         local moveThreshold = 24
-        local angleThreshold = math.max(1, math.min(180, tonumber(s.angleTolerance) or 10))
+        local angleTolerance = tonumber(getSetting(ply, "angleTolerance", 10)) or 10
+        local angleThreshold = math.max(1, math.min(180, angleTolerance))
 
         return dist >= moveThreshold or angDelta >= angleThreshold
     end
@@ -101,12 +104,11 @@ if SERVER then
 
     local function trySave(ply)
         if not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() then return end
-        local s = settings()
-        if not s.addonEnabled or not s.autoSaveEnabled then return end
+        if not getSetting(ply, "addonEnabled", true) or not getSetting(ply, "autoSaveEnabled", false) then return end
 
         local sid = getSteamID(ply)
         if not sid then return end
-        local interval = math.max(tonumber(s.autoSaveInterval) or 5, 1)
+        local interval = math.max(tonumber(getSetting(ply, "autoSaveInterval", 5)) or 5, 1)
         local oneSecMode = interval <= 1
         local t = now()
         local lastMove = Autosave.lastMove[sid] or (t - interval)
@@ -142,18 +144,17 @@ if SERVER then
             net.WriteFloat(t)
             net.Send(ply)
             syncForPlayer(ply)
-            if s.debugEnabled then
+            if getSetting(ply, "debugEnabled", false) then
                 print(string.format("[RARELOAD DEBUG] Auto-saved %s at t=%.2f", ply:Nick(), t))
             end
-        elseif err and s.debugEnabled then
+        elseif err and getSetting(ply, "debugEnabled", false) then
             print("[RARELOAD DEBUG] Auto-save failed: " .. tostring(err))
         end
     end
 
     hook.Add("SetupMove", "Rareload_AutoSave_TrackMovement", function(ply, mv, cmd)
         if not IsValid(ply) or not ply:IsPlayer() then return end
-        local s = settings()
-        if not s.addonEnabled or not s.autoSaveEnabled then return end
+        if not getSetting(ply, "addonEnabled", true) or not getSetting(ply, "autoSaveEnabled", false) then return end
 
         local speed = mv:GetVelocity():Length()
         local moved = speed > 10 or mv:KeyDown(IN_FORWARD) or mv:KeyDown(IN_BACK) or mv:KeyDown(IN_MOVELEFT)
@@ -193,43 +194,7 @@ if SERVER then
         timer.Simple(1, function() if IsValid(ply) then syncForPlayer(ply) end end)
     end)
 
-    local function handleSettingsChange()
-        local s = settings()
-        local enabled = not not (s.addonEnabled and s.autoSaveEnabled)
-        local interval = math.max(tonumber(s.autoSaveInterval) or 5, 1)
-
-        local changed = false
-        if Autosave.cachedEnabled == nil then
-            Autosave.cachedEnabled = enabled
-        elseif Autosave.cachedEnabled ~= enabled then
-            Autosave.cachedEnabled = enabled
-            changed = true
-        end
-
-        if Autosave.cachedInterval == nil then
-            Autosave.cachedInterval = interval
-        elseif Autosave.cachedInterval ~= interval then
-            Autosave.cachedInterval = interval
-            changed = true
-        end
-
-        if changed and enabled then
-            local t = now()
-            for _, ply in ipairs(player.GetAll()) do
-                local sid = getSteamID(ply)
-                if sid then
-                    Autosave.lastSave[sid] = t
-                    Autosave.jitter[sid] = nil
-                    syncForPlayer(ply)
-                end
-            end
-        end
-    end
-
     timer.Create(Autosave.timerName, 0.35, 0, function()
-        handleSettingsChange()
-        local s = settings()
-        if not s.addonEnabled or not s.autoSaveEnabled then return end
         for _, ply in ipairs(player.GetAll()) do
             trySave(ply)
         end

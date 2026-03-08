@@ -205,6 +205,27 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
         table.insert(data.basic, { "Model", SavedInfo.playermodel, Color(200, 200, 200) })
     end
     table.insert(data.basic, { "Map", mapName, Color(180, 180, 200) })
+    
+    -- Summary of saved data
+    if lodLevel <= 2 then
+        local savedItems = {}
+        if SavedInfo.health then table.insert(savedItems, "Health") end
+        if SavedInfo.armor then table.insert(savedItems, "Armor") end
+        if SavedInfo.inventory and #SavedInfo.inventory > 0 then table.insert(savedItems, "Inventory") end
+        if SavedInfo.ammo then table.insert(savedItems, "Ammo") end
+        if SavedInfo.playerStates then table.insert(savedItems, "States") end
+        if SavedInfo.vehicles and #SavedInfo.vehicles > 0 then table.insert(savedItems, "Vehicles") end
+        if SavedInfo.vehicleState then table.insert(savedItems, "VehicleState") end
+        
+        local savedEntitiesCount = (SnapshotUtils.GetSummary(SavedInfo.entities, { category = "entity" }) or {})
+        local savedNPCsCount = (SnapshotUtils.GetSummary(SavedInfo.npcs, { category = "npc" }) or {})
+        if #savedEntitiesCount > 0 then table.insert(savedItems, "Entities") end
+        if #savedNPCsCount > 0 then table.insert(savedItems, "NPCs") end
+        
+        if #savedItems > 0 then
+            table.insert(data.basic, { "Saved Data", table.concat(savedItems, ", "), Color(150, 255, 150) })
+        end
+    end
 
     if lodLevel <= 2 then
         if SavedInfo.pos then
@@ -368,15 +389,49 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
         entryColor = Color(200, 255, 200)
     })
 
+    -- Player Health and Armor
     table.insert(data.stats, { "Health", math.floor(SavedInfo.health or 0), Color(255, 180, 180) })
     table.insert(data.stats, { "Armor", math.floor(SavedInfo.armor or 0), Color(180, 180, 255) })
 
-    if lodLevel <= 2 and savedNPCs and #savedNPCs > 0 then
-        local totalHealth = 0
-        for i = 1, math.min(#savedNPCs, 50) do
-            totalHealth = totalHealth + (savedNPCs[i].health or 0)
+    -- Player States (godmode, notarget, frozen, noclip)
+    if SavedInfo.playerStates and type(SavedInfo.playerStates) == "table" then
+        local states = {}
+        if SavedInfo.playerStates.godmode then table.insert(states, "God") end
+        if SavedInfo.playerStates.notarget then table.insert(states, "NoTarget") end
+        if SavedInfo.playerStates.frozen then table.insert(states, "Frozen") end
+        if SavedInfo.playerStates.noclip then table.insert(states, "Noclip") end
+        
+        if #states > 0 then
+            table.insert(data.stats, { "Player States", table.concat(states, ", "), Color(255, 215, 0) })
         end
-        table.insert(data.stats, { "Total NPC Health", math.floor(totalHealth), Color(200, 255, 200) })
+    end
+
+    -- Total Ammo Count
+    if lodLevel <= 2 and SavedInfo.ammo and type(SavedInfo.ammo) == "table" then
+        local totalAmmo = 0
+        local ammoTypes = 0
+        for weaponClass, ammoData in pairs(SavedInfo.ammo) do
+            if ammoData.primary and ammoData.primary > 0 then
+                totalAmmo = totalAmmo + ammoData.primary
+                ammoTypes = ammoTypes + 1
+            end
+            if ammoData.clip1 and ammoData.clip1 > 0 then
+                totalAmmo = totalAmmo + ammoData.clip1
+            end
+        end
+        if totalAmmo > 0 then
+            table.insert(data.stats, { "Total Ammo", totalAmmo .. " (" .. ammoTypes .. " types)", Color(255, 200, 100) })
+        end
+    end
+
+    -- Vehicle Information
+    if SavedInfo.vehicles and type(SavedInfo.vehicles) == "table" and #SavedInfo.vehicles > 0 then
+        table.insert(data.stats, { "Saved Vehicles", #SavedInfo.vehicles, Color(200, 200, 255) })
+    end
+
+    if SavedInfo.vehicleState and type(SavedInfo.vehicleState) == "table" then
+        local vehClass = SavedInfo.vehicleState.class or "Unknown"
+        table.insert(data.stats, { "In Vehicle", vehClass, Color(200, 200, 255) })
     end
 
     return data

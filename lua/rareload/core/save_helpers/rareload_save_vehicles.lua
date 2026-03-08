@@ -1,3 +1,5 @@
+---@diagnostic disable: undefined-field
+
 -- Include ownership system
 if not RARELOAD or not RARELOAD.Ownership then
     include("rareload/utils/rareload_ownership.lua")
@@ -7,8 +9,25 @@ return function(ply)
     local vehicles = {}
     for _, vehicle in ipairs(ents.FindByClass("prop_vehicle_*")) do
         if IsValid(vehicle) then
-            local owner = RARELOAD.Ownership.GetOwner(vehicle)
-            if (IsValid(owner) and owner:IsPlayer()) or vehicle.SpawnedByRareload then
+            local isOwnedByPlayer = false
+            if RARELOAD.Ownership and RARELOAD.Ownership.IsOwner then
+                local ok, owned = pcall(RARELOAD.Ownership.IsOwner, vehicle, ply)
+                isOwnedByPlayer = ok and owned or false
+            end
+
+            local ownerSteamID = nil
+
+            if RARELOAD.Ownership and RARELOAD.Ownership.GetOwnerSteamID then
+                local ok, sid = pcall(RARELOAD.Ownership.GetOwnerSteamID, vehicle)
+                if ok and isstring(sid) and sid ~= "" then
+                    ownerSteamID = sid
+                    if not isOwnedByPlayer and IsValid(ply) and sid == ply:SteamID() then
+                        isOwnedByPlayer = true
+                    end
+                end
+            end
+
+            if isOwnedByPlayer then
                 local vehicleData = {
                     class = vehicle:GetClass(),
                     model = vehicle:GetModel(),
@@ -19,7 +38,7 @@ return function(ply)
                     bodygroups = {},
                     color = vehicle:GetColor(),
                     frozen = IsValid(vehicle:GetPhysicsObject()) and not vehicle:GetPhysicsObject():IsMotionEnabled(),
-                    owner = IsValid(owner) and owner:SteamID() or nil
+                    owner = ownerSteamID
                 }
                 for i = 0, vehicle:GetNumBodyGroups() - 1 do
                     vehicleData.bodygroups[i] = vehicle:GetBodygroup(i)

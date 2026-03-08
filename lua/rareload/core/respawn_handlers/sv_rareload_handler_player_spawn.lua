@@ -12,6 +12,13 @@ end
 function RARELOAD.HandlePlayerSpawn(ply)
     if not IsValid(ply) then return end
 
+    local function hasPerm(permName)
+        if RARELOAD.CheckPermission then
+            return RARELOAD.CheckPermission(ply, permName)
+        end
+        return true
+    end
+
     -- Ensure player settings are loaded before any spawn decisions.
     if RARELOAD.PlayerSettings and RARELOAD.PlayerSettings.Load then
         RARELOAD.PlayerSettings.Load(ply:SteamID())
@@ -19,15 +26,22 @@ function RARELOAD.HandlePlayerSpawn(ply)
 
     -- Check if addon is enabled for this player
     if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then return end
-    RARELOAD.playerPositions = RARELOAD.playerPositions or {}
-    do
-        local mapName = game.GetMap()
-        local hasAnyForMap = RARELOAD.playerPositions[mapName]
-            and next(RARELOAD.playerPositions[mapName]) ~= nil
-        if not hasAnyForMap and RARELOAD.LoadPlayerPositions then
-            RARELOAD.LoadPlayerPositions()
-        end
+    if not hasPerm("LOAD_POSITION") or not hasPerm("RARELOAD_SPAWN") then
+        return
     end
+    RARELOAD.playerPositions = RARELOAD.playerPositions or {}
+    
+    -- Load player positions for this specific player if not already loaded
+    local mapName = game.GetMap()
+    local steamID = ply:SteamID()
+    local hasThisPlayerData = RARELOAD.playerPositions[mapName] 
+        and RARELOAD.playerPositions[mapName][steamID] ~= nil
+    
+    if not hasThisPlayerData and RARELOAD.LoadPlayerPositions then
+        -- Load all player positions (will load from disk if not in memory)
+        RARELOAD.LoadPlayerPositions()
+    end
+    
     if not RARELOAD.AntiStuck then
         include("rareload/anti_stuck/sv_anti_stuck_init.lua")
         if RARELOAD.AntiStuck and RARELOAD.AntiStuck.Initialize then
@@ -72,7 +86,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
             hook.Remove("PlayerTick", "RARELOAD_CheckMovement_" .. ply:EntIndex())
         end
     end)
-    if not Settings.addonEnabled then
+    if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then
         for _, weapon in ipairs({
             "weapon_crowbar", "weapon_physgun", "weapon_physcannon", "weapon_pistol", "weapon_357",
             "weapon_smg1", "weapon_ar2", "weapon_shotgun", "weapon_crossbow", "weapon_frag", "weapon_rpg",
@@ -83,7 +97,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
         if DebugEnabled then print("[RARELOAD DEBUG] Addon disabled, default weapons given.") end
         return
     end
-    if Settings.nocustomrespawnatdeath and ply.wasKilled then
+    if RARELOAD.GetPlayerSetting(ply, "nocustomrespawnatdeath", false) and ply.wasKilled then
         ply.wasKilled = false
         if DebugEnabled then print("[RARELOAD DEBUG] Player was killed, resetting flag.") end
         return
@@ -95,7 +109,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
     end
     local moveType = tonumber(SavedInfo.moveType) or MOVETYPE_WALK
 
-    if Settings.spawnModeEnabled then
+    if RARELOAD.GetPlayerSetting(ply, "spawnModeEnabled", true) then
         if not RARELOAD.AntiStuck then
             include("rareload/anti_stuck/sv_anti_stuck_init.lua")
             if RARELOAD.AntiStuck.Initialize then
@@ -211,7 +225,10 @@ function RARELOAD.HandlePlayerSpawn(ply)
             print("[RARELOAD DEBUG] Anti-stuck disabled; used saved position and angles directly")
         end
     end
-    if RARELOAD.GetPlayerSetting(ply, "retainGlobalInventory") then
+    local canRestoreInventory = hasPerm("KEEP_INVENTORY") and hasPerm("RETAIN_INVENTORY")
+    local canRestoreGlobalInventory = hasPerm("KEEP_INVENTORY") and hasPerm("RETAIN_GLOBAL_INVENTORY")
+
+    if canRestoreGlobalInventory and RARELOAD.GetPlayerSetting(ply, "retainGlobalInventory") then
         timer.Simple(0.5, function()
             if IsValid(ply) then
                 RARELOAD.RestoreGlobalInventory(ply)
@@ -220,19 +237,20 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 end
             end
         end)
-    elseif RARELOAD.GetPlayerSetting(ply, "retainInventory") and SavedInfo.inventory then
+    elseif canRestoreInventory and RARELOAD.GetPlayerSetting(ply, "retainInventory") and SavedInfo.inventory then
         RARELOAD.RestoreInventory(ply, SavedInfo)
         if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
             print("[RARELOAD DEBUG] Using map-specific inventory (global inventory disabled)")
         end
     end
-    if Settings.retainHealthArmor then
+    if hasPerm("RETAIN_HEALTH_ARMOR") and RARELOAD.GetPlayerSetting(ply, "retainHealthArmor", true) then
         timer.Simple(0.5, function()
+            if not IsValid(ply) then return end
             ply:SetHealth(SavedInfo.health or ply:GetMaxHealth())
             ply:SetArmor(SavedInfo.armor or 0)
         end)
     end
-    if Settings.retainAmmo and SavedInfo.ammo then
+    if hasPerm("RETAIN_AMMO") and RARELOAD.GetPlayerSetting(ply, "retainAmmo", true) and SavedInfo.ammo then
         timer.Simple(1, function()
             if not IsValid(ply) then return end
             for weaponClass, ammoData in pairs(SavedInfo.ammo) do
@@ -254,10 +272,10 @@ function RARELOAD.HandlePlayerSpawn(ply)
             RARELOAD.Debug.FlushClipRestoreBuffer()
         end)
     end
-    if Settings.retainVehicles and SavedInfo.vehicles then
-        RARELOAD.RestoreVehicles(SavedInfo)
+    if RARELOAD.GetPlayerSetting(ply, "retainVehicles", false) and SavedInfo.vehicles then
+        RARELOAD.RestoreVehicles(SavedInfo, ply)
     end
-    if Settings.retainVehicleState and SavedInfo.vehicleState then
+    if RARELOAD.GetPlayerSetting(ply, "retainVehicleState", false) and SavedInfo.vehicleState then
         local vehicleData = SavedInfo.vehicleState
         timer.Simple(1.5, function()
             if not IsValid(ply) then return end
@@ -273,10 +291,10 @@ function RARELOAD.HandlePlayerSpawn(ply)
             end
         end)
     end
-    if Settings.retainMapEntities and SavedInfo.entities then
+    if RARELOAD.GetPlayerSetting(ply, "retainMapEntities", true) and SavedInfo.entities then
         local playerPos = SavedInfo.pos
-        local spawnedCloseEntities = RARELOAD.RestoreEntities(playerPos, SavedInfo)
-        if spawnedCloseEntities and Settings.spawnModeEnabled then
+        local spawnedCloseEntities = RARELOAD.RestoreEntities(playerPos, SavedInfo, ply)
+        if spawnedCloseEntities and RARELOAD.GetPlayerSetting(ply, "spawnModeEnabled", true) then
             timer.Simple(0.05, function()
                 if IsValid(ply) then
                     SetPlayerPositionAndEyeAngles(ply, SavedInfo)
@@ -284,12 +302,12 @@ function RARELOAD.HandlePlayerSpawn(ply)
             end)
         end
     end
-    if Settings.retainMapNPCs and HasSnapshotData(SavedInfo.npcs) then
-        RARELOAD.RestoreNPCs(SavedInfo)
+    if RARELOAD.GetPlayerSetting(ply, "retainMapNPCs", true) and HasSnapshotData(SavedInfo.npcs) then
+        RARELOAD.RestoreNPCs(SavedInfo, ply)
     end
     
     -- NEW - Restore player states (godmode, notarget, etc.)
-    if Settings.retainPlayerStates and SavedInfo.playerStates then
+    if hasPerm("RETAIN_PLAYER_STATES") and RARELOAD.GetPlayerSetting(ply, "retainPlayerStates", true) and SavedInfo.playerStates then
         timer.Simple(0.1, function()
             if not IsValid(ply) then return end
             
@@ -323,14 +341,14 @@ function RARELOAD.HandlePlayerSpawn(ply)
     end
     
     local activeWeaponToRestore = nil
-    if RARELOAD.GetPlayerSetting(ply, "retainGlobalInventory") then
+    if canRestoreGlobalInventory and RARELOAD.GetPlayerSetting(ply, "retainGlobalInventory") then
         if RARELOAD.globalInventory and RARELOAD.globalInventory[ply:SteamID()] then
             activeWeaponToRestore = RARELOAD.globalInventory[ply:SteamID()].activeWeapon
             if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
                 RARELOAD.Debug.SendToPlayer(ply, "[RARELOAD DEBUG] Using global inventory active weapon: " .. tostring(activeWeaponToRestore))
             end
         end
-    elseif SavedInfo.activeWeapon then
+    elseif canRestoreInventory and SavedInfo.activeWeapon then
         activeWeaponToRestore = SavedInfo.activeWeapon
         if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
             RARELOAD.Debug.SendToPlayer(ply, "[RARELOAD DEBUG] Using saved position active weapon: " .. tostring(activeWeaponToRestore))
