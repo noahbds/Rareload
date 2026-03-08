@@ -200,7 +200,9 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         if entityBucket then
             playerData.entities = entityBucket
         else
-            playerData.entities = nil
+            -- Keep the previous snapshot when capture is unavailable to avoid
+            -- wiping entity saves during transient states (e.g. map cleanup).
+            playerData.entities = oldData and oldData.entities or nil
         end
     end
 
@@ -209,7 +211,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         if npcBucket then
             playerData.npcs = npcBucket
         else
-            playerData.npcs = nil
+            playerData.npcs = oldData and oldData.npcs or nil
         end
     end
 

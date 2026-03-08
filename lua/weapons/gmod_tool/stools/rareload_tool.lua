@@ -161,7 +161,7 @@ end
 function TOOL:Reload()
     local ply = self:GetOwner()
 
-    if CLIENT then return true end
+    if CLIENT then return false end -- dont shoot plz
 
     if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then
         ply:ChatPrint("[RARELOAD] The Rareload addon is disabled.")
@@ -284,7 +284,7 @@ function TOOL.BuildCPanel(panel)
         draw.SimpleText("Configuration Panel", "RareloadUI.Small", 12, h/2 + 10, RareloadUI.Theme.Colors.Text.Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         
         -- Version badge
-        draw.SimpleText("v3.0", "RareloadUI.Small", w - 12, h/2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+        draw.SimpleText("v3.1", "RareloadUI.Small", w - 12, h/2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
     end
 
     -- ═══════════════════════════════════════════════════════════════

@@ -411,8 +411,14 @@ hook.Add("PreCleanupMap", "RareloadSaveEntitiesBeforeCleanup", function()
             and RARELOAD.GetPlayerSetting(ply, "retainMapEntities", true) then
             local sid = ply:SteamID()
             local saved = saveEntities(ply)
+            local normalized = SnapshotUtils.NormalizeBucketForSave(saved)
             local pdata = RARELOAD.playerPositions[mapName][sid] or {}
-            pdata.entities = saved
+
+            -- Never clobber an existing saved snapshot with an invalid/empty capture.
+            if normalized then
+                pdata.entities = normalized
+            end
+
             RARELOAD.playerPositions[mapName][sid] = pdata
 
             if RARELOAD.SavePlayerPositionEntry then
@@ -420,7 +426,7 @@ hook.Add("PreCleanupMap", "RareloadSaveEntitiesBeforeCleanup", function()
             end
 
             if RARELOAD.GetPlayerSetting(ply, "debugEnabled", false) then
-                local summary = SnapshotUtils.GetSummary(saved, { category = "entity" }) or {}
+                local summary = SnapshotUtils.GetSummary(normalized or pdata.entities or {}, { category = "entity" }) or {}
                 print(string.format("[RARELOAD] Saved %d entities before map cleanup for %s", #summary, sid))
             end
         end
