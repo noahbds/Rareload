@@ -6,22 +6,22 @@ RARELOAD.Permissions.DEFS = {
     USE_TOOL = {
         name = "Use Toolgun",
         desc = "Can use the Rareload toolgun",
-        default = false
+        default = true
     },
     SAVE_POSITION = {
         name = "Save Position",
         desc = "Can save their position",
-        default = false
+        default = true
     },
     LOAD_POSITION = {
         name = "Load Position",
         desc = "Can load their saved position",
-        default = false
+        default = true
     },
     KEEP_INVENTORY = {
         name = "Keep Inventory",
         desc = "Can keep their inventory when reloading/dying",
-        default = false
+        default = true
     },
     MANAGE_ENTITIES = {
         name = "Manage Entities",
@@ -47,7 +47,7 @@ RARELOAD.Permissions.DEFS = {
     RARELOAD_SPAWN = {
         name = "Rareload Spawn",
         desc = "Allowed to spawn with rareload features",
-        default = false
+        default = true
     },
     DEBUG_MENU = {
         name = "Debug Menu",

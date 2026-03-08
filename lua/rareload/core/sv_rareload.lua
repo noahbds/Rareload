@@ -7,18 +7,18 @@ if SERVER then
             addonEnabled = true,
             spawnModeEnabled = true,
             autoSaveEnabled = false,
-            retainInventory = false,
+            retainInventory = true,
             retainGlobalInventory = false,
-            retainHealthArmor = false,
+            retainHealthArmor = true,
             retainPlayerStates = true,
-            retainAmmo = false,
+            retainAmmo = true,
             retainVehicleState = false, -- BROKEN
-            retainMapEntities = false,
-            retainMapNPCs = false,
+            retainMapEntities = true,
+            retainMapNPCs = true,
             retainVehicles = false, -- BROKEN
             nocustomrespawnatdeath = false,
             debugEnabled = false,
-            maxHistorySize = 10,
+            maxHistorySize = 125,
             autoSaveInterval = 5,
             angleTolerance = 100,
             maxDistance = 50
@@ -32,7 +32,6 @@ if SERVER then
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
     RARELOAD.globalInventory = RARELOAD.globalInventory or {}
     RARELOAD.lastSavedTime = 0
-    MapName = game.GetMap()
     RARELOAD.version = "2.2"
     ADDON_STATE_FILE_PATH = "rareload/addon_state.json"
     local lastDebugTime = 0
@@ -305,9 +304,10 @@ if SERVER then
     --[[ End Of Anti-Stuck System for Player Spawning ]] -------------------------------------------
     ------------------------------------------------------------------------------------------------
 
-    -- Hard to code function, probably a better way to do that
     function Save_position(ply)
-        RunConsoleCommand("save_position")
+        if IsValid(ply) and RARELOAD.SaveRespawnPoint then
+            RARELOAD.SaveRespawnPoint(ply, ply:GetPos(), ply:EyeAngles(), { whereMsg = "your location" })
+        end
     end
 
     -- Convert eye angle table to string (used for 3D2D frame)
@@ -316,38 +316,28 @@ if SERVER then
     end
 
     function SyncData(ply)
-        local playerPositions = RARELOAD.playerPositions[MapName] or {}
-        local chunkSize = 100
-        for i = 1, #playerPositions, chunkSize do
-            local chunk = {}
-            for j = i, math.min(i + chunkSize - 1, #playerPositions) do
-                table.insert(chunk, playerPositions[j])
-            end
+        local mapName = game.GetMap()
+        local playerPositions = RARELOAD.playerPositions[mapName] or {}
 
-            net.Start("SyncData")
-            net.WriteTable({
-                playerPositions = chunk,
-                settings = RARELOAD.settings,
-                Phantom = RARELOAD.Phantom
-            })
-            net.Send(ply)
-        end
+        net.Start("SyncData")
+        net.WriteTable({
+            playerPositions = playerPositions,
+            settings = RARELOAD.settings,
+        })
+        net.Send(ply)
     end
 
-    -- I don't remember what this function does but it's probably important
+    -- Sends the full map-keyed positions table to clients.
     function SyncPlayerPositions(ply)
-        local playerPositions = RARELOAD.playerPositions[MapName] or {}
-        local chunkSize = 100
+        local mapName = game.GetMap()
+        local playerPositions = RARELOAD.playerPositions[mapName] or {}
 
-        for i = 1, #playerPositions, chunkSize do
-            local chunk = {}
-            for j = i, math.min(i + chunkSize - 1, #playerPositions) do
-                table.insert(chunk, playerPositions[j])
-            end
-
-            net.Start("SyncPlayerPositions")
-            net.WriteTable(chunk)
+        net.Start("SyncPlayerPositions")
+        net.WriteTable(playerPositions)
+        if IsValid(ply) then
             net.Send(ply)
+        else
+            net.Broadcast()
         end
     end
 

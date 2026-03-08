@@ -96,18 +96,18 @@ function RARELOAD.CoerceVector(pos)
     return result
 end
 
-function RARELOAD.RestoreNPCs()
-    if not SavedInfo or not istable(SavedInfo.npcs) then
+function RARELOAD.RestoreNPCs(savedInfo)
+    if not savedInfo or not istable(savedInfo.npcs) then
         if debugEnabled then
             RARELOAD.Debug.Log("INFO", "NPC Restoration Skipped", { "No NPCs to restore" })
         end
         return
     end
 
-    local snapshot = SavedInfo.npcs.__duplicator
+    local snapshot = savedInfo.npcs.__duplicator
     if not snapshot then
         if debugEnabled then
-            RARELOAD.Debug.Log("WARN", "No duplicator snapshot found in SavedInfo.npcs")
+            RARELOAD.Debug.Log("WARN", "No duplicator snapshot found in savedInfo.npcs")
         end
         return
     end
@@ -124,7 +124,7 @@ function RARELOAD.RestoreNPCs()
 
         hook.Add("InitPostEntity", "RARELOAD_RestoreNPCs_OnReady", function()
             hook.Remove("InitPostEntity", "RARELOAD_RestoreNPCs_OnReady")
-            timer.Simple(RARELOAD.settings.npcRestoreDelay or 1, RARELOAD.RestoreNPCs)
+            timer.Simple(RARELOAD.settings.npcRestoreDelay or 1, function() RARELOAD.RestoreNPCs(savedInfo) end)
         end)
         return
     end

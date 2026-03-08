@@ -122,6 +122,14 @@ local SURF_SetDrawColor = (SEDRef and SEDRef.surface_SetDrawColor) or surface.Se
 local DRAW_SimpleText   = (SEDRef and SEDRef.draw_SimpleText) or draw.SimpleText
 local DRAW_RoundedBox   = (SEDRef and SEDRef.draw_RoundedBox) or draw.RoundedBox
 
+local function IsDebugEnabled()
+    if not RARELOAD then return false end
+    if RARELOAD.MySettings and RARELOAD.MySettings.debugEnabled ~= nil then
+        return RARELOAD.MySettings.debugEnabled
+    end
+    return RARELOAD.settings and RARELOAD.settings.debugEnabled or false
+end
+
 function CalculateOptimalPanelSize(categoryContent, numCategories)
     if type(categoryContent) ~= "table" then
         return 350
@@ -376,9 +384,21 @@ end
 
 function DrawPhantomInfo(phantomData, playerPos, mapName)
     local phantom, ply = phantomData.phantom, phantomData.ply
-    if not (IsValid(phantom) and IsValid(ply)) then return end
+    if not IsValid(phantom) then return end
 
-    local steamID = ply:SteamID()
+    local steamID = phantomData.steamID or (IsValid(ply) and ply:SteamID())
+    if not steamID or steamID == "" then return end
+
+    local displayName = IsValid(ply) and ply:Nick() or ("Player " .. steamID)
+    local infoTarget = IsValid(ply) and ply or {
+        Nick = function()
+            return displayName
+        end,
+        SteamID = function()
+            return steamID
+        end
+    }
+
     local phantomPos = phantom:GetPos()
     local distanceSqr = playerPos:DistToSqr(phantomPos)
     if distanceSqr > GetPhantomDrawDistSqr() then return end
@@ -389,7 +409,7 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
         local savedInfo = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][steamID]
         local preservedCategory = PhantomInfoCache[steamID] and PhantomInfoCache[steamID].activeCategory or "basic"
         PhantomInfoCache[steamID] = {
-            data = BuildPhantomInfoData(ply, savedInfo, mapName, 1),
+            data = BuildPhantomInfoData(infoTarget, savedInfo, mapName, 1),
             expires = now + CACHE_LIFETIME,
             activeCategory = preservedCategory
         }
@@ -455,6 +475,41 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     local isFocused = PhantomInteractionState.active and PhantomInteractionState.steamID == steamID
     local isCandidate = false
 
+    -- Determine candidate state before drawing hints (SED-like behavior)
+    do
+        local eyePos2 = lpCache:EyePos()
+        local forward = lpCache:EyeAngles():Forward()
+        local panelCenter = drawPos
+        local panelNormal = (panelCenter - eyePos2):GetNormalized()
+        local right = ang:Right()
+        local up = ang:Up()
+
+        local lookAtPanel = false
+        local denom = forward:Dot(panelNormal)
+        if math.abs(denom) > 1e-3 then
+            local t = (panelCenter - eyePos2):Dot(panelNormal) / denom
+            if t > 0 then
+                local hitPos = eyePos2 + forward * t
+                local rel = hitPos - panelCenter
+                local x = rel:Dot(right)
+                local y = rel:Dot(up)
+                local halfW = (width * 0.5) * scale
+                local halfH = (panelHeight * 0.5) * scale
+                if math.abs(x) <= halfW and math.abs(y) <= halfH then
+                    lookAtPanel = true
+                end
+            end
+        end
+
+        if lookAtPanel then
+            PhantomLookingAtPanelUntil = CurTime() + 0.03
+        end
+
+        if not isFocused and lookAtPanel then
+            isCandidate = true
+        end
+    end
+
     cam.Start3D2D(drawPos, ang, scale)
 
     offsetX = -width / 2
@@ -472,7 +527,7 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
 
     surface.SetDrawColor(THEME.header.r, THEME.header.g, THEME.header.b, 245)
     surface.DrawRect(offsetX, offsetY, width, titleHeight)
-    local title = "Phantom: " .. ply:Nick()
+    local title = "Phantom: " .. displayName
     DRAW_SimpleText(title, "Trebuchet24", offsetX + 12, offsetY + titleHeight / 2, Color(240, 240, 255), TEXT_ALIGN_LEFT,
         TEXT_ALIGN_CENTER)
 
@@ -557,57 +612,29 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
     cam.End3D2D()
 
     if isFocused or isCandidate then
-        local hintY = drawPos.z + (panelHeight * scale) / 2 + 10
-        local hintPos = Vector(drawPos.x, drawPos.y, hintY)
-        local hintScale = scale * 0.8
-        cam.Start3D2D(hintPos, ang, hintScale)
-        if isFocused then
-            DRAW_SimpleText("INTERACT MODE", "Trebuchet18", 0, 0, Color(255, 235, 190), TEXT_ALIGN_CENTER,
-                TEXT_ALIGN_CENTER)
-            DRAW_SimpleText("Left/Right Tabs | Up/Down/MWheel Scroll | Shift+E Exit", "Trebuchet18", 0, 20,
-                Color(225, 225, 230), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-        elseif isCandidate then
-            DRAW_SimpleText("Shift + E to Inspect", "Trebuchet18", 0, 0, Color(160, 210, 255), TEXT_ALIGN_CENTER,
-                TEXT_ALIGN_CENTER)
-        end
-        cam.End3D2D()
-    end
+        local hintOk = pcall(function()
+            local hintY = drawPos.z + (panelHeight * scale) / 2 + 10
+            local hintPos = Vector(drawPos.x, drawPos.y, hintY)
+            local hintScale = scale * 0.8
 
-    local eyePos2 = lpCache:EyePos()
-    local forward = lpCache:EyeAngles():Forward()
-    local panelCenter = drawPos
-    local panelNormal = (panelCenter - eyePos2):GetNormalized()
-    local right = ang:Right()
-    local up = ang:Up()
-
-    local lookAtPanel = false
-    local denom = forward:Dot(panelNormal)
-    if math.abs(denom) > 1e-3 then
-        local t = (panelCenter - eyePos2):Dot(panelNormal) / denom
-        if t > 0 then
-            local hitPos = eyePos2 + forward * t
-            local rel = hitPos - panelCenter
-            local x = rel:Dot(right)
-            local y = rel:Dot(up)
-            local halfW = (width * 0.5) * scale
-            local halfH = (panelHeight * 0.5) * scale
-            if math.abs(x) <= halfW and math.abs(y) <= halfH then
-                lookAtPanel = true
+            cam.Start3D2D(hintPos, ang, hintScale)
+            if isFocused then
+                DRAW_SimpleText("INTERACT MODE", "Trebuchet18", 0, 0, Color(255, 235, 190), TEXT_ALIGN_CENTER,
+                    TEXT_ALIGN_CENTER)
+                DRAW_SimpleText("Left/Right Tabs | Up/Down/MWheel Scroll | Shift+E Exit", "Trebuchet18",
+                    0, 20, Color(225, 225, 230), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            elseif isCandidate then
+                DRAW_SimpleText("Shift + E to Inspect", "Trebuchet18", 0, 0, Color(160, 210, 255), TEXT_ALIGN_CENTER,
+                    TEXT_ALIGN_CENTER)
             end
-        end
+            cam.End3D2D()
+        end)
     end
 
-    if lookAtPanel then
-        PhantomLookingAtPanelUntil = CurTime() + 0.03
-    end
-
-    if not isFocused and lookAtPanel then
-        isCandidate = true
-    end
 end
 
 function QueuePhantomPanelsForRendering()
-    if not (RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled) then return end
+    if not IsDebugEnabled() then return end
     if not (RARELOAD.DepthRenderer and RARELOAD.DepthRenderer.AddRenderItem) then return end
 
     CandidatePhantom, CandidateSteamID, CandidateYawDiff, CandidateDistSqr = nil, nil, nil, nil
@@ -801,7 +828,7 @@ function QueuePhantomPanelsForRendering()
 end
 
 function DrawAllPhantomPanels()
-    if not (RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled) then return end
+    if not IsDebugEnabled() then return end
 
     CandidatePhantom, CandidateSteamID, CandidateYawDiff = nil, nil, nil
     lpCache = lpCache or LocalPlayer()

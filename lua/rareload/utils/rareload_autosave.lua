@@ -132,8 +132,8 @@ if SERVER then
             ok, err = RARELOAD.SaveRespawnPoint(ply, ply:GetPos(), ply:EyeAngles(), { whereMsg = "auto-save" })
             if ok == nil then ok = true end
         else
-            RunConsoleCommand("save_position")
-            ok = true
+            print("[RARELOAD] Warning: SaveRespawnPoint not available for auto-save")
+            ok = false
         end
 
         if ok then

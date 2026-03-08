@@ -97,7 +97,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
 
     local newInventory = save_inventory(ply)
 
-    if RARELOAD.settings.retainGlobalInventory then
+    if RARELOAD.GetPlayerSetting(ply, "retainGlobalInventory") then
         local globalInventory = {}
         for _, weapon in ipairs(ply:GetWeapons()) do
             table.insert(globalInventory, weapon:GetClass())
@@ -113,7 +113,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
             SaveGlobalInventory()
         end
 
-        if RARELOAD.settings.debugEnabled then
+        if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
             print("[RARELOAD DEBUG] Saved " ..
                 #globalInventory .. " weapons to global inventory for player " .. ply:Nick() ..
                 " (Active weapon: " .. newActiveWeapon .. ")")
@@ -123,8 +123,8 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     local oldData = RARELOAD.playerPositions[mapName][ply:SteamID()]
     local legacyDataFound = NeedsStructuralUpgrade(oldData)
 
-    if oldData and not RARELOAD.settings.autoSaveEnabled then
-        local inventoryUnchanged = not RARELOAD.settings.retainInventory or
+    if oldData and not RARELOAD.GetPlayerSetting(ply, "autoSaveEnabled") then
+        local inventoryUnchanged = not RARELOAD.GetPlayerSetting(ply, "retainInventory") or
             listsEqualAsMultisets(oldData.inventory or {}, newInventory)
 
         local posSame = vecTablesEqual(oldData.pos, newPos)
@@ -135,14 +135,14 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
             return true, "unchanged"
         else
             local message = "[RARELOAD] Overwriting previous save: Position, Camera"
-            if RARELOAD.settings.retainInventory then
+            if RARELOAD.GetPlayerSetting(ply, "retainInventory") then
                 message = message .. ", Inventory"
             end
             print(message .. " updated.")
         end
     else
         local message = "[RARELOAD] Player position and camera"
-        if RARELOAD.settings.retainInventory then
+        if RARELOAD.GetPlayerSetting(ply, "retainInventory") then
             message = message .. " and inventory"
         end
         print(message .. " saved.")
@@ -158,7 +158,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     }
 
     -- Save player states (godmode, notarget, etc.)
-    if RARELOAD.settings.retainPlayerStates then
+    if RARELOAD.GetPlayerSetting(ply, "retainPlayerStates") then
         playerData.playerStates = {
             godmode = ply:HasGodMode(),
             notarget = ply:IsFlagSet(FL_NOTARGET),
@@ -166,7 +166,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
             noclip = ply:GetMoveType() == MOVETYPE_NOCLIP,
         }
         
-        if RARELOAD.settings.debugEnabled then
+        if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
             local states = {}
             if playerData.playerStates.godmode then table.insert(states, "godmode") end
             if playerData.playerStates.notarget then table.insert(states, "notarget") end
@@ -178,24 +178,24 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         end
     end
 
-    if RARELOAD.settings.retainHealthArmor then
+    if RARELOAD.GetPlayerSetting(ply, "retainHealthArmor") then
         playerData.health = ply:Health()
         playerData.armor = ply:Armor()
     end
 
-    if RARELOAD.settings.retainAmmo then
+    if RARELOAD.GetPlayerSetting(ply, "retainAmmo") then
         playerData.ammo = save_ammo(ply, newInventory)
     end
 
-    if RARELOAD.settings.retainVehicles then
+    if RARELOAD.GetPlayerSetting(ply, "retainVehicles") then
         playerData.vehicles = save_vehicles(ply)
     end
 
-    if RARELOAD.settings.retainVehicleState and ply:InVehicle() then
+    if RARELOAD.GetPlayerSetting(ply, "retainVehicleState") and ply:InVehicle() then
         playerData.vehicleState = save_vehicle_state(ply)
     end
 
-    if RARELOAD.settings.retainMapEntities then
+    if RARELOAD.GetPlayerSetting(ply, "retainMapEntities") then
         local entityBucket = SnapshotUtils.NormalizeBucketForSave(save_entities(ply))
         if entityBucket then
             playerData.entities = entityBucket
@@ -204,7 +204,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         end
     end
 
-    if RARELOAD.settings.retainMapNPCs then
+    if RARELOAD.GetPlayerSetting(ply, "retainMapNPCs") then
         local npcBucket = SnapshotUtils.NormalizeBucketForSave(save_npcs(ply))
         if npcBucket then
             playerData.npcs = npcBucket
@@ -218,12 +218,18 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     end
 
     RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
-    local success, err = pcall(function()
-        file.Write("rareload/player_positions_" .. mapName .. ".json", util.TableToJSON(RARELOAD.playerPositions, true))
-    end)
+
+    local success, err
+    if RARELOAD.SavePlayerPositionEntry then
+        success, err = RARELOAD.SavePlayerPositionEntry(ply, playerData)
+    else
+        success, err = pcall(function()
+            file.Write("rareload/player_positions_" .. mapName .. ".json", util.TableToJSON(RARELOAD.playerPositions, true))
+        end)
+    end
 
     if not success then
-        print("[RARELOAD] Failed to save position data: " .. err)
+        print("[RARELOAD] Failed to save position data: " .. tostring(err))
         return false, err
     else
         print("[RARELOAD] Player position successfully saved.")
@@ -232,13 +238,13 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     local whereMsg = opts.whereMsg or "your location"
     ply:ChatPrint("[Rareload] Saved respawn position at " .. whereMsg)
 
-    if RARELOAD.settings.debugEnabled then
+    if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
         net.Start("CreatePlayerPhantom")
         net.WriteEntity(ply)
         net.WriteVector(RARELOAD.DataUtils.ToVector(newPos) or Vector(0, 0, 0))
         local savedAng = Angle(newAng.p, newAng.y, newAng.r)
         net.WriteAngle(savedAng)
-        net.Broadcast()
+        net.Send(ply)
     end
 
     if RARELOAD.UpdateClientPhantoms then
@@ -246,7 +252,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     end
 
     if SyncPlayerPositions then
-        SyncPlayerPositions(ply)
+        SyncPlayerPositions()
     end
 
     return true

@@ -15,8 +15,7 @@ local PHANTOM_HEAD_OFFSET       = Vector(0, 0, 80)
 local PIXEL_VIS_HANDLE          = util.GetPixelVisibleHandle and util.GetPixelVisibleHandle() or nil
 
 local function HandleNetReceive(event, callback)
-    net.Receive(event, function(len, ply)
-        if not IsValid(ply) then return end
+    net.Receive(event, function(len)
         callback()
     end)
 end
@@ -43,6 +42,10 @@ local function CreatePhantom(ply, pos, ang)
     local phantom = ClientsideModel(modelToUse)
     if not IsValid(phantom) then return nil end
 
+    if not pos then
+        pos = ply:GetPos()
+    end
+
     phantom:SetPos(pos)
     phantom:SetAngles(ang and Angle(0, ang.y, 0) or Angle(0, ply:GetAngles().y, 0))
     phantom:SetRenderMode(RENDERMODE_TRANSALPHA)
@@ -55,7 +58,8 @@ local function CreatePhantom(ply, pos, ang)
 end
 
 local function UpdatePhantomVisibility()
-    local isDebugEnabled = RARELOAD.settings.debugEnabled
+    local isDebugEnabled = (RARELOAD.MySettings and RARELOAD.MySettings.debugEnabled)
+        or (RARELOAD.settings and RARELOAD.settings.debugEnabled)
     local playerPos = LocalPlayer():GetPos()
 
     for steamID, phantomData in pairs(RARELOAD.Phantom) do
@@ -102,7 +106,8 @@ local function UpdatePhantomPosition(steamID, pos, ang, model)
         if IsValid(ply) then
             RARELOAD.Phantom[steamID] = {
                 phantom = CreatePhantom(ply, pos, ang),
-                ply     = ply
+                ply     = ply,
+                steamID = steamID
             }
         end
     end
@@ -129,20 +134,52 @@ net.Receive("UpdatePhantomPosition", function()
     UpdatePhantomPosition(steamID, pos, ang, model)
 end)
 
+local function SaveLocalPlayerPositionSnapshot(mapName, mapPositions)
+    if not istable(mapPositions) then return end
+    local lp = LocalPlayer()
+    if not IsValid(lp) then return end
+
+    local steamID = lp:SteamID()
+    local localData = mapPositions[steamID]
+    if not istable(localData) then return end
+
+    if not file.Exists("rareload", "DATA") then
+        file.CreateDir("rareload")
+    end
+
+    local filePath = "rareload/player_positions_" .. mapName .. "_local.json"
+    local payload = {
+        [mapName] = {
+            [steamID] = localData
+        }
+    }
+
+    file.Write(filePath, util.TableToJSON(payload, true))
+end
+
 HandleNetReceive("SyncData", function()
     local data = net.ReadTable()
     if not data or type(data) ~= "table" then return end
 
     local mapName = game.GetMap()
     RARELOAD.playerPositions[mapName] = data.playerPositions or {}
+    SaveLocalPlayerPositionSnapshot(mapName, RARELOAD.playerPositions[mapName])
 
-    local oldDebugEnabled = RARELOAD.settings.debugEnabled
-    RARELOAD.settings = data.settings or {}
-    RARELOAD.Phantom = data.Phantom or {}
+    -- Only update RARELOAD.settings from SyncData if per-player settings
+    -- haven't been received yet (MySettings is empty). Otherwise per-player
+    -- settings take priority over server globals.
+    if not RARELOAD.MySettings or not next(RARELOAD.MySettings) then
+        local oldDebugEnabled = RARELOAD.settings.debugEnabled
+        RARELOAD.settings = data.settings or {}
 
-    if oldDebugEnabled ~= RARELOAD.settings.debugEnabled then
-        UpdatePhantomVisibility()
+        if oldDebugEnabled ~= RARELOAD.settings.debugEnabled then
+            UpdatePhantomVisibility()
+        end
     end
+
+    -- Do NOT overwrite RARELOAD.Phantom from server data.
+    -- The server's Phantom table has no valid ClientsideModel references;
+    -- overwriting would destroy existing client-side phantom entities.
 end)
 
 HandleNetReceive("CreatePlayerPhantom", function()
@@ -158,21 +195,25 @@ HandleNetReceive("CreatePlayerPhantom", function()
         return
     end
 
-    local steamID = ply:SteamID()
+    local steamID = IsValid(ply) and ply:SteamID() or nil
     if not steamID then return end
 
     RemovePhantom(steamID)
 
     RARELOAD.Phantom[steamID] = {
         phantom = CreatePhantom(ply, pos, ang),
-        ply = ply
+        ply = ply,
+        steamID = steamID
     }
 end)
 
 HandleNetReceive("RemovePlayerPhantom", function()
     local ply = net.ReadEntity()
     if IsValid(ply) then
-        RemovePhantom(ply:SteamID())
+        local steamID = ply:SteamID()
+        if steamID and steamID ~= "" then
+            RemovePhantom(steamID)
+        end
     end
 end)
 
@@ -214,6 +255,7 @@ function RARELOAD.RefreshPhantoms()
                         RARELOAD.Phantom[steamID] = {
                             phantom = phantom,
                             ply = ply,
+                            steamID = steamID,
                             lastUpdate = CurTime()
                         }
                         created = created + 1
@@ -229,20 +271,16 @@ function RARELOAD.RefreshPhantoms()
 end
 
 local function BufferPhantom()
-    if CurTime() < RARELOAD.nextDataReload then return end
-    RARELOAD.nextDataReload = CurTime() + DATA_RELOAD_INTERVAL
-
-    local mapName = game.GetMap()
-    local filePath = "rareload/player_positions_" .. mapName .. ".json"
-    if not file.Exists(filePath, "DATA") then return end
-
-    local data = file.Read(filePath, "DATA")
-    if not data or data == "" then return end
-    local ok, tbl = pcall(util.JSONToTable, data)
-    if ok and type(tbl) == "table" then
-        RARELOAD.playerPositions = tbl
-    end
+    -- Keep as a no-op: client should not reload authoritative player position data from local disk.
+    -- Data is synced from server via SyncData/SyncPlayerPositions for consistent multiplayer behavior.
 end
+
+HandleNetReceive("SyncPlayerPositions", function()
+    local mapName = game.GetMap()
+    local positions = net.ReadTable() or {}
+    RARELOAD.playerPositions[mapName] = positions
+    SaveLocalPlayerPositionSnapshot(mapName, positions)
+end)
 
 local nextPhantomCheck = 0
 local nextVisibilityUpdate = 0
@@ -257,7 +295,8 @@ hook.Add("PostDrawOpaqueRenderables", "RARELOAD_QueuePhantomInfo", function()
     local lp = LocalPlayer()
     if not IsValid(lp) then return end
 
-    local isDebugEnabled = RARELOAD.settings.debugEnabled
+    local isDebugEnabled = (RARELOAD.MySettings and RARELOAD.MySettings.debugEnabled)
+        or (RARELOAD.settings and RARELOAD.settings.debugEnabled)
     local hasValidPhantoms = false
     if RARELOAD.Phantom then
         for _, data in pairs(RARELOAD.Phantom) do
@@ -308,7 +347,8 @@ hook.Add("PostDrawOpaqueRenderables", "RARELOAD_QueuePhantomInfo", function()
 end)
 
 hook.Add("Think", "CheckDebugModeChanges", function()
-    local currentDebugState = RARELOAD.settings.debugEnabled
+    local currentDebugState = (RARELOAD.MySettings and RARELOAD.MySettings.debugEnabled)
+        or (RARELOAD.settings and RARELOAD.settings.debugEnabled)
 
     if RARELOAD.lastDebugState ~= currentDebugState then
         UpdatePhantomVisibility()

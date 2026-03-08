@@ -1,12 +1,6 @@
 if SERVER then
     RARELOAD = RARELOAD or {}
 
-    local function SyncData(ply)
-        if RARELOAD.SyncPlayerData then
-            RARELOAD.SyncPlayerData(ply)
-        end
-    end
-
     local networkStrings = {
         "CreatePlayerPhantom",
         "RemovePlayerPhantom",
@@ -32,19 +26,35 @@ if SERVER then
     end
 
     hook.Add("PlayerInitialSpawn", "SyncDataOnJoin", function(ply)
-        SyncData(ply)
+        if not IsValid(ply) then return end
+
+        if RARELOAD.PlayerSettings and RARELOAD.PlayerSettings.Load then
+            RARELOAD.PlayerSettings.Load(ply:SteamID())
+        end
+
+        if RARELOAD.LoadPlayerPositions then
+            RARELOAD.LoadPlayerPositions()
+        end
+
+        timer.Simple(0, function()
+            if not IsValid(ply) then return end
+            SyncData(ply)
+            if SyncPlayerPositions then
+                SyncPlayerPositions(ply)
+            end
+        end)
     end)
 
     hook.Add("InitPostEntity", "LoadPlayerPosition", function()
-        if not RARELOAD.settings or not RARELOAD.settings.addonEnabled then return end
         EnsureFolderExists()
         if RARELOAD.LoadPlayerPositions then
             RARELOAD.LoadPlayerPositions()
         end
     end)
 
-    hook.Add("PlayerDisconnect", "SavePlayerPositionDisconnect", function(ply)
-        if not RARELOAD.settings.addonEnabled then return end
+    hook.Add("PlayerDisconnected", "SavePlayerPositionDisconnect", function(ply)
+        if not IsValid(ply) then return end
+        if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then return end
         EnsureFolderExists()
         if RARELOAD.SavePlayerPositionOnDisconnect then
             RARELOAD.SavePlayerPositionOnDisconnect(ply)

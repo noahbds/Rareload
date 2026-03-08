@@ -74,24 +74,30 @@ if CLIENT then
 end
 
 local function loadAddonSettings()
+    if CLIENT then
+        -- Clients always read from replicated ConVars (authoritative source)
+        if RARELOAD.LoadSettingsFromConVars then
+            RARELOAD.LoadSettingsFromConVars()
+            return true, nil
+        end
+        return false, "Settings not available"
+    end
+
+    -- Server reads from file, then syncs ConVars
     local addonStateFilePath = "rareload/addon_state.json"
 
-    if not file.Exists(addonStateFilePath, "DATA") then
-        return false, "Settings file does not exist"
+    if file.Exists(addonStateFilePath, "DATA") then
+        local json = file.Read(addonStateFilePath, "DATA")
+        if json and json ~= "" then
+            local settings = util.JSONToTable(json)
+            if settings then
+                RARELOAD.settings = settings
+                return true, nil
+            end
+        end
     end
 
-    local json = file.Read(addonStateFilePath, "DATA")
-    if not json or json == "" then
-        return false, "Settings file is empty"
-    end
-
-    local settings = util.JSONToTable(json)
-    if not settings then
-        return false, "Failed to parse settings JSON"
-    end
-
-    RARELOAD.settings = settings
-    return true, nil
+    return false, "Settings not available"
 end
 
 local function toVecTable(vec)
@@ -138,11 +144,7 @@ function TOOL:RightClick()
         return false
     end
 
-    RunConsoleCommand("save_position")
-
-    local ply = self:GetOwner()
-
-    ply:ChatPrint("[Rareload] Saved respawn position at your location")
+    RARELOAD.SaveRespawnPoint(ply, ply:GetPos(), ply:EyeAngles(), { whereMsg = "your location" })
     ply:EmitSound("buttons/button15.wav")
 end
 
@@ -190,7 +192,7 @@ function TOOL:Reload()
                     net.WriteVector(Vector(pos.x, pos.y, pos.z))
                     local ang = toAngTable(previousData.ang)
                     net.WriteAngle(Angle(ang.p, ang.y, ang.r))
-                    net.Broadcast()
+                    net.Send(ply)
 
                     net.Start("UpdatePhantomPosition")
                     net.WriteString(steamID)

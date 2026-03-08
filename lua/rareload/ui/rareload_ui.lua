@@ -74,6 +74,10 @@ function RARELOAD.CheckPermission(ply, permName)
     if RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
         return RARELOAD.Permissions.HasPermission(ply, permName)
     end
+    -- Fallback to permission defaults if HasPermission is not loaded yet
+    if RARELOAD.Permissions and RARELOAD.Permissions.DEFS and RARELOAD.Permissions.DEFS[permName] then
+        return RARELOAD.Permissions.DEFS[permName].default
+    end
     return ply:IsAdmin()
 end
 
@@ -82,6 +86,26 @@ local function AnimateLerp(current, target, speed)
 end
 
 local function SendConVarToServer(name, value)
+    -- Use new player settings system if available
+    if RARELOAD and RARELOAD.UpdatePlayerSetting and RARELOAD.ConVarToSetting then
+        local settingKey = RARELOAD.ConVarToSetting[name]
+        if settingKey then
+            -- Convert value to appropriate type
+            local convertedValue
+            if value == "0" then
+                convertedValue = false
+            elseif value == "1" then
+                convertedValue = true
+            else
+                convertedValue = tonumber(value) or value
+            end
+            
+            RARELOAD.UpdatePlayerSetting(settingKey, convertedValue)
+            return
+        end
+    end
+    
+    -- Fallback to old ConVar system
     if RARELOAD and RARELOAD.SetConVar then
         RARELOAD.SetConVar(name, value)
     else
@@ -93,11 +117,29 @@ local function SendConVarToServer(name, value)
 end
 
 local function GetConVarValue(name)
+    -- Use player settings if available (CLIENT only)
+    if CLIENT and RARELOAD and RARELOAD.MySettings and RARELOAD.ConVarToSetting then
+        local settingKey = RARELOAD.ConVarToSetting[name]
+        if settingKey and RARELOAD.MySettings[settingKey] ~= nil then
+            return RARELOAD.MySettings[settingKey]
+        end
+    end
+    
+    -- Fallback to ConVar
     local cv = GetConVar(name)
     return cv and cv:GetBool() or false
 end
 
 local function GetConVarFloat(name)
+    -- Use player settings if available (CLIENT only)
+    if CLIENT and RARELOAD and RARELOAD.MySettings and RARELOAD.ConVarToSetting then
+        local settingKey = RARELOAD.ConVarToSetting[name]
+        if settingKey and RARELOAD.MySettings[settingKey] ~= nil then
+            return tonumber(RARELOAD.MySettings[settingKey]) or 0
+        end
+    end
+    
+    -- Fallback to ConVar
     local cv = GetConVar(name)
     return cv and cv:GetFloat() or 0
 end

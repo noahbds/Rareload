@@ -121,10 +121,42 @@ if SERVER then
             return
         end
         
-        RunConsoleCommand(convarName, value)
-        
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-            print("[RARELOAD] " .. ply:Nick() .. " changed " .. convarName .. " to " .. value)
+        -- NEW: Instead of changing server ConVar (which affects everyone),
+        -- update this player's personal settings
+        local settingKey = RARELOAD.ConVarToSetting[convarName]
+        if settingKey and RARELOAD.PlayerSettings then
+            -- Convert value to appropriate type
+            local convertedValue
+            local def = nil
+            for _, d in ipairs(CONVAR_DEFS) do
+                if d[1] == convarName then
+                    def = d
+                    break
+                end
+            end
+            
+            if def and (def[2] == "0" or def[2] == "1") then
+                convertedValue = (value == "1")
+            else
+                convertedValue = tonumber(value) or 0
+            end
+            
+            -- Update player's personal settings
+            RARELOAD.PlayerSettings.Set(ply, settingKey, convertedValue)
+            
+            -- Sync back to player
+            RARELOAD.PlayerSettings.SyncToPlayer(ply)
+            
+            if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
+                print("[RARELOAD] " .. ply:Nick() .. " changed their " .. settingKey .. " to " .. tostring(convertedValue))
+            end
+        else
+            -- Fallback to old behavior if player settings system not loaded
+            RunConsoleCommand(convarName, value)
+            
+            if RARELOAD.settings and RARELOAD.settings.debugEnabled then
+                print("[RARELOAD] " .. ply:Nick() .. " changed " .. convarName .. " to " .. value)
+            end
         end
     end)
     
@@ -154,7 +186,41 @@ else
         local cv = GetConVar(name)
         return cv and cv:GetFloat() or 0
     end
-    
+
+    function RARELOAD.LoadSettingsFromConVars()
+        RARELOAD.settings = RARELOAD.settings or {}
+        for _, def in ipairs(CONVAR_DEFS) do
+            local name, default, _, settingsKey = def[1], def[2], def[3], def[4]
+            local cv = GetConVar(name)
+            if cv then
+                if default == "0" or default == "1" then
+                    RARELOAD.settings[settingsKey] = cv:GetBool()
+                else
+                    RARELOAD.settings[settingsKey] = cv:GetFloat()
+                end
+            end
+        end
+    end
+
+    -- Keep RARELOAD.settings in sync when replicated ConVars change
+    for _, def in ipairs(CONVAR_DEFS) do
+        local name, default, _, settingsKey = def[1], def[2], def[3], def[4]
+        
+        cvars.AddChangeCallback(name, function(convar, oldVal, newVal)
+            RARELOAD.settings = RARELOAD.settings or {}
+            if default == "0" or default == "1" then
+                RARELOAD.settings[settingsKey] = (newVal == "1")
+            else
+                RARELOAD.settings[settingsKey] = tonumber(newVal) or 0
+            end
+        end, "RareloadClientSync_" .. name)
+    end
+
+    -- Initialize settings from ConVars as soon as the client is ready
+    hook.Add("InitPostEntity", "RareloadClientSettingsInit", function()
+        RARELOAD.LoadSettingsFromConVars()
+    end)
+
 end
 
 return RARELOAD.ConVars

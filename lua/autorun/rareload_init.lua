@@ -12,6 +12,7 @@ if SERVER then
     AddCSLuaFile("rareload/utils/rareload_data_utils.lua")
     AddCSLuaFile("rareload/client/shared/theme_utils.lua")
     AddCSLuaFile("rareload/client/shared/depth_sorted_renderer.lua")
+    AddCSLuaFile("rareload/client/cl_player_settings.lua")
     AddCSLuaFile("rareload/ui/rareload_ui.lua")
     AddCSLuaFile("rareload/ui/rareload_toolscreen.lua")
     AddCSLuaFile("rareload/client/admin/admin_panel.lua")
@@ -67,6 +68,7 @@ if SERVER then
     include("rareload/core/rareload_core.lua")
     include("rareload/core/rareload_state_utils.lua")
     include("rareload/core/sv_rareload.lua")
+    include("rareload/core/sv_player_settings.lua")
     include("rareload/core/sv_rareload_hooks.lua")
     include("rareload/core/sv_sed_npc_freeze.lua")
     include("rareload/core/save_helpers/rareload_save_ammo.lua")
@@ -134,6 +136,7 @@ elseif CLIENT then
 
     include("rareload/client/shared/theme_utils.lua")
     include("rareload/client/shared/depth_sorted_renderer.lua")
+    include("rareload/client/cl_player_settings.lua")
     include("rareload/ui/rareload_ui.lua")
     include("rareload/ui/rareload_toolscreen.lua")
     include("rareload/client/admin/admin_panel.lua")
@@ -157,6 +160,10 @@ elseif CLIENT then
     include("rareload/client/antistuck/cl_anti_stuck_panel_main.lua")
     include("rareload/client/antistuck/cl_anti_stuck_theme.lua")
     include("rareload/client/antistuck/profile/cl_profile_manager.lua")
+
+    net.Receive("RareloadDebugMessage", function()
+        print(net.ReadString())
+    end)
 
     print("[RARELOAD] Client-side files loaded successfully!")
 end

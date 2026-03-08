@@ -3,7 +3,8 @@ RARELOAD = RARELOAD or nil
 RARELOAD.settings = RARELOAD.settings or {}
 
 -- This function is called when the addon need to restore inventory from a save file. Allow to restore weapons, ammo, etc.
-function RARELOAD.RestoreInventory(ply)
+function RARELOAD.RestoreInventory(ply, savedInfo)
+    if not savedInfo or not savedInfo.inventory then return end
     ply:StripWeapons()
 
     local debugMessages = {
@@ -17,7 +18,7 @@ function RARELOAD.RestoreInventory(ply)
         givenWeapons = false
     }
 
-    for _, weaponClass in ipairs(SavedInfo.inventory) do
+    for _, weaponClass in ipairs(savedInfo.inventory) do
         local weaponInfo = weapons.Get(weaponClass)
         local canGiveWeapon = weaponInfo and (weaponInfo.Spawnable or weaponInfo.AdminOnly)
 

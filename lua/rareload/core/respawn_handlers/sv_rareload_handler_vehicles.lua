@@ -7,10 +7,11 @@ RARELOAD.settings = RARELOAD.settings or {}
 
 -- FIX IN PROGRESS
 -- This function is called when the addon need to restore vehicles from a save file. Allow to restore vehicles, their health, color, etc.
-function RARELOAD.RestoreVehicles()
+function RARELOAD.RestoreVehicles(savedInfo)
+    if not savedInfo or not savedInfo.vehicles then return end
     timer.Simple(1, function()
         local vehicleCount = 0
-        for _, vehicleData in ipairs(SavedInfo.vehicles) do
+        for _, vehicleData in ipairs(savedInfo.vehicles) do
             local exists = false
             for _, ent in ipairs(ents.FindInSphere(vehicleData.pos, 50)) do
                 if ent:GetClass() == vehicleData.class and ent:GetModel() == vehicleData.model then

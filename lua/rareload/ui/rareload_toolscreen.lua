@@ -36,19 +36,20 @@ end
 local ToolScreen = {}
 
 local FEATURES = {
-    { name = "Anti-stuck system",     key = "spawnModeEnabled",      kind = "bool" },
-    { name = "Auto Save",             key = "autoSaveEnabled",       kind = "bool" },
-    { name = "Save Inventory",        key = "retainInventory",       kind = "bool" },
-    { name = "Save Global Inventory", key = "retainGlobalInventory", kind = "bool" },
-    { name = "Save Ammo",             key = "retainAmmo",            kind = "bool" },
-    { name = "Save Health and Armor", key = "retainHealthArmor",     kind = "bool" },
-    { name = "Save Player States",    key = "retainPlayerStates",    kind = "bool" },
-    { name = "Save Entities",         key = "retainMapEntities",     kind = "bool" },
-    { name = "Save NPCs",             key = "retainMapNPCs",         kind = "bool" },
-    { name = "Debug Mode",            key = "debugEnabled",          kind = "bool" },
-    { name = "Auto Save Interval",    key = "autoSaveInterval",      kind = "value", unit = "s" },
-    { name = "Angle Tolerance",       key = "angleTolerance",        kind = "value", unit = "°" },
-    { name = "Max History Size",      key = "maxHistorySize",        kind = "value" }
+    { name = "Anti-stuck system",        key = "spawnModeEnabled",       kind = "bool" },
+    { name = "Auto Save",                key = "autoSaveEnabled",        kind = "bool" },
+    { name = "No Custom Death Respawn",  key = "nocustomrespawnatdeath", kind = "bool" },
+    { name = "Save Inventory",           key = "retainInventory",        kind = "bool" },
+    { name = "Save Global Inventory",    key = "retainGlobalInventory",  kind = "bool" },
+    { name = "Save Ammo",                key = "retainAmmo",             kind = "bool" },
+    { name = "Save Health and Armor",    key = "retainHealthArmor",      kind = "bool" },
+    { name = "Save Player States",       key = "retainPlayerStates",     kind = "bool" },
+    { name = "Save Entities",            key = "retainMapEntities",      kind = "bool" },
+    { name = "Save NPCs",                key = "retainMapNPCs",          kind = "bool" },
+    { name = "Debug Mode",               key = "debugEnabled",           kind = "bool" },
+    { name = "Auto Save Interval",       key = "autoSaveInterval",       kind = "value", unit = "s" },
+    { name = "Angle Tolerance",          key = "angleTolerance",         kind = "value", unit = "°" },
+    { name = "Max History Size",         key = "maxHistorySize",         kind = "value" }
 }
 
 local TMP_COLOR = Color(255, 255, 255, 255)
@@ -586,20 +587,12 @@ function ToolScreen.EndDraw()
 end
 
 local function _LoadAddonSettingsForFrame()
-    local path = "rareload/addon_state.json"
-    if not file.Exists(path, "DATA") then
-        return false, "Settings file does not exist"
+    if RARELOAD.LoadSettingsFromConVars then
+        RARELOAD.LoadSettingsFromConVars()
+        return true
     end
-    local json = file.Read(path, "DATA") or ""
-    if json == "" then
-        return false, "Settings file is empty"
-    end
-    local settings = util.JSONToTable(json)
-    if not settings then
-        return false, "Failed to parse settings JSON"
-    end
-    RARELOAD.settings = settings
-    return true
+
+    return false, "Settings not available"
 end
 
 if CLIENT then

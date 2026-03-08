@@ -16,6 +16,7 @@ if SERVER then
         util.AddNetworkString("RareloadSendPermissionsDefinitions")
         util.AddNetworkString("RareloadRequestOfflinePlayerData")
         util.AddNetworkString("RareloadSendOfflinePlayerData")
+        util.AddNetworkString("RareloadSyncOwnPermissions")
 
         net.Receive("RareloadRequestPermissions", function(len, ply)
             if not RARELOAD.Permissions.HasPermission(ply, "ADMIN_PANEL") then
@@ -72,6 +73,23 @@ if SERVER then
                     net.Send(admin)
                 end
             end
+
+            -- Re-sync the target player's own permissions so their UI updates
+            for _, target in ipairs(player.GetAll()) do
+                if target:SteamID() == targetSteamID then
+                    RARELOAD.Permissions.SyncToPlayer(target)
+                    break
+                end
+            end
+        end)
+
+        -- Sync the player's own permissions when they join
+        hook.Add("PlayerInitialSpawn", "RareloadSyncPlayerOwnPermissions", function(ply)
+            timer.Simple(2, function()
+                if IsValid(ply) and RARELOAD.Permissions.SyncToPlayer then
+                    RARELOAD.Permissions.SyncToPlayer(ply)
+                end
+            end)
         end)
     end
 
@@ -98,6 +116,20 @@ if SERVER then
         end
 
         return false
+    end
+
+    -- Send a player their own resolved permissions (used on join and after admin changes)
+    function RARELOAD.Permissions.SyncToPlayer(ply)
+        if not IsValid(ply) then return end
+        
+        local resolved = {}
+        for permName, _ in pairs(RARELOAD.Permissions.DEFS) do
+            resolved[permName] = RARELOAD.Permissions.HasPermission(ply, permName)
+        end
+        
+        net.Start("RareloadSyncOwnPermissions")
+        net.WriteTable(resolved)
+        net.Send(ply)
     end
 
     function RARELOAD.Permissions.SetPermission(steamID, permName, value)

@@ -1,12 +1,17 @@
 {
-  "Lua.diagnostics.globals": ["D_FT"],
-  "Lua.workspace.library": ["${addons}/garrysmod/module/library"],
-  "Lua.runtime.version": "LuaJIT",
-  "Lua.runtime.nonstandardSymbol": ["continue"],
-  "Lua.diagnostics.disable": ["duplicate-set-field"],
-  "Lua.workspace.checkThirdParty": false,
-  "Lua.runtime.special": {
-    "include": "dofile",
-    "IncludeCS": "dofile"
-  }
+    "Lua.workspace.library": [
+        "${addons}/garrysmod/module/library"
+    ],
+    "Lua.runtime.version": "LuaJIT",
+    "Lua.runtime.nonstandardSymbol": [
+        "continue"
+    ],
+    "Lua.diagnostics.disable": [
+        "duplicate-set-field"
+    ],
+    "Lua.workspace.checkThirdParty": false,
+    "Lua.runtime.special": {
+        "include": "dofile",
+        "IncludeCS": "dofile"
+    }
 }

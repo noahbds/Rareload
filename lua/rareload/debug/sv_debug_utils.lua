@@ -1,3 +1,5 @@
+util.AddNetworkString("RareloadDebugMessage")
+
 MoveTypeNames = {
     [0] = "MOVETYPE_NONE",
     [1] = "MOVETYPE_ISOMETRIC",
@@ -97,11 +99,11 @@ function RARELOAD.Debug.GetPlayerInfoString(ply)
     )
 end
 
-function RARELOAD.Debug.FormatPosition(pos, includeDistance)
+function RARELOAD.Debug.FormatPosition(pos, includeDistance, ply)
     if not pos then return "No Position" end
     local result = string.format("%.1f, %.1f, %.1f", pos.x, pos.y, pos.z)
-    if includeDistance and IsValid(LocalPlayer()) then
-        local distance = pos:Distance(LocalPlayer():GetPos())
+    if includeDistance and IsValid(ply) then
+        local distance = pos:Distance(ply:GetPos())
         result = result .. string.format(" (%.1fm away)", distance)
     end
     return result
@@ -250,4 +252,13 @@ function RARELOAD.Debug.AntiStuck(header, messages, entity, logLevel)
     end
     local formattedHeader = "Anti-Stuck: " .. header
     RARELOAD.Debug.Log(level, formattedHeader, messages or "", entity)
+end
+
+function RARELOAD.Debug.SendToPlayer(ply, msg)
+    print(msg)
+    if IsValid(ply) and ply:IsPlayer() then
+        net.Start("RareloadDebugMessage")
+        net.WriteString(msg)
+        net.Send(ply)
+    end
 end

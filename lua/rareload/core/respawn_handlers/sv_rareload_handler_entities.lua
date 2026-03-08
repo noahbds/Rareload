@@ -48,12 +48,12 @@ local function FindSnapshotOwner(snapshot)
 
     return nil
 end
-function RARELOAD.RestoreEntities(playerSpawnPos)
-    if not SavedInfo or not istable(SavedInfo.entities) then
+function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo)
+    if not savedInfo or not istable(savedInfo.entities) then
         return false
     end
 
-    local snapshot = SavedInfo.entities.__duplicator or nil
+    local snapshot = savedInfo.entities.__duplicator or nil
     if not snapshot then 
         if RARELOAD.settings.debugEnabled then
             print("[RARELOAD DEBUG] No duplicator snapshot found in SavedInfo.entities")
@@ -198,7 +198,7 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
     end
 
     local matchedData = nil
-    local savedEntitiesBucket = SavedInfo and SavedInfo.entities or {}
+    local savedEntitiesBucket = savedInfo and savedInfo.entities or {}
     local savedEntities = SnapshotUtils.GetSummary(savedEntitiesBucket, {
         category = "entity",
         idPrefix = "entity"

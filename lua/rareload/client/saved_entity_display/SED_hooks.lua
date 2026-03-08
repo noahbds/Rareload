@@ -51,7 +51,11 @@ hook.Add("PlayerBindPress", "RARELOAD_InteractScroll", function(ply, bind, press
 end)
 
 hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", function()
-    if not (RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled) then return end
+    local debugEnabled = RARELOAD and (
+        (RARELOAD.MySettings and RARELOAD.MySettings.debugEnabled)
+        or (RARELOAD.settings and RARELOAD.settings.debugEnabled)
+    )
+    if not debugEnabled then return end
 
     SED.lpCache = LocalPlayer()
     if not IsValid(SED.lpCache) then return end

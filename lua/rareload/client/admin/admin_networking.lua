@@ -3,7 +3,43 @@ RARELOAD.AdminPanel = RARELOAD.AdminPanel or {}
 RARELOAD.Permissions = RARELOAD.Permissions or {}
 RARELOAD.Permissions.PlayerPerms = RARELOAD.Permissions.PlayerPerms or {}
 RARELOAD.Permissions.DEFS = RARELOAD.Permissions.DEFS or {}
+RARELOAD.Permissions.MyPermissions = RARELOAD.Permissions.MyPermissions or {}
 RARELOAD.OfflinePlayerData = RARELOAD.OfflinePlayerData or {}
+
+-- Client-side permission check that uses server-synced permissions
+function RARELOAD.Permissions.HasPermission(ply, permName)
+    if not IsValid(ply) then return false end
+    if ply:IsSuperAdmin() then return true end
+
+    -- For the local player, use the resolved permissions synced from the server
+    if ply == LocalPlayer() then
+        if RARELOAD.Permissions.MyPermissions[permName] ~= nil then
+            return RARELOAD.Permissions.MyPermissions[permName]
+        end
+    end
+
+    -- For other players (admin panel view), use the full permissions table
+    local steamID = ply:SteamID()
+    if RARELOAD.Permissions.PlayerPerms[steamID] and
+        RARELOAD.Permissions.PlayerPerms[steamID][permName] ~= nil then
+        return RARELOAD.Permissions.PlayerPerms[steamID][permName]
+    end
+
+    -- Fall back to permission defaults
+    if RARELOAD.Permissions.DEFS[permName] then
+        return RARELOAD.Permissions.DEFS[permName].default
+    end
+
+    return ply:IsAdmin()
+end
+
+-- Receive own resolved permissions from server (sent on join + permission changes)
+net.Receive("RareloadSyncOwnPermissions", function()
+    local perms = net.ReadTable()
+    if perms then
+        RARELOAD.Permissions.MyPermissions = perms
+    end
+end)
 
 net.Receive("RareloadSendPermissionsDefinitions", function()
     RARELOAD.Permissions.DEFS = net.ReadTable()
