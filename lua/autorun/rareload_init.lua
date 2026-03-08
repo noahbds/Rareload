@@ -99,6 +99,7 @@ if SERVER then
     include("rareload/utils/rareload_reload_data.lua")
     include("rareload/utils/rareload_teleport.lua")
     include("rareload/utils/sv_rareload_commands.lua")
+    include("rareload/utils/rareload_data_cleanup.lua")
     include("rareload/admin/rareload_permissions.lua")
     include("rareload/admin/sv_rareload_admin_utils.lua")
     include("rareload/anti_stuck/sv_deepcopy_utils.lua")

@@ -1,5 +1,8 @@
 util.AddNetworkString("UpdatePhantomPosition")
 
+-- Include SnapshotUtils for proper entity deletion
+local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
+
 local function load_command(path)
     local fullPath = "rareload/core/commands/" .. path .. ".lua"
     if file.Exists(fullPath, "LUA") then
@@ -135,51 +138,67 @@ net.Receive("RareloadEntityViewer_Delete", function(len, ply)
         return
     end
     
-    local function deleteEntity(node, parent, key, targetId, targetClass, targetPosition)
-        if not istable(node) then return false end
-        
-        local nodeId = node.RareloadNPCID or node.RareloadEntityID or node.UniqueID or node.EntityID
-        if nodeId and targetId ~= "" and tostring(nodeId) == tostring(targetId) then
-            if parent and key then
-                parent[key] = nil
-                return true
-            end
-        end
-        
-        local nodeClass = node.Class or node.class
-        local nodePos = node.Pos or node.pos
-        
-        if nodeClass and nodeClass == targetClass and nodePos then
-            local nx, ny, nz = 0, 0, 0
-            if istable(nodePos) then
-                nx = nodePos.x or 0
-                ny = nodePos.y or 0
-                nz = nodePos.z or 0
-            end
-            
-            local dist = math.abs(nx - targetPosition.x) + math.abs(ny - targetPosition.y) + math.abs(nz - targetPosition.z)
-            if dist < 1 then
-                if parent and key then
-                    parent[key] = nil
-                    return true
-                end
-            end
-        end
-        
-        for k, v in pairs(node) do
-            if istable(v) then
-                if deleteEntity(v, node, k, targetId, targetClass, targetPosition) then return true end
-            end
-        end
-        return false
+    -- Ensure tbl is valid before proceeding
+    if not tbl then
+        net.Start("RareloadEntityViewer_DeleteResult")
+        net.WriteBool(false)
+        net.WriteString("Failed to parse data file.")
+        net.Send(ply)
+        return
     end
     
-    local deleted = deleteEntity(tbl, nil, nil, entityId, entityClass, targetPos)
+    -- Try to delete from the data structure using SnapshotUtils for proper handling
+    local deleted = false
+    local attempts = 0
+    
+    -- Iterate through all players' data
+    for mapKey, mapData in pairs(tbl) do
+        if istable(mapData) then
+            for steamID, playerData in pairs(mapData) do
+                if istable(playerData) then
+                    -- Check entities bucket
+                    if playerData.entities then
+                        attempts = attempts + 1
+                        if SnapshotUtils.HasSnapshot(playerData.entities) then
+                            -- Use proper SnapshotUtils method for duplicator snapshots
+                            if entityId and entityId ~= "" then
+                                local removed = SnapshotUtils.RemoveEntryByID(playerData.entities, entityId)
+                                if removed then
+                                    deleted = true
+                                    print("[RARELOAD] Deleted entity '" .. entityClass .. "' (ID: " .. entityId .. ") from " .. steamID .. "'s entities using SnapshotUtils")
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    
+                    -- Check NPCs bucket as well
+                    if not deleted and playerData.npcs then
+                        attempts = attempts + 1
+                        if SnapshotUtils.HasSnapshot(playerData.npcs) then
+                            if entityId and entityId ~= "" then
+                                local removed = SnapshotUtils.RemoveEntryByID(playerData.npcs, entityId)
+                                if removed then
+                                    deleted = true
+                                    print("[RARELOAD] Deleted NPC '" .. entityClass .. "' (ID: " .. entityId .. ") from " .. steamID .. "'s NPCs using SnapshotUtils")
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                if deleted then break end
+            end
+        end
+        
+        if deleted then break end
+    end
     
     if not deleted then
         net.Start("RareloadEntityViewer_DeleteResult")
         net.WriteBool(false)
-        net.WriteString("Entity not found in data file.")
+        net.WriteString("Entity not found in data file (checked " .. attempts .. " buckets).")
         net.Send(ply)
         return
     end

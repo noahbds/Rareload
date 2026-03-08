@@ -134,36 +134,12 @@ net.Receive("UpdatePhantomPosition", function()
     UpdatePhantomPosition(steamID, pos, ang, model)
 end)
 
-local function SaveLocalPlayerPositionSnapshot(mapName, mapPositions)
-    if not istable(mapPositions) then return end
-    local lp = LocalPlayer()
-    if not IsValid(lp) then return end
-
-    local steamID = lp:SteamID()
-    local localData = mapPositions[steamID]
-    if not istable(localData) then return end
-
-    if not file.Exists("rareload", "DATA") then
-        file.CreateDir("rareload")
-    end
-
-    local filePath = "rareload/player_positions_" .. mapName .. "_local.json"
-    local payload = {
-        [mapName] = {
-            [steamID] = localData
-        }
-    }
-
-    file.Write(filePath, util.TableToJSON(payload, true))
-end
-
 HandleNetReceive("SyncData", function()
     local data = net.ReadTable()
     if not data or type(data) ~= "table" then return end
 
     local mapName = game.GetMap()
     RARELOAD.playerPositions[mapName] = data.playerPositions or {}
-    SaveLocalPlayerPositionSnapshot(mapName, RARELOAD.playerPositions[mapName])
 
     -- Only update RARELOAD.settings from SyncData if per-player settings
     -- haven't been received yet (MySettings is empty). Otherwise per-player
@@ -279,7 +255,6 @@ HandleNetReceive("SyncPlayerPositions", function()
     local mapName = game.GetMap()
     local positions = net.ReadTable() or {}
     RARELOAD.playerPositions[mapName] = positions
-    SaveLocalPlayerPositionSnapshot(mapName, positions)
 end)
 
 local nextPhantomCheck = 0
