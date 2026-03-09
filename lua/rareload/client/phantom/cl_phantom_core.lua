@@ -58,6 +58,7 @@ local function CreatePhantom(ply, pos, ang)
 end
 
 local function UpdatePhantomVisibility()
+    local debugOn = RARELOAD.settings.debugEnabled
     local hasViewPhantomPerm = true
     local lp = LocalPlayer()
     if IsValid(lp) and RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
@@ -73,7 +74,7 @@ local function UpdatePhantomVisibility()
             if distance > PHANTOM_CULL_DISTANCE_SQR then
                 phantom:SetNoDraw(true)
                 phantom:SetColor(Color(0, 0, 0, 0))
-            elseif hasViewPhantomPerm and distance <= PHANTOM_MAX_DISTANCE_SQR then
+            elseif debugOn and hasViewPhantomPerm and distance <= PHANTOM_MAX_DISTANCE_SQR then
                 phantom:SetColor(Color(255, 255, 255, 150))
                 phantom:SetNoDraw(false)
             else
@@ -267,6 +268,8 @@ local cachedMapPositions = nil
 local lastMapCacheTime = 0
 
 hook.Add("PostDrawOpaqueRenderables", "RARELOAD_QueuePhantomInfo", function()
+    if not RARELOAD.settings.debugEnabled then return end
+
     BufferPhantom()
 
     local now = CurTime()
@@ -328,15 +331,17 @@ hook.Add("PostDrawOpaqueRenderables", "RARELOAD_QueuePhantomInfo", function()
 end)
 
 hook.Add("Think", "CheckDebugModeChanges", function()
+    local debugOn = RARELOAD.settings.debugEnabled
     local hasViewPhantomPerm = true
     local lp = LocalPlayer()
     if IsValid(lp) and RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
         hasViewPhantomPerm = RARELOAD.Permissions.HasPermission(lp, "VIEW_PHANTOM")
     end
 
-    if RARELOAD.lastPhantomPermState ~= hasViewPhantomPerm then
+    if RARELOAD.lastPhantomPermState ~= hasViewPhantomPerm or RARELOAD.lastDebugState ~= debugOn then
         UpdatePhantomVisibility()
         RARELOAD.lastPhantomPermState = hasViewPhantomPerm
+        RARELOAD.lastDebugState = debugOn
     end
 end)
 

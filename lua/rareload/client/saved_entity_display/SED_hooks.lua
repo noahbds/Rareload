@@ -51,6 +51,8 @@ hook.Add("PlayerBindPress", "RARELOAD_InteractScroll", function(ply, bind, press
 end)
 
 hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", function()
+    if not RARELOAD.settings.debugEnabled then return end
+
     local hasViewSEDPerm = true
     local lp = LocalPlayer()
     if IsValid(lp) and RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
