@@ -16,6 +16,7 @@ local _LocalPlayer = LocalPlayer
 local FrameNumber = FrameNumber
 local istable = istable
 local tonumber = tonumber
+local SysTime = SysTime
 
 local maxDistSqr = DepthRenderer.MAX_DISTANCE * DepthRenderer.MAX_DISTANCE
 local itemPool = {}
@@ -99,6 +100,8 @@ function DepthRenderer.AddRenderItem(pos, renderFunction, itemType, priorityOrOp
     renderQueue[queueSize] = item
 end
 
+DepthRenderer.FRAME_BUDGET = 0.005  -- 5ms hard budget per frame
+
 function DepthRenderer.ProcessRenderQueue()
     local n = queueSize
     if n == 0 then return end
@@ -116,11 +119,14 @@ function DepthRenderer.ProcessRenderQueue()
     end
 
     local upto = firstOnTopIndex and (firstOnTopIndex - 1) or n
+    local budget = DepthRenderer.FRAME_BUDGET
+    local startTime = SysTime()
 
     if DepthRenderer.USE_PCALL then
         for i = 1, upto do
             local fn = renderQueue[i][1]
             if fn then _pcall(fn) end
+            if i % 3 == 0 and (SysTime() - startTime) > budget then break end
         end
         if firstOnTopIndex then
             cam_IgnoreZ(true)
@@ -134,6 +140,7 @@ function DepthRenderer.ProcessRenderQueue()
         for i = 1, upto do
             local fn = renderQueue[i][1]
             if fn then fn() end
+            if i % 3 == 0 and (SysTime() - startTime) > budget then break end
         end
         if firstOnTopIndex then
             cam_IgnoreZ(true)

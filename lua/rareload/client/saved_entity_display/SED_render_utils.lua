@@ -29,7 +29,7 @@ function SED.CalculateEntityRenderParams(ent)
 
     if cache and cache.expires > now then
         local currentPos = ent:GetPos()
-        if currentPos:DistToSqr(cache.lastPos) < 10000 then
+        if currentPos:DistToSqr(cache.lastPos) < 40000 then
             return cache
         end
     end
@@ -85,6 +85,16 @@ function SED.CalculateEntityRenderParams(ent)
         buffer = math.max(50, entityHeight * 0.25)
     end
 
+    -- Pre-compute worldTopZ to avoid 8x LocalToWorld per frame in renderer
+    local worldTopZ
+    if ent.LocalToWorld then
+        local centerLocal = (obbMin + obbMax) * 0.5
+        local topLocal = Vector(centerLocal.x, centerLocal.y, obbMax.z)
+        worldTopZ = ent:LocalToWorld(topLocal).z
+    else
+        worldTopZ = ent:GetPos().z + size.z
+    end
+
     local cache_entry = {
         obbMin = obbMin,
         obbMax = obbMax,
@@ -98,6 +108,7 @@ function SED.CalculateEntityRenderParams(ent)
         entityHeight = entityHeight,
         buffer = buffer,
         boundsValid = boundsValid,
+        worldTopZ = worldTopZ,
         expires = now + 2.0,
         lastPos = ent:GetPos()
     }

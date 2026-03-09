@@ -181,7 +181,7 @@ function RARELOAD.AdminPanel.Permissions.Create(parent, onSavePermissions)
         if playerData.isOnline and IsValid(playerData.player) then
             self.playerAvatar:SetPlayer(playerData.player, 64)
         else
-            self.playerAvatar:SetSteamID(steamID, 64)
+            self.playerAvatar:SetSteamID(util.SteamIDTo64(steamID), 64)
         end
 
         self.playerName:SetText(playerData.nick)

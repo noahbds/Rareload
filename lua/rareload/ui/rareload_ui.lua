@@ -78,7 +78,7 @@ function RARELOAD.CheckPermission(ply, permName)
     if RARELOAD.Permissions and RARELOAD.Permissions.DEFS and RARELOAD.Permissions.DEFS[permName] then
         return RARELOAD.Permissions.DEFS[permName].default
     end
-    return ply:IsAdmin()
+    return false
 end
 
 local function AnimateLerp(current, target, speed)

@@ -14,7 +14,7 @@ util.AddNetworkString("RareloadSyncServerProfile")
 
 function AntiStuck.SetupNetworking()
     net.Receive("RareloadRequestAntiStuckConfig", function(_, ply)
-        if IsValid(ply) and ply:IsAdmin() then
+        if IsValid(ply) and RARELOAD.Permissions and RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG") then
             net.Start("RareloadAntiStuckConfig")
             local serializedMethods = {}
             for _, method in ipairs(AntiStuck.methods or {}) do
@@ -33,7 +33,7 @@ function AntiStuck.SetupNetworking()
     end)
 
     net.Receive("RareloadSyncServerProfile", function(_, ply)
-        if not IsValid(ply) or not ply:IsAdmin() then return end
+        if not IsValid(ply) or not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG") then return end
         local profileName = net.ReadString()
         if not profileName or profileName == "" then return end
 
@@ -48,7 +48,7 @@ function AntiStuck.SetupNetworking()
     end)
 
     net.Receive("RareloadAntiStuckMethods", function(_, ply)
-        if not IsValid(ply) or not ply:IsAdmin() then return end
+        if not IsValid(ply) or not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG") then return end
         local newMethods = net.ReadTable()
         if type(newMethods) ~= "table" or #newMethods == 0 then return end
 
@@ -96,7 +96,7 @@ function AntiStuck.SetupNetworking()
     end)
 
     net.Receive("RareloadAntiStuckSettings", function(_, ply)
-        if not IsValid(ply) or not ply:IsAdmin() then return end
+        if not IsValid(ply) or not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG") then return end
         local settings = net.ReadTable()
         if type(settings) ~= "table" then return end
 
@@ -145,7 +145,7 @@ function AntiStuck.SetupNetworking()
 
         local admins = {}
         for _, admin in ipairs(player.GetAll()) do
-            if admin:IsAdmin() and admin ~= ply then table.insert(admins, admin) end
+            if RARELOAD.Permissions and RARELOAD.Permissions.HasPermission(admin, "ANTI_STUCK_CONFIG") and admin ~= ply then table.insert(admins, admin) end
         end
         if #admins > 0 then
             net.Start("RareloadAntiStuckConfig")
@@ -158,7 +158,7 @@ function AntiStuck.SetupNetworking()
     end)
 
     net.Receive("RareloadShareAntiStuckProfile", function(_, ply)
-        if not IsValid(ply) or not ply:IsAdmin() then return end
+        if not IsValid(ply) or not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG") then return end
         local profileData = net.ReadTable()
         if not profileData or not profileData.name then return end
 

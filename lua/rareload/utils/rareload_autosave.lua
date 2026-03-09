@@ -106,6 +106,9 @@ if SERVER then
         if not IsValid(ply) or not ply:IsPlayer() or not ply:Alive() then return end
         if not getSetting(ply, "addonEnabled", true) or not getSetting(ply, "autoSaveEnabled", false) then return end
 
+        -- Prevent autosave from overwriting the saved position right after respawn
+        if ply._rareloadSpawnTime and (now() - ply._rareloadSpawnTime) < 3 then return end
+
         local sid = getSteamID(ply)
         if not sid then return end
         local interval = math.max(tonumber(getSetting(ply, "autoSaveInterval", 5)) or 5, 1)

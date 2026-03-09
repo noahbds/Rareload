@@ -187,7 +187,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         playerData.ammo = save_ammo(ply, newInventory)
     end
 
-    if RARELOAD.GetPlayerSetting(ply, "retainVehicles") then
+    if RARELOAD.GetPlayerSetting(ply, "retainVehicles") and RARELOAD.CheckPermission(ply, "SAVE_VEHICLES") then
         playerData.vehicles = save_vehicles(ply)
     end
 
@@ -195,7 +195,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         playerData.vehicleState = save_vehicle_state(ply)
     end
 
-    if RARELOAD.GetPlayerSetting(ply, "retainMapEntities") then
+    if RARELOAD.GetPlayerSetting(ply, "retainMapEntities") and RARELOAD.CheckPermission(ply, "SAVE_ENTITIES") then
         local entityBucket = SnapshotUtils.NormalizeBucketForSave(save_entities(ply))
         if entityBucket then
             playerData.entities = entityBucket
@@ -206,7 +206,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         end
     end
 
-    if RARELOAD.GetPlayerSetting(ply, "retainMapNPCs") then
+    if RARELOAD.GetPlayerSetting(ply, "retainMapNPCs") and RARELOAD.CheckPermission(ply, "SAVE_NPCS") then
         local npcBucket = SnapshotUtils.NormalizeBucketForSave(save_npcs(ply))
         if npcBucket then
             playerData.npcs = npcBucket
@@ -240,7 +240,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     local whereMsg = opts.whereMsg or "your location"
     ply:ChatPrint("[Rareload] Saved respawn position at " .. whereMsg)
 
-    if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
+    if RARELOAD.CheckPermission(ply, "VIEW_PHANTOM") then
         net.Start("CreatePlayerPhantom")
         net.WriteEntity(ply)
         net.WriteVector(RARELOAD.DataUtils.ToVector(newPos) or Vector(0, 0, 0))

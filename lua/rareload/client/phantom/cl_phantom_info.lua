@@ -122,12 +122,13 @@ local SURF_SetDrawColor = (SEDRef and SEDRef.surface_SetDrawColor) or surface.Se
 local DRAW_SimpleText   = (SEDRef and SEDRef.draw_SimpleText) or draw.SimpleText
 local DRAW_RoundedBox   = (SEDRef and SEDRef.draw_RoundedBox) or draw.RoundedBox
 
-local function IsDebugEnabled()
-    if not RARELOAD then return false end
-    if RARELOAD.MySettings and RARELOAD.MySettings.debugEnabled ~= nil then
-        return RARELOAD.MySettings.debugEnabled
+local function HasViewPhantomPermission()
+    local lp = LocalPlayer()
+    if not IsValid(lp) then return false end
+    if RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
+        return RARELOAD.Permissions.HasPermission(lp, "VIEW_PHANTOM")
     end
-    return RARELOAD.settings and RARELOAD.settings.debugEnabled or false
+    return true
 end
 
 function CalculateOptimalPanelSize(categoryContent, numCategories)
@@ -689,7 +690,7 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
 end
 
 function QueuePhantomPanelsForRendering()
-    if not IsDebugEnabled() then return end
+    if not HasViewPhantomPermission() then return end
     if not (RARELOAD.DepthRenderer and RARELOAD.DepthRenderer.AddRenderItem) then return end
 
     CandidatePhantom, CandidateSteamID, CandidateYawDiff, CandidateDistSqr = nil, nil, nil, nil
@@ -697,31 +698,52 @@ function QueuePhantomPanelsForRendering()
     if not IsValid(lpCache) then return end
 
     local playerPos = lpCache:GetPos()
+    local eyePos = lpCache:EyePos()
+    local eyeForward = lpCache:EyeAngles():Forward()
     local mapName = game.GetMap()
     local queuedCount = 0
     local aimAng = lpCache:EyeAngles()
     local yawThreshold = 10
     local distThresholdSqr = 40000
+    local drawDistSqr = GetPhantomDrawDistSqr()
+
+    -- FOV culling config (reuse SED values if available)
+    local fovCosSqr = (SED and SED.FOV_COS_THRESHOLD_SQR) or (math.cos(math.rad(50)) ^ 2)
+    local nearbyDistSqr = (SED and SED.NEARBY_DIST_SQR) or (150 * 150)
 
     if RARELOAD.Phantom then
         for steamID, data in pairs(RARELOAD.Phantom) do
             if IsValid(data.phantom) and queuedCount < 10 then
                 local phantomPos = data.phantom:GetPos()
+                local distSqr = eyePos:DistToSqr(phantomPos)
+
+                -- Distance cull
+                if distSqr > drawDistSqr then goto continuePhantom end
+
+                -- FOV cull: skip phantoms behind the player (except very close ones)
+                if distSqr > nearbyDistSqr then
+                    local dx = phantomPos.x - eyePos.x
+                    local dy = phantomPos.y - eyePos.y
+                    local dz = phantomPos.z - eyePos.z
+                    local lenSqr = dx*dx + dy*dy + dz*dz
+                    if lenSqr > 0 then
+                        local dot = dx * eyeForward.x + dy * eyeForward.y + dz * eyeForward.z
+                        if (dot * dot) < (fovCosSqr * lenSqr) then
+                            goto continuePhantom
+                        end
+                    end
+                end
 
                 local renderFunction = function()
-                    local success, err = pcall(DrawPhantomInfo, data, playerPos, mapName)
-                    if not success then
-                        print("[RARELOAD] Error drawing phantom info for " .. steamID .. ": " .. tostring(err))
-                    end
+                    DrawPhantomInfo(data, playerPos, mapName)
                 end
 
                 RARELOAD.DepthRenderer.AddRenderItem(phantomPos, renderFunction, "phantom")
                 queuedCount = queuedCount + 1
 
                 if not PhantomInteractionState.active then
-                    local toPhantomAng = (phantomPos - lpCache:EyePos()):Angle()
+                    local toPhantomAng = (phantomPos - eyePos):Angle()
                     local yawDiff = math.abs(math.AngleDifference(aimAng.y, toPhantomAng.y))
-                    local distSqr = playerPos:DistToSqr(phantomPos)
                     if distSqr < distThresholdSqr and yawDiff < yawThreshold then
                         if (not IsValid(CandidatePhantom)) then
                             CandidatePhantom = data.phantom
@@ -739,11 +761,10 @@ function QueuePhantomPanelsForRendering()
                         end
                     end
                 end
+                ::continuePhantom::
             end
         end
     end
-
-    local ct = CurTime()
     if PhantomInteractionState.active then
         local phantom = PhantomInteractionState.phantom
         if (not IsValid(phantom)) or lpCache:EyePos():DistToSqr(phantom:GetPos()) > GetPhantomDrawDistSqr() * 1.1 then
@@ -883,7 +904,7 @@ function QueuePhantomPanelsForRendering()
 end
 
 function DrawAllPhantomPanels()
-    if not IsDebugEnabled() then return end
+    if not HasViewPhantomPermission() then return end
 
     CandidatePhantom, CandidateSteamID, CandidateYawDiff = nil, nil, nil
     lpCache = lpCache or LocalPlayer()

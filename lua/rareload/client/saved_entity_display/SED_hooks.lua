@@ -51,11 +51,12 @@ hook.Add("PlayerBindPress", "RARELOAD_InteractScroll", function(ply, bind, press
 end)
 
 hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", function()
-    local debugEnabled = RARELOAD and (
-        (RARELOAD.MySettings and RARELOAD.MySettings.debugEnabled)
-        or (RARELOAD.settings and RARELOAD.settings.debugEnabled)
-    )
-    if not debugEnabled then return end
+    local hasViewSEDPerm = true
+    local lp = LocalPlayer()
+    if IsValid(lp) and RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
+        hasViewSEDPerm = RARELOAD.Permissions.HasPermission(lp, "VIEW_SED")
+    end
+    if not hasViewSEDPerm then return end
 
     SED.lpCache = LocalPlayer()
     if not IsValid(SED.lpCache) then return end
@@ -64,8 +65,6 @@ hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", func
 
     if RARELOAD.DepthRenderer and RARELOAD.DepthRenderer.AddRenderItem then
         SED.QueueAllSavedPanels()
-    else
-        SED.DrawAllSavedPanels()
     end
 
     SED.HandleInteractionInput()

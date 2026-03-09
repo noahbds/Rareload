@@ -140,7 +140,12 @@ if SERVER then
             return RARELOAD.Permissions.HasPermission(ply, permName)
         end
 
-        return ply:IsAdmin()
+        -- Fallback to permission defaults if HasPermission is not loaded yet
+        if RARELOAD.Permissions.DEFS and RARELOAD.Permissions.DEFS[permName] then
+            return RARELOAD.Permissions.DEFS[permName].default
+        end
+
+        return false
     end
 
     ------------------------------------------------------------------------------------------------
@@ -345,10 +350,9 @@ if SERVER then
     LoadGlobalInventory()
 
     concommand.Add("rareload_open_antistuck_debug", function(ply, cmd, args)
-        if not IsValid(ply) or not ply:IsAdmin() then
-            if IsValid(ply) then
-                ply:ChatPrint("[RARELOAD] You must be an admin to access debug features.")
-            end
+        if not IsValid(ply) then return end
+        if not RARELOAD.Permissions.HasPermission or not RARELOAD.Permissions.HasPermission(ply, "DEBUG_MENU") then
+            ply:ChatPrint("[RARELOAD] You don't have permission to access debug features.")
             return
         end
 
@@ -359,10 +363,9 @@ if SERVER then
     end)
 
     concommand.Add("rareload_debug_antistuck_server", function(ply, cmd, args)
-        if not IsValid(ply) or not ply:IsAdmin() then
-            if IsValid(ply) then
-                ply:ChatPrint("[RARELOAD] You must be an admin to access debug features.")
-            end
+        if not IsValid(ply) then return end
+        if not RARELOAD.Permissions.HasPermission or not RARELOAD.Permissions.HasPermission(ply, "DEBUG_MENU") then
+            ply:ChatPrint("[RARELOAD] You don't have permission to access debug features.")
             return
         end
 

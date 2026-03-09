@@ -1,5 +1,6 @@
 function RARELOAD.HandleReloadData(ply)
-    if not IsValid(ply) or not ply:IsAdmin() then return end
+    if not IsValid(ply) then return end
+    if not RARELOAD.Permissions.HasPermission or not RARELOAD.Permissions.HasPermission(ply, "DATA_CLEANUP") then return end
 
     if RARELOAD.LoadPlayerPositions then
         RARELOAD.LoadPlayerPositions()

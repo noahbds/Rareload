@@ -1,6 +1,6 @@
 function RARELOAD.HandleTeleportRequest(ply)
     if not IsValid(ply) or not ply:IsPlayer() then return end
-    if not ply:IsAdmin() then
+    if not RARELOAD.Permissions.HasPermission or not RARELOAD.Permissions.HasPermission(ply, "TELEPORT_PLAYER") then
         ply:ChatPrint("[RARELOAD] You do not have permission to teleport.")
         return
     end

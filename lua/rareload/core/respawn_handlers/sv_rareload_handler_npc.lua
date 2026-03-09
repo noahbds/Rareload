@@ -258,8 +258,9 @@ hook.Add("RARELOAD_SaveEntities", "RARELOAD_MarkSavedNPCs", function()
 end)
 
 net.Receive("RareloadRespawnNPC", function(len, ply)
-    if not IsValid(ply) or not ply:IsAdmin() then
-        ply:ChatPrint("[RARELOAD] Admin privileges required")
+    if not IsValid(ply) then return end
+    if not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "MANAGE_ENTITIES") then
+        ply:ChatPrint("[RARELOAD] You don't have permission to respawn NPCs.")
         return
     end
 

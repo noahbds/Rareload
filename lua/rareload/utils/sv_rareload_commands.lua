@@ -17,8 +17,8 @@ concommand.Add("bot_spawn_entity", load_command("bot_spawn_entity"))
 concommand.Add("check_admin_status", load_command("check_admin_status"))
 
 concommand.Add("rareload_test_antistuck", function(ply, cmd, args)
-    if IsValid(ply) and not ply:IsAdmin() then
-        ply:ChatPrint("[RARELOAD] Only admins can use anti-stuck testing commands.")
+    if IsValid(ply) and (not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG")) then
+        ply:ChatPrint("[RARELOAD] You don't have permission to use anti-stuck testing commands.")
         return
     end
 
@@ -46,7 +46,7 @@ util.AddNetworkString("RareloadEntityViewer_DeleteResult")
 
 concommand.Add("rareload_teleport_to", function(ply, cmd, args)
     if not IsValid(ply) or not ply:IsPlayer() then return end
-    if not ply:IsAdmin() then
+    if not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "TELEPORT_PLAYER") then
         ply:ChatPrint("[RARELOAD] You do not have permission to teleport.")
         return
     end
@@ -94,7 +94,7 @@ end)
 
 net.Receive("RareloadEntityViewer_Delete", function(len, ply)
     if not IsValid(ply) or not ply:IsPlayer() then return end
-    if not ply:IsAdmin() then
+    if not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "MANAGE_ENTITIES") then
         net.Start("RareloadEntityViewer_DeleteResult")
         net.WriteBool(false)
         net.WriteString("You do not have permission to delete entities.")

@@ -146,6 +146,11 @@ end
 net.Receive("SED_FreezeNPC", function(len, player)
     if not IsValid(player) then return end
 
+    if not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(player, "MANAGE_ENTITIES") then
+        player:ChatPrint("[RARELOAD] You don't have permission to freeze NPCs.")
+        return
+    end
+
     local entIndex = net.ReadUInt(16)
     local npc = Entity(entIndex)
 
@@ -159,6 +164,11 @@ end)
 
 net.Receive("SED_UnfreezeNPC", function(len, player)
     if not IsValid(player) then return end
+
+    if not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(player, "MANAGE_ENTITIES") then
+        player:ChatPrint("[RARELOAD] You don't have permission to unfreeze NPCs.")
+        return
+    end
 
     local entIndex = net.ReadUInt(16)
     local npc = Entity(entIndex)
@@ -209,7 +219,8 @@ timer.Create("SEDFreeze_Cleanup", 60, 0, function()
 end)
 
 concommand.Add("sed_freeze_test", function(ply, cmd, args)
-    if not IsValid(ply) or not ply:IsAdmin() then return end
+    if not IsValid(ply) then return end
+    if not RARELOAD.Permissions.HasPermission or not RARELOAD.Permissions.HasPermission(ply, "MANAGE_ENTITIES") then return end
 
     local tr = ply:GetEyeTrace()
     if tr.Entity and IsValid(tr.Entity) and tr.Entity:IsNPC() then
@@ -224,7 +235,8 @@ concommand.Add("sed_freeze_test", function(ply, cmd, args)
 end)
 
 concommand.Add("sed_unfreeze_test", function(ply, cmd, args)
-    if not IsValid(ply) or not ply:IsAdmin() then return end
+    if not IsValid(ply) then return end
+    if not RARELOAD.Permissions.HasPermission or not RARELOAD.Permissions.HasPermission(ply, "MANAGE_ENTITIES") then return end
 
     local tr = ply:GetEyeTrace()
     if tr.Entity and IsValid(tr.Entity) and tr.Entity:IsNPC() then

@@ -190,8 +190,8 @@ end
 net.Receive("RareloadRespawnEntity", function(len, ply)
     if not IsValid(ply) then return end
 
-    if not ply:IsAdmin() then
-        ply:ChatPrint("[RARELOAD] You need admin privileges to respawn entities")
+    if not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "MANAGE_ENTITIES") then
+        ply:ChatPrint("[RARELOAD] You don't have permission to respawn entities.")
         return
     end
 

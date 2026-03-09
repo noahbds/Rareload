@@ -30,7 +30,7 @@ function RARELOAD.Permissions.HasPermission(ply, permName)
         return RARELOAD.Permissions.DEFS[permName].default
     end
 
-    return ply:IsAdmin()
+    return false
 end
 
 -- Receive own resolved permissions from server (sent on join + permission changes)

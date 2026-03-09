@@ -6,8 +6,8 @@ local AntiStuck = RARELOAD.AntiStuck
 local PS = AntiStuck.ProfileSystem
 
 concommand.Add("rareload_antistuck_stats", function(ply)
-    if IsValid(ply) and not ply:IsAdmin() then
-        ply:ChatPrint("[RARELOAD] You must be an admin to use this command.")
+    if IsValid(ply) and (not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG")) then
+        ply:ChatPrint("[RARELOAD] You don't have permission to use this command.")
         return
     end
 
@@ -35,8 +35,8 @@ concommand.Add("rareload_antistuck_stats", function(ply)
 end)
 
 concommand.Add("rareload_antistuck_reset_stats", function(ply)
-    if IsValid(ply) and not ply:IsAdmin() then
-        ply:ChatPrint("[RARELOAD] You must be an admin to use this command.")
+    if IsValid(ply) and (not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG")) then
+        ply:ChatPrint("[RARELOAD] You don't have permission to use this command.")
         return
     end
     if AntiStuck.ResetMethodStats then AntiStuck.ResetMethodStats() end
@@ -45,8 +45,8 @@ concommand.Add("rareload_antistuck_reset_stats", function(ply)
 end)
 
 concommand.Add("rareload_antistuck_methods", function(ply)
-    if IsValid(ply) and not ply:IsAdmin() then
-        ply:ChatPrint("[RARELOAD] You must be an admin to use this command.")
+    if IsValid(ply) and (not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG")) then
+        ply:ChatPrint("[RARELOAD] You don't have permission to use this command.")
         return
     end
 
@@ -81,8 +81,8 @@ concommand.Add("rareload_antistuck_methods", function(ply)
 end)
 
 concommand.Add("rareload_server_fix_corrupted_profiles", function(ply)
-    if IsValid(ply) and not ply:IsAdmin() then
-        ply:ChatPrint("[RARELOAD] You must be an admin to use this command.")
+    if IsValid(ply) and (not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG")) then
+        ply:ChatPrint("[RARELOAD] You don't have permission to use this command.")
         return
     end
 
@@ -132,8 +132,8 @@ concommand.Add("rareload_server_fix_corrupted_profiles", function(ply)
 end)
 
 concommand.Add("rareload_antistuck_test_enable", function(ply)
-    if IsValid(ply) and not ply:IsAdmin() then
-        ply:ChatPrint("[RARELOAD] Only admins can enable anti-stuck testing mode.")
+    if IsValid(ply) and (not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG")) then
+        ply:ChatPrint("[RARELOAD] You don't have permission to use this command.")
         return
     end
     AntiStuck.testingMode = true
@@ -150,8 +150,8 @@ concommand.Add("rareload_antistuck_test_enable", function(ply)
 end)
 
 concommand.Add("rareload_antistuck_test_disable", function(ply)
-    if IsValid(ply) and not ply:IsAdmin() then
-        ply:ChatPrint("[RARELOAD] Only admins can disable anti-stuck testing mode.")
+    if IsValid(ply) and (not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG")) then
+        ply:ChatPrint("[RARELOAD] You don't have permission to use this command.")
         return
     end
     AntiStuck.testingMode = false
@@ -168,8 +168,8 @@ concommand.Add("rareload_antistuck_test_disable", function(ply)
 end)
 
 concommand.Add("rareload_antistuck_test_player", function(ply, _, args)
-    if IsValid(ply) and not ply:IsAdmin() then
-        ply:ChatPrint("[RARELOAD] Only admins can enable player-specific anti-stuck testing.")
+    if IsValid(ply) and (not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG")) then
+        ply:ChatPrint("[RARELOAD] You don't have permission to use this command.")
         return
     end
     local targetName = args[1]
@@ -207,8 +207,8 @@ concommand.Add("rareload_antistuck_test_player", function(ply, _, args)
 end)
 
 concommand.Add("rareload_antistuck_test_status", function(ply)
-    if IsValid(ply) and not ply:IsAdmin() then
-        ply:ChatPrint("[RARELOAD] Only admins can check anti-stuck testing status.")
+    if IsValid(ply) and (not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG")) then
+        ply:ChatPrint("[RARELOAD] You don't have permission to use this command.")
         return
     end
     local message = "[RARELOAD] Anti-stuck testing status:"

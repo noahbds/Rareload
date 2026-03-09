@@ -124,20 +124,18 @@ end
 function RARELOAD.AdminPanel.Utils.CategorizePermissions()
     local permCategories = {
         ["ADMIN"] = {},
+        ["POSITION"] = {},
+        ["INVENTORY"] = {},
+        ["ENTITIES"] = {},
         ["TOOL"] = {},
-        ["SAVE"] = {},
         ["OTHER"] = {}
     }
 
     for permName, permData in pairs(RARELOAD.Permissions.DEFS or {}) do
-        local category = "OTHER"
+        local category = permData.category or "OTHER"
 
-        if string.find(permName, "^ADMIN") then
-            category = "ADMIN"
-        elseif string.find(permName, "TOOL") then
-            category = "TOOL"
-        elseif string.find(permName, "SAVE") or string.find(permName, "RETAIN") then
-            category = "SAVE"
+        if not permCategories[category] then
+            category = "OTHER"
         end
 
         permCategories[category][permName] = permData
@@ -151,16 +149,20 @@ function RARELOAD.AdminPanel.Utils.GetCategoryInfo(catName)
 
     local displayNames = {
         ["ADMIN"] = "Administration",
-        ["TOOL"] = "Tool Permissions",
-        ["SAVE"] = "Save Features",
+        ["POSITION"] = "Position & Spawn",
+        ["INVENTORY"] = "Inventory & Stats",
+        ["ENTITIES"] = "Entities & NPCs",
+        ["TOOL"] = "Tool Access",
         ["OTHER"] = "Other Permissions"
     }
 
     local colors = {
         ["ADMIN"] = THEME.danger,
-        ["TOOL"] = THEME.success,
-        ["SAVE"] = THEME.accent,
-        ["OTHER"] = THEME.warning
+        ["POSITION"] = THEME.accent,
+        ["INVENTORY"] = THEME.success,
+        ["ENTITIES"] = THEME.warning,
+        ["TOOL"] = Color(100, 180, 255),
+        ["OTHER"] = THEME.textSecondary
     }
     return displayNames[catName] or catName, colors[catName] or THEME.warning
 end

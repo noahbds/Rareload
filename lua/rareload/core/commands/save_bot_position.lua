@@ -1,6 +1,6 @@
 return function(ply, _, args)
-    if IsValid(ply) and not ply:IsAdmin() then
-        print("[RARELOAD] Only admins can save bot positions.")
+    if IsValid(ply) and (not RARELOAD.Permissions.HasPermission or not RARELOAD.Permissions.HasPermission(ply, "EXECUTE_RARELOAD_COMMANDS")) then
+        print("[RARELOAD] You don't have permission to save bot positions.")
         return
     end
 
@@ -106,14 +106,12 @@ return function(ply, _, args)
         RARELOAD.playerPositions[mapName][bot:SteamID()] = botData
         print("[RARELOAD] Saved position for bot: " .. bot:GetName())
 
-        if RARELOAD.settings.debugEnabled then
-            net.Start("CreatePlayerPhantom")
-            net.WriteEntity(bot)
-            net.WriteVector(botData.pos)
-            local savedAng = Angle(botData.ang[1], botData.ang[2], botData.ang[3])
-            net.WriteAngle(savedAng)
-            net.Broadcast()
-        end
+        net.Start("CreatePlayerPhantom")
+        net.WriteEntity(bot)
+        net.WriteVector(botData.pos)
+        local savedAng = Angle(botData.ang[1], botData.ang[2], botData.ang[3])
+        net.WriteAngle(savedAng)
+        net.Broadcast()
     end
 
     local success, err = pcall(function()

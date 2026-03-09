@@ -102,6 +102,8 @@ function RARELOAD.HandlePlayerSpawn(ply)
         if DebugEnabled then print("[RARELOAD DEBUG] Player was killed, resetting flag.") end
         return
     end
+    -- Mark spawn time so autosave doesn't immediately overwrite the saved position
+    ply._rareloadSpawnTime = CurTime()
     SavedInfo = RARELOAD.playerPositions[MapName] and RARELOAD.playerPositions[MapName][SteamID]
     if not SavedInfo then
         if DebugEnabled then RARELOAD.Debug.SendToPlayer(ply, "[RARELOAD DEBUG] No saved player info found.") end
@@ -140,7 +142,12 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 if type(pos) == "table" and pos.x and pos.y and pos.z then
                     pos = Vector(pos.x, pos.y, pos.z)
                 end
-                ply:SetPos(pos)
+                -- Defer SetPos to next frame to ensure it persists after engine spawn processing
+                timer.Simple(0, function()
+                    if not IsValid(ply) then return end
+                    ply:SetPos(pos)
+                    ply:SetMoveType(moveType)
+                end)
                 RARELOAD.SavePositionToCache(safePos)
 
                 timer.Simple(0.05, function()
@@ -158,15 +165,27 @@ function RARELOAD.HandlePlayerSpawn(ply)
                     end
                 end)
 
-                timer.Simple(0, function()
-                    if IsValid(ply) then ply:SetMoveType(moveType) end
-                end)
                 if safePos ~= SavedInfo.pos and DebugEnabled then
                     RARELOAD.Debug.Log("INFO", "Player position adjusted by anti-stuck system", tostring(safePos), ply)
                 end
             else
-                ply:ChatPrint("[RARELOAD] Warning: Emergency positioning was required.")
-                if DebugEnabled then print("[RARELOAD DEBUG] Anti-stuck system used emergency positioning") end
+                -- Anti-stuck resolution failed; still attempt the original saved position
+                local fallbackPos = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
+                    and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
+                    or SavedInfo.pos
+                timer.Simple(0, function()
+                    if not IsValid(ply) then return end
+                    ply:SetPos(fallbackPos)
+                    ply:SetMoveType(moveType)
+                end)
+                timer.Simple(0.05, function()
+                    if not IsValid(ply) then return end
+                    local parsedAngle = RARELOAD.DataUtils.ToAngle(SavedInfo.ang)
+                    if parsedAngle then ply:SetEyeAngles(parsedAngle) end
+                end)
+                RARELOAD.SavePositionToCache(fallbackPos)
+                ply:ChatPrint("[RARELOAD] Warning: Position may be stuck. Anti-stuck could not find a better spot.")
+                if DebugEnabled then print("[RARELOAD DEBUG] Anti-stuck resolution failed; using original saved position") end
             end
         else
             if DebugEnabled then
@@ -175,7 +194,12 @@ function RARELOAD.HandlePlayerSpawn(ply)
             local pos = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
                 and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
                 or SavedInfo.pos
-            ply:SetPos(pos)
+            -- Defer SetPos to next frame to ensure it persists after engine spawn processing
+            timer.Simple(0, function()
+                if not IsValid(ply) then return end
+                ply:SetPos(pos)
+                ply:SetMoveType(moveType)
+            end)
             RARELOAD.SavePositionToCache(SavedInfo.pos)
 
             timer.Simple(0.05, function()
@@ -192,16 +216,17 @@ function RARELOAD.HandlePlayerSpawn(ply)
                     end
                 end
             end)
-
-            timer.Simple(0, function()
-                if IsValid(ply) then ply:SetMoveType(moveType) end
-            end)
         end
     else
         local pos = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
             and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
             or SavedInfo.pos
-        ply:SetPos(pos)
+        -- Defer SetPos to next frame to ensure it persists after engine spawn processing
+        timer.Simple(0, function()
+            if not IsValid(ply) then return end
+            ply:SetPos(pos)
+            ply:SetMoveType(moveType)
+        end)
         RARELOAD.SavePositionToCache(pos)
 
         timer.Simple(0.05, function()
@@ -219,7 +244,6 @@ function RARELOAD.HandlePlayerSpawn(ply)
             end
         end)
 
-        timer.Simple(0, function() if IsValid(ply) then ply:SetMoveType(moveType) end end)
         if DebugEnabled then
             print("[RARELOAD DEBUG] Move type set to: " .. tostring(moveType))
             print("[RARELOAD DEBUG] Anti-stuck disabled; used saved position and angles directly")
@@ -272,7 +296,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
             RARELOAD.Debug.FlushClipRestoreBuffer()
         end)
     end
-    if RARELOAD.GetPlayerSetting(ply, "retainVehicles", false) and SavedInfo.vehicles then
+    if hasPerm("RESTORE_VEHICLES") and RARELOAD.GetPlayerSetting(ply, "retainVehicles", false) and SavedInfo.vehicles then
         RARELOAD.RestoreVehicles(SavedInfo, ply)
     end
     if RARELOAD.GetPlayerSetting(ply, "retainVehicleState", false) and SavedInfo.vehicleState then
@@ -291,18 +315,52 @@ function RARELOAD.HandlePlayerSpawn(ply)
             end
         end)
     end
-    if RARELOAD.GetPlayerSetting(ply, "retainMapEntities", true) and SavedInfo.entities then
+    if hasPerm("RESTORE_ENTITIES") and RARELOAD.GetPlayerSetting(ply, "retainMapEntities", true) and SavedInfo.entities then
         local playerPos = SavedInfo.pos
-        local spawnedCloseEntities = RARELOAD.RestoreEntities(playerPos, SavedInfo, ply)
-        if spawnedCloseEntities and RARELOAD.GetPlayerSetting(ply, "spawnModeEnabled", true) then
-            timer.Simple(0.05, function()
-                if IsValid(ply) then
-                    SetPlayerPositionAndEyeAngles(ply, SavedInfo)
+        RARELOAD.RestoreEntities(playerPos, SavedInfo, ply)
+
+        -- After entity restoration, the Source physics engine will push the
+        -- player out of any restored entity that overlaps the spawn position.
+        -- To prevent this, temporarily make all Rareload-spawned entities
+        -- non-solid, re-apply the current position (which may have been
+        -- adjusted by the anti-stuck system), then restore solidity.
+        timer.Simple(0.1, function()
+            if not IsValid(ply) then return end
+            -- Use the player's *current* position — this is either the saved
+            -- position or the safe position chosen by the anti-stuck system.
+            -- We must NOT overwrite it with SavedInfo.pos which could put the
+            -- player back into a stuck spot that anti-stuck already resolved.
+            local currentPos = ply:GetPos()
+
+            -- Collect restored entities and make them temporarily non-solid
+            local rareloadEnts = {}
+            for _, ent in ipairs(ents.GetAll()) do
+                if IsValid(ent) and ent.SpawnedByRareload then
+                    rareloadEnts[#rareloadEnts + 1] = ent
+                    ent._rareloadSavedSolid = ent:GetSolid()
+                    ent:SetNotSolid(true)
+                end
+            end
+
+            -- Re-apply the position while entities are non-solid so the
+            -- physics engine doesn't push the player away from the entities
+            ply:SetPos(currentPos)
+
+            -- Restore entity solidity after the player is settled
+            timer.Simple(0.15, function()
+                for _, ent in ipairs(rareloadEnts) do
+                    if IsValid(ent) then
+                        ent:SetNotSolid(false)
+                        if ent._rareloadSavedSolid then
+                            ent:SetSolid(ent._rareloadSavedSolid)
+                            ent._rareloadSavedSolid = nil
+                        end
+                    end
                 end
             end)
-        end
+        end)
     end
-    if RARELOAD.GetPlayerSetting(ply, "retainMapNPCs", true) and HasSnapshotData(SavedInfo.npcs) then
+    if hasPerm("RESTORE_NPCS") and RARELOAD.GetPlayerSetting(ply, "retainMapNPCs", true) and HasSnapshotData(SavedInfo.npcs) then
         RARELOAD.RestoreNPCs(SavedInfo, ply)
     end
     
@@ -417,11 +475,13 @@ function RARELOAD.HandlePlayerSpawn(ply)
             end
         end)
     end
-    if DebugEnabled then
+    if RARELOAD.CheckPermission(ply, "VIEW_PHANTOM") and SavedInfo then
+        local phantomPos = RARELOAD.DataUtils.ToVector(SavedInfo.pos) or ply:GetPos()
+        local phantomAng = RARELOAD.DataUtils.ToAngle(SavedInfo.ang) or ply:GetAngles()
         net.Start("CreatePlayerPhantom")
         net.WriteEntity(ply)
-        net.WriteVector(ply:GetPos())
-        net.WriteAngle(ply:GetAngles())
+        net.WriteVector(phantomPos)
+        net.WriteAngle(phantomAng)
         net.Send(ply)
     end
 end

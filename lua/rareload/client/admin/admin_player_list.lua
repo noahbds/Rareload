@@ -183,7 +183,7 @@ function RARELOAD.AdminPanel.PlayerList.Create(parent, onPlayerSelected)
         if playerData.isOnline and IsValid(playerData.player) then
             avatar:SetPlayer(playerData.player, 64)
         else
-            avatar:SetSteamID(playerData.steamid, 64)
+            avatar:SetSteamID(util.SteamIDTo64(playerData.steamid), 64)
         end
 
         local avatarBorder = vgui.Create("DPanel", button)

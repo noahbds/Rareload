@@ -104,14 +104,14 @@ end
 
 if SERVER then
     concommand.Add("rareload_standardize_cache", function(ply, cmd, args)
-        if IsValid(ply) and not ply:IsAdmin() then return end
+        if IsValid(ply) and (not RARELOAD.Permissions.HasPermission or not RARELOAD.Permissions.HasPermission(ply, "DATA_CLEANUP")) then return end
         local count = RARELOAD.StandardizeCachedPositions()
         if IsValid(ply) then
             ply:ChatPrint("[RARELOAD] Position cache standardized. " .. count .. " positions in cache.")
         end
     end)
     concommand.Add("rareload_migrate_cache", function(ply, cmd, args)
-        if IsValid(ply) and not ply:IsAdmin() then return end
+        if IsValid(ply) and (not RARELOAD.Permissions.HasPermission or not RARELOAD.Permissions.HasPermission(ply, "DATA_CLEANUP")) then return end
         local cachedData = LoadCachedPositions()
         local message = string.format("[RARELOAD] Position cache migrated to version %d. %d positions in cache.",
             cachedData.version, #cachedData.positions)

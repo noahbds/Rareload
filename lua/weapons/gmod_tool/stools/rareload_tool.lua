@@ -29,6 +29,7 @@ if SERVER then
     
     -- Tool-specific network strings
     util.AddNetworkString("RareloadToolReloadState")
+    util.AddNetworkString("RareloadToolPermissionDenied")
     util.AddNetworkString("RareloadUpdateAntiStuckConfig")
 
     RARELOAD.save_inventory = include("rareload/core/save_helpers/rareload_save_inventory.lua")
@@ -67,6 +68,13 @@ if CLIENT then
         local hasData = net.ReadBool()
         RARELOAD.reloadImageState = {
             hasData = hasData,
+            showTime = CurTime(),
+            duration = 3
+        }
+    end)
+
+    net.Receive("RareloadToolPermissionDenied", function()
+        RARELOAD.permissionDeniedState = {
             showTime = CurTime(),
             duration = 3
         }
@@ -111,7 +119,9 @@ end
 function TOOL:LeftClick(trace, ply)
     local ply = self:GetOwner()
 
-    if CLIENT then return true end
+    if CLIENT then
+        return RARELOAD.CheckPermission(ply, "USE_TOOL") and RARELOAD.CheckPermission(ply, "EXECUTE_RARELOAD_COMMANDS")
+    end
 
     if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then
         ply:ChatPrint("[RARELOAD] The Rareload addon is disabled.")
@@ -121,11 +131,15 @@ function TOOL:LeftClick(trace, ply)
     if not RARELOAD.CheckPermission(ply, "USE_TOOL") then
         ply:ChatPrint("[RARELOAD] You don't have permission to use the Rareload tool.")
         ply:EmitSound("buttons/button10.wav")
+        net.Start("RareloadToolPermissionDenied")
+        net.Send(ply)
         return false
     end
     if not RARELOAD.CheckPermission(ply, "EXECUTE_RARELOAD_COMMANDS") then
         ply:ChatPrint("[RARELOAD] You don't have permission to use Rareload commands.")
         ply:EmitSound("buttons/button10.wav")
+        net.Start("RareloadToolPermissionDenied")
+        net.Send(ply)
         return false
     end
     local hitPos = (trace and trace.HitPos) or ply:GetPos()
@@ -146,11 +160,15 @@ function TOOL:RightClick()
     if not RARELOAD.CheckPermission(ply, "USE_TOOL") then
         ply:ChatPrint("[RARELOAD] You don't have permission to use the Rareload tool.")
         ply:EmitSound("buttons/button10.wav")
+        net.Start("RareloadToolPermissionDenied")
+        net.Send(ply)
         return false
     end
     if not RARELOAD.CheckPermission(ply, "EXECUTE_RARELOAD_COMMANDS") then
         ply:ChatPrint("[RARELOAD] You don't have permission to use Rareload commands.")
         ply:EmitSound("buttons/button10.wav")
+        net.Start("RareloadToolPermissionDenied")
+        net.Send(ply)
         return false
     end
 
@@ -171,16 +189,22 @@ function TOOL:Reload()
     if not RARELOAD.CheckPermission(ply, "USE_TOOL") then
         ply:ChatPrint("[RARELOAD] You don't have permission to use the Rareload tool.")
         ply:EmitSound("buttons/button10.wav")
+        net.Start("RareloadToolPermissionDenied")
+        net.Send(ply)
         return false
     end
     if not RARELOAD.CheckPermission(ply, "EXECUTE_RARELOAD_COMMANDS") then
         ply:ChatPrint("[RARELOAD] You don't have permission to use Rareload commands.")
         ply:EmitSound("buttons/button10.wav")
+        net.Start("RareloadToolPermissionDenied")
+        net.Send(ply)
         return false
     end
     if not RARELOAD.CheckPermission(ply, "LOAD_POSITION") then
         ply:ChatPrint("[RARELOAD] You don't have permission to load saved positions.")
         ply:EmitSound("buttons/button10.wav")
+        net.Start("RareloadToolPermissionDenied")
+        net.Send(ply)
         return false
     end
 
@@ -205,7 +229,7 @@ function TOOL:Reload()
                 local remaining = RARELOAD.GetPositionHistory(steamID, mapName)
                 ply:ChatPrint("[RARELOAD] Restored previous position data. (" .. remaining .. " positions in history)")
 
-                if RARELOAD.GetPlayerSetting(ply, "debugEnabled", false) then
+                if RARELOAD.CheckPermission(ply, "VIEW_PHANTOM") then
                     net.Start("CreatePlayerPhantom")
                     net.WriteEntity(ply)
                     local pos = toVecTable(previousData.pos)

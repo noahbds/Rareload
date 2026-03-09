@@ -206,7 +206,8 @@ function RARELOAD.Theme.BuildToolscreenColors()
         AUTO_SAVE_MESSAGE = t.success,
         EMOJI = {
             DATA_FOUND = t.success,
-            NO_DATA = t.danger
+            NO_DATA = t.danger,
+            NO_PERMISSION = t.warning
         }
     }
 end

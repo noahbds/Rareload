@@ -388,6 +388,167 @@ local function drawReloadStateImage(width, height)
     end
 end
 
+local function drawPermissionIcon(x, y, size, alpha, animProgress)
+    animProgress = animProgress or 1
+
+    local bgColor = TOOL_UI.COLORS.EMOJI.NO_PERMISSION
+
+    local bgSize = size * math.min(1, animProgress * 1.3)
+    draw.NoTexture()
+
+    -- Outer glow
+    surface.SetDrawColor(bgColor.r, bgColor.g, bgColor.b, alpha * 0.3)
+    RareloadUI.DrawCircle(x, y, bgSize + 4, 40)
+    RareloadUI.DrawCircle(x, y, bgSize + 4, 40, Color(bgColor.r, bgColor.g, bgColor.b, alpha * 0.3))
+
+    -- Main circle
+    surface.SetDrawColor(bgColor.r, bgColor.g, bgColor.b, alpha)
+    RareloadUI.DrawCircle(x, y, bgSize, 40)
+    RareloadUI.DrawCircle(x, y, bgSize, 40, Color(bgColor.r, bgColor.g, bgColor.b, alpha))
+
+    if animProgress < 0.3 then return end
+
+    local lineProgress = math.min(1, (animProgress - 0.3) / 0.6)
+
+    local easeProgress = lineProgress < 0.5
+        and 2 * lineProgress * lineProgress
+        or 1 - math.pow(-2 * lineProgress + 2, 2) / 2
+
+    -- Draw padlock body (rectangle)
+    local bodyW = size * 0.55
+    local bodyH = size * 0.4
+    local bodyX = x - bodyW / 2
+    local bodyY = y + size * 0.02
+
+    local bodyProgress = math.min(1, easeProgress * 2)
+    local currentBodyH = bodyH * bodyProgress
+
+    if bodyProgress > 0 then
+        surface.SetDrawColor(255, 255, 255, alpha)
+        surface.DrawRect(bodyX, bodyY, bodyW, currentBodyH)
+
+        -- Rounded corners on body
+        RareloadUI.DrawCircle(bodyX + 2, bodyY + 2, 2, 8, Color(255, 255, 255, alpha))
+        RareloadUI.DrawCircle(bodyX + bodyW - 2, bodyY + 2, 2, 8, Color(255, 255, 255, alpha))
+        if bodyProgress >= 0.95 then
+            RareloadUI.DrawCircle(bodyX + 2, bodyY + currentBodyH - 2, 2, 8, Color(255, 255, 255, alpha))
+            RareloadUI.DrawCircle(bodyX + bodyW - 2, bodyY + currentBodyH - 2, 2, 8, Color(255, 255, 255, alpha))
+        end
+    end
+
+    -- Draw padlock shackle (arch on top)
+    local shackleProgress = math.max(0, (easeProgress - 0.3) / 0.7)
+    if shackleProgress > 0 then
+        local shackleRadius = bodyW * 0.35
+        local shackleCenterY = bodyY
+        local thickness = math.max(2, size * 0.09)
+        local totalSegments = 20
+        local drawSegments = math.floor(totalSegments * math.min(1, shackleProgress))
+
+        for i = 0, drawSegments - 1 do
+            local a1 = math.rad(180 + (i / totalSegments) * 180)
+            local a2 = math.rad(180 + ((i + 1) / totalSegments) * 180)
+
+            local x1 = x + math.cos(a1) * shackleRadius
+            local y1 = shackleCenterY + math.sin(a1) * shackleRadius
+            local x2 = x + math.cos(a2) * shackleRadius
+            local y2 = shackleCenterY + math.sin(a2) * shackleRadius
+
+            local angle = math.atan2(y2 - y1, x2 - x1)
+            local perpX = math.sin(angle) * thickness / 2
+            local perpY = -math.cos(angle) * thickness / 2
+
+            surface.SetDrawColor(255, 255, 255, alpha)
+            surface.DrawPoly({
+                { x = x1 + perpX, y = y1 + perpY },
+                { x = x2 + perpX, y = y2 + perpY },
+                { x = x2 - perpX, y = y2 - perpY },
+                { x = x1 - perpX, y = y1 - perpY }
+            })
+        end
+
+        -- Shackle legs connecting to body
+        local legHeight = math.max(2, size * 0.06)
+        if shackleProgress > 0.1 then
+            surface.SetDrawColor(255, 255, 255, alpha)
+            surface.DrawRect(x - shackleRadius - thickness / 2, shackleCenterY, thickness, legHeight)
+        end
+        if shackleProgress >= 0.95 then
+            surface.SetDrawColor(255, 255, 255, alpha)
+            surface.DrawRect(x + shackleRadius - thickness / 2, shackleCenterY, thickness, legHeight)
+        end
+    end
+
+    -- Keyhole dot on body
+    if bodyProgress >= 0.8 then
+        local dotAlpha = math.min(alpha, ((bodyProgress - 0.8) / 0.2) * alpha)
+        RareloadUI.DrawCircle(x, bodyY + bodyH * 0.4, size * 0.06, 12, Color(bgColor.r, bgColor.g, bgColor.b, dotAlpha))
+        -- Keyhole line below dot
+        surface.SetDrawColor(bgColor.r, bgColor.g, bgColor.b, dotAlpha)
+        surface.DrawRect(x - size * 0.02, bodyY + bodyH * 0.45, size * 0.04, bodyH * 0.25)
+    end
+
+    -- Highlight arc
+    surface.SetDrawColor(255, 255, 255, alpha * 0.15)
+    local highlightSize = bgSize * 0.9
+    local arcSegments = 10
+    for i = 0, arcSegments do
+        local a1 = math.rad(200 + (i / arcSegments) * 140)
+        local a2 = math.rad(200 + ((i + 1) / arcSegments) * 140)
+
+        local hx1 = x + math.cos(a1) * highlightSize
+        local hy1 = y + math.sin(a1) * highlightSize
+        local hx2 = x + math.cos(a2) * highlightSize
+        local hy2 = y + math.sin(a2) * highlightSize
+
+        surface.DrawLine(hx1, hy1, hx2, hy2)
+    end
+end
+
+local function drawPermissionDeniedImage(width, height)
+    if not RARELOAD.permissionDeniedState then return end
+
+    if not RARELOAD.permissionDeniedState.animStartTime then
+        RARELOAD.permissionDeniedState.animStartTime = CurTime()
+    end
+
+    if CurTime() - RARELOAD.permissionDeniedState.showTime > RARELOAD.permissionDeniedState.duration then
+        RARELOAD.permissionDeniedState = nil
+        return
+    end
+
+    local alpha, animProgress
+    if DISABLE_ANIM then
+        alpha = 255
+        animProgress = 1
+    else
+        local remainingTime = RARELOAD.permissionDeniedState.duration - (CurTime() - RARELOAD.permissionDeniedState.showTime)
+        alpha = 255
+        if remainingTime < 0.5 then
+            alpha = remainingTime * 510
+        end
+        animProgress = math.Clamp((CurTime() - RARELOAD.permissionDeniedState.animStartTime) / 0.8, 0, 1)
+    end
+
+    surface.SetDrawColor(30, 30, 35, math.min(200, alpha))
+    surface.DrawRect(0, 0, width, height)
+
+    local emojiSize = math.min(width, height) * 0.3
+    local centerX = width / 2
+    local centerY = height / 2 - height * 0.1
+
+    drawPermissionIcon(centerX, centerY, emojiSize, alpha, animProgress)
+
+    local text = "No Permission"
+    local textY = (height / 2) + 60
+
+    if animProgress > 0.7 then
+        local textAlpha = math.min(alpha, ((animProgress - 0.7) / 0.3) * 255)
+        draw.SimpleText(text, "CTNV2", width / 2 + 2, textY + 2, Color(0, 0, 0, textAlpha), TEXT_ALIGN_CENTER)
+        draw.SimpleText(text, "CTNV2", width / 2, textY, Color(255, 255, 255, textAlpha), TEXT_ALIGN_CENTER)
+    end
+end
+
 function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offsetX, offsetY)
     cam.Start2D()
     width = width or 256
@@ -568,9 +729,11 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
         end
     end
 
-    if not RARELOAD.reloadImageState then
+    if not RARELOAD.reloadImageState and not RARELOAD.permissionDeniedState then
         draw.SimpleText("v3.1", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT,
             TEXT_ALIGN_BOTTOM)
+    elseif RARELOAD.permissionDeniedState then
+        drawPermissionDeniedImage(width, height)
     else
         drawReloadStateImage(width, height)
     end

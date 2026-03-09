@@ -202,8 +202,8 @@ end
 
 -- Console command for manual cleanup
 concommand.Add("rareload_cleanup_data", function(ply, cmd, args)
-    if IsValid(ply) and not ply:IsAdmin() then
-        ply:ChatPrint("[RARELOAD] You need admin privileges to run data cleanup")
+    if IsValid(ply) and (not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "DATA_CLEANUP")) then
+        ply:ChatPrint("[RARELOAD] You don't have permission to run data cleanup.")
         return
     end
     

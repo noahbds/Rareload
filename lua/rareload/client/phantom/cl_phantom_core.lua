@@ -58,8 +58,11 @@ local function CreatePhantom(ply, pos, ang)
 end
 
 local function UpdatePhantomVisibility()
-    local isDebugEnabled = (RARELOAD.MySettings and RARELOAD.MySettings.debugEnabled)
-        or (RARELOAD.settings and RARELOAD.settings.debugEnabled)
+    local hasViewPhantomPerm = true
+    local lp = LocalPlayer()
+    if IsValid(lp) and RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
+        hasViewPhantomPerm = RARELOAD.Permissions.HasPermission(lp, "VIEW_PHANTOM")
+    end
     local playerPos = LocalPlayer():GetPos()
 
     for steamID, phantomData in pairs(RARELOAD.Phantom) do
@@ -70,7 +73,7 @@ local function UpdatePhantomVisibility()
             if distance > PHANTOM_CULL_DISTANCE_SQR then
                 phantom:SetNoDraw(true)
                 phantom:SetColor(Color(0, 0, 0, 0))
-            elseif isDebugEnabled and distance <= PHANTOM_MAX_DISTANCE_SQR then
+            elseif hasViewPhantomPerm and distance <= PHANTOM_MAX_DISTANCE_SQR then
                 phantom:SetColor(Color(255, 255, 255, 150))
                 phantom:SetNoDraw(false)
             else
@@ -270,8 +273,11 @@ hook.Add("PostDrawOpaqueRenderables", "RARELOAD_QueuePhantomInfo", function()
     local lp = LocalPlayer()
     if not IsValid(lp) then return end
 
-    local isDebugEnabled = (RARELOAD.MySettings and RARELOAD.MySettings.debugEnabled)
-        or (RARELOAD.settings and RARELOAD.settings.debugEnabled)
+    local hasViewPhantomPerm = true
+    local lp = LocalPlayer()
+    if IsValid(lp) and RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
+        hasViewPhantomPerm = RARELOAD.Permissions.HasPermission(lp, "VIEW_PHANTOM")
+    end
     local hasValidPhantoms = false
     if RARELOAD.Phantom then
         for _, data in pairs(RARELOAD.Phantom) do
@@ -322,12 +328,15 @@ hook.Add("PostDrawOpaqueRenderables", "RARELOAD_QueuePhantomInfo", function()
 end)
 
 hook.Add("Think", "CheckDebugModeChanges", function()
-    local currentDebugState = (RARELOAD.MySettings and RARELOAD.MySettings.debugEnabled)
-        or (RARELOAD.settings and RARELOAD.settings.debugEnabled)
+    local hasViewPhantomPerm = true
+    local lp = LocalPlayer()
+    if IsValid(lp) and RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
+        hasViewPhantomPerm = RARELOAD.Permissions.HasPermission(lp, "VIEW_PHANTOM")
+    end
 
-    if RARELOAD.lastDebugState ~= currentDebugState then
+    if RARELOAD.lastPhantomPermState ~= hasViewPhantomPerm then
         UpdatePhantomVisibility()
-        RARELOAD.lastDebugState = currentDebugState
+        RARELOAD.lastPhantomPermState = hasViewPhantomPerm
     end
 end)
 

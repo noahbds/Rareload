@@ -3,6 +3,8 @@ RARELOAD._EntityInfo = RARELOAD._EntityInfo or {}
 RARELOAD._NPCInfo = RARELOAD._NPCInfo or {}
 RARELOAD.playerPositions = RARELOAD.playerPositions or {}
 RARELOAD.SavedEntityDisplay = RARELOAD.SavedEntityDisplay or {}
+
+-- SED is the client-side system for displaying saved entity and NPC information in-world.
 SED = RARELOAD.SavedEntityDisplay
 SED.SAVED_ENTITIES_BY_ID = {}
 SED.SAVED_NPCS_BY_ID = {}
@@ -12,9 +14,10 @@ SED.MAP_LAST_BUILD = 0
 SED.SAVED_LOOKUP_INTERVAL = 5
 SED.LAST_RESCAN = 0
 SED.RESCAN_INTERVAL = 4
-SED.INFO_CACHE_LIFETIME = 1.0
-SED.MAX_DRAW_PER_FRAME = 40
-SED.BASE_DRAW_DISTANCE = 1000
+SED.INFO_CACHE_LIFETIME = 5.0
+SED.MAX_DRAW_PER_FRAME = 20
+SED.MINI_PANEL_DIST_SQR = 500 * 500
+SED.BASE_DRAW_DISTANCE = 500
 SED.LARGE_ENTITY_DRAW_DISTANCE = 2500
 SED.DRAW_DISTANCE_SQR = SED.BASE_DRAW_DISTANCE * SED.BASE_DRAW_DISTANCE
 SED.BASE_SCALE = 0.11
@@ -25,8 +28,9 @@ SED.SCROLL_SPEED = 3
 SED.LARGE_ENTITY_THRESHOLD = 200
 SED.MASSIVE_ENTITY_THRESHOLD = 800
 SED.CULL_VIEW_CONE = true
-SED.FOV_COS_THRESHOLD = math.cos(math.rad(70))
-SED.NEARBY_DIST_SQR = 512 * 512
+SED.FOV_COS_THRESHOLD = math.cos(math.rad(50))
+SED.FOV_COS_THRESHOLD_SQR = SED.FOV_COS_THRESHOLD * SED.FOV_COS_THRESHOLD
+SED.NEARBY_DIST_SQR = 150 * 150
 SED.HITTEST_ONLY_CANDIDATE = true
 SED.PanelScroll = { entities = {}, npcs = {} }
 SED.InteractionState = { active = false, ent = nil, id = nil, isNPC = false, lastAction = 0 }
@@ -48,6 +52,10 @@ SED.LastFrameRenderCount = 0
 SED.FrameRenderBudget = 0.003
 SED.lpCache = nil
 SED.lastPlayerCheck = 0
+
+-- END OF CONFIGURATION
+
+
 -- Optional theme utils for light/dark awareness
 if not RARELOAD.Theme or not RARELOAD.Theme.IsLightMode then
     if file.Exists("rareload/client/shared/theme_utils.lua", "LUA") then
