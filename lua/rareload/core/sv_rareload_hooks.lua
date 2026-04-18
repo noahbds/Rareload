@@ -7,6 +7,7 @@ if SERVER then
         "SyncData",
         "UpdatePhantomPosition",
         "SyncPlayerPositions",
+        "SyncPlayerPositionsChunk",
         "RareloadTeleportTo",
         "RareloadReloadData",
         "RareloadSyncAutoSaveTime",

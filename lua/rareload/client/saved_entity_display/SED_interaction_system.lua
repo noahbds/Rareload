@@ -145,12 +145,22 @@ function SED.HandleInteractionInput()
                     end
                 end
 
-                currentIdx = currentIdx + dir
-                if currentIdx < 1 then
-                    currentIdx = #categoryList
-                elseif currentIdx > #categoryList then
-                    currentIdx = 1
+                local nextIdx = currentIdx
+                for _ = 1, #categoryList do
+                    nextIdx = nextIdx + dir
+                    if nextIdx < 1 then
+                        nextIdx = #categoryList
+                    elseif nextIdx > #categoryList then
+                        nextIdx = 1
+                    end
+
+                    local candidateCat = categoryList[nextIdx][1]
+                    local candidateLines = cache.data and cache.data[candidateCat]
+                    if candidateLines and #candidateLines > 0 then
+                        break
+                    end
                 end
+                currentIdx = nextIdx
 
                 cache.activeCat = categoryList[currentIdx][1]
                 scrollTable[interactionID .. "_" .. cache.activeCat] = 0

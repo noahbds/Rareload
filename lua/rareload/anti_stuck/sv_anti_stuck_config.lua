@@ -95,6 +95,29 @@ function AntiStuck.DebugEnabled(ply)
     return AntiStuck.CONFIG and AntiStuck.CONFIG.DEBUG_LOGGING or false
 end
 
+function AntiStuck.HasStructuredDebugWriter(ply)
+    return AntiStuck.DebugEnabled(ply)
+        and RARELOAD
+        and RARELOAD.Debug
+        and type(RARELOAD.Debug.AntiStuck) == "function"
+end
+
+function AntiStuck.HasDetailedMethodLogger(ply)
+    return AntiStuck.DebugEnabled(ply)
+        and RARELOAD
+        and RARELOAD.Debug
+        and type(RARELOAD.Debug.LogAntiStuck) == "function"
+end
+
+function AntiStuck.LogMethodDetail(eventName, methodName, details, ply)
+    if not AntiStuck.HasDetailedMethodLogger(ply) then
+        return false
+    end
+
+    RARELOAD.Debug.LogAntiStuck(eventName, methodName, details, ply)
+    return true
+end
+
 function AntiStuck.LogDebug(message, data, player, level)
     if RARELOAD.Debug and RARELOAD.Debug.Write then
         level = level or "INFO"

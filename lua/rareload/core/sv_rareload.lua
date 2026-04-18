@@ -147,21 +147,81 @@ if SERVER then
     end
 
     function SyncData(ply)
-        local mapName = game.GetMap()
-        local playerPositions = RARELOAD.playerPositions[mapName] or {}
-
         net.Start("SyncData")
         net.WriteTable({
-            playerPositions = playerPositions,
             settings = RARELOAD.settings,
         })
         net.Send(ply)
     end
 
+    local SYNC_CHUNK_MAX_BYTES = 56000
+    local syncTransferId = 0
+
+    local function NextSyncTransferId()
+        syncTransferId = syncTransferId + 1
+        if syncTransferId > 2147483000 then
+            syncTransferId = 1
+        end
+        return syncTransferId
+    end
+
+    local function SendPlayerPositionsChunked(mapName, playerPositions, ply, isDelta)
+        local json = util.TableToJSON(playerPositions or {}, false)
+        if not json then
+            return false, "json_encode_failed"
+        end
+
+        local compressed = util.Compress(json)
+        if not compressed then
+            return false, "compress_failed"
+        end
+
+        local transferId = NextSyncTransferId()
+        local totalBytes = #compressed
+        local totalChunks = math.max(1, math.ceil(totalBytes / SYNC_CHUNK_MAX_BYTES))
+
+        for chunkIndex = 1, totalChunks do
+            local byteStart = (chunkIndex - 1) * SYNC_CHUNK_MAX_BYTES + 1
+            local chunk = compressed:sub(byteStart, byteStart + SYNC_CHUNK_MAX_BYTES - 1)
+
+            net.Start("SyncPlayerPositionsChunk")
+            net.WriteString(mapName or "")
+            net.WriteUInt(transferId, 32)
+            net.WriteUInt(totalChunks, 16)
+            net.WriteUInt(chunkIndex, 16)
+            net.WriteBool(isDelta == true)
+            net.WriteUInt(#chunk, 16)
+            net.WriteData(chunk, #chunk)
+
+            if IsValid(ply) then
+                net.Send(ply)
+            else
+                net.Broadcast()
+            end
+        end
+
+        return true
+    end
+
     -- Sends the full map-keyed positions table to clients.
-    function SyncPlayerPositions(ply)
+    function SyncPlayerPositions(ply, steamIDFilter)
         local mapName = game.GetMap()
-        local playerPositions = RARELOAD.playerPositions[mapName] or {}
+        local sourcePositions = RARELOAD.playerPositions[mapName] or {}
+        local playerPositions = sourcePositions
+        local isDelta = false
+
+        if steamIDFilter then
+            isDelta = true
+            playerPositions = {}
+            if sourcePositions[steamIDFilter] ~= nil then
+                playerPositions[steamIDFilter] = sourcePositions[steamIDFilter]
+            end
+        end
+
+        local ok = SendPlayerPositionsChunked(mapName, playerPositions, ply, isDelta)
+        if ok then
+            return
+        end
 
         net.Start("SyncPlayerPositions")
         net.WriteTable(playerPositions)

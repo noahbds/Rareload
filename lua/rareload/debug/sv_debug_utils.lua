@@ -174,7 +174,8 @@ function RARELOAD.Debug.SystemHealthCheck()
     end
     local requiredNetStrings = {
         "SyncData", "SyncPlayerPositions", "RareloadTeleportTo",
-        "RareloadReloadData", "CreatePlayerPhantom", "RemovePlayerPhantom"
+        "RareloadReloadData", "CreatePlayerPhantom", "RemovePlayerPhantom",
+        "SyncPlayerPositionsChunk"
     }
     for _, netString in ipairs(requiredNetStrings) do
         if not util.NetworkStringToID(netString) then

@@ -68,6 +68,44 @@ local function RecycleRenderData()
     sedActiveCount = 0
 end
 
+local function EstimatePanelAimPos(ent, renderParams, eyePos)
+    if not IsValid(ent) then
+        return eyePos
+    end
+
+    if not renderParams then
+        return ent:GetPos()
+    end
+
+    local obbCenterLocal = (renderParams.obbMin + renderParams.obbMax) * 0.5
+    local worldCenter = ent.LocalToWorld and ent:LocalToWorld(obbCenterLocal) or ent:GetPos()
+
+    local worldTopZ = renderParams.worldTopZ
+    if not worldTopZ then
+        worldTopZ = worldCenter.z + (renderParams.size and renderParams.size.z or 40)
+    end
+
+    local baseZ
+    if renderParams.isMassive then
+        baseZ = worldTopZ + renderParams.buffer
+    elseif renderParams.isLarge then
+        baseZ = worldTopZ + renderParams.buffer * 0.7
+    else
+        baseZ = worldTopZ + renderParams.buffer * 0.45
+    end
+
+    local basePos = Vector(worldCenter.x, worldCenter.y, baseZ)
+    local toCenter = worldCenter - eyePos
+    local horiz = Vector(toCenter.x, toCenter.y, 0)
+    if horiz:LengthSqr() < 1e-4 then
+        return basePos
+    end
+
+    horiz:Normalize()
+    local outwardAmount = math.Clamp(renderParams.maxDimension * 0.35, 30, 600)
+    return basePos - horiz * outwardAmount
+end
+
 function SED.QueueAllSavedPanels()
     SED.EnsureSavedLookup()
     SED.RescanLate()
@@ -78,9 +116,9 @@ function SED.QueueAllSavedPanels()
 
     local eyePos = SED.lpCache:EyePos()
     local eyeForward = SED.lpCache:EyeAngles():Forward()
-    
+
     RecycleQueueList()
-    
+
     local listCount = 0
     local invalidEntities = {}
     local invalidNPCs = {}
@@ -108,7 +146,7 @@ function SED.QueueAllSavedPanels()
                 local withinView = true
                 if CULL_VIEW_CONE and distSqr > NEARBY_DIST_SQR then
                     local dx, dy, dz = entPos.x - eyePos.x, entPos.y - eyePos.y, entPos.z - eyePos.z
-                    local lenSqr = dx*dx + dy*dy + dz*dz
+                    local lenSqr = dx * dx + dy * dy + dz * dz
                     if lenSqr > 0 then
                         local dot = dx * eyeForward.x + dy * eyeForward.y + dz * eyeForward.z
                         withinView = (dot * dot) >= (FOV_COS_THRESHOLD_SQR * lenSqr)
@@ -144,7 +182,7 @@ function SED.QueueAllSavedPanels()
                 local withinView = true
                 if CULL_VIEW_CONE and distSqr > NEARBY_DIST_SQR then
                     local dx, dy, dz = entPos.x - eyePos.x, entPos.y - eyePos.y, entPos.z - eyePos.z
-                    local lenSqr = dx*dx + dy*dy + dz*dz
+                    local lenSqr = dx * dx + dy * dy + dz * dz
                     if lenSqr > 0 then
                         local dot = dx * eyeForward.x + dy * eyeForward.y + dz * eyeForward.z
                         withinView = (dot * dot) >= (FOV_COS_THRESHOLD_SQR * lenSqr)
@@ -186,26 +224,31 @@ function SED.QueueAllSavedPanels()
     if listCount == 0 then return end
 
 
-    -- Simplified candidate detection: use pre-computed distSqr instead of expensive GetNearestDistanceSqr
+    -- Candidate detection based on PANEL position (not entity center), so aiming at SED panel promotes full view.
     if not SED.InteractionState.active then
         local eyeFwd = eyeForward
-        local distThresholdSqr = 40000
+        local distThresholdSqr = 250000
+        local aimCosThreshold = 0.965925826 -- cos(15deg)
+        local aimCosThresholdSqr = aimCosThreshold * aimCosThreshold
         local bestIdx = nil
+        local bestCos = -1
         local bestDist = math.huge
 
         for i = 1, listCount do
             local item = queueList[i]
-            if item and item.distSqr < distThresholdSqr then
-                -- Use dot product alignment instead of expensive :Angle() + AngleDifference
-                local dx, dy = item.pos.x - eyePos.x, item.pos.y - eyePos.y
-                local lenSqr2D = dx*dx + dy*dy
-                if lenSqr2D > 1 then
-                    local dot2D = dx * eyeFwd.x + dy * eyeFwd.y
-                    -- cos(12deg) ~= 0.978; check if looking roughly at entity
-                    if dot2D * dot2D > 0.956 * lenSqr2D then
-                        if item.distSqr < bestDist then
+            if item then
+                local aimPos = EstimatePanelAimPos(item.ent, item.renderParams, eyePos)
+                local dx, dy, dz = aimPos.x - eyePos.x, aimPos.y - eyePos.y, aimPos.z - eyePos.z
+                local lenSqr = dx * dx + dy * dy + dz * dz
+
+                if lenSqr > 1 and lenSqr < distThresholdSqr then
+                    local dot = dx * eyeFwd.x + dy * eyeFwd.y + dz * eyeFwd.z
+                    if dot > 0 and dot * dot >= (aimCosThresholdSqr * lenSqr) then
+                        local cosValue = dot / math.sqrt(lenSqr)
+                        if cosValue > (bestCos + 5e-4) or (math.abs(cosValue - bestCos) <= 5e-4 and lenSqr < bestDist) then
                             bestIdx = i
-                            bestDist = item.distSqr
+                            bestDist = lenSqr
+                            bestCos = cosValue
                         end
                     end
                 end
@@ -218,18 +261,19 @@ function SED.QueueAllSavedPanels()
             if saved then
                 SED.CandidateEnt = item.ent
                 SED.CandidateIsNPC = item.isNPC
-                SED.CandidateID = saved.id or (saved.class .. "?")
+                SED.CandidateID = saved.id or saved.RareloadNPCID or saved.RareloadEntityID or saved.RareloadID or
+                    ((saved.class or saved.Class or saved.ClassName or "unknown") .. "?")
                 SED.CandidateYawDiff = 0
             end
         end
     end
 
-    table.sort(queueList, function(a, b) 
+    table.sort(queueList, function(a, b)
         if not a then return false end
         if not b then return true end
-        return a.distSqr < b.distSqr 
+        return a.distSqr < b.distSqr
     end)
-    
+
     local maxQueue = math.min(listCount, SED.MAX_DRAW_PER_FRAME)
 
     local isFocusedEnt = SED.InteractionState.active and SED.InteractionState.ent

@@ -2,6 +2,7 @@ if SERVER then
     RARELOAD = RARELOAD or {}
     RARELOAD.Permissions = RARELOAD.Permissions or {}
     RARELOAD.Permissions.PlayerPerms = RARELOAD.Permissions.PlayerPerms or {}
+    local AdminAccessProviders = include("rareload/admin/sv_admin_access_providers.lua")
 
     function RARELOAD.Permissions.Initialize()
         if not file.Exists("rareload", "DATA") then
@@ -106,6 +107,11 @@ if SERVER then
         end
 
         if permName == "ADMIN_PANEL" then
+            if AdminAccessProviders and AdminAccessProviders.CheckExternalAdminProviders and
+                AdminAccessProviders.CheckExternalAdminProviders(ply, "rareload_admin") then
+                return true
+            end
+
             if CAMI and CAMI.PlayerHasAccess then
                 return CAMI.PlayerHasAccess(ply, "rareload_admin") == true
             end
@@ -121,12 +127,12 @@ if SERVER then
     -- Send a player their own resolved permissions (used on join and after admin changes)
     function RARELOAD.Permissions.SyncToPlayer(ply)
         if not IsValid(ply) then return end
-        
+
         local resolved = {}
         for permName, _ in pairs(RARELOAD.Permissions.DEFS) do
             resolved[permName] = RARELOAD.Permissions.HasPermission(ply, permName)
         end
-        
+
         net.Start("RareloadSyncOwnPermissions")
         net.WriteTable(resolved)
         net.Send(ply)
@@ -527,7 +533,8 @@ if SERVER then
 
                 if playerData.nick == "Unknown Player" then
                     if sql.TableExists("rareload_player_data") then
-                        local storedData = sql.QueryRow("SELECT nick FROM rareload_player_data WHERE steamid = " .. sql.SQLStr(steamID))
+                        local storedData = sql.QueryRow("SELECT nick FROM rareload_player_data WHERE steamid = " ..
+                        sql.SQLStr(steamID))
                         if storedData and storedData.nick then
                             playerData.nick = storedData.nick
                         end

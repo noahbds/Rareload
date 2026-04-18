@@ -100,7 +100,7 @@ end
 function AntiStuck.ExecuteMethod(methodName, originalPos, ply)
     local method = AntiStuck.methodRegistry[methodName]
     if not method then
-        if AntiStuck.DebugEnabled and AntiStuck.DebugEnabled(ply) and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+        if AntiStuck.HasStructuredDebugWriter and AntiStuck.HasStructuredDebugWriter(ply) then
             RARELOAD.Debug.AntiStuck("Method not found", { methodName = tostring(methodName) })
         end
         return nil, AntiStuck.UNSTUCK_METHODS.FAILED

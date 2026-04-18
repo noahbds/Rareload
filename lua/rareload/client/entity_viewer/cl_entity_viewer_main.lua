@@ -19,6 +19,35 @@ EntityViewer.SearchText = ""
 EntityViewer.Category = "All"
 EntityViewer.SortMode = "Name"
 
+local function ResolveDeleteEntityID(entityData)
+    if not (entityData and entityData.rawData) then
+        return ""
+    end
+
+    local raw = entityData.rawData
+    return raw.id or raw.RareloadNPCID or raw.RareloadEntityID or raw.RareloadID or raw.UniqueID or ""
+end
+
+local function SendDeleteRequest(entityData)
+    local entityId = ResolveDeleteEntityID(entityData)
+
+    net.Start("RareloadEntityViewer_Delete")
+    net.WriteString(tostring(entityId))
+    net.WriteString(entityData.class or "Unknown")
+
+    local posX, posY, posZ = 0, 0, 0
+    if entityData.pos then
+        posX = entityData.pos.x or 0
+        posY = entityData.pos.y or 0
+        posZ = entityData.pos.z or 0
+    end
+
+    net.WriteFloat(posX)
+    net.WriteFloat(posY)
+    net.WriteFloat(posZ)
+    net.SendToServer()
+end
+
 local function ExtractEntities(tbl, result)
     result = result or {}
     if not tbl then return result end
@@ -147,6 +176,11 @@ function EntityViewer:FilterAndSort()
         end
         return false
     end)
+end
+
+function EntityViewer:ReloadDataAndRefresh()
+    self.Data = self:LoadData()
+    self:RefreshList()
 end
 
 local function CreateSidebarButton(parent, text, yPos, onClick, viewer)
@@ -670,8 +704,7 @@ function EntityViewer:Open()
         surface.DrawTexturedRect(w / 2 - 8, h / 2 - 8, 16, 16)
     end
     refreshBtn.DoClick = function()
-        EntityViewer.Data = EntityViewer:LoadData()
-        EntityViewer:RefreshList()
+        EntityViewer:ReloadDataAndRefresh()
         ShowNotification("Data refreshed!", NOTIFY_GENERIC)
     end
 
@@ -733,47 +766,11 @@ function EntityViewer:RefreshList()
                 end
             end,
             function(data)
-                local entityId = ""
-                if data.rawData then
-                    entityId = data.rawData.id or data.rawData.RareloadNPCID or data.rawData.RareloadEntityID or
-                        data.rawData.RareloadID or data.rawData.UniqueID or ""
-                end
-
-                net.Start("RareloadEntityViewer_Delete")
-                net.WriteString(tostring(entityId))
-                net.WriteString(data.class or "Unknown")
-                local posX, posY, posZ = 0, 0, 0
-                if data.pos then
-                    posX = data.pos.x or 0
-                    posY = data.pos.y or 0
-                    posZ = data.pos.z or 0
-                end
-                net.WriteFloat(posX)
-                net.WriteFloat(posY)
-                net.WriteFloat(posZ)
-                net.SendToServer()
+                SendDeleteRequest(data)
             end,
             function(data)
                 CreateDetailsPanel(data, function(d)
-                    local entityId = ""
-                    if d.rawData then
-                        entityId = d.rawData.id or d.rawData.RareloadNPCID or d.rawData.RareloadEntityID or
-                            d.rawData.RareloadID or d.rawData.UniqueID or ""
-                    end
-
-                    net.Start("RareloadEntityViewer_Delete")
-                    net.WriteString(tostring(entityId))
-                    net.WriteString(d.class or "Unknown")
-                    local posX, posY, posZ = 0, 0, 0
-                    if d.pos then
-                        posX = d.pos.x or 0
-                        posY = d.pos.y or 0
-                        posZ = d.pos.z or 0
-                    end
-                    net.WriteFloat(posX)
-                    net.WriteFloat(posY)
-                    net.WriteFloat(posZ)
-                    net.SendToServer()
+                    SendDeleteRequest(d)
                 end, viewer)
             end
         )
@@ -792,8 +789,7 @@ net.Receive("RareloadEntityViewer_DeleteResult", function()
         ShowNotification(message, NOTIFY_GENERIC)
         timer.Simple(0.2, function()
             if EntityViewer.Frame and IsValid(EntityViewer.Frame) then
-                EntityViewer.Data = EntityViewer:LoadData()
-                EntityViewer:RefreshList()
+                EntityViewer:ReloadDataAndRefresh()
             end
         end)
     else
@@ -812,6 +808,5 @@ hook.Add("RareloadPlayerPositionsUpdated", "RARELOAD_EntityViewer_AutoRefresh", 
     if mapName ~= game.GetMap() then return end
     if not (EntityViewer and EntityViewer.Frame and IsValid(EntityViewer.Frame)) then return end
 
-    EntityViewer.Data = EntityViewer:LoadData()
-    EntityViewer:RefreshList()
+    EntityViewer:ReloadDataAndRefresh()
 end)

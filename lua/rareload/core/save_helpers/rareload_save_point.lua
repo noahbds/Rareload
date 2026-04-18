@@ -235,7 +235,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     end
 
     if SyncPlayerPositions then
-        SyncPlayerPositions()
+        SyncPlayerPositions(nil, ply:SteamID())
     end
 
     return true

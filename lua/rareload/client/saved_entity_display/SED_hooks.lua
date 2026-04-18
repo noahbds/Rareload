@@ -1,6 +1,6 @@
 local function IsClientDebugEnabled()
-    if RARELOAD and RARELOAD.ResolveClientDebugEnabled then
-        local ok, enabled = pcall(RARELOAD.ResolveClientDebugEnabled)
+    if RARELOAD and RARELOAD.GetClientDebugEnabled then
+        local ok, enabled = pcall(RARELOAD.GetClientDebugEnabled)
         if ok then
             return enabled == true
         end

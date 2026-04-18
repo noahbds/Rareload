@@ -37,7 +37,7 @@ if SERVER then
         end
 
         if not AntiStuck.methods then
-            if AntiStuck.DebugEnabled() and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+            if AntiStuck.HasStructuredDebugWriter and AntiStuck.HasStructuredDebugWriter() then
                 RARELOAD.Debug.AntiStuck("WARNING: No methods available")
             end
             return {}
@@ -74,7 +74,7 @@ if SERVER then
             end)
         end
 
-        if AntiStuck.DebugEnabled() and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+        if AntiStuck.HasStructuredDebugWriter and AntiStuck.HasStructuredDebugWriter() then
             local respectProfileOrder = (AntiStuck.CONFIG and AntiStuck.CONFIG.RESPECT_PROFILE_ORDER ~= false)
             local header = respectProfileOrder and "Using profile-defined order" or "Optimized methods for performance"
             local lines = {}
@@ -97,7 +97,7 @@ if SERVER then
         end
 
         if not AntiStuck.ExecuteMethod or type(AntiStuck.ExecuteMethod) ~= "function" then
-            if AntiStuck.DebugEnabled(ply) and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+            if AntiStuck.HasStructuredDebugWriter and AntiStuck.HasStructuredDebugWriter(ply) then
                 RARELOAD.Debug.AntiStuck("ERROR: ExecuteMethod not available; using fallback",
                     { methodName = "ResolveStuckPosition" }, ply)
             end
@@ -183,8 +183,8 @@ if SERVER then
                         string.format("found position in %.3fs (attempt %d)", SysTime() - startTime, attemptCount))
                 end
 
-                if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.LogAntiStuck and AntiStuck.DebugEnabled(ply) then
-                    RARELOAD.Debug.LogAntiStuck("Method success", methodInfo.name, {
+                if AntiStuck.LogMethodDetail then
+                    AntiStuck.LogMethodDetail("Method success", methodInfo.name, {
                         originalPos = originalPos,
                         finalPos = pos,
                         attempts = attemptCount,
@@ -210,8 +210,8 @@ if SERVER then
                     bestPartialResult = { pos = pos, method = methodInfo.name }
                 end
 
-                if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.LogAntiStuck and AntiStuck.DebugEnabled(ply) then
-                    RARELOAD.Debug.LogAntiStuck("Method partial", methodInfo.name, {
+                if AntiStuck.LogMethodDetail then
+                    AntiStuck.LogMethodDetail("Method partial", methodInfo.name, {
                         originalPos = originalPos,
                         partialPos = pos,
                         attempts = attemptCount,
@@ -252,8 +252,8 @@ if SERVER then
 
         if bestPartialResult then
             if session then RARELOAD.Debug.AntiStuckStep(session, "ok", "Using partial result", bestPartialResult.method) end
-            if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.LogAntiStuck and AntiStuck.DebugEnabled(ply) then
-                RARELOAD.Debug.LogAntiStuck("Using partial result", bestPartialResult.method, {
+            if AntiStuck.LogMethodDetail then
+                AntiStuck.LogMethodDetail("Using partial result", bestPartialResult.method, {
                     originalPos = originalPos,
                     finalPos = bestPartialResult.pos,
                     attempts = attemptCount,
@@ -286,7 +286,7 @@ if SERVER then
     end
 
     function AntiStuck.EmergencyFallback(originalPos, ply)
-        if AntiStuck.DebugEnabled(ply) and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+        if AntiStuck.HasStructuredDebugWriter and AntiStuck.HasStructuredDebugWriter(ply) then
             RARELOAD.Debug.AntiStuck("Using enhanced emergency fallback", { methodName = "EmergencyFallback" }, ply)
         end
 
@@ -311,12 +311,12 @@ if SERVER then
             fallbackPos = Vector(0, 0, fallbackHeight)
         end
 
-        if AntiStuck.DebugEnabled(ply) and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+        if AntiStuck.HasStructuredDebugWriter and AntiStuck.HasStructuredDebugWriter(ply) then
             RARELOAD.Debug.AntiStuck("Using calculated emergency fallback position",
                 { methodName = "EmergencyFallback" }, ply)
         end
-        if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.LogAntiStuck and AntiStuck.DebugEnabled(ply) then
-            RARELOAD.Debug.LogAntiStuck("EmergencyFallback used", "EmergencyFallback", {
+        if AntiStuck.LogMethodDetail then
+            AntiStuck.LogMethodDetail("EmergencyFallback used", "EmergencyFallback", {
                 originalPos = originalPos,
                 finalPos = fallbackPos,
                 success = false,
@@ -337,7 +337,7 @@ if SERVER then
             end
         end
 
-        if cleaned > 0 and AntiStuck.DebugEnabled() and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+        if cleaned > 0 and AntiStuck.HasStructuredDebugWriter and AntiStuck.HasStructuredDebugWriter() then
             RARELOAD.Debug.AntiStuck("Cleaned position memory entries", { cleaned = cleaned })
         end
     end)
