@@ -94,6 +94,25 @@ local function resetDuplicatorFrame()
     end
 end
 
+local function IsDuplicatorDebugEnabled()
+    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then
+        return DEBUG_CONFIG.ENABLED()
+    end
+
+    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled or false
+end
+
+local function WriteDuplicatorDebug(level, message)
+    if not IsDuplicatorDebugEnabled() then return end
+
+    if RARELOAD.Debug and RARELOAD.Debug.Write then
+        RARELOAD.Debug.Write("duplicator", level or "INFO", 0, tostring(message))
+        return
+    end
+
+    print("[RARELOAD] " .. tostring(message))
+end
+
 function Bridge.IsSupported()
     return duplicator ~= nil and duplicator.Copy ~= nil and duplicator.Paste ~= nil
 end
@@ -122,8 +141,8 @@ function Bridge.CaptureSnapshot(entities, opts)
             local ok, result = pcall(duplicator.Copy, ent, dupeAccumulator)
             if ok and istable(result) then
                 dupeAccumulator = result
-            elseif not ok and RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                print(string.format("[RARELOAD] Duplicator copy failed for %s: %s",
+            elseif not ok then
+                WriteDuplicatorDebug("WARNING", string.format("Duplicator copy failed for %s: %s",
                     tostring(ent), tostring(result)))
             end
         end

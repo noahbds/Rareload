@@ -1,6 +1,51 @@
 -- Debug system configuration
+local function IsGlobalDebugEnabled()
+    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled == true
+end
+
+local function IsPlayerDebugEnabled(ply)
+    if not IsValid(ply) or not ply:IsPlayer() then return false end
+
+    if RARELOAD and RARELOAD.GetPlayerSetting then
+        return RARELOAD.GetPlayerSetting(ply, "debugEnabled", false) == true
+    end
+
+    if RARELOAD and RARELOAD.PlayerSettings and RARELOAD.PlayerSettings.GetValue then
+        return RARELOAD.PlayerSettings.GetValue(ply, "debugEnabled", false) == true
+    end
+
+    return false
+end
+
+local function IsAnyPlayerDebugEnabled()
+    if not player or not player.GetHumans then return false end
+
+    for _, ply in ipairs(player.GetHumans()) do
+        if IsPlayerDebugEnabled(ply) then
+            return true
+        end
+    end
+
+    return false
+end
+
 DEBUG_CONFIG = {
-    ENABLED = function() return RARELOAD.settings.debugEnabled end,
+    ENABLED = function(context)
+        if IsGlobalDebugEnabled() then
+            return true
+        end
+
+        local subject = context
+        if istable(context) then
+            subject = context.entity or context.player or context.ply
+        end
+
+        if IsPlayerDebugEnabled(subject) then
+            return true
+        end
+
+        return IsAnyPlayerDebugEnabled()
+    end,
     LEVELS = {
         ERROR = { prefix = "ERROR", color = Color(255, 0, 0), value = 1 },
         WARNING = { prefix = "WARNING", color = Color(255, 165, 0), value = 2 },
@@ -13,7 +58,7 @@ DEBUG_CONFIG = {
     LOG_FOLDER = "rareload/logs/",
     MAX_LOG_FILES = 20,
     MAX_LOG_SIZE = 5 * 1024 * 1024, -- 5 MB
-    MIN_LEVEL_TO_LOG = function() return RARELOAD.settings.debugLevel or "INFO" end,
+    MIN_LEVEL_TO_LOG = function() return (RARELOAD and RARELOAD.settings and RARELOAD.settings.debugLevel) or "INFO" end,
     SESSION_ID = os.time(),
     TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S",
     AUTO_CLEANUP_LOGS_OLDER_THAN = 7 * 24 * 60 * 60, -- 7 days in seconds
@@ -22,12 +67,38 @@ DEBUG_CONFIG = {
     LOG_FORMAT = "TEXT",
     MAX_LOG_LINE_LENGTH = 1000,
     ROTATE_LOGS_BY_SIZE = true,
-    LOG_FILE_PREFIX = "rareload_"
+    LOG_FILE_PREFIX = "rareload_",
+    -- Rate limiting configuration (per-module message suppression)
+    RateLimiters = {
+        -- Format: moduleName = { maxMessages, timeWindow }
+        -- Example: anti_stuck = { 10, 60 } means max 10 messages per 60 seconds
+        anti_stuck = { 20, 30 },    -- 20 msgs per 30 seconds
+        respawn = { 15, 60 },       -- 15 msgs per 60 seconds
+        commands = { 25, 30 },      -- 25 msgs per 30 seconds
+        position_save = { 10, 60 }, -- 10 msgs per 60 seconds
+        inventory = { 10, 60 },     -- 10 msgs per 60 seconds
+        admin_panel = { 20, 30 },   -- 20 msgs per 30 seconds
+        default = { 50, 60 }        -- 50 msgs per 60 seconds (fallback)
+    },
+    -- Category mapping for hierarchical organization
+    ModuleCategories = {
+        anti_stuck = "ANTI-STUCK",
+        respawn = "RESPAWN",
+        commands = "COMMANDS",
+        position_save = "POSITION",
+        inventory = "INVENTORY",
+        admin_panel = "ADMIN",
+        core = "CORE",
+        network = "NETWORK",
+        validation = "VALIDATION",
+        system = "SYSTEM"
+    }
 }
 
 local currentDebugLevel = 3
-
+local rateLimitHistory = {} -- Tracks { [moduleKey] = { [msgKey] = { count, firstTime } } }
 local logBuffer = {}
+local logFileCache = {}     -- Cache for log file paths per category: { [category] = { path, size } }
 local lastFlush = os.time()
 local currentLogFile = nil
 local currentLogSize = 0
@@ -40,9 +111,9 @@ local function UpdateDebugLevel()
     end
 end
 
-function DEBUG_CONFIG.ShouldLog(level)
+function DEBUG_CONFIG.ShouldLog(level, context)
     local levelConfig = DEBUG_CONFIG.LEVELS[level]
-    return DEBUG_CONFIG.ENABLED() and levelConfig and levelConfig.value <= currentDebugLevel
+    return DEBUG_CONFIG.ENABLED(context) and levelConfig and levelConfig.value <= currentDebugLevel
 end
 
 function DEBUG_CONFIG.GetCurrentLevel()
@@ -52,6 +123,59 @@ function DEBUG_CONFIG.GetCurrentLevel()
         end
     end
     return DEBUG_CONFIG.DEFAULT_LEVEL
+end
+
+-- Get timestamp in specified format (defaults to console format for brevity)
+function DEBUG_CONFIG.GetTimestamp(format)
+    format = format or "%H:%M:%S" -- Console: HH:MM:SS
+    return os.date(format)
+end
+
+-- Check if a message from a module should be rate-limited
+-- Returns: shouldLog (bool), nextLogTime (number)
+function DEBUG_CONFIG.CheckRateLimit(moduleName, messageKey)
+    if not DEBUG_CONFIG.ENABLED() then return true, 0 end
+
+    local limits = DEBUG_CONFIG.RateLimiters[moduleName] or DEBUG_CONFIG.RateLimiters.default
+    if not limits then return true, 0 end -- No limit configured
+
+    local maxMessages, timeWindow = limits[1], limits[2]
+    local now = os.time()
+
+    rateLimitHistory[moduleName] = rateLimitHistory[moduleName] or {}
+    local moduleHistory = rateLimitHistory[moduleName]
+
+    -- Clean up old entries outside the time window
+    for key, record in pairs(moduleHistory) do
+        if now - record.firstTime > timeWindow then
+            moduleHistory[key] = nil
+        end
+    end
+
+    -- Check if message key is in history
+    if moduleHistory[messageKey] then
+        local record = moduleHistory[messageKey]
+        if record.count < maxMessages then
+            record.count = record.count + 1
+            return true, 0
+        else
+            -- Rate limit exceeded
+            return false, record.firstTime + timeWindow
+        end
+    else
+        -- First occurrence of this message
+        moduleHistory[messageKey] = { count = 1, firstTime = now }
+        return true, 0
+    end
+end
+
+-- Clear rate limit history for a specific module (or all if nil)
+function DEBUG_CONFIG.ClearRateLimitHistory(moduleName)
+    if moduleName then
+        rateLimitHistory[moduleName] = nil
+    else
+        table.Empty(rateLimitHistory)
+    end
 end
 
 local function CleanupOldLogs()
@@ -126,51 +250,63 @@ local function TruncateString(str)
     return str
 end
 
-local function GetLogFilePath()
-    if not currentLogFile then
-        currentLogFile = DEBUG_CONFIG.LOG_FOLDER .. DEBUG_CONFIG.LOG_FILE_PREFIX .. os.date("%Y-%m-%d_%H-%M") .. ".txt"
+local function GetLogFilePath(category)
+    category = category or "system"
 
-        if not file.Exists(currentLogFile, "DATA") then
-            local header = ""
-            if DEBUG_CONFIG.LOG_FORMAT == "CSV" then
-                header = "Timestamp,Level,Header,Message\n"
-            elseif DEBUG_CONFIG.LOG_FORMAT == "JSON" then
-                header = "[\n"
-            else
-                header = string.format("[RARELOAD LOG] Started on %s - Map: %s - Session: %s\n%s\n",
-                    os.date(DEBUG_CONFIG.TIMESTAMP_FORMAT),
-                    game.GetMap(),
-                    DEBUG_CONFIG.SESSION_ID,
-                    string.rep("-", 80)
-                )
-            end
-            file.Write(currentLogFile, header)
-            currentLogSize = #header
-        else
-            currentLogSize = file.Size(currentLogFile, "DATA") or 0
-        end
+    -- Check cache first
+    if logFileCache[category] then
+        return logFileCache[category].path
     end
 
-    return currentLogFile
+    -- Build new log file path with session ID and category
+    -- Format: rareload_SESSION-ID_CATEGORY_DATE.log
+    local categoryName = tostring(category):lower():gsub("[^%w]", "_")
+    local logFile = DEBUG_CONFIG.LOG_FOLDER ..
+        DEBUG_CONFIG.LOG_FILE_PREFIX ..
+        DEBUG_CONFIG.SESSION_ID .. "_" ..
+        categoryName .. "_" ..
+        os.date("%Y-%m-%d") .. ".txt"
+
+    if not file.Exists(logFile, "DATA") then
+        local header = ""
+        if DEBUG_CONFIG.LOG_FORMAT == "CSV" then
+            header = "Timestamp,Level,Header,Message\n"
+        elseif DEBUG_CONFIG.LOG_FORMAT == "JSON" then
+            header = "[\n"
+        else
+            header = string.format("[RARELOAD %s LOG] Started on %s - Map: %s - Session: %s\n%s\n",
+                categoryName:upper(),
+                os.date(DEBUG_CONFIG.TIMESTAMP_FORMAT),
+                game.GetMap(),
+                DEBUG_CONFIG.SESSION_ID,
+                string.rep("-", 80)
+            )
+        end
+        file.Write(logFile, header)
+        logFileCache[category] = { path = logFile, size = #header }
+    else
+        logFileCache[category] = { path = logFile, size = file.Size(logFile, "DATA") or 0 }
+    end
+
+    return logFile
 end
 
-local function CheckLogRotation()
-    if not DEBUG_CONFIG.ROTATE_LOGS_BY_SIZE then return false end
+local function CheckLogRotation(category)
+    if not DEBUG_CONFIG.ROTATE_LOGS_BY_SIZE or not logFileCache[category] then return false end
 
-    if currentLogSize > DEBUG_CONFIG.MAX_LOG_SIZE then
-        print("[RARELOAD DEBUG] Log file size limit reached (" ..
-            math.floor(currentLogSize / 1024) .. " KB), rotating...")
+    local fileSize = logFileCache[category].size
+    if fileSize > DEBUG_CONFIG.MAX_LOG_SIZE then
+        print("[RARELOAD DEBUG] Log file size limit reached for category '" .. tostring(category) .. "' (" ..
+            math.floor(fileSize / 1024) .. " KB), rotating...")
 
         if DEBUG_CONFIG.LOG_FORMAT == "JSON" then
-            if currentLogFile then
-                file.Append(currentLogFile, "\n]")
-            else
-                print("[RARELOAD DEBUG] ERROR: Attempted to append to a nil log file.")
+            local logFile = logFileCache[category].path
+            if logFile then
+                file.Append(logFile, "\n]")
             end
         end
 
-        currentLogFile = nil
-        currentLogSize = 0
+        logFileCache[category] = nil -- Clear cache to generate new file on next write
         return true
     end
 
@@ -180,55 +316,62 @@ end
 local function FlushLogBuffer()
     if #logBuffer == 0 then return end
 
-    local logFilePath = GetLogFilePath()
-    local content = ""
-
+    -- Group buffer entries by category
+    local entriesByCategory = {}
     for _, entry in ipairs(logBuffer) do
-        local formattedEntry = FormatLogEntry(entry)
-        content = content .. formattedEntry
-
-        if DEBUG_CONFIG.LOG_FORMAT == "JSON" and _ < #logBuffer then
-            content = content .. ",\n"
+        local category = entry.category or "system"
+        if not entriesByCategory[category] then
+            entriesByCategory[category] = {}
         end
+        table.insert(entriesByCategory[category], entry)
     end
 
-    local success = pcall(function()
-        file.Append(logFilePath, content)
-    end)
+    -- Flush each category to its own file
+    for category, entries in pairs(entriesByCategory) do
+        local logFilePath = GetLogFilePath(category)
+        local content = ""
 
-    if not success then
-        print("[RARELOAD DEBUG] ERROR: Failed to write to log file! Attempting recovery...")
+        for _, entry in ipairs(entries) do
+            local formattedEntry = FormatLogEntry(entry)
+            content = content .. formattedEntry
 
-        currentLogFile = DEBUG_CONFIG.LOG_FOLDER .. DEBUG_CONFIG.LOG_FILE_PREFIX ..
-            "emergency_" .. os.date("%Y-%m-%d_%H-%M-%S") .. ".txt"
+            if DEBUG_CONFIG.LOG_FORMAT == "JSON" and _ < #entries then
+                content = content .. ",\n"
+            end
+        end
 
-        pcall(function()
-            file.Write(currentLogFile, "EMERGENCY LOG - RECOVERY ATTEMPT\n\n" .. content)
+        local success = pcall(function()
+            file.Append(logFilePath, content)
         end)
-    else
-        currentLogSize = currentLogSize + #content
-        CheckLogRotation()
+
+        if not success then
+            print("[RARELOAD DEBUG] ERROR: Failed to write to log file for category '" .. category .. "'!")
+
+            local emergencyFile = DEBUG_CONFIG.LOG_FOLDER .. DEBUG_CONFIG.LOG_FILE_PREFIX ..
+                "emergency_" .. os.date("%Y-%m-%d_%H-%M-%S") .. ".txt"
+
+            pcall(function()
+                file.Write(emergencyFile, "EMERGENCY LOG - RECOVERY ATTEMPT (" .. category .. ")\n\n" .. content)
+            end)
+        else
+            if logFileCache[category] then
+                logFileCache[category].size = logFileCache[category].size + #content
+                CheckLogRotation(category)
+            end
+        end
     end
 
     table.Empty(logBuffer)
     lastFlush = os.time()
 end
 
-function DEBUG_CONFIG.AddToLogBuffer(level, header, message, entity)
+function DEBUG_CONFIG.AddToLogBuffer(level, category, message)
     if not DEBUG_CONFIG.LOG_TO_FILE then return end
 
+    category = category or "system"
     local timestamp = os.date(DEBUG_CONFIG.TIMESTAMP_FORMAT)
-
-    local entityInfo = ""
-    if IsValid(entity) then
-        if entity:IsPlayer() then
-            entityInfo = " | Player: " .. entity:Nick() .. " (" .. entity:SteamID() .. ")"
-        else
-            entityInfo = " | Entity: " .. entity:GetClass() .. " (" .. entity:EntIndex() .. ")"
-        end
-    end
-
     local processedMessage = ""
+
     if type(message) == "table" then
         if DEBUG_CONFIG.LOG_FORMAT ~= "TEXT" then
             local entries = {}
@@ -248,8 +391,9 @@ function DEBUG_CONFIG.AddToLogBuffer(level, header, message, entity)
     table.insert(logBuffer, {
         timestamp = timestamp,
         level = level,
-        header = header .. entityInfo,
-        message = processedMessage
+        header = category,
+        message = processedMessage,
+        category = category
     })
 
     if #logBuffer >= DEBUG_CONFIG.LOG_BUFFER_SIZE or

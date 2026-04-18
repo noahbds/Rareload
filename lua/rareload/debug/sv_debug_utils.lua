@@ -15,21 +15,10 @@ MoveTypeNames = {
     [11] = "MOVETYPE_CUSTOM",
 }
 
-function GetTimestamp()
-    return os.date("%Y-%m-%d %H:%M:%S")
-end
-
-function FormatValue(val)
-    return RARELOAD.DataUtils.FormatValue(val)
-end
-
-function AngleToDetailedString(ang)
-    return RARELOAD.DataUtils.FormatAngleDetailed(ang)
-end
-
-function VectorToDetailedString(vec)
-    return RARELOAD.DataUtils.FormatVectorDetailed(vec)
-end
+-- REMOVED: GetTimestamp() - use DEBUG_CONFIG.GetTimestamp() instead
+-- REMOVED: FormatValue() - use RARELOAD.DataUtils.FormatValue() directly
+-- REMOVED: AngleToDetailedString() - use RARELOAD.DataUtils.FormatAngleDetailed() directly
+-- REMOVED: VectorToDetailedString() - use RARELOAD.DataUtils.FormatVectorDetailed() directly
 
 function TableToString(tbl, indent)
     if not tbl then return "nil" end
@@ -56,39 +45,11 @@ function MoveTypeToString(moveType)
     return MoveTypeNames[moveType] or ("MOVETYPE_UNKNOWN (" .. tostring(moveType) .. ")")
 end
 
-local messageRateLimits = {}
-local RATE_LIMIT_WINDOW = 60
-local MAX_MESSAGES_PER_WINDOW = 10
-
-function RARELOAD.Debug.ShouldLimitMessage(messageKey)
-    local currentTime = CurTime()
-    if not messageRateLimits[messageKey] then
-        messageRateLimits[messageKey] = {
-            count = 0,
-            windowStart = currentTime
-        }
-    end
-    local rateLimit = messageRateLimits[messageKey]
-    if currentTime - rateLimit.windowStart > RATE_LIMIT_WINDOW then
-        rateLimit.count = 1
-        rateLimit.windowStart = currentTime
-        return false
-    end
-    if rateLimit.count >= MAX_MESSAGES_PER_WINDOW then
-        return true
-    end
-    rateLimit.count = rateLimit.count + 1
-    return false
-end
-
-timer.Create("RARELOAD_CleanupRateLimits", 60, 0, function()
-    local currentTime = CurTime()
-    for key, data in pairs(messageRateLimits) do
-        if currentTime - data.windowStart > RATE_LIMIT_WINDOW * 2 then
-            messageRateLimits[key] = nil
-        end
-    end
-end)
+-- REMOVED: Old rate limiting system
+-- - messageRateLimits table
+-- - ShouldLimitMessage() function
+-- - RARELOAD_CleanupRateLimits timer
+-- Use DEBUG_CONFIG.CheckRateLimit() instead for new code
 
 function RARELOAD.Debug.GetPlayerInfoString(ply)
     if not IsValid(ply) then return "Invalid Player" end
@@ -111,6 +72,40 @@ end
 
 local debugPerformance = {}
 
+local function WriteUtilityDebug(category, level, header, messages, context, entityFallback)
+    if RARELOAD.Debug and RARELOAD.Debug.Write then
+        RARELOAD.Debug.Write(category or "system", level or "INFO", 0, tostring(header), context)
+
+        if istable(messages) then
+            local hadSequential = false
+            for _, message in ipairs(messages) do
+                hadSequential = true
+                RARELOAD.Debug.Write(category or "system", level or "INFO", 1, tostring(message), context)
+            end
+
+            if not hadSequential then
+                for key, value in pairs(messages) do
+                    RARELOAD.Debug.Write(category or "system", level or "INFO", 1,
+                        tostring(key) .. " = " .. tostring(value), context)
+                end
+            end
+        elseif messages ~= nil and messages ~= "" then
+            RARELOAD.Debug.Write(category or "system", level or "INFO", 1, tostring(messages), context)
+        end
+
+        return
+    end
+
+    print("[RARELOAD DEBUG] " .. tostring(header))
+    if istable(messages) then
+        for _, message in ipairs(messages) do
+            print("[RARELOAD DEBUG] " .. tostring(message))
+        end
+    elseif messages ~= nil and messages ~= "" then
+        print("[RARELOAD DEBUG] " .. tostring(messages))
+    end
+end
+
 function RARELOAD.Debug.StartPerfTimer(operation)
     debugPerformance[operation] = SysTime()
 end
@@ -121,7 +116,7 @@ function RARELOAD.Debug.EndPerfTimer(operation, warnThreshold)
     debugPerformance[operation] = nil
     warnThreshold = warnThreshold or 0.1
     if elapsed > warnThreshold then
-        RARELOAD.Debug.Log("WARNING", "Performance Issue", {
+        WriteUtilityDebug("system", "WARNING", "Performance Issue", {
             "Operation: " .. operation,
             "Time Taken: " .. string.format("%.3f seconds", elapsed),
             "Threshold: " .. string.format("%.3f seconds", warnThreshold)
@@ -139,7 +134,7 @@ function RARELOAD.Debug.LogMemoryUsage(context)
         "Phantom Count: " .. table.Count(RARELOAD.Phantom or {}),
         "Global Inventory Size: " .. table.Count(RARELOAD.globalInventory or {})
     }
-    RARELOAD.Debug.Log("VERBOSE", "Memory Usage", memInfo)
+    WriteUtilityDebug("system", "VERBOSE", "Memory Usage", memInfo)
 end
 
 function RARELOAD.Debug.ValidateJsonFile(filePath)
@@ -157,45 +152,9 @@ function RARELOAD.Debug.ValidateJsonFile(filePath)
     return true, result
 end
 
-function RARELOAD.Debug.LogNetworkMessage(messageName, direction, size, recipient)
-    if not DEBUG_CONFIG.ENABLED() then return end
-    local rateKey = "net_" .. messageName
-    if RARELOAD.Debug.ShouldLimitMessage(rateKey) then return end
-    local netInfo = {
-        "Message: " .. messageName,
-        "Direction: " .. direction,
-        "Size: " .. (size or "Unknown") .. " bytes"
-    }
-    if recipient then
-        table.insert(netInfo, "Recipient: " .. RARELOAD.Debug.GetPlayerInfoString(recipient))
-    end
-    RARELOAD.Debug.Log("VERBOSE", "Network Message", netInfo)
-end
-
-function RARELOAD.Debug.SafeCall(func, context, ...)
-    local success, result = pcall(func, ...)
-    if not success then
-        RARELOAD.Debug.Log("ERROR", "Safe Call Failed", {
-            "Context: " .. (context or "Unknown"),
-            "Error: " .. tostring(result),
-            "Function: " .. tostring(func)
-        })
-        return false, result
-    end
-    return true, result
-end
-
-function RARELOAD.Debug.DumpPlayerData(steamID)
-    if not DEBUG_CONFIG.ENABLED() then return end
-    local mapName = game.GetMap()
-    local playerData = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][steamID]
-    if not playerData then
-        print("[RARELOAD DEBUG] No data found for player: " .. steamID)
-        return
-    end
-    print("[RARELOAD DEBUG] Player Data Dump for " .. steamID .. ":")
-    print(TableToString(playerData))
-end
+-- REMOVED: LogNetworkMessage() - use RARELOAD.Debug.Write() for network logging
+-- REMOVED: SafeCall() - deprecated error wrapper, not used
+-- REMOVED: DumpPlayerData() - use RARELOAD.Debug.Write() or LogMemoryUsage() instead
 
 function RARELOAD.Debug.SystemHealthCheck()
     if not DEBUG_CONFIG.ENABLED() then return end
@@ -223,15 +182,15 @@ function RARELOAD.Debug.SystemHealthCheck()
         end
     end
     if #issues == 0 then
-        RARELOAD.Debug.Log("INFO", "System Health Check", { "All systems operational" })
+        WriteUtilityDebug("system", "INFO", "System Health Check", { "All systems operational" })
     else
-        RARELOAD.Debug.Log("ERROR", "System Health Check Failed", issues)
+        WriteUtilityDebug("system", "ERROR", "System Health Check Failed", issues)
     end
     return #issues == 0
 end
 
 function RARELOAD.Debug.AntiStuck(header, messages, entity, logLevel)
-    if not RARELOAD.settings or not RARELOAD.settings.debugEnabled then return end
+    if not (DEBUG_CONFIG and DEBUG_CONFIG.ENABLED and DEBUG_CONFIG.ENABLED({ entity = entity })) then return end
     if RARELOAD.Debug.LogAntiStuck then
         local methodName = nil
         if type(messages) == "table" and messages.methodName then
@@ -251,14 +210,22 @@ function RARELOAD.Debug.AntiStuck(header, messages, entity, logLevel)
         end
     end
     local formattedHeader = "Anti-Stuck: " .. header
-    RARELOAD.Debug.Log(level, formattedHeader, messages or "", entity)
+    local context = IsValid(entity) and { entity = entity } or nil
+    WriteUtilityDebug("anti_stuck", level, formattedHeader, messages or "", context, entity)
 end
 
 function RARELOAD.Debug.SendToPlayer(ply, msg)
-    print(msg)
     if IsValid(ply) and ply:IsPlayer() then
         net.Start("RareloadDebugMessage")
         net.WriteString(msg)
         net.Send(ply)
+
+        -- On dedicated servers there is no local client console, so keep a server copy.
+        if game.IsDedicated() then
+            print(msg)
+        end
+        return
     end
+
+    print(msg)
 end

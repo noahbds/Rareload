@@ -6,12 +6,7 @@ util.AddNetworkString("RareloadRespawnEntity")
 util.AddNetworkString("RareloadEntityRestoreProgress")
 
 local ENTITY_RESTORATION = {
-    PROXIMITY_RADIUS = 150,
-    BATCH_SIZE = 10,
-    BATCH_DELAY = 0.1,
-    INITIAL_DELAY = 1,
-    MAX_SPAWN_TIME = 0.05,
-    POSITION_TOLERANCE = 5
+    PROXIMITY_RADIUS = 150
 }
 
 if not (RARELOAD.Util and RARELOAD.Util.GenerateEntityStateHash) then
@@ -22,6 +17,26 @@ end
 
 local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
+
+local function IsDebugEnabledForPlayer(ply)
+    if RARELOAD and RARELOAD.GetPlayerSetting and IsValid(ply) then
+        return RARELOAD.GetPlayerSetting(ply, "debugEnabled", false)
+    end
+
+    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then
+        return DEBUG_CONFIG.ENABLED({ entity = ply })
+    end
+
+    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled or false
+end
+
+local function IsAnyDebugEnabled()
+    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then
+        return DEBUG_CONFIG.ENABLED()
+    end
+
+    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled or false
+end
 
 local function CountTableEntries(tbl)
     if not istable(tbl) then return 0 end
@@ -54,11 +69,14 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
     end
 
     local snapshot = savedInfo.entities.__duplicator or nil
-    if not snapshot then 
-        if RARELOAD.settings.debugEnabled then
+    local debugEnabled = IsDebugEnabledForPlayer(requestingPlayer) or IsAnyDebugEnabled()
+    if not snapshot then
+        if RARELOAD.Debug and RARELOAD.Debug.Write then
+            RARELOAD.Debug.Write("entity_respawn", "WARNING", 0, "No duplicator snapshot found in SavedInfo.entities")
+        elseif debugEnabled then
             print("[RARELOAD DEBUG] No duplicator snapshot found in SavedInfo.entities")
         end
-        return false 
+        return false
     end
 
     SnapshotUtils.EnsureIndexMap(snapshot, {
@@ -86,12 +104,19 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
     }
 
     local targetOwner = IsValid(requestingPlayer) and requestingPlayer or FindSnapshotOwner(snapshot)
-    
-    if RARELOAD.settings.debugEnabled then
+    debugEnabled = debugEnabled or IsDebugEnabledForPlayer(targetOwner)
+
+    if RARELOAD.Debug and RARELOAD.Debug.Write then
+        RARELOAD.Debug.Write("entity_respawn", "INFO", 0,
+            string.format("Restoring %d entities from duplicator snapshot", snapshot.entityCount or 0),
+            { entity = targetOwner })
+        RARELOAD.Debug.Write("entity_respawn", "INFO", 1,
+            "Target owner: " .. (IsValid(targetOwner) and targetOwner:Nick() or "none"))
+    elseif debugEnabled then
         print(string.format("[RARELOAD DEBUG] Restoring %d entities from duplicator snapshot", snapshot.entityCount or 0))
         print(string.format("[RARELOAD DEBUG] Target owner: %s", IsValid(targetOwner) and targetOwner:Nick() or "none"))
     end
-    
+
     local indexToID = snapshot._indexMap or {}
 
     local existingIDs = {}
@@ -107,7 +132,7 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
     end
 
     local skippedEntities = {}
-    
+
     local restoreOptions = {
         -- First try server context to avoid non-host sandbox/player-limit failures.
         -- Ownership is re-applied explicitly per spawned entity below.
@@ -124,22 +149,23 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
 
     local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, restoreOptions)
     if (not ok) and IsValid(requestingPlayer) then
-        if RARELOAD.settings.debugEnabled then
-            print(string.format("[RARELOAD DEBUG] Server-context restore failed, retrying with player context: %s", tostring(res)))
+        if debugEnabled then
+            print(string.format("[RARELOAD DEBUG] Server-context restore failed, retrying with player context: %s",
+                tostring(res)))
         end
         restoreOptions.player = requestingPlayer
         ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, restoreOptions)
     end
-    
-    if RARELOAD.settings.debugEnabled and #skippedEntities > 0 then
+
+    if debugEnabled and #skippedEntities > 0 then
         print(string.format("[RARELOAD DEBUG] Skipped %d existing entities (already on map)", #skippedEntities))
     end
-    
+
     local spawnedClose = false
     if not ok then
         stats.failed = stats.failed + 1
         stats.endTime = SysTime()
-        if RARELOAD.settings.debugEnabled then
+        if debugEnabled then
             print(string.format("[RARELOAD DEBUG] Duplicator restore failed: %s", tostring(res)))
         end
         hook.Run("RareloadEntitiesRestored", stats)
@@ -149,7 +175,11 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
     local created = res and res.entities or {}
     stats.restored = CountTableEntries(created)
 
-    if RARELOAD.settings.debugEnabled then
+    if RARELOAD.Debug and RARELOAD.Debug.Write then
+        RARELOAD.Debug.Write("entity_respawn", "INFO", 1,
+            string.format("Duplicator created %d entities", stats.restored),
+            { entity = targetOwner })
+    elseif debugEnabled then
         print(string.format("[RARELOAD DEBUG] Duplicator created %d entities", stats.restored))
     end
 
@@ -158,7 +188,7 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
         if IsValid(ent) then
             ent.SpawnedByRareload = true
             ent.SavedViaDuplicator = true
-            
+
             local savedID = indexToID[dupIndex]
             if savedID then
                 ent.RareloadEntityID = savedID
@@ -166,7 +196,7 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
                     pcall(ent.SetNWString, ent, "RareloadID", savedID)
                 end
             end
-            
+
             if IsValid(targetOwner) and RARELOAD.Ownership then
                 RARELOAD.Ownership.SetOwner(ent, targetOwner)
             end
@@ -177,12 +207,17 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
     end
 
     stats.endTime = SysTime()
-    
-    if RARELOAD.settings.debugEnabled then
-        print(string.format("[RARELOAD DEBUG] Entity restoration completed in %.2f seconds", stats.endTime - stats.startTime))
+
+    if RARELOAD.Debug and RARELOAD.Debug.Write then
+        local duration = string.format("%.2f", stats.endTime - stats.startTime)
+        RARELOAD.Debug.Write("entity_respawn", "INFO", 0, "Entity restoration completed in " .. duration .. " seconds")
+        RARELOAD.Debug.Write("entity_respawn", "INFO", 1, "Spawned close to player: " .. tostring(spawnedClose))
+    elseif debugEnabled then
+        print(string.format("[RARELOAD DEBUG] Entity restoration completed in %.2f seconds",
+            stats.endTime - stats.startTime))
         print(string.format("[RARELOAD DEBUG] Spawned close to player: %s", tostring(spawnedClose)))
     end
-    
+
     hook.Run("RareloadEntitiesRestored", stats)
     return spawnedClose
 end
@@ -203,7 +238,7 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
         return
     end
 
-    if RARELOAD.settings.debugEnabled then
+    if IsDebugEnabledForPlayer(ply) then
         print(string.format("[RARELOAD] Admin %s respawning %s at %s",
             ply:Nick(), entityClass, tostring(position)))
     end
@@ -426,8 +461,20 @@ hook.Add("PreCleanupMap", "RareloadSaveEntitiesBeforeCleanup", function()
             end
 
             if RARELOAD.GetPlayerSetting(ply, "debugEnabled", false) then
-                local summary = SnapshotUtils.GetSummary(normalized or pdata.entities or {}, { category = "entity" }) or {}
-                print(string.format("[RARELOAD] Saved %d entities before map cleanup for %s", #summary, sid))
+                if normalized then
+                    local summary = SnapshotUtils.GetSummary(normalized, { category = "entity" }) or {}
+                    print(string.format("[RARELOAD] Saved %d entities before map cleanup for %s", #summary, sid))
+                else
+                    local existing = pdata.entities or {}
+                    if SnapshotUtils.HasSnapshot(existing) then
+                        local summary = SnapshotUtils.GetSummary(existing, { category = "entity" }) or {}
+                        print(string.format(
+                            "[RARELOAD] Reused previous entity snapshot (%d entities) before map cleanup for %s",
+                            #summary, sid))
+                    else
+                        print(string.format("[RARELOAD] No entity snapshot available before map cleanup for %s", sid))
+                    end
+                end
             end
         end
     end

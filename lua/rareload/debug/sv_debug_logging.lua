@@ -1,153 +1,220 @@
--- Helper functions to reduce code duplication
-local function FormatEntityInfo(entity)
-    if not IsValid(entity) then return "" end
-
-    if entity:IsPlayer() then
-        return string.format(" | Player: %s (%s)", entity:Nick(), entity:SteamID())
-    else
-        return string.format(" | Entity: %s (%d)", entity:GetClass(), entity:EntIndex())
-    end
-end
-
-local function FormatHeader(level, header, entity)
-    local levelConfig = DEBUG_CONFIG.LEVELS[level] or DEBUG_CONFIG.LEVELS[DEBUG_CONFIG.DEFAULT_LEVEL]
-    local timestamp = GetTimestamp()
-    return string.format("[%s][RARELOAD %s] %s%s",
-        timestamp, levelConfig.prefix, header, FormatEntityInfo(entity))
-end
-
-local function FormatMessage(message)
-    if type(message) == "table" then
-        return TableToString(message)
-    else
-        return tostring(message)
-    end
-end
-
-local function EnsureLogFolder()
-    if not file.Exists(DEBUG_CONFIG.LOG_FOLDER, "DATA") then
-        file.CreateDir(DEBUG_CONFIG.LOG_FOLDER)
-    end
-
-    local testFile = DEBUG_CONFIG.LOG_FOLDER .. "write_test.txt"
-    file.Write(testFile, "Test write")
-
-    if not file.Exists(testFile, "DATA") then
-        print("[RARELOAD] ERROR: Cannot write to logs folder! Falling back to root data folder.")
-        DEBUG_CONFIG.LOG_FOLDER = ""
-        return false
-    else
-        file.Delete(testFile)
-        return true
-    end
-end
-
-local function WriteToLogFile(logPath, content)
-    if not file.Exists(logPath, "DATA") then
-        file.Write(logPath, "")
-    end
-
-    file.Append(logPath, content)
-
-    if file.Exists(logPath, "DATA") then
-        local size = file.Size(logPath, "DATA")
-        return true, size
-    else
-        return false, 0
-    end
-end
+-- Legacy Log function - DEPRECATED, redirect to Write() for new code
+-- This function is kept for backward compatibility with old code
 
 function RARELOAD.Debug.Log(level, header, messages, entity)
-    if not DEBUG_CONFIG.ENABLED() then return end
+    -- DEPRECATED: Use RARELOAD.Debug.Write() for new code
+    -- This redirects old calls to the new gateway system
+    local debugContext = { entity = entity }
+    if not DEBUG_CONFIG.ENABLED(debugContext) then return end
 
     level = level or DEBUG_CONFIG.DEFAULT_LEVEL
-    local levelConfig = DEBUG_CONFIG.LEVELS[level] or DEBUG_CONFIG.LEVELS[DEBUG_CONFIG.DEFAULT_LEVEL]
-
+    header = header or ""
     messages = type(messages) == "table" and messages or { messages }
 
-    local fullHeader = FormatHeader(level, header or "", entity)
+    -- Concatenate table messages for new system
+    local message = table.concat(messages, " ")
+    local category = "legacy" -- Mark as legacy
 
-    if DEBUG_CONFIG.LOG_TO_CONSOLE then
-        MsgC(levelConfig.color, "\n[=====================================================================]\n")
-        MsgC(levelConfig.color, fullHeader .. "\n")
-
-        for _, message in ipairs(messages) do
-            print(FormatMessage(message))
-        end
-
-        MsgC(levelConfig.color, "[=====================================================================]\n\n")
-    end
-
-    if DEBUG_CONFIG.LOG_TO_FILE then
-        local logFile = DEBUG_CONFIG.LOG_FOLDER .. "rareload_" .. os.date("%Y-%m-%d_%H-%M") .. ".txt"
-        local logContent = fullHeader .. "\n"
-
-        for _, message in ipairs(messages) do
-            logContent = logContent .. FormatMessage(message) .. "\n"
-        end
-
-        logContent = logContent .. "---------------------------------------------------------------------\n"
-        WriteToLogFile(logFile, logContent)
-    end
+    RARELOAD.Debug.Write(category, level, 0, header .. ": " .. message, { entity = entity })
 end
 
-function RARELOAD.Debug.LogSquadFileOnly(title, level, logEntries)
-    if not DEBUG_CONFIG.ENABLED() then
-        return
-    end
+-- REMOVED: LogSquadFileOnly() - use Write() with category="squad" for file-only logging
+-- Old implementation is superseded by session-based file rotation system
 
-    if not DEBUG_CONFIG.LOG_TO_FILE then
-        return
-    end
-
-    EnsureLogFolder()
-
-    level = level or DEBUG_CONFIG.DEFAULT_LEVEL
-    local levelConfig = DEBUG_CONFIG.LEVELS[level] or DEBUG_CONFIG.LEVELS[DEBUG_CONFIG.DEFAULT_LEVEL]
-
-    local logFile = DEBUG_CONFIG.LOG_FOLDER .. "rareload_squads_" .. os.date("%Y-%m-%d_%H-%M") .. ".txt"
-    local logContent = "[" .. GetTimestamp() .. "] " .. title .. "\n"
-
-    if type(logEntries) ~= "table" or #logEntries == 0 then
-        logContent = logContent .. "No entries provided\n"
-    else
-        for i, entry in ipairs(logEntries) do
-            logContent = logContent .. string.format("[%d] %s\n", i, tostring(entry))
-        end
-    end
-
-    local success, size = WriteToLogFile(logFile, logContent)
-
-    -- Only print to console if enabled
-    if success and DEBUG_CONFIG.LOG_TO_CONSOLE then
-        -- print("[RARELOAD] Log file written successfully. Size: " .. size .. " bytes")
-    elseif not success then
-        print("[RARELOAD ERROR] Failed to write log file: " .. logFile)
-    end
-end
-
+-- DEPRECATED: LogGroup() - use StartSection()/AddToSection()/EndSection() instead
 function RARELOAD.Debug.LogGroup(title, level, logEntries)
     if not DEBUG_CONFIG.ENABLED() then return end
 
+    -- Redirect to new hierarchical system
+    local sectionId = RARELOAD.Debug.StartSection(title, "system")
     level = level or DEBUG_CONFIG.DEFAULT_LEVEL
+
+    if type(logEntries) == "table" then
+        for i, entry in ipairs(logEntries) do
+            RARELOAD.Debug.AddToSection(sectionId, level, tostring(entry), 1)
+        end
+    else
+        RARELOAD.Debug.AddToSection(sectionId, level, tostring(logEntries), 1)
+    end
+
+    RARELOAD.Debug.EndSection(sectionId)
+end
+
+-- Unified logging gateway function
+-- All output should route through this function for consistent formatting and rate limiting
+-- @param category (string) - Module category (e.g., "anti_stuck", "respawn", "commands")
+-- @param level (string) - Log level ("ERROR", "WARNING", "INFO", "VERBOSE")
+-- @param indentLevel (number) - Hierarchical indent level (0 = root, 1+ = nested)
+-- @param message (string/table) - Message content
+-- @param context (table) - Optional context { entity, player, extraInfo }
+function RARELOAD.Debug.Write(category, level, indentLevel, message, context)
+    context = context or {}
+    if not DEBUG_CONFIG.ENABLED(context) then return end
+
+    category = category or "system"
+    level = level or DEBUG_CONFIG.DEFAULT_LEVEL
+    indentLevel = indentLevel or 0
+
+    -- Check rate limiting
+    local moduleKey = category:lower()
+    local messageKey = tostring(message):sub(1, 50) -- Use first 50 chars as key
+    local shouldLog, nextLogTime = DEBUG_CONFIG.CheckRateLimit(moduleKey, messageKey)
+
+    if not shouldLog then
+        -- Silently skip (could log to separate rate-limit file if needed)
+        return
+    end
+
+    -- Get category display name
+    local categoryDisplay = DEBUG_CONFIG.ModuleCategories[moduleKey] or category:upper()
+
+    -- Generate timestamp in console format
+    local timestamp = DEBUG_CONFIG.GetTimestamp("%H:%M:%S")
+
+    -- Generate indentation string
+    local indent = string.rep("  ", indentLevel)
+
+    -- Format level config
     local levelConfig = DEBUG_CONFIG.LEVELS[level] or DEBUG_CONFIG.LEVELS[DEBUG_CONFIG.DEFAULT_LEVEL]
 
-    if DEBUG_CONFIG.LOG_TO_CONSOLE then
-        MsgC(levelConfig.color,
-            "\n[=====================================================================] " .. title .. "\n")
+    -- Build header
+    local header = string.format("[%s][%s][%s] %s", timestamp, categoryDisplay, levelConfig.prefix, message)
 
-        if type(logEntries) == "table" then
-            for i, entry in ipairs(logEntries) do
-                print(string.format("[%d] %s", i, FormatMessage(entry)))
-            end
-        else
-            print(FormatMessage(logEntries))
+    -- Console output with hierarchical indentation
+    if DEBUG_CONFIG.LOG_TO_CONSOLE then
+        if indentLevel == 0 then
+            -- Root level: show separator
+            MsgC(levelConfig.color, "\n[" .. string.rep("=", 61) .. "]\n")
         end
 
-        MsgC(levelConfig.color, "[=====================================================================]\n\n")
+        MsgC(levelConfig.color, indent .. header)
+
+        -- Add context if provided
+        if context.entity and IsValid(context.entity) then
+            if context.entity:IsPlayer() then
+                MsgC(Color(200, 200, 200),
+                    " | Player: " .. context.entity:Nick() .. " (" .. context.entity:SteamID() .. ")")
+            else
+                MsgC(Color(200, 200, 200),
+                    " | Entity: " .. context.entity:GetClass() .. " [" .. context.entity:EntIndex() .. "]")
+            end
+        end
+
+        print("") -- Newline
+
+        if indentLevel == 0 then
+            MsgC(levelConfig.color, "[" .. string.rep("=", 61) .. "]\n")
+        end
     end
 
+    -- File output
     if DEBUG_CONFIG.LOG_TO_FILE then
-        DEBUG_CONFIG.AddToLogBuffer(level, title, logEntries)
+        local fileEntry = indent .. header
+        if context.entity and IsValid(context.entity) then
+            if context.entity:IsPlayer() then
+                fileEntry = fileEntry ..
+                    " | Player: " .. context.entity:Nick() .. " (" .. context.entity:SteamID() .. ")"
+            else
+                fileEntry = fileEntry ..
+                    " | Entity: " .. context.entity:GetClass() .. " [" .. context.entity:EntIndex() .. "]"
+            end
+        end
+
+        -- Add to buffer with category for session-based file rotation
+        DEBUG_CONFIG.AddToLogBuffer(level, categoryDisplay, fileEntry)
     end
+end
+
+-- Hierarchical section management for structured output
+local debugSections = {} -- { id => { title, category, startTime, indent, color } }
+local nextSectionId = 1
+
+-- Start a new debug section
+-- @param title (string) - Section title
+-- @param category (string) - Module category (for rate limiting and formatting)
+-- @return sectionId (number) - Unique section identifier for use in AddToSection/EndSection
+function RARELOAD.Debug.StartSection(title, category)
+    if not DEBUG_CONFIG.ENABLED() then return nil end
+
+    category = category or "system"
+    local sectionId = nextSectionId
+    nextSectionId = nextSectionId + 1
+
+    local levelConfig = DEBUG_CONFIG.LEVELS["INFO"] or DEBUG_CONFIG.LEVELS[DEBUG_CONFIG.DEFAULT_LEVEL]
+    local timestamp = DEBUG_CONFIG.GetTimestamp("%H:%M:%S")
+    local categoryDisplay = DEBUG_CONFIG.ModuleCategories[category:lower()] or category:upper()
+
+    debugSections[sectionId] = {
+        title = title,
+        category = category,
+        startTime = SysTime(),
+        indent = 0,
+        entries = {},
+        color = levelConfig.color
+    }
+
+    if DEBUG_CONFIG.LOG_TO_CONSOLE then
+        MsgC(levelConfig.color, "\n[" .. string.rep("=", 61) .. "]\n")
+        MsgC(levelConfig.color, string.format("[%s][%s] %s\n", timestamp, categoryDisplay, title))
+    end
+
+    return sectionId
+end
+
+-- Add a message to an open section (with indentation)
+-- @param sectionId (number) - Section identifier from StartSection()
+-- @param level (string) - Log level
+-- @param message (string) - Message content
+-- @param indent (number) - Optional indent level relative to section (defaults to 1)
+function RARELOAD.Debug.AddToSection(sectionId, level, message, indent)
+    if not DEBUG_CONFIG.ENABLED() or not debugSections[sectionId] then return end
+
+    indent = indent or 1
+    local section = debugSections[sectionId]
+    local levelConfig = DEBUG_CONFIG.LEVELS[level] or DEBUG_CONFIG.LEVELS[DEBUG_CONFIG.DEFAULT_LEVEL]
+    local timestamp = DEBUG_CONFIG.GetTimestamp("%H:%M:%S")
+
+    -- Generate indentation (2 spaces per level, starting from 1)
+    local indentStr = string.rep("  ", indent)
+
+    -- Format and store entry
+    local entry = {
+        timestamp = timestamp,
+        level = level,
+        message = message,
+        indent = indentStr
+    }
+    table.insert(section.entries, entry)
+
+    -- Console output
+    if DEBUG_CONFIG.LOG_TO_CONSOLE then
+        MsgC(levelConfig.color, indentStr .. "[" .. timestamp .. "][" .. levelConfig.prefix .. "] " .. message .. "\n")
+    end
+end
+
+-- Finish and close a debug section
+-- @param sectionId (number) - Section identifier from StartSection()
+-- @return elapsed (number) - Time elapsed since StartSection() in seconds
+function RARELOAD.Debug.EndSection(sectionId)
+    if not DEBUG_CONFIG.ENABLED() or not debugSections[sectionId] then return 0 end
+
+    local section = debugSections[sectionId]
+    local elapsed = SysTime() - section.startTime
+    local levelConfig = DEBUG_CONFIG.LEVELS["INFO"] or DEBUG_CONFIG.LEVELS[DEBUG_CONFIG.DEFAULT_LEVEL]
+
+    -- Log file output
+    if DEBUG_CONFIG.LOG_TO_FILE then
+        for _, entry in ipairs(section.entries) do
+            DEBUG_CONFIG.AddToLogBuffer(entry.level, section.category, entry.indent .. entry.message)
+        end
+    end
+
+    -- Console closing
+    if DEBUG_CONFIG.LOG_TO_CONSOLE then
+        MsgC(levelConfig.color, string.format("[Section completed in %.3fs]\n", elapsed))
+        MsgC(levelConfig.color, "[" .. string.rep("=", 61) .. "]\n\n")
+    end
+
+    debugSections[sectionId] = nil
+    return elapsed
 end

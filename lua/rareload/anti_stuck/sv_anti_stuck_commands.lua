@@ -3,7 +3,6 @@ if not SERVER then return end
 RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 local AntiStuck = RARELOAD.AntiStuck
-local PS = AntiStuck.ProfileSystem
 
 concommand.Add("rareload_antistuck_stats", function(ply)
     if IsValid(ply) and (not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG")) then
@@ -86,47 +85,7 @@ concommand.Add("rareload_server_fix_corrupted_profiles", function(ply)
         return
     end
 
-    PS.LoadCurrentProfile()
-    PS.EnsureDefaultProfile()
-
-    local profiles = {}
-    local files = file.Find(PS.profilesDir .. "*.json", "DATA")
-    for _, fileName in ipairs(files or {}) do
-        local profileName = string.gsub(fileName, "%.json$", "")
-        table.insert(profiles, profileName)
-    end
-
-    local fixedCount, errorCount = 0, 0
-    for _, profileName in ipairs(profiles) do
-        local profile = PS.LoadProfile(profileName)
-        if profile then
-            local isValid, err = PS.ValidateProfileData(profile)
-            if not isValid then
-                print("[RARELOAD] Fixing corrupted server profile: " .. profileName)
-                print("[RARELOAD] Error was: " .. err)
-
-                if profile.settings and type(profile.settings) == "table" then
-                    local hasNumericKeys = false
-                    for k, v in pairs(profile.settings) do
-                        if type(k) == "number" and type(v) == "table" and v.func and v.name then
-                            hasNumericKeys = true
-                            break
-                        end
-                    end
-                    if hasNumericKeys then
-                        profile.methods = RareloadDeepCopyMethods(profile.settings)
-                        profile.settings = RareloadDeepCopySettings(RARELOAD.AntiStuck.DefaultSettings or {})
-                        local fileName = PS.profilesDir .. profileName .. ".json"
-                        file.CreateDir(PS.profilesDir)
-                        local ok = pcall(file.Write, fileName, util.TableToJSON(profile, true))
-                        if ok then fixedCount = fixedCount + 1 else errorCount = errorCount + 1 end
-                    end
-                end
-            end
-        end
-    end
-
-    local message = "[RARELOAD] Server profile fix complete. Fixed: " .. fixedCount .. ", Errors: " .. errorCount
+    local message = "[RARELOAD] Profile repair command is deprecated (single profile mode)."
     print(message)
     if IsValid(ply) then ply:ChatPrint(message) end
 end)

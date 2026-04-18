@@ -730,7 +730,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
     end
 
     if not RARELOAD.reloadImageState and not RARELOAD.permissionDeniedState then
-        draw.SimpleText("v3.1", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT,
+        draw.SimpleText("v3.2", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT,
             TEXT_ALIGN_BOTTOM)
     elseif RARELOAD.permissionDeniedState then
         drawPermissionDeniedImage(width, height)

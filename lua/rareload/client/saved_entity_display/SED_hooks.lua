@@ -1,3 +1,21 @@
+local function IsClientDebugEnabled()
+    if RARELOAD and RARELOAD.IsDebugEnabled then
+        local ok, enabled = pcall(RARELOAD.IsDebugEnabled)
+        if ok then
+            return enabled == true
+        end
+    end
+
+    if RARELOAD and RARELOAD.GetPlayerSetting then
+        local ok, enabled = pcall(RARELOAD.GetPlayerSetting, "debugEnabled", nil)
+        if ok and enabled ~= nil then
+            return enabled == true
+        end
+    end
+
+    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled == true
+end
+
 hook.Add("OnEntityCreated", "RARELOAD_TrackSavedEntities", function(ent)
     timer.Simple(0, function()
         if IsValid(ent) then SED.TrackIfSaved(ent) end
@@ -51,7 +69,7 @@ hook.Add("PlayerBindPress", "RARELOAD_InteractScroll", function(ply, bind, press
 end)
 
 hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", function()
-    if not RARELOAD.settings.debugEnabled then return end
+    if not IsClientDebugEnabled() then return end
 
     local hasViewSEDPerm = true
     local lp = LocalPlayer()

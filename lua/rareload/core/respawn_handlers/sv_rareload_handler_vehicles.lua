@@ -5,11 +5,35 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 
+local function IsDebugEnabledForPlayer(ply)
+    if RARELOAD and RARELOAD.GetPlayerSetting and IsValid(ply) then
+        return RARELOAD.GetPlayerSetting(ply, "debugEnabled", false)
+    end
+
+    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then
+        return DEBUG_CONFIG.ENABLED({ entity = ply })
+    end
+
+    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled or false
+end
+
+local function WriteVehicleDebug(ply, level, message)
+    if not IsDebugEnabledForPlayer(ply) then return end
+
+    if RARELOAD.Debug and RARELOAD.Debug.Write then
+        RARELOAD.Debug.Write("vehicle_respawn", level or "INFO", 0, tostring(message), { entity = ply })
+        return
+    end
+
+    print("[RARELOAD DEBUG] " .. tostring(message))
+end
+
 -- FIX IN PROGRESS
 -- This function is called when the addon need to restore vehicles from a save file. Allow to restore vehicles, their health, color, etc.
 function RARELOAD.RestoreVehicles(savedInfo, requestingPlayer)
     if not savedInfo or not savedInfo.vehicles then return end
     timer.Simple(1, function()
+        local debugEnabled = IsDebugEnabledForPlayer(requestingPlayer)
         local vehicleCount = 0
         for _, vehicleData in ipairs(savedInfo.vehicles) do
             local exists = false
@@ -82,14 +106,15 @@ function RARELOAD.RestoreVehicles(savedInfo, requestingPlayer)
 
                 if success and IsValid(vehicle) then
                     vehicleCount = vehicleCount + 1
-                elseif RARELOAD.settings.debugEnabled then
-                    print("[RARELOAD DEBUG] Failed to create vehicle: " .. vehicleData.class)
+                elseif debugEnabled then
+                    WriteVehicleDebug(requestingPlayer, "WARNING",
+                        "Failed to create vehicle: " .. tostring(vehicleData.class))
                 end
             end
         end
 
-        if RARELOAD.settings.debugEnabled and vehicleCount > 0 then
-            print("[RARELOAD DEBUG] Restored " .. vehicleCount .. " vehicles")
+        if debugEnabled and vehicleCount > 0 then
+            WriteVehicleDebug(requestingPlayer, "INFO", "Restored " .. vehicleCount .. " vehicles")
         end
     end)
 end

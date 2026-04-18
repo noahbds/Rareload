@@ -5,7 +5,7 @@ local RARELOAD = RARELOAD or {}
 RARELOAD.NPCSaver = RARELOAD.NPCSaver or {}
 
 local CONFIG = {
-    DEBUG = true,
+    DEBUG = false,
     SAVE_PLAYER_OWNED_ONLY = true,
     MAX_NPCS_TO_SAVE = 500,
     SAVE_NPC_NPC_RELATIONS = true,
@@ -17,12 +17,35 @@ local CONFIG = {
     }
 }
 
-local function DebugLog(msg, ...)
+local function IsDebugEnabledForPlayer(ply)
     if CONFIG.DEBUG then
-        local formatted = string.format(msg, ...)
-        print("[RareLoad NPC Saver] " .. formatted)
-        if SERVER then ServerLog("[RareLoad NPC Saver] " .. formatted .. "\n") end
+        return true
     end
+
+    if RARELOAD and RARELOAD.GetPlayerSetting and IsValid(ply) then
+        return RARELOAD.GetPlayerSetting(ply, "debugEnabled", false)
+    end
+
+    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then
+        return DEBUG_CONFIG.ENABLED({ entity = ply })
+    end
+
+    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled or false
+end
+
+local function DebugLog(ply, level, msg, ...)
+    if not IsDebugEnabledForPlayer(ply) then return end
+
+    local logLevel = level or "INFO"
+    local formatted = string.format(msg, ...)
+
+    if RARELOAD.Debug and RARELOAD.Debug.Write then
+        RARELOAD.Debug.Write("npc_save", logLevel, 0, formatted, { entity = ply })
+        return
+    end
+
+    print("[RareLoad NPC Saver] " .. formatted)
+    if SERVER then ServerLog("[RareLoad NPC Saver] " .. formatted .. "\n") end
 end
 
 -- Include ownership system
@@ -32,7 +55,7 @@ end
 
 local function GetEntityOwner(ent)
     if not IsValid(ent) then return nil end
-    
+
     -- Use our ownership system first
     if RARELOAD.Ownership and RARELOAD.Ownership.GetOwner then
         local owner = RARELOAD.Ownership.GetOwner(ent)
@@ -40,19 +63,19 @@ local function GetEntityOwner(ent)
             return owner
         end
     end
-    
+
     -- Fallback: Check entity's GetOwner
     if ent.GetOwner then
         local o = ent:GetOwner()
         if IsValid(o) and o:IsPlayer() then return o end
     end
-    
+
     -- Fallback: Check networked entity
     if ent.GetNWEntity then
         local o = ent:GetNWEntity("RareloadOwner")
         if IsValid(o) and o:IsPlayer() then return o end
     end
-    
+
     return nil
 end
 
@@ -107,8 +130,8 @@ local function CaptureDuplicatorSnapshot(ply, trackedNPCs)
         anchor = IsValid(ply) and ply:GetPos() or nil
     })
 
-    if not snapshot and err and CONFIG.DEBUG then
-        DebugLog("Duplicator snapshot capture failed: %s", tostring(err))
+    if not snapshot and err then
+        DebugLog(ply, "WARNING", "Duplicator snapshot capture failed: %s", tostring(err))
     end
 
     return snapshot
@@ -130,7 +153,7 @@ return function(ply)
     end
 
     local npcCount = #allNPCs
-    DebugLog("Found %d NPCs on the map", npcCount)
+    DebugLog(ply, "INFO", "Found %d NPCs on the map", npcCount)
 
     table.sort(allNPCs, function(a, b)
         local ao, bo = GetEntityOwner(a), GetEntityOwner(b)
@@ -138,7 +161,7 @@ return function(ply)
     end)
 
     if #allNPCs > CONFIG.MAX_NPCS_TO_SAVE then
-        DebugLog("WARNING: NPC count exceeds maximum (%d/%d). Some NPCs will not be saved.", #allNPCs,
+        DebugLog(ply, "WARNING", "NPC count exceeds maximum (%d/%d). Some NPCs will not be saved.", #allNPCs,
             CONFIG.MAX_NPCS_TO_SAVE)
         allNPCs = { unpack(allNPCs, 1, CONFIG.MAX_NPCS_TO_SAVE) }
     end
@@ -174,13 +197,16 @@ return function(ply)
     end
 
     local endTime = SysTime()
-    DebugLog("Saved %d/%d NPCs in %.3f seconds", savedCount, npcCount, endTime - startTime)
+    DebugLog(ply, "INFO", "Saved %d/%d NPCs in %.3f seconds", savedCount, npcCount, endTime - startTime)
 
     local duplicatorSnapshot = CaptureDuplicatorSnapshot(ply, duplicatorTargets)
     if not duplicatorSnapshot then
-        if CONFIG.DEBUG then
-            DebugLog("Duplicator snapshot unavailable, saved %d NPC candidates (no snapshot)", savedCount)
-        end
+        local level = (savedCount > 0) and "WARNING" or "VERBOSE"
+        local reason = (savedCount > 0)
+            and "Duplicator snapshot unavailable, saved %d NPC candidates (no snapshot)"
+            or "No NPC candidates to snapshot (saved %d)"
+
+        DebugLog(ply, level, reason, savedCount)
         return {}
     end
 
@@ -188,15 +214,13 @@ return function(ply)
         category = "npc",
         idPrefix = "npc"
     })
-    
+
     local result = {}
     rawset(result, "__duplicator", duplicatorSnapshot)
-    
-    if CONFIG.DEBUG then
-        DebugLog("Duplicator snapshot captured (%d NPCs, %d constraints)",
-            duplicatorSnapshot.entityCount or 0,
-            duplicatorSnapshot.constraintCount or 0)
-    end
+
+    DebugLog(ply, "INFO", "Duplicator snapshot captured (%d NPCs, %d constraints)",
+        duplicatorSnapshot.entityCount or 0,
+        duplicatorSnapshot.constraintCount or 0)
 
     return result
 end

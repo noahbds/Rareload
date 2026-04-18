@@ -56,6 +56,45 @@ end
 local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 
+local function IsDebugEnabledForPlayer(ply)
+    if RARELOAD and RARELOAD.GetPlayerSetting and IsValid(ply) then
+        return RARELOAD.GetPlayerSetting(ply, "debugEnabled", false)
+    end
+
+    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then
+        return DEBUG_CONFIG.ENABLED({ entity = ply })
+    end
+
+    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled or false
+end
+
+local function WriteEntitySaveDebug(ply, level, message, details)
+    if not IsDebugEnabledForPlayer(ply) then return end
+
+    local logLevel = level or "INFO"
+
+    if RARELOAD.Debug and RARELOAD.Debug.Write then
+        RARELOAD.Debug.Write("entity_save", logLevel, 0, tostring(message), { entity = ply })
+        if istable(details) then
+            for _, line in ipairs(details) do
+                RARELOAD.Debug.Write("entity_save", logLevel, 1, tostring(line), { entity = ply })
+            end
+        elseif details ~= nil then
+            RARELOAD.Debug.Write("entity_save", logLevel, 1, tostring(details), { entity = ply })
+        end
+        return
+    end
+
+    print("[RARELOAD DEBUG] " .. tostring(message))
+    if istable(details) then
+        for _, line in ipairs(details) do
+            print("[RARELOAD DEBUG] " .. tostring(line))
+        end
+    elseif details ~= nil then
+        print("[RARELOAD DEBUG] " .. tostring(details))
+    end
+end
+
 -- Duplicator-driven only: old per-entity save logic removed.
 
 local function CaptureDuplicatorSnapshot(ply, trackedEntities)
@@ -73,8 +112,8 @@ local function CaptureDuplicatorSnapshot(ply, trackedEntities)
         anchor = IsValid(ply) and ply:GetPos() or nil
     })
 
-    if not snapshot and err and RARELOAD.settings and RARELOAD.settings.debugEnabled then
-        print("[RARELOAD] Duplicator snapshot capture failed: " .. tostring(err))
+    if not snapshot and err then
+        WriteEntitySaveDebug(ply, "WARNING", "Duplicator snapshot capture failed", tostring(err))
     end
 
     return snapshot
@@ -120,16 +159,19 @@ return function(ply)
                     ---@diagnostic disable-next-line: inject-field
                     ent.OriginalSpawner = sid
                 end
-
             end
         end
     end
 
     local duplicatorSnapshot = CaptureDuplicatorSnapshot(ply, duplicatorTargets)
     if not duplicatorSnapshot then
-        if RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled then
-            print(string.format("[RARELOAD DEBUG] Duplicator snapshot unavailable, saved %d entities candidates (no snapshot)", count))
-        end
+        local level = (count > 0) and "WARNING" or "VERBOSE"
+        local reason = (count > 0)
+            and "Duplicator snapshot unavailable"
+            or "No entity candidates to snapshot"
+
+        WriteEntitySaveDebug(ply, level, reason,
+            string.format("Saved %d entity candidates (no snapshot)", count))
 
         return {}
     end
@@ -138,20 +180,16 @@ return function(ply)
         category = "entity",
         idPrefix = "entity"
     })
-    
+
     local result = {}
     rawset(result, "__duplicator", duplicatorSnapshot)
 
-    if RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled then
-        print("[RARELOAD DEBUG] Saved " ..
-            count .. " entities in " .. math.Round((SysTime() - startTime) * 1000) .. " ms")
-
-        if duplicatorSnapshot then
-            print(string.format("[RARELOAD DEBUG] Duplicator snapshot captured (%d entities, %d constraints)",
-                duplicatorSnapshot.entityCount or 0,
-                duplicatorSnapshot.constraintCount or 0))
-        end
-    end
+    WriteEntitySaveDebug(ply, "INFO", "Entity save completed", {
+        string.format("Saved %d entities in %d ms", count, math.Round((SysTime() - startTime) * 1000)),
+        string.format("Duplicator snapshot captured (%d entities, %d constraints)",
+            duplicatorSnapshot.entityCount or 0,
+            duplicatorSnapshot.constraintCount or 0)
+    })
 
     return result
 end

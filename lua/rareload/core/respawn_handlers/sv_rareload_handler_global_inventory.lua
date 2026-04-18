@@ -57,7 +57,8 @@ function RARELOAD.RestoreGlobalInventory(ply)
                             "Weapon " .. weaponClass .. " is not spawnable and not admin-only.")
                     else
                         debugFlags.notRegistered = true
-                        table.insert(debugMessages.notRegistered, "Weapon " .. weaponClass .. " not in registry (may be engine weapon).")
+                        table.insert(debugMessages.notRegistered,
+                            "Weapon " .. weaponClass .. " not in registry (may be engine weapon).")
                     end
                 end
             end
@@ -156,7 +157,11 @@ function RARELOAD.ClearGlobalInventory(ply)
         RARELOAD.globalInventory[steamID] = nil
         SaveGlobalInventory()
 
-        if RARELOAD.settings.debugEnabled then
+        local debugEnabled = (IsValid(ply) and RARELOAD.GetPlayerSetting and RARELOAD.GetPlayerSetting(ply, "debugEnabled", false))
+            or (DEBUG_CONFIG and DEBUG_CONFIG.ENABLED and DEBUG_CONFIG.ENABLED())
+            or (RARELOAD.settings and RARELOAD.settings.debugEnabled)
+
+        if debugEnabled then
             print("[RARELOAD DEBUG] Cleared global inventory for " .. steamID)
         end
         return true

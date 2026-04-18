@@ -14,6 +14,24 @@ local PHANTOM_CULL_DISTANCE_SQR = PHANTOM_CULL_DISTANCE * PHANTOM_CULL_DISTANCE
 local PHANTOM_HEAD_OFFSET       = Vector(0, 0, 80)
 local PIXEL_VIS_HANDLE          = util.GetPixelVisibleHandle and util.GetPixelVisibleHandle() or nil
 
+local function IsClientDebugEnabled()
+    if RARELOAD and RARELOAD.IsDebugEnabled then
+        local ok, enabled = pcall(RARELOAD.IsDebugEnabled)
+        if ok then
+            return enabled == true
+        end
+    end
+
+    if RARELOAD and RARELOAD.GetPlayerSetting then
+        local ok, enabled = pcall(RARELOAD.GetPlayerSetting, "debugEnabled", nil)
+        if ok and enabled ~= nil then
+            return enabled == true
+        end
+    end
+
+    return RARELOAD.settings and RARELOAD.settings.debugEnabled == true
+end
+
 local function HandleNetReceive(event, callback)
     net.Receive(event, function(len)
         callback()
@@ -58,7 +76,7 @@ local function CreatePhantom(ply, pos, ang)
 end
 
 local function UpdatePhantomVisibility()
-    local debugOn = RARELOAD.settings.debugEnabled
+    local debugOn = IsClientDebugEnabled()
     local hasViewPhantomPerm = true
     local lp = LocalPlayer()
     if IsValid(lp) and RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
@@ -90,7 +108,9 @@ local function RemovePhantom(steamID)
     local phantomData = RARELOAD.Phantom[steamID]
     if phantomData then
         if IsValid(phantomData.phantom) then
-            print("[RARELOAD DEBUG] Removing phantom for player " .. steamID)
+            if IsClientDebugEnabled() then
+                print("[RARELOAD DEBUG] Removing phantom for player " .. steamID)
+            end
             phantomData.phantom:Remove()
             SafeRemoveEntity(phantomData.phantom)
         end
@@ -149,11 +169,16 @@ HandleNetReceive("SyncData", function()
     -- haven't been received yet (MySettings is empty). Otherwise per-player
     -- settings take priority over server globals.
     if not RARELOAD.MySettings or not next(RARELOAD.MySettings) then
-        local oldDebugEnabled = RARELOAD.settings.debugEnabled
+        local oldDebugEnabled = IsClientDebugEnabled()
         RARELOAD.settings = data.settings or {}
 
-        if oldDebugEnabled ~= RARELOAD.settings.debugEnabled then
+        if oldDebugEnabled ~= IsClientDebugEnabled() then
             UpdatePhantomVisibility()
+        end
+
+        -- Ask for authoritative per-player settings when SyncData had to fallback to globals.
+        if RARELOAD.RequestPlayerSettings then
+            RARELOAD.RequestPlayerSettings()
         end
     end
 
@@ -165,13 +190,17 @@ end)
 HandleNetReceive("CreatePlayerPhantom", function()
     local ply = net.ReadEntity()
     if not IsValid(ply) then
-        print("[RARELOAD DEBUG] Invalid player entity received.")
+        if IsClientDebugEnabled() then
+            print("[RARELOAD DEBUG] Invalid player entity received.")
+        end
         return
     end
 
     local pos, ang = net.ReadVector(), net.ReadAngle()
     if not pos or pos:IsZero() then
-        print("[RARELOAD DEBUG] Invalid position for phantom creation.")
+        if IsClientDebugEnabled() then
+            print("[RARELOAD DEBUG] Invalid position for phantom creation.")
+        end
         return
     end
 
@@ -268,7 +297,7 @@ local cachedMapPositions = nil
 local lastMapCacheTime = 0
 
 hook.Add("PostDrawOpaqueRenderables", "RARELOAD_QueuePhantomInfo", function()
-    if not RARELOAD.settings.debugEnabled then return end
+    if not IsClientDebugEnabled() then return end
 
     BufferPhantom()
 
@@ -331,7 +360,7 @@ hook.Add("PostDrawOpaqueRenderables", "RARELOAD_QueuePhantomInfo", function()
 end)
 
 hook.Add("Think", "CheckDebugModeChanges", function()
-    local debugOn = RARELOAD.settings.debugEnabled
+    local debugOn = IsClientDebugEnabled()
     local hasViewPhantomPerm = true
     local lp = LocalPlayer()
     if IsValid(lp) and RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then

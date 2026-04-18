@@ -5,11 +5,13 @@ RARELOAD.PlayerSettings = RARELOAD.PlayerSettings or {}
 
 -- Cache of per-player settings in memory
 local playerSettingsCache = {}
+local lastSettingsSyncAt = {}
+local SETTINGS_SYNC_COOLDOWN = 0.75
 
 -- Get default settings for a new player (from server ConVars)
 local function GetServerDefaultSettings()
     local defaults = {}
-    
+
     -- Read from ConVars (server-wide defaults)
     if RARELOAD.ConVars then
         for convarName, settingKey in pairs(RARELOAD.ConVarToSetting or {}) do
@@ -24,7 +26,7 @@ local function GetServerDefaultSettings()
             end
         end
     end
-    
+
     -- Fallback to hardcoded defaults
     if table.Count(defaults) == 0 then
         defaults = {
@@ -48,7 +50,7 @@ local function GetServerDefaultSettings()
             maxDistance = 50
         }
     end
-    
+
     return defaults
 end
 
@@ -68,45 +70,58 @@ local function EnsurePlayerSettingsFolderExists()
     end
 end
 
+local function WriteSettingsDebug(level, message, details, context)
+    if not (RARELOAD.Debug and RARELOAD.Debug.Write) then return end
+
+    local logLevel = level or "INFO"
+    RARELOAD.Debug.Write("settings", logLevel, 0, tostring(message), context)
+
+    if istable(details) then
+        for key, value in pairs(details) do
+            RARELOAD.Debug.Write("settings", logLevel, 1, tostring(key) .. ": " .. tostring(value), context)
+        end
+    elseif details ~= nil then
+        RARELOAD.Debug.Write("settings", logLevel, 1, tostring(details), context)
+    end
+end
+
 -- Load settings for a specific player
 function RARELOAD.PlayerSettings.Load(steamID)
     if not steamID or steamID == "" then return nil end
-    
+
     -- Check cache first
     if playerSettingsCache[steamID] then
         return playerSettingsCache[steamID]
     end
-    
+
     -- Try to load from file
     local filePath = GetPlayerSettingsPath(steamID)
-    
+
     if file.Exists(filePath, "DATA") then
         local json = file.Read(filePath, "DATA")
         local success, settings = pcall(util.JSONToTable, json)
-        
+
         if success and settings then
             playerSettingsCache[steamID] = settings
-            
-            if RARELOAD.Debug and RARELOAD.Debug.Log then
-                RARELOAD.Debug.Log("INFO", "Player Settings Loaded", {
-                    steamID = steamID,
-                    settingsCount = table.Count(settings)
-                })
-            end
-            
+
+            WriteSettingsDebug("INFO", "Player settings loaded", {
+                steamID = steamID,
+                settingsCount = table.Count(settings)
+            })
+
             return settings
         else
             print("[RARELOAD] Failed to load player settings for " .. steamID .. ": " .. tostring(settings))
         end
     end
-    
+
     -- No file exists, create new settings from server defaults
     local defaults = GetServerDefaultSettings()
     playerSettingsCache[steamID] = defaults
-    
+
     -- Save the new defaults
     RARELOAD.PlayerSettings.Save(steamID, defaults)
-    
+
     return defaults
 end
 
@@ -114,71 +129,77 @@ end
 function RARELOAD.PlayerSettings.Save(steamID, settings)
     if not steamID or steamID == "" then return false end
     if not settings then return false end
-    
+
     EnsurePlayerSettingsFolderExists()
-    
+
     -- Update cache
     playerSettingsCache[steamID] = settings
-    
+
     -- Save to file
     local filePath = GetPlayerSettingsPath(steamID)
     local json = util.TableToJSON(settings, true)
     local success, err = pcall(file.Write, filePath, json)
-    
+
     if not success then
         print("[RARELOAD] Failed to save player settings for " .. steamID .. ": " .. tostring(err))
         return false
     end
-    
-    if RARELOAD.Debug and RARELOAD.Debug.Log then
-        RARELOAD.Debug.Log("INFO", "Player Settings Saved", {
-            steamID = steamID,
-            settingsCount = table.Count(settings)
-        })
-    end
-    
+
+    WriteSettingsDebug("INFO", "Player settings saved", {
+        steamID = steamID,
+        settingsCount = table.Count(settings)
+    })
+
     return true
 end
 
 -- Get a player setting value
 function RARELOAD.PlayerSettings.Get(ply)
     if not IsValid(ply) then return GetServerDefaultSettings() end
-    
+
     local steamID = ply:SteamID()
     return RARELOAD.PlayerSettings.Load(steamID)
 end
 
 -- Get a specific setting value for a player
 function RARELOAD.PlayerSettings.GetValue(ply, settingKey, default)
+    if settingKey == nil then
+        return default
+    end
+
+    local key = tostring(settingKey)
+
     if not IsValid(ply) then
         -- Return server default
-        if RARELOAD.settings and RARELOAD.settings[settingKey] ~= nil then
-            return RARELOAD.settings[settingKey]
+        if RARELOAD.settings and RARELOAD.settings[key] ~= nil then
+            return RARELOAD.settings[key]
         end
         return default
     end
-    
+
     local settings = RARELOAD.PlayerSettings.Get(ply)
     if not istable(settings) then
         return default
     end
 
-    if settings[settingKey] ~= nil then
-        return settings[settingKey]
+    ---@diagnostic disable-next-line: need-check-nil
+    local settingValue = settings[key]
+    if settingValue ~= nil then
+        return settingValue
     end
-    
+
     return default
 end
 
 -- Update a specific setting for a player
 function RARELOAD.PlayerSettings.Set(ply, settingKey, value)
     if not IsValid(ply) then return false end
-    
+
     local steamID = ply:SteamID()
     local settings = RARELOAD.PlayerSettings.Load(steamID)
-    
+
     settings[settingKey] = value
-    
+
     return RARELOAD.PlayerSettings.Save(steamID, settings)
 end
 
@@ -192,28 +213,34 @@ end
 -- Network player settings to client
 util.AddNetworkString("RareloadSyncPlayerSettings")
 
-function RARELOAD.PlayerSettings.SyncToPlayer(ply)
-    if not IsValid(ply) then return end
+function RARELOAD.PlayerSettings.SyncToPlayer(ply, force)
+    if not IsValid(ply) then return false end
+
+    local steamID = ply:SteamID()
+    local now = CurTime()
+    if not force and lastSettingsSyncAt[steamID] and (now - lastSettingsSyncAt[steamID]) < SETTINGS_SYNC_COOLDOWN then
+        return false
+    end
 
     local settings = RARELOAD.PlayerSettings.Get(ply)
-    if not istable(settings) then
-        settings = GetServerDefaultSettings()
-    end
+    local syncedSettings = istable(settings) and settings or GetServerDefaultSettings()
 
     net.Start("RareloadSyncPlayerSettings")
-    net.WriteTable(settings)
+    net.WriteTable(syncedSettings)
     net.Send(ply)
-    
-    if RARELOAD.Debug and RARELOAD.Debug.Log then
-        RARELOAD.Debug.Log("VERBOSE", "Player Settings Synced", {
-            player = ply:Nick(),
-            steamID = ply:SteamID()
-        })
-    end
+    lastSettingsSyncAt[steamID] = now
+
+    WriteSettingsDebug("VERBOSE", "Player settings synced", {
+        player = ply:Nick(),
+        steamID = steamID
+    }, { entity = ply })
+
+    return true
 end
 
 -- Receive setting changes from client
 util.AddNetworkString("RareloadUpdatePlayerSetting")
+util.AddNetworkString("RareloadRequestPlayerSettings")
 
 -- Whitelist of settings the client is allowed to change
 local ALLOWED_CLIENT_SETTINGS = {
@@ -234,11 +261,11 @@ local ALLOWED_CLIENT_SETTINGS = {
 
 net.Receive("RareloadUpdatePlayerSetting", function(len, ply)
     if not IsValid(ply) then return end
-    
+
     local settingKey = net.ReadString()
     local valueType = net.ReadString()
     local value
-    
+
     if valueType == "bool" then
         value = net.ReadBool()
     elseif valueType == "number" then
@@ -248,20 +275,21 @@ net.Receive("RareloadUpdatePlayerSetting", function(len, ply)
     else
         return
     end
-    
+
     -- Validate setting key against whitelist
     local expectedType = ALLOWED_CLIENT_SETTINGS[settingKey]
     if not expectedType then
         print("[RARELOAD] Player " .. ply:Nick() .. " attempted to modify restricted setting: " .. tostring(settingKey))
         return
     end
-    
+
     -- Validate value type matches expected type
     if valueType ~= expectedType then
-        print("[RARELOAD] Player " .. ply:Nick() .. " sent wrong type for " .. settingKey .. ": expected " .. expectedType .. ", got " .. valueType)
+        print("[RARELOAD] Player " ..
+            ply:Nick() .. " sent wrong type for " .. settingKey .. ": expected " .. expectedType .. ", got " .. valueType)
         return
     end
-    
+
     -- Clamp numeric values to safe ranges
     if valueType == "number" and type(value) == "number" then
         if settingKey == "angleTolerance" then
@@ -270,19 +298,29 @@ net.Receive("RareloadUpdatePlayerSetting", function(len, ply)
             value = math.Clamp(value, 1, 500)
         end
     end
-    
+
     -- Update player's setting
     RARELOAD.PlayerSettings.Set(ply, settingKey, value)
-    
+
     -- Sync back to player (and potentially others if needed)
-    RARELOAD.PlayerSettings.SyncToPlayer(ply)
-    
-    if RARELOAD.Debug and RARELOAD.Debug.Log then
-        RARELOAD.Debug.Log("INFO", "Player Setting Updated", {
+    RARELOAD.PlayerSettings.SyncToPlayer(ply, true)
+
+    WriteSettingsDebug("INFO", "Player setting updated", {
+        player = ply:Nick(),
+        settingKey = settingKey,
+        value = tostring(value)
+    }, { entity = ply })
+end)
+
+net.Receive("RareloadRequestPlayerSettings", function(_, ply)
+    if not IsValid(ply) then return end
+    local synced = RARELOAD.PlayerSettings.SyncToPlayer(ply, false)
+
+    if synced then
+        WriteSettingsDebug("VERBOSE", "Player settings resync requested", {
             player = ply:Nick(),
-            settingKey = settingKey,
-            value = tostring(value)
-        })
+            steamID = ply:SteamID()
+        }, { entity = ply })
     end
 end)
 
@@ -296,7 +334,7 @@ hook.Add("PlayerInitialSpawn", "RareloadSyncPlayerSettings", function(ply)
     -- Sync to client once the player is fully ready
     timer.Simple(0, function()
         if IsValid(ply) then
-            RARELOAD.PlayerSettings.SyncToPlayer(ply)
+            RARELOAD.PlayerSettings.SyncToPlayer(ply, true)
         end
     end)
 end)
@@ -311,18 +349,29 @@ hook.Add("PlayerDisconnected", "RareloadClearPlayerSettingsCache", function(ply)
         end)
     end
 end)
+
+hook.Add("PostCleanupMap", "RareloadResyncPlayerSettingsAfterCleanup", function()
+    timer.Simple(0, function()
+        for _, ply in ipairs(player.GetHumans()) do
+            if IsValid(ply) then
+                RARELOAD.PlayerSettings.SyncToPlayer(ply, true)
+            end
+        end
+    end)
+end)
 -- Convenience function: Get player's setting value with fallback to global
 -- Usage: local keepInventory = RARELOAD.GetPlayerSetting(ply, "retainInventory")
 function RARELOAD.GetPlayerSetting(ply, settingKey, default)
     if RARELOAD.PlayerSettings and RARELOAD.PlayerSettings.GetValue then
         return RARELOAD.PlayerSettings.GetValue(ply, settingKey, default)
     end
-    
+
     -- Fallback to global settings if player settings system not loaded
     if RARELOAD.settings and RARELOAD.settings[settingKey] ~= nil then
         return RARELOAD.settings[settingKey]
     end
-    
+
     return default
 end
+
 print("[RARELOAD] Per-player settings system loaded")

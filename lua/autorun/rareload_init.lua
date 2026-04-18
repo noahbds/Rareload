@@ -1,7 +1,7 @@
 -- RARELOAD Addon Initialization
 
 RARELOAD = RARELOAD or {}
-RARELOAD.version = "3.1"
+RARELOAD.version = "3.2"
 
 if SERVER then
     AddCSLuaFile("rareload/shared/permissions_def.lua")
@@ -42,21 +42,6 @@ if SERVER then
     AddCSLuaFile("rareload/client/saved_entity_display/SED_interaction_system.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_hooks.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_loader.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_rareload_antistuck_init.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_components.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_data.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_events.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_method_list.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_panel_main.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_theme.lua")
-    AddCSLuaFile("rareload/client/antistuck/profile/cl_profile_system.lua")
-    AddCSLuaFile("rareload/client/antistuck/profile/cl_profile_manager.lua")
-    AddCSLuaFile("rareload/client/antistuck/profile/cl_profile_dialog.lua")
-    AddCSLuaFile("rareload/client/antistuck/profile/cl_profile_test.lua")
-    AddCSLuaFile("rareload/client/antistuck/settings/cl_settings_defaults.lua")
-    AddCSLuaFile("rareload/client/antistuck/settings/cl_settings_utils.lua")
-    AddCSLuaFile("rareload/client/antistuck/settings/cl_settings_panel.lua")
-    AddCSLuaFile("rareload/client/antistuck/settings/cl_settings_net.lua")
 end
 
 include("rareload/shared/permissions_def.lua")
@@ -107,7 +92,6 @@ if SERVER then
     include("rareload/anti_stuck/sv_anti_stuck_methods.lua")
     include("rareload/anti_stuck/sv_anti_stuck_cache.lua")
     include("rareload/anti_stuck/sv_anti_stuck_validation.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_profile.lua")
     include("rareload/anti_stuck/sv_anti_stuck_map.lua")
     include("rareload/anti_stuck/sv_anti_stuck_nav.lua")
     include("rareload/anti_stuck/methods/sv_method_cachedpos.lua")
@@ -116,7 +100,6 @@ if SERVER then
     include("rareload/anti_stuck/methods/sv_method_map_entities.lua")
     include("rareload/anti_stuck/methods/sv_method_node_graph.lua")
     include("rareload/anti_stuck/methods/sv_method_space_scan.lua")
-    include("rareload/anti_stuck/methods/sv_method_spawn_points.lua")
     include("rareload/anti_stuck/methods/sv_method_world_brushes.lua")
     include("rareload/anti_stuck/methods/sv_method_systematic_grid.lua")
     include("rareload/anti_stuck/sv_anti_stuck_methods_loader.lua")
@@ -153,15 +136,6 @@ elseif CLIENT then
     include("rareload/client/entity_viewer/cl_entity_viewer_utils.lua")
     include("rareload/client/saved_entity_display/SED_loader.lua")
     include("rareload/client/phantom/cl_phantom_info.lua")
-    include("rareload/client/antistuck/cl_rareload_antistuck_init.lua")
-    include("rareload/client/antistuck/cl_anti_stuck_components.lua")
-    include("rareload/client/antistuck/cl_anti_stuck_data.lua")
-    include("rareload/client/antistuck/cl_anti_stuck_events.lua")
-    include("rareload/client/antistuck/cl_anti_stuck_method_list.lua")
-    include("rareload/client/antistuck/cl_anti_stuck_panel_main.lua")
-    include("rareload/client/antistuck/cl_anti_stuck_theme.lua")
-    include("rareload/client/antistuck/profile/cl_profile_manager.lua")
-
     net.Receive("RareloadDebugMessage", function()
         print(net.ReadString())
     end)

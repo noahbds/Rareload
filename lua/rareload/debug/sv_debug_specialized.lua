@@ -14,19 +14,63 @@ local table_concat = table.concat
 
 local clipRestoreBuffer = {}
 
+local function WriteLines(category, level, title, lines, context)
+    if not (RARELOAD.Debug and RARELOAD.Debug.Write) then return end
+
+    RARELOAD.Debug.Write(category, level, 0, title, context)
+
+    if istable(lines) then
+        for _, line in ipairs(lines) do
+            RARELOAD.Debug.Write(category, level, 1, tostring(line), context)
+        end
+    elseif lines ~= nil then
+        RARELOAD.Debug.Write(category, level, 1, tostring(lines), context)
+    end
+end
+
+local function LogStructured(category, level, title, lines, ply)
+    local context = IsValid(ply) and { entity = ply } or nil
+    if RARELOAD.Debug and RARELOAD.Debug.Write then
+        WriteLines(category or "system", level or "INFO", title, lines, context)
+        return
+    end
+
+    print("[RARELOAD DEBUG] " .. tostring(title))
+    if istable(lines) then
+        for _, line in ipairs(lines) do
+            print("[RARELOAD DEBUG] " .. tostring(line))
+        end
+    elseif lines ~= nil then
+        print("[RARELOAD DEBUG] " .. tostring(lines))
+    end
+end
+
+local function FormatValue(value)
+    if RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.FormatValue then
+        return RARELOAD.DataUtils.FormatValue(value)
+    end
+    if istable(value) then
+        return TableToString(value)
+    end
+    return tostring(value)
+end
+
+local function VectorToDetailedString(vec)
+    if not vec then return "nil" end
+    if RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.FormatVectorDetailed then
+        return RARELOAD.DataUtils.FormatVectorDetailed(vec)
+    end
+    return tostring(vec)
+end
+
 local function DelayedDebugCheck(delay, callback)
     if not DEBUG_CONFIG.ENABLED() then return end
     timer.Simple(delay, callback)
 end
 
-local function FormatPlayerIdentifier(ply)
-    if not IsValid(ply) then return "Unknown Player" end
-    return string_format("%s (%s)", ply:Nick(), ply:SteamID())
-end
-
 local function ValidatePlayer(ply, functionName)
     if not IsValid(ply) then
-        RARELOAD.Debug.Log("ERROR", functionName .. " Failed", "Player entity is not valid")
+        WriteLines("system", "ERROR", functionName .. " failed", "Player entity is not valid")
         return false
     end
     return true
@@ -47,7 +91,7 @@ function RARELOAD.Debug.LogSpawnInfo(ply)
         "Admin Status: " .. (ply:IsSuperAdmin() and "SuperAdmin" or (ply:IsAdmin() and "Admin" or "Player"))
     }
 
-    RARELOAD.Debug.Log("INFO", "Player Spawn Information", spawnInfo, ply)
+    WriteLines("respawn", "INFO", "Player spawn information", spawnInfo, { entity = ply })
 end
 
 function RARELOAD.Debug.LogInventory(ply)
@@ -73,7 +117,7 @@ function RARELOAD.Debug.LogInventory(ply)
     table.insert(weaponList, 1, "Active Weapon: " .. activeWeaponClass)
     table.insert(weaponList, 2, "Total Weapons: " .. (#weaponList - 2))
 
-    RARELOAD.Debug.Log("VERBOSE", "Player Inventory", weaponList, ply)
+    WriteLines("inventory", "VERBOSE", "Player inventory", weaponList, { entity = ply })
 end
 
 function RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
@@ -98,13 +142,13 @@ function RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
     if not hasMessages then return end
 
     local logEntries = {}
-    
+
     -- Count successful and failed weapons for summary
     local successCount = 0
     local failedCount = 0
     local successWeapons = {}
     local failedWeapons = {}
-    
+
     if debugFlags.givenWeapons and #debugMessages.givenWeapons > 0 then
         for _, msg in ipairs(debugMessages.givenWeapons) do
             if string.find(msg, "^Successfully") then
@@ -139,7 +183,8 @@ function RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
             if weapon then table.insert(unregWeapons, weapon) end
         end
         if #unregWeapons > 0 then
-            table.insert(logEntries, "Engine/Unregistered (" .. #unregWeapons .. "): " .. table.concat(unregWeapons, ", "))
+            table.insert(logEntries,
+                "Engine/Unregistered (" .. #unregWeapons .. "): " .. table.concat(unregWeapons, ", "))
         end
     end
 
@@ -152,7 +197,7 @@ function RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
     end
 
     if #logEntries > 0 then
-        RARELOAD.Debug.Log("INFO", "Weapon Restoration Summary", logEntries)
+        WriteLines("inventory", "INFO", "Weapon restoration summary", logEntries)
     end
 end
 
@@ -167,7 +212,7 @@ function RARELOAD.Debug.LogPositionSave(ply, position, reason)
         "Timestamp: " .. os.date("%Y-%m-%d %H:%M:%S")
     }
 
-    RARELOAD.Debug.Log("VERBOSE", "Position Saved", saveInfo, ply)
+    LogStructured("position_save", "VERBOSE", "Position Saved", saveInfo, ply)
 end
 
 function RARELOAD.Debug.LogAutoSave(ply, interval)
@@ -183,11 +228,11 @@ function RARELOAD.Debug.LogAutoSave(ply, interval)
             "Position: " .. tostring(ply:GetPos())
         }
 
-        RARELOAD.Debug.Log("VERBOSE", "Auto-Save Checkpoint", autoSaveInfo, ply)
+        LogStructured("autosave", "VERBOSE", "Auto-Save Checkpoint", autoSaveInfo, ply)
     end
 end
 
-function RARELOAD.Debug.LogAntiStuck(ply, originalPos, finalPos, method, success)
+function RARELOAD.Debug.LogAntiStuckResult(ply, originalPos, finalPos, method, success)
     if not DEBUG_CONFIG.ENABLED() then return end
     if not IsValid(ply) then return end
 
@@ -200,7 +245,7 @@ function RARELOAD.Debug.LogAntiStuck(ply, originalPos, finalPos, method, success
     }
 
     local level = success and "INFO" or "WARNING"
-    RARELOAD.Debug.Log(level, "Anti-Stuck Resolution", stuckInfo, ply)
+    LogStructured("anti_stuck", level, "Anti-Stuck Resolution", stuckInfo, ply)
 end
 
 function RARELOAD.Debug.LogPermissionCheck(ply, permission, granted, reason)
@@ -216,7 +261,7 @@ function RARELOAD.Debug.LogPermissionCheck(ply, permission, granted, reason)
         }
 
         local level = granted and "INFO" or "WARNING"
-        RARELOAD.Debug.Log(level, "Permission Check", permInfo, ply)
+        LogStructured("permissions", level, "Permission Check", permInfo, ply)
     end
 end
 
@@ -248,7 +293,7 @@ function RARELOAD.Debug.FlushClipRestoreBuffer()
         ))
     end
 
-    RARELOAD.Debug.Log("INFO", "Weapon Clips Restored", clipInfo)
+    WriteLines("inventory", "INFO", "Weapon clips restored", clipInfo)
 
     clipRestoreBuffer = {}
 end
@@ -265,11 +310,11 @@ function RARELOAD.Debug.SavePosDataInfo(ply, oldPosData, playerData)
     DelayedDebugCheck(0.8, function()
         if not ValidatePlayer(ply, "SavePosDataInfo") then return end
         if not playerData then
-            RARELOAD.Debug.Log("ERROR", "Position Save", "Missing player data")
+            LogStructured("position_save", "ERROR", "Position Save", "Missing player data", ply)
             return
         end
 
-        RARELOAD.Debug.Log("INFO", "Position Save", {
+        LogStructured("position_save", "INFO", "Position Save", {
             string_format("Map: %s", game.GetMap()),
             string_format("Player: %s (%s)", ply:Nick(), ply:SteamID()),
             string_format("Auto-save: %s", (RARELOAD.settings.autoSaveEnabled and "Enabled" or "Disabled")),
@@ -329,13 +374,13 @@ function RARELOAD.Debug.SavePosDataInfo(ply, oldPosData, playerData)
             end
 
             if #changes > 0 then
-                RARELOAD.Debug.Log("INFO", "Detected Changes", {
+                LogStructured("position_save", "INFO", "Detected Changes", {
                     string_format("Number of changes: %d", #changes),
                     "Changes:", changes,
                     string_format("Unchanged Settings: %s", table_concat(unchanged, ", "))
                 })
             else
-                RARELOAD.Debug.Log("INFO", "No Changes Detected", {
+                LogStructured("position_save", "INFO", "No Changes Detected", {
                     "All settings are identical to the previous save"
                 })
             end
@@ -346,7 +391,7 @@ end
 function RARELOAD.Debug.LogSquadInfo(squadName, members, removedNPCs)
     DelayedDebugCheck(0.9, function()
         if not squadName or not members then
-            RARELOAD.Debug.Log("ERROR", "Squad Info", "Missing required parameters")
+            LogStructured("npc_save", "ERROR", "Squad Info", "Missing required parameters")
             return
         end
 
@@ -428,12 +473,12 @@ function RARELOAD.Debug.TestSystemState()
             end
         end
 
-        RARELOAD.Debug.Log("INFO", "Rareload System State", state)
+        LogStructured("system", "INFO", "Rareload System State", state)
         return state
     end)
 end
 
-function RARELOAD.Debug.LogAntiStuck(operation, methodName, data, ply)
+function RARELOAD.Debug.LogAntiStuckOperation(operation, methodName, data, ply)
     if not DEBUG_CONFIG or not DEBUG_CONFIG.ENABLED() then return end
 
     local header = "Anti-Stuck"
@@ -499,10 +544,18 @@ function RARELOAD.Debug.LogAntiStuck(operation, methodName, data, ply)
     end
 
     if #additionalDetails > 0 then
-        RARELOAD.Debug.Log(level, header, { mainMessage, "", unpack(additionalDetails) }, ply)
+        LogStructured("anti_stuck", level, header, { mainMessage, "", unpack(additionalDetails) }, ply)
     else
-        RARELOAD.Debug.Log(level, header, mainMessage, ply)
+        LogStructured("anti_stuck", level, header, mainMessage, ply)
     end
+end
+
+-- Backward compatibility wrapper
+function RARELOAD.Debug.LogAntiStuck(ply, originalPos, finalPos, method, success)
+    if IsValid(ply) and originalPos and isvector(originalPos) then
+        return RARELOAD.Debug.LogAntiStuckResult(ply, originalPos, finalPos, method, success)
+    end
+    return RARELOAD.Debug.LogAntiStuckOperation(ply, originalPos, finalPos, method)
 end
 
 local function _fmtVec(v)

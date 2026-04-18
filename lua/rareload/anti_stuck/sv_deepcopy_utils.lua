@@ -1,3 +1,7 @@
+if _G.RARELOAD_DEEPCOPY_UTILS_LOADED then
+    return
+end
+
 local function DeepCopy(original, copies)
     copies = copies or {}
     local originalType = type(original)
@@ -68,5 +72,6 @@ end
 _G.RareloadDeepCopy = DeepCopy
 _G.RareloadDeepCopySettings = DeepCopySettings
 _G.RareloadDeepCopyMethods = DeepCopyMethods
+_G.RARELOAD_DEEPCOPY_UTILS_LOADED = true
 
 print("[RARELOAD] Server-side deep copy utility functions loaded")

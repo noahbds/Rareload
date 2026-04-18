@@ -4,6 +4,22 @@ RARELOAD.settings = RARELOAD.settings or {}
 
 RARELOAD.settings.maxHistorySize = RARELOAD.settings.maxHistorySize or 10
 
+local function IsDebugEnabledForSteamID(steamID)
+    if steamID and player and player.GetAll and RARELOAD.GetPlayerSetting then
+        for _, ply in ipairs(player.GetAll()) do
+            if IsValid(ply) and ply:SteamID() == steamID then
+                return RARELOAD.GetPlayerSetting(ply, "debugEnabled", false)
+            end
+        end
+    end
+
+    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then
+        return DEBUG_CONFIG.ENABLED()
+    end
+
+    return RARELOAD.settings and RARELOAD.settings.debugEnabled or false
+end
+
 function RARELOAD.CacheCurrentPositionData(steamID, mapName)
     if not steamID or not mapName then return end
 
@@ -29,7 +45,7 @@ function RARELOAD.CacheCurrentPositionData(steamID, mapName)
             table.remove(history, #history)
         end
 
-        if RARELOAD.settings.debugEnabled then
+        if IsDebugEnabledForSteamID(steamID) then
             print(string.format("[RARELOAD DEBUG] Cached position data for %s (History size: %d/%d)",
                 steamID, #history, maxSize))
         end
@@ -46,7 +62,7 @@ function RARELOAD.GetPreviousPositionData(steamID, mapName)
         local lastPos = history[1]
         table.remove(history, 1)
 
-        if RARELOAD.settings.debugEnabled then
+        if IsDebugEnabledForSteamID(steamID) then
             print("[RARELOAD DEBUG] Retrieved previous position for " .. steamID .. " (Remaining history: " ..
                 #history .. ")")
         end
@@ -83,7 +99,7 @@ function RARELOAD.ClearPositionHistory(steamID, mapName)
         end
     end
 
-    if RARELOAD.settings.debugEnabled then
+    if IsDebugEnabledForSteamID(steamID) then
         print(string.format("[RARELOAD DEBUG] Cleared position history for %s on %s",
             steamID, mapName or "all maps"))
     end
@@ -93,7 +109,10 @@ function RARELOAD.SetMaxHistorySize(size)
     if type(size) == "number" and size > 0 then
         RARELOAD.settings.maxHistorySize = math.floor(size)
 
-        if RARELOAD.settings.debugEnabled then
+        local debugEnabled = (DEBUG_CONFIG and DEBUG_CONFIG.ENABLED and DEBUG_CONFIG.ENABLED())
+            or (RARELOAD.settings and RARELOAD.settings.debugEnabled)
+
+        if debugEnabled then
             print("[RARELOAD DEBUG] Max position history size set to " .. RARELOAD.settings.maxHistorySize)
         end
         return true

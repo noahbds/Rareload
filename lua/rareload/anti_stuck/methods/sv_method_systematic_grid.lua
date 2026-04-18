@@ -13,7 +13,7 @@ function AntiStuck.TrySystematicGrid(pos, ply)
     local verticalRange = AntiStuck.CONFIG.VERTICAL_RANGE or 400
     local safeDistance = AntiStuck.CONFIG.SAFE_DISTANCE or 64
 
-    local debugEnabled = RARELOAD.settings and RARELOAD.settings.debugEnabled
+    local debugEnabled = AntiStuck.DebugEnabled and AntiStuck.DebugEnabled(ply)
 
     if debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
         RARELOAD.Debug.AntiStuck("Starting systematic grid search",

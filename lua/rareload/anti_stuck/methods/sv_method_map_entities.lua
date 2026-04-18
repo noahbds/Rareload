@@ -50,6 +50,13 @@ function AntiStuck.TryMapEntities(pos, ply)
         end
     end
 
+    if AntiStuck.spawnPoints and #AntiStuck.spawnPoints > 0 then
+        for i = 1, #AntiStuck.spawnPoints do
+            local v = AntiStuck.ToVector and AntiStuck.ToVector(AntiStuck.spawnPoints[i]) or AntiStuck.spawnPoints[i]
+            if v then addCandidate(v, 0) end
+        end
+    end
+
     do
         local around = ents.FindInSphere(pos, maxEntityDist)
         for i = 1, #around do
@@ -162,7 +169,7 @@ end
 
 if AntiStuck.RegisterMethod then
     AntiStuck.RegisterMethod("TryMapEntities", AntiStuck.TryMapEntities, {
-        description = "Find safe positions near map entities and structures",
+        description = "Find safe positions near map entities and spawn points",
         priority = 50,
         timeout = 2.0,
         retries = 1

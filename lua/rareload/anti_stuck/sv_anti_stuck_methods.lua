@@ -19,12 +19,12 @@ local function ValidateMethodInterface(func)
     local testPos = Vector(0, 0, 0)
     local ok, result1, result2 = pcall(func, testPos, nil)
 
-    if not ok then 
+    if not ok then
         local errStr = tostring(result1):lower()
         if errStr:find("nil value") or errStr:find("invalid") then
             return true, "Valid (requires valid player)"
         end
-        return false, "Function call failed: " .. tostring(result1) 
+        return false, "Function call failed: " .. tostring(result1)
     end
 
     if result1 ~= nil and type(result1) ~= "Vector" then
@@ -41,8 +41,8 @@ end
 function AntiStuck.RegisterMethod(name, func, config)
     if not name or type(name) ~= "string" then
         local msg = "Invalid method name: " .. tostring(name)
-        if RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-            RARELOAD.Debug.AntiStuck(msg)
+        if RARELOAD.Debug and RARELOAD.Debug.Write then
+            RARELOAD.Debug.Write("anti_stuck", "ERROR", 0, msg)
         else
             print("[RARELOAD ERROR] " .. msg)
         end
@@ -52,8 +52,8 @@ function AntiStuck.RegisterMethod(name, func, config)
     local isValid, errorMsg = ValidateMethodInterface(func)
     if not isValid then
         local msg = "Invalid method interface for '" .. name .. "': " .. errorMsg
-        if RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-            RARELOAD.Debug.AntiStuck(msg)
+        if RARELOAD.Debug and RARELOAD.Debug.Write then
+            RARELOAD.Debug.Write("anti_stuck", "ERROR", 0, msg)
         else
             print("[RARELOAD ERROR] " .. msg)
         end
@@ -80,9 +80,9 @@ function AntiStuck.RegisterMethod(name, func, config)
         lastUsed = 0
     }
 
-    if RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
-        RARELOAD.Debug.AntiStuck("Registered method: " .. name)
-    elseif RARELOAD.settings and RARELOAD.settings.debugEnabled then
+    if RARELOAD.Debug and RARELOAD.Debug.Write then
+        RARELOAD.Debug.Write("anti_stuck", "INFO", 0, "Registered method: " .. name)
+    elseif AntiStuck.DebugEnabled and AntiStuck.DebugEnabled() then
         print("[RARELOAD ANTI-STUCK] Registered method: " .. name)
     end
     return true
@@ -100,7 +100,7 @@ end
 function AntiStuck.ExecuteMethod(methodName, originalPos, ply)
     local method = AntiStuck.methodRegistry[methodName]
     if not method then
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+        if AntiStuck.DebugEnabled and AntiStuck.DebugEnabled(ply) and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
             RARELOAD.Debug.AntiStuck("Method not found", { methodName = tostring(methodName) })
         end
         return nil, AntiStuck.UNSTUCK_METHODS.FAILED
@@ -153,7 +153,9 @@ function AntiStuck.ResetMethodStats(methodName)
 end
 
 AntiStuck.emergencyFallbackMethod = function(originalPos, ply)
-    if RARELOAD.settings and RARELOAD.settings.debugEnabled then
+    if RARELOAD.Debug and RARELOAD.Debug.Write then
+        RARELOAD.Debug.Write("anti_stuck", "WARNING", 0, "Using emergency fallback method", { entity = ply })
+    elseif AntiStuck.DebugEnabled and AntiStuck.DebugEnabled(ply) then
         print("[RARELOAD ANTI-STUCK] Using emergency fallback method")
     end
 

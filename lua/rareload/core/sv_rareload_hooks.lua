@@ -11,15 +11,13 @@ if SERVER then
         "RareloadReloadData",
         "RareloadSyncAutoSaveTime",
         "RareloadSendPermissionsDefinitions",
-        "RareloadRequestAntiStuckConfig",
-        "RareloadAntiStuckConfig",
     }
-    
+
     for _, str in ipairs(networkStrings) do
         util.AddNetworkString(str)
     end
 
-     local function EnsureFolderExists()
+    local function EnsureFolderExists()
         if not file.Exists("rareload", "DATA") then
             file.CreateDir("rareload")
         end

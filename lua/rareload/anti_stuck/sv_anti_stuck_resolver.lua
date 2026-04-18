@@ -37,7 +37,7 @@ if SERVER then
         end
 
         if not AntiStuck.methods then
-            if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+            if AntiStuck.DebugEnabled() and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
                 RARELOAD.Debug.AntiStuck("WARNING: No methods available")
             end
             return {}
@@ -74,7 +74,7 @@ if SERVER then
             end)
         end
 
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+        if AntiStuck.DebugEnabled() and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
             local respectProfileOrder = (AntiStuck.CONFIG and AntiStuck.CONFIG.RESPECT_PROFILE_ORDER ~= false)
             local header = respectProfileOrder and "Using profile-defined order" or "Optimized methods for performance"
             local lines = {}
@@ -97,7 +97,7 @@ if SERVER then
         end
 
         if not AntiStuck.ExecuteMethod or type(AntiStuck.ExecuteMethod) ~= "function" then
-            if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+            if AntiStuck.DebugEnabled(ply) and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
                 RARELOAD.Debug.AntiStuck("ERROR: ExecuteMethod not available; using fallback",
                     { methodName = "ResolveStuckPosition" }, ply)
             end
@@ -106,7 +106,7 @@ if SERVER then
 
         local startTime = SysTime()
         local session = nil
-        if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.StartAntiStuckSession and DEBUG_CONFIG and DEBUG_CONFIG.ENABLED() then
+        if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.StartAntiStuckSession and DEBUG_CONFIG and DEBUG_CONFIG.ENABLED and DEBUG_CONFIG.ENABLED({ entity = ply }) then
             session = RARELOAD.Debug.StartAntiStuckSession(ply, originalPos)
         end
         AntiStuck._currentSession = session
@@ -183,8 +183,7 @@ if SERVER then
                         string.format("found position in %.3fs (attempt %d)", SysTime() - startTime, attemptCount))
                 end
 
-                if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.LogAntiStuck and RARELOAD.settings and
-                    RARELOAD.settings.debugEnabled then
+                if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.LogAntiStuck and AntiStuck.DebugEnabled(ply) then
                     RARELOAD.Debug.LogAntiStuck("Method success", methodInfo.name, {
                         originalPos = originalPos,
                         finalPos = pos,
@@ -211,7 +210,7 @@ if SERVER then
                     bestPartialResult = { pos = pos, method = methodInfo.name }
                 end
 
-                if RARELOAD.settings.debugEnabled then
+                if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.LogAntiStuck and AntiStuck.DebugEnabled(ply) then
                     RARELOAD.Debug.LogAntiStuck("Method partial", methodInfo.name, {
                         originalPos = originalPos,
                         partialPos = pos,
@@ -253,8 +252,7 @@ if SERVER then
 
         if bestPartialResult then
             if session then RARELOAD.Debug.AntiStuckStep(session, "ok", "Using partial result", bestPartialResult.method) end
-            if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.LogAntiStuck and RARELOAD.settings and
-                RARELOAD.settings.debugEnabled then
+            if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.LogAntiStuck and AntiStuck.DebugEnabled(ply) then
                 RARELOAD.Debug.LogAntiStuck("Using partial result", bestPartialResult.method, {
                     originalPos = originalPos,
                     finalPos = bestPartialResult.pos,
@@ -288,7 +286,7 @@ if SERVER then
     end
 
     function AntiStuck.EmergencyFallback(originalPos, ply)
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+        if AntiStuck.DebugEnabled(ply) and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
             RARELOAD.Debug.AntiStuck("Using enhanced emergency fallback", { methodName = "EmergencyFallback" }, ply)
         end
 
@@ -313,12 +311,11 @@ if SERVER then
             fallbackPos = Vector(0, 0, fallbackHeight)
         end
 
-        if RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+        if AntiStuck.DebugEnabled(ply) and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
             RARELOAD.Debug.AntiStuck("Using calculated emergency fallback position",
                 { methodName = "EmergencyFallback" }, ply)
         end
-        if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.LogAntiStuck and RARELOAD.settings and
-            RARELOAD.settings.debugEnabled then
+        if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.LogAntiStuck and AntiStuck.DebugEnabled(ply) then
             RARELOAD.Debug.LogAntiStuck("EmergencyFallback used", "EmergencyFallback", {
                 originalPos = originalPos,
                 finalPos = fallbackPos,
@@ -340,7 +337,7 @@ if SERVER then
             end
         end
 
-        if cleaned > 0 and RARELOAD.settings and RARELOAD.settings.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
+        if cleaned > 0 and AntiStuck.DebugEnabled() and RARELOAD.Debug and RARELOAD.Debug.AntiStuck then
             RARELOAD.Debug.AntiStuck("Cleaned position memory entries", { cleaned = cleaned })
         end
     end)

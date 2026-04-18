@@ -25,8 +25,7 @@ TOOL.ConfigName             = ""
 if SERVER then
     AddCSLuaFile("rareload/ui/rareload_ui.lua")
     AddCSLuaFile("rareload/ui/rareload_toolscreen.lua")
-    AddCSLuaFile("rareload/client/antistuck/cl_anti_stuck_panel_main.lua")
-    
+
     -- Tool-specific network strings
     util.AddNetworkString("RareloadToolReloadState")
     util.AddNetworkString("RareloadToolPermissionDenied")
@@ -298,72 +297,86 @@ function TOOL.BuildCPanel(panel)
     headerPanel.Paint = function(self, w, h)
         -- Gradient background
         RareloadUI.DrawRoundedBox(0, 0, w, h, 8, Color(45, 50, 60, 255))
-        
+
         -- Accent line
         surface.SetDrawColor(RareloadUI.Theme.Colors.Accent)
         surface.DrawRect(0, h - 3, w, 3)
-        
+
         -- Title
-        draw.SimpleText("RARELOAD", "RareloadUI.Title", 12, h/2 - 6, RareloadUI.Theme.Colors.Text.Primary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText("Configuration Panel", "RareloadUI.Small", 12, h/2 + 10, RareloadUI.Theme.Colors.Text.Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        
+        draw.SimpleText("RARELOAD", "RareloadUI.Title", 12, h / 2 - 6, RareloadUI.Theme.Colors.Text.Primary,
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText("Configuration Panel", "RareloadUI.Small", 12, h / 2 + 10, RareloadUI.Theme.Colors.Text
+        .Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+
         -- Version badge
-        draw.SimpleText("v3.1", "RareloadUI.Small", w - 12, h/2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+        draw.SimpleText("v3.2", "RareloadUI.Small", w - 12, h / 2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT,
+            TEXT_ALIGN_CENTER)
     end
 
     -- ═══════════════════════════════════════════════════════════════
     -- CORE SETTINGS CATEGORY
     -- ═══════════════════════════════════════════════════════════════
     local coreCategory = RareloadUI.CreateCategory(panel, "Core Settings", "icon16/cog.png", true)
-    
-    local toggleRareload = RareloadUI.CreateToggleSwitch(coreCategory.Content, "Enable Rareload", "sv_rareload_enabled", "Master switch to enable/disable the addon")
+
+    local toggleRareload = RareloadUI.CreateToggleSwitch(coreCategory.Content, "Enable Rareload", "sv_rareload_enabled",
+        "Master switch to enable/disable the addon")
     coreCategory:AddItem(toggleRareload)
-    
-    local toggleAntiStuck = RareloadUI.CreateToggleSwitch(coreCategory.Content, "Anti-Stuck System", "sv_rareload_spawn_mode", "Prevents spawning inside objects")
+
+    local toggleAntiStuck = RareloadUI.CreateToggleSwitch(coreCategory.Content, "Anti-Stuck System",
+        "sv_rareload_spawn_mode", "Prevents spawning inside objects")
     coreCategory:AddItem(toggleAntiStuck)
-    
-    local toggleAutoSave = RareloadUI.CreateToggleSwitch(coreCategory.Content, "Auto Save Position", "sv_rareload_auto_save", "Automatically saves position periodically")
+
+    local toggleAutoSave = RareloadUI.CreateToggleSwitch(coreCategory.Content, "Auto Save Position",
+        "sv_rareload_auto_save", "Automatically saves position periodically")
     coreCategory:AddItem(toggleAutoSave)
-    
-    local toggleNoCustomDeath = RareloadUI.CreateToggleSwitch(coreCategory.Content, "No Custom Respawn at Death", "sv_rareload_no_custom_death", "Disable custom respawn when dying")
+
+    local toggleNoCustomDeath = RareloadUI.CreateToggleSwitch(coreCategory.Content, "No Custom Respawn at Death",
+        "sv_rareload_no_custom_death", "Disable custom respawn when dying")
     coreCategory:AddItem(toggleNoCustomDeath)
 
     -- ═══════════════════════════════════════════════════════════════
     -- PLAYER STATE CATEGORY
     -- ═══════════════════════════════════════════════════════════════
     local playerCategory = RareloadUI.CreateCategory(panel, "Player State Retention", "icon16/user.png", true)
-    
-    local toggleHealth = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Health & Armor", "sv_rareload_keep_health", "Restore health and armor on respawn")
+
+    local toggleHealth = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Health & Armor",
+        "sv_rareload_keep_health", "Restore health and armor on respawn")
     playerCategory:AddItem(toggleHealth)
-    
-    local toggleStates = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Player States", "sv_rareload_keep_states", "Restore godmode, notarget, noclip, frozen")
+
+    local toggleStates = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Player States",
+        "sv_rareload_keep_states", "Restore godmode, notarget, noclip, frozen")
     playerCategory:AddItem(toggleStates)
-    
-    local toggleInventory = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Inventory", "sv_rareload_keep_inventory", "Restore weapons on respawn")
+
+    local toggleInventory = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Inventory",
+        "sv_rareload_keep_inventory", "Restore weapons on respawn")
     playerCategory:AddItem(toggleInventory)
-    
-    local toggleAmmo = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Ammo", "sv_rareload_keep_ammo", "Restore ammunition on respawn")
+
+    local toggleAmmo = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Ammo", "sv_rareload_keep_ammo",
+        "Restore ammunition on respawn")
     playerCategory:AddItem(toggleAmmo)
-    
-    local toggleGlobalInv = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Global Inventory", "sv_rareload_global_inventory", "Share inventory across all players")
+
+    local toggleGlobalInv = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Global Inventory",
+        "sv_rareload_global_inventory", "Share inventory across all players")
     playerCategory:AddItem(toggleGlobalInv)
 
     -- ═══════════════════════════════════════════════════════════════
     -- MAP ENTITIES CATEGORY
     -- ═══════════════════════════════════════════════════════════════
     local mapCategory = RareloadUI.CreateCategory(panel, "Map Entities", "icon16/map.png", false)
-    
-    local toggleMapEnts = RareloadUI.CreateToggleSwitch(mapCategory.Content, "Keep Map Entities", "sv_rareload_keep_map_entities", "Restore map entities on respawn")
+
+    local toggleMapEnts = RareloadUI.CreateToggleSwitch(mapCategory.Content, "Keep Map Entities",
+        "sv_rareload_keep_map_entities", "Restore map entities on respawn")
     mapCategory:AddItem(toggleMapEnts)
-    
-    local toggleMapNPCs = RareloadUI.CreateToggleSwitch(mapCategory.Content, "Keep Map NPCs", "sv_rareload_keep_map_npcs", "Restore NPCs on respawn")
+
+    local toggleMapNPCs = RareloadUI.CreateToggleSwitch(mapCategory.Content, "Keep Map NPCs", "sv_rareload_keep_map_npcs",
+        "Restore NPCs on respawn")
     mapCategory:AddItem(toggleMapNPCs)
 
     -- ═══════════════════════════════════════════════════════════════
     -- TIMING SETTINGS CATEGORY
     -- ═══════════════════════════════════════════════════════════════
     local timingCategory = RareloadUI.CreateCategory(panel, "Timing & Limits", "icon16/time.png", false)
-    
+
     local sliderInterval = RareloadUI.CreateCompactSlider(
         timingCategory.Content,
         "Auto Save Interval",
@@ -374,7 +387,7 @@ function TOOL.BuildCPanel(panel)
         "s"
     )
     timingCategory:AddItem(sliderInterval)
-    
+
     local sliderAngle = RareloadUI.CreateCompactSlider(
         timingCategory.Content,
         "Angle Tolerance",
@@ -385,7 +398,7 @@ function TOOL.BuildCPanel(panel)
         "°"
     )
     timingCategory:AddItem(sliderAngle)
-    
+
     local sliderHistory = RareloadUI.CreateCompactSlider(
         timingCategory.Content,
         "History Size",
@@ -401,11 +414,11 @@ function TOOL.BuildCPanel(panel)
     -- ACTIONS CATEGORY
     -- ═══════════════════════════════════════════════════════════════
     local actionsCategory = RareloadUI.CreateCategory(panel, "Quick Actions", "icon16/lightning.png", true)
-    
+
     local saveBtn = RareloadUI.CreateModernButton(
-        actionsCategory.Content, 
-        "Save Current Position", 
-        "icon16/disk.png", 
+        actionsCategory.Content,
+        "Save Current Position",
+        "icon16/disk.png",
         function()
             RunConsoleCommand("save_position")
         end,
@@ -431,25 +444,15 @@ function TOOL.BuildCPanel(panel)
     -- ═══════════════════════════════════════════════════════════════
     if RARELOAD.CheckPermission(LocalPlayer(), "DEBUG_MENU") then
         local debugCategory = RareloadUI.CreateCategory(panel, "Debug & Tools", "icon16/wrench.png", false)
-        
-        local toggleDebug = RareloadUI.CreateToggleSwitch(debugCategory.Content, "Debug Mode", "sv_rareload_debug", "Enable debug logging in console")
+
+        local toggleDebug = RareloadUI.CreateToggleSwitch(debugCategory.Content, "Debug Mode", "sv_rareload_debug",
+            "Enable debug logging in console")
         debugCategory:AddItem(toggleDebug)
-        
-        local antiStuckBtn = RareloadUI.CreateModernButton(
-            debugCategory.Content, 
-            "Anti-Stuck Debug Panel", 
-            "icon16/bug.png", 
-            function()
-                RunConsoleCommand("rareload_open_antistuck_debug")
-            end,
-            Color(255, 152, 0)
-        )
-        debugCategory:AddItem(antiStuckBtn)
-        
+
         local entityViewerBtn = RareloadUI.CreateModernButton(
-            debugCategory.Content, 
-            "Entity Viewer", 
-            "icon16/application_view_list.png", 
+            debugCategory.Content,
+            "Entity Viewer",
+            "icon16/application_view_list.png",
             function()
                 RunConsoleCommand("entity_viewer_open")
             end,
@@ -464,7 +467,8 @@ function TOOL.BuildCPanel(panel)
     footerPanel:DockMargin(5, 10, 5, 5)
     footerPanel:SetTall(24)
     footerPanel.Paint = function(_, w, h)
-        draw.SimpleText("Made by Noahbds", "RareloadUI.Small", w/2, h/2, Color(100, 105, 115), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        draw.SimpleText("Made by Noahbds", "RareloadUI.Small", w / 2, h / 2, Color(100, 105, 115), TEXT_ALIGN_CENTER,
+            TEXT_ALIGN_CENTER)
     end
 end
 
