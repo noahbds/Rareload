@@ -2,7 +2,6 @@
 
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
-local npcRestoreLogs = {}
 
 util.AddNetworkString("RareloadRespawnNPC")
 
@@ -14,57 +13,17 @@ end
 
 local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
-
-local function FindSnapshotOwner(snapshot)
-    if not snapshot then return nil end
-    local sid64 = snapshot.ownerSteamID64
-    local sid = snapshot.ownerSteamID
-
-    for _, ply in ipairs(player.GetAll()) do
-        if sid64 and ply.SteamID64 and ply:SteamID64() == sid64 then
-            return ply
-        end
-        if sid and ply.SteamID and ply:SteamID() == sid then
-            return ply
-        end
-    end
-
-    return nil
-end
-
-local function IsDebugEnabledForPlayer(ply)
-    if RARELOAD and RARELOAD.GetPlayerSetting and IsValid(ply) then
-        return RARELOAD.GetPlayerSetting(ply, "debugEnabled", false)
-    end
-
-    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then
-        return DEBUG_CONFIG.ENABLED({ entity = ply })
-    end
-
-    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled or false
-end
-
-local function IsAnyDebugEnabled()
-    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then
-        return DEBUG_CONFIG.ENABLED()
-    end
-
-    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled or false
-end
+local DebugState = include("rareload/debug/sv_debug_state.lua")
+local DebugHelpers = include("rareload/debug/sv_debug_helpers.lua")
+local EntityIdentity = include("rareload/core/rareload_entity_identity.lua")
+local SnapshotRestore = include("rareload/core/respawn_handlers/sv_rareload_snapshot_restore.lua")
 
 local function WriteNPCDebug(level, message, details, context)
-    if not (RARELOAD.Debug and RARELOAD.Debug.Write) then return end
+    if not (DebugHelpers and DebugHelpers.Write) then return end
 
-    local logLevel = level or "INFO"
-    RARELOAD.Debug.Write("npc_respawn", logLevel, 0, tostring(message), context)
-
-    if istable(details) then
-        for _, line in ipairs(details) do
-            RARELOAD.Debug.Write("npc_respawn", logLevel, 1, tostring(line), context)
-        end
-    elseif details ~= nil then
-        RARELOAD.Debug.Write("npc_respawn", logLevel, 1, tostring(details), context)
-    end
+    DebugHelpers.Write("npc_respawn", level, message, details, {
+        context = context
+    })
 end
 
 RARELOAD._MapReady = RARELOAD._MapReady or false
@@ -75,7 +34,7 @@ hook.Add("InitPostEntity", "RARELOAD_MapReady", function()
     RARELOAD._MapReady = true
     RARELOAD._MapReadyTime = CurTime()
 
-    if IsAnyDebugEnabled() then
+    if DebugState and DebugState.IsAnyEnabled and DebugState.IsAnyEnabled() then
         WriteNPCDebug("INFO", "Map ready", {
             "InitPostEntity fired",
             "Ready time: " .. RARELOAD._MapReadyTime
@@ -88,7 +47,7 @@ hook.Add("PostCleanupMap", "RARELOAD_MapReadyAfterCleanup", function()
         RARELOAD._MapReady = true
         RARELOAD._MapReadyTime = CurTime()
 
-        if IsAnyDebugEnabled() then
+        if DebugState and DebugState.IsAnyEnabled and DebugState.IsAnyEnabled() then
             WriteNPCDebug("INFO", "Map ready after cleanup", {
                 "PostCleanupMap processed",
                 "Ready time: " .. RARELOAD._MapReadyTime
@@ -110,14 +69,21 @@ function RARELOAD.CoerceVector(pos)
     if vectorCache[cacheKey] then return vectorCache[cacheKey] end
 
     local result = nil
-    if istable(pos) then
+    if RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.ToVector then
+        local ok, vec = pcall(RARELOAD.DataUtils.ToVector, pos)
+        if ok and isvector and isvector(vec) then
+            result = vec
+        end
+    end
+
+    if not result and istable(pos) then
         local x = pos.x ~= nil and pos.x or pos[1]
         local y = pos.y ~= nil and pos.y or pos[2]
         local z = pos.z ~= nil and pos.z or pos[3]
         if x ~= nil and y ~= nil and z ~= nil then
             result = Vector(tonumber(x) or 0, tonumber(y) or 0, tonumber(z) or 0)
         end
-    elseif isstring(pos) and RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.ToVector then
+    elseif not result and isstring(pos) and RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.ToVector then
         local ok, vec = pcall(RARELOAD.DataUtils.ToVector, pos)
         if ok and isvector and isvector(vec) then result = vec end
     end
@@ -136,7 +102,7 @@ function RARELOAD.CoerceVector(pos)
 end
 
 function RARELOAD.RestoreNPCs(savedInfo, requestingPlayer)
-    local debugEnabled = IsDebugEnabledForPlayer(requestingPlayer)
+    local debugEnabled = DebugState and DebugState.IsEnabledForPlayer and DebugState.IsEnabledForPlayer(requestingPlayer)
 
     if not savedInfo or not istable(savedInfo.npcs) then
         if debugEnabled then
@@ -184,7 +150,8 @@ function RARELOAD.RestoreNPCs(savedInfo, requestingPlayer)
     end
 
     timer.Simple(delay, function()
-        debugEnabled = IsDebugEnabledForPlayer(requestingPlayer)
+        debugEnabled = DebugState and DebugState.IsEnabledForPlayer and
+            DebugState.IsEnabledForPlayer(requestingPlayer)
 
         local stats = {
             total = snapshot.entityCount or 0,
@@ -194,19 +161,8 @@ function RARELOAD.RestoreNPCs(savedInfo, requestingPlayer)
         }
 
         local indexToID = snapshot._indexMap or {}
-        local targetOwner = IsValid(requestingPlayer) and requestingPlayer or FindSnapshotOwner(snapshot)
-
-        local existingIDs = {}
-        for _, ent in ipairs(ents.GetAll()) do
-            if ent.RareloadNPCID then
-                existingIDs[ent.RareloadNPCID] = true
-            else
-                local nwID = ent:GetNWString("RareloadID", "")
-                if nwID ~= "" then
-                    existingIDs[nwID] = true
-                end
-            end
-        end
+        local targetOwner = IsValid(requestingPlayer) and requestingPlayer or
+            DuplicatorBridge.FindSnapshotOwner(snapshot)
 
         if debugEnabled then
             WriteNPCDebug("INFO", "Restoring NPCs from duplicator snapshot", {
@@ -215,31 +171,18 @@ function RARELOAD.RestoreNPCs(savedInfo, requestingPlayer)
             }, { entity = targetOwner })
         end
 
-        local skippedNPCs = {}
-
-        local restoreOptions = {
-            -- First try server context to avoid non-host sandbox/player-limit failures.
-            -- Ownership is re-applied explicitly per spawned NPC below.
-            player = nil,
-            filter = function(index, entData)
-                local id = indexToID[index]
-                if id and existingIDs[id] then
-                    table.insert(skippedNPCs, id)
-                    return false
+        local ok, res, skippedNPCs = SnapshotRestore.RestoreWithExistingIDFilter(
+            snapshot,
+            indexToID,
+            "RareloadNPCID",
+            requestingPlayer,
+            function(err)
+                if debugEnabled then
+                    WriteNPCDebug("WARNING", "Server-context NPC restore failed, retrying with player context",
+                        tostring(err), { entity = requestingPlayer })
                 end
-                return true
             end
-        }
-
-        local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, restoreOptions)
-        if (not ok) and IsValid(requestingPlayer) then
-            if debugEnabled then
-                WriteNPCDebug("WARNING", "Server-context NPC restore failed, retrying with player context",
-                    tostring(res), { entity = requestingPlayer })
-            end
-            restoreOptions.player = requestingPlayer
-            ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, restoreOptions)
-        end
+        )
 
         if debugEnabled and #skippedNPCs > 0 then
             WriteNPCDebug("INFO", "Skipped existing NPCs",
@@ -264,10 +207,7 @@ function RARELOAD.RestoreNPCs(savedInfo, requestingPlayer)
 
                 local savedID = indexToID[dupIndex]
                 if savedID then
-                    npc.RareloadNPCID = savedID
-                    if npc.SetNWString then
-                        pcall(npc.SetNWString, npc, "RareloadID", savedID)
-                    end
+                    EntityIdentity.SetID(npc, "RareloadNPCID", savedID)
                 end
 
                 if IsValid(targetOwner) and RARELOAD.Ownership then
@@ -299,7 +239,7 @@ hook.Add("RARELOAD_SaveEntities", "RARELOAD_MarkSavedNPCs", function()
         end
     end
 
-    if IsAnyDebugEnabled() then
+    if DebugState and DebugState.IsAnyEnabled and DebugState.IsAnyEnabled() then
         WriteNPCDebug("INFO", "NPCs marked for save", { "Total marked: " .. markedCount })
     end
 end)
@@ -319,7 +259,7 @@ net.Receive("RareloadRespawnNPC", function(len, ply)
         return
     end
 
-    local debugEnabled = IsDebugEnabledForPlayer(ply)
+    local debugEnabled = DebugState and DebugState.IsEnabledForPlayer and DebugState.IsEnabledForPlayer(ply)
     if debugEnabled then
         WriteNPCDebug("INFO", "Manual respawn request", {
             "Admin: " .. ply:Nick(),

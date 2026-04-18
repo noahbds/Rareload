@@ -7,6 +7,7 @@ local TEXT_ALIGN_TOP, TEXT_ALIGN_BOTTOM = TEXT_ALIGN_TOP, TEXT_ALIGN_BOTTOM
 
 include("cl_entity_viewer_theme.lua")
 include("cl_entity_viewer_utils.lua")
+local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 
 EV_THEME = THEME
 
@@ -23,8 +24,19 @@ local function ExtractEntities(tbl, result)
     if not tbl then return result end
 
     if (tbl.Class or tbl.class) and (tbl.Pos or tbl.pos) then
+        local posData = tbl.Pos or tbl.pos
+        local fallbackID = nil
+        if istable(posData) and posData.x and posData.y and posData.z then
+            fallbackID = string.format("%s_%0.3f_%0.3f_%0.3f",
+                tostring(tbl.Class or tbl.class or "ent"),
+                tonumber(posData.x) or 0,
+                tonumber(posData.y) or 0,
+                tonumber(posData.z) or 0)
+        end
+
         local ent = {
-            id = tbl.RareloadNPCID or tbl.RareloadEntityID or tostring(math.random(100000, 999999)),
+            id = tbl.id or tbl.RareloadNPCID or tbl.RareloadEntityID or tbl.RareloadID or tbl.UniqueID or fallbackID or
+                tostring(math.random(100000, 999999)),
             class = tbl.Class or tbl.class,
             model = tbl.Model or tbl.model,
             pos = tbl.Pos or tbl.pos,
@@ -34,7 +46,7 @@ local function ExtractEntities(tbl, result)
             skin = tbl.Skin or tbl.skin,
             rawData = tbl
         }
-        
+
         if istable(ent.pos) then
             if ent.pos.__rareload_type == "Vector" then
                 ent.pos = Vector(ent.pos.x, ent.pos.y, ent.pos.z)
@@ -60,51 +72,64 @@ local function ExtractEntities(tbl, result)
             ExtractEntities(v, result)
         end
     end
-    
+
     return result
 end
 
 function EntityViewer:LoadData()
-    local map = game.GetMap()
-    local filename = "rareload/player_positions_" .. map .. ".json"
-    
-    if not file.Exists(filename, "DATA") then
+    local mapName = game.GetMap()
+    local mapData = RARELOAD and RARELOAD.playerPositions and RARELOAD.playerPositions[mapName]
+    if not istable(mapData) then
         return {}
     end
 
-    local json = file.Read(filename, "DATA")
-    if not json then return {} end
+    local loaded = {}
 
-    local rawData = util.JSONToTable(json)
-    if not rawData then return {} end
+    for _, playerData in pairs(mapData) do
+        if not istable(playerData) then
+            continue
+        end
 
-    return ExtractEntities(rawData, {})
+        local entityList = SnapshotUtils and SnapshotUtils.GetSummary and SnapshotUtils.GetSummary(playerData.entities, {
+            category = "entity",
+            idPrefix = "entity"
+        }) or {}
+        local npcList = SnapshotUtils and SnapshotUtils.GetSummary and SnapshotUtils.GetSummary(playerData.npcs, {
+            category = "npc",
+            idPrefix = "npc"
+        }) or {}
+
+        ExtractEntities(entityList, loaded)
+        ExtractEntities(npcList, loaded)
+    end
+
+    return loaded
 end
 
 function EntityViewer:FilterAndSort()
     self.FilteredData = {}
     local search = string.lower(self.SearchText)
     local cat = self.Category
-    
+
     for _, ent in ipairs(self.Data) do
         local class = string.lower(ent.class or "")
         local model = string.lower(ent.model or "")
-        
+
         local matchCat = false
-        if cat == "All" then 
+        if cat == "All" then
             matchCat = true
-        elseif cat == "NPCs" and string.find(class, "npc") then 
+        elseif cat == "NPCs" and string.find(class, "npc") then
             matchCat = true
-        elseif cat == "Weapons" and string.find(class, "weapon") then 
+        elseif cat == "Weapons" and string.find(class, "weapon") then
             matchCat = true
-        elseif cat == "Vehicles" and (string.find(class, "vehicle") or string.find(class, "jeep") or string.find(class, "airboat")) then 
+        elseif cat == "Vehicles" and (string.find(class, "vehicle") or string.find(class, "jeep") or string.find(class, "airboat")) then
             matchCat = true
-        elseif cat == "Props" and string.find(class, "prop") then 
+        elseif cat == "Props" and string.find(class, "prop") then
             matchCat = true
         end
-        
+
         local matchSearch = (search == "") or string.find(class, search) or string.find(model, search)
-        
+
         if matchCat and matchSearch then
             table.insert(self.FilteredData, ent)
         end
@@ -131,23 +156,23 @@ local function CreateSidebarButton(parent, text, yPos, onClick, viewer)
     btn:SetSize(196, 44)
     btn.Category = text
     btn.HoverAnim = 0
-    
+
     btn.Paint = function(self, w, h)
         local isSelected = viewer.Category == self.Category
         self.HoverAnim = Lerp(FrameTime() * 12, self.HoverAnim, (self:IsHovered() or isSelected) and 1 or 0)
-        
+
         if isSelected then
             draw.RoundedBox(8, 0, 0, w, h, ColorAlpha(EV_THEME.primary, 40))
             draw.RoundedBox(3, 0, 8, 4, h - 16, EV_THEME.primary)
         elseif self.HoverAnim > 0 then
             draw.RoundedBox(8, 0, 0, w, h, ColorAlpha(EV_THEME.surface, self.HoverAnim * 80))
         end
-        
-        local textCol = isSelected and EV_THEME.primary or 
-                        THEME:LerpColor(self.HoverAnim, EV_THEME.textSecondary, EV_THEME.textPrimary)
+
+        local textCol = isSelected and EV_THEME.primary or
+            THEME:LerpColor(self.HoverAnim, EV_THEME.textSecondary, EV_THEME.textPrimary)
         draw.SimpleText(text, "RareloadBody", 20, h / 2, textCol, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
-    
+
     btn.DoClick = onClick
     return btn
 end
@@ -156,25 +181,25 @@ local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails)
     local card = vgui.Create("DButton", parent)
     card:SetText("")
     card:SetSize(185, 235)
-    
+
     local typeColor = EV_THEME:GetEntityTypeColor(data.class)
     local hoverAnim = 0
-    
+
     card.Paint = function(self, w, h)
         hoverAnim = Lerp(FrameTime() * 10, hoverAnim, self:IsHovered() and 1 or 0)
-        
+
         if hoverAnim > 0.01 then
             draw.RoundedBox(12, 3, 3, w, h, ColorAlpha(Color(0, 0, 0), 50 * hoverAnim))
         end
-        
+
         draw.RoundedBox(12, 0, 0, w, h, EV_THEME.surface)
-        
+
         if hoverAnim > 0.01 then
             draw.RoundedBox(12, 0, 0, w, h, ColorAlpha(EV_THEME.primary, 12 * hoverAnim))
             surface.SetDrawColor(ColorAlpha(EV_THEME.primary, 80 * hoverAnim))
             surface.DrawOutlinedRect(0, 0, w, h, 2)
         end
-        
+
         draw.RoundedBoxEx(8, 0, h - 4, w, 4, typeColor, false, false, true, true)
     end
 
@@ -191,20 +216,20 @@ local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails)
         modelPanel:SetSize(169, 120)
         modelPanel:SetModel(data.model)
         modelPanel:SetMouseInputEnabled(false)
-        
+
         local ent = modelPanel:GetEntity()
         if IsValid(ent) then
             local mn, mx = ent:GetRenderBounds()
             local center = (mn + mx) * 0.5
             local size = math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z)
-            
+
             local fov = 45
             local dist = (size * 1.2) / math.tan(math.rad(fov / 2))
-            
+
             modelPanel:SetLookAt(center)
             modelPanel:SetCamPos(center + Vector(dist * 0.6, dist * 0.5, dist * 0.4))
             modelPanel:SetFOV(fov)
-            
+
             modelPanel.LayoutEntity = function(self, ent)
                 ent:SetAngles(Angle(0, RealTime() * 30, 0))
             end
@@ -212,13 +237,14 @@ local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails)
     else
         previewBg.Paint = function(self, w, h)
             draw.RoundedBox(8, 0, 0, w, h, EV_THEME.backgroundDark)
-            draw.SimpleText("?", "RareloadDisplay", w / 2, h / 2, EV_THEME.textDisabled, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            draw.SimpleText("?", "RareloadDisplay", w / 2, h / 2, EV_THEME.textDisabled, TEXT_ALIGN_CENTER,
+                TEXT_ALIGN_CENTER)
         end
     end
 
     local name = data.class or "Unknown"
     if #name > 20 then name = string.sub(name, 1, 18) .. "..." end
-    
+
     local lblName = vgui.Create("DLabel", card)
     lblName:SetText(name)
     lblName:SetFont("RareloadBody")
@@ -272,10 +298,10 @@ local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails)
             self.HoverAnim = Lerp(FrameTime() * 12, self.HoverAnim, self:IsHovered() and 1 or 0)
             local col = THEME:LerpColor(self.HoverAnim, EV_THEME.surfaceVariant, hoverColor)
             draw.RoundedBox(6, 0, 0, bw, bh, col)
-            
+
             surface.SetDrawColor(255, 255, 255, 180 + 75 * self.HoverAnim)
             surface.SetMaterial(Material(icon))
-            surface.DrawTexturedRect(bw/2 - 8, bh/2 - 8, 16, 16)
+            surface.DrawTexturedRect(bw / 2 - 8, bh / 2 - 8, 16, 16)
         end
         btn.DoClick = onClick
         return btn
@@ -308,16 +334,17 @@ local function CreateDetailsPanel(data, onDelete, viewer)
     frame:MakePopup()
     frame:ShowCloseButton(false)
     frame:SetBackgroundBlur(true)
-    
+
     frame.Paint = function(self, w, h)
         EV_THEME:DrawBlur(self, 3)
-        
+
         draw.RoundedBox(14, 0, 0, w, h, EV_THEME.background)
-        
+
         draw.RoundedBoxEx(14, 0, 0, w, 60, EV_THEME.backgroundDark, true, true, false, false)
-        
-        draw.SimpleText("Entity Details", "RareloadHeading", 20, 30, EV_THEME.textPrimary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        
+
+        draw.SimpleText("Entity Details", "RareloadHeading", 20, 30, EV_THEME.textPrimary, TEXT_ALIGN_LEFT,
+            TEXT_ALIGN_CENTER)
+
         surface.SetDrawColor(EV_THEME.border)
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
@@ -333,8 +360,8 @@ local function CreateDetailsPanel(data, onDelete, viewer)
         if self.HoverAnim > 0 then
             draw.RoundedBox(8, 0, 0, w, h, ColorAlpha(EV_THEME.error, 200 * self.HoverAnim))
         end
-        draw.SimpleText("✕", "RareloadSubheading", w/2, h/2, 
-            THEME:LerpColor(self.HoverAnim, EV_THEME.textSecondary, EV_THEME.textPrimary), 
+        draw.SimpleText("✕", "RareloadSubheading", w / 2, h / 2,
+            THEME:LerpColor(self.HoverAnim, EV_THEME.textSecondary, EV_THEME.textPrimary),
             TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
     closeBtn.DoClick = function() frame:Close() end
@@ -356,7 +383,7 @@ local function CreateDetailsPanel(data, onDelete, viewer)
         modelPanel:Dock(FILL)
         modelPanel:DockMargin(8, 8, 8, 8)
         modelPanel:SetModel(data.model)
-        
+
         local ent = modelPanel:GetEntity()
         if IsValid(ent) then
             local mn, mx = ent:GetRenderBounds()
@@ -365,14 +392,14 @@ local function CreateDetailsPanel(data, onDelete, viewer)
             local sizeY = mx.y - mn.y
             local sizeZ = mx.z - mn.z
             local size = math.max(sizeX, sizeY, sizeZ)
-            
+
             local fov = 40
             local dist = (size * 1.3) / math.tan(math.rad(fov / 2))
-            
+
             modelPanel:SetLookAt(center)
             modelPanel:SetCamPos(center + Vector(dist * 0.5, dist * 0.4, dist * 0.35))
             modelPanel:SetFOV(fov)
-            
+
             modelPanel.DragMousePress = function() end
             modelPanel.DragMouseRelease = function() end
             modelPanel.LayoutEntity = function(self, ent)
@@ -421,7 +448,7 @@ local function CreateDetailsPanel(data, onDelete, viewer)
             end
             surface.SetDrawColor(THEME:LerpColor(self.HoverAnim, EV_THEME.textTertiary, EV_THEME.primary))
             surface.SetMaterial(Material("icon16/page_copy.png"))
-            surface.DrawTexturedRect(w/2 - 8, h/2 - 8, 16, 16)
+            surface.DrawTexturedRect(w / 2 - 8, h / 2 - 8, 16, 16)
         end
         copyBtn.DoClick = function()
             SetClipboardText(tostring(value))
@@ -431,7 +458,7 @@ local function CreateDetailsPanel(data, onDelete, viewer)
 
     AddInfoRow("Class", data.class or "Unknown", EV_THEME.primary)
     if data.model then AddInfoRow("Model", data.model) end
-    if data.health then 
+    if data.health then
         AddInfoRow("Health", (data.health or "?") .. " / " .. (data.maxHealth or "?"), EV_THEME.success)
     end
     if data.pos then
@@ -502,9 +529,9 @@ function EntityViewer:Open()
 
     frame.Paint = function(self, w, h)
         draw.RoundedBox(12, 0, 0, w, h, EV_THEME.background)
-        
+
         draw.RoundedBoxEx(12, 0, 0, 200, h, EV_THEME.backgroundDark, true, false, true, false)
-        
+
         surface.SetDrawColor(EV_THEME.divider)
         surface.DrawLine(200, 0, 200, h)
         surface.DrawLine(200, 55, w, 55)
@@ -521,8 +548,8 @@ function EntityViewer:Open()
         if self.HoverAnim > 0 then
             draw.RoundedBox(8, 0, 0, w, h, ColorAlpha(EV_THEME.error, 200 * self.HoverAnim))
         end
-        draw.SimpleText("✕", "RareloadSubheading", w/2, h/2, 
-            THEME:LerpColor(self.HoverAnim, EV_THEME.textSecondary, EV_THEME.textPrimary), 
+        draw.SimpleText("✕", "RareloadSubheading", w / 2, h / 2,
+            THEME:LerpColor(self.HoverAnim, EV_THEME.textSecondary, EV_THEME.textPrimary),
             TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
     closeBtn.DoClick = function() frame:Close() end
@@ -533,11 +560,12 @@ function EntityViewer:Open()
     sidebarHeader:SetSize(200, 70)
     sidebarHeader.Paint = function(self, w, h)
         draw.SimpleText("Rareload", "RareloadHeading", 16, 18, EV_THEME.primary, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-        draw.SimpleText("Entity Viewer", "RareloadCaption", 16, 42, EV_THEME.textSecondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+        draw.SimpleText("Entity Viewer", "RareloadCaption", 16, 42, EV_THEME.textSecondary, TEXT_ALIGN_LEFT,
+            TEXT_ALIGN_TOP)
     end
 
-    local categories = {"All", "NPCs", "Weapons", "Vehicles", "Props"}
-    
+    local categories = { "All", "NPCs", "Weapons", "Vehicles", "Props" }
+
     for i, cat in ipairs(categories) do
         CreateSidebarButton(frame, cat, 70 + (i - 1) * 48, function()
             EntityViewer.Category = cat
@@ -550,14 +578,17 @@ function EntityViewer:Open()
     statsPanel:SetSize(180, 85)
     statsPanel.Paint = function(self, w, h)
         draw.RoundedBox(8, 0, 0, w, h, EV_THEME.surface)
-        
+
         local total = #EntityViewer.Data
         local filtered = #EntityViewer.FilteredData
-        
+
         draw.SimpleText("Statistics", "RareloadLabel", 12, 10, EV_THEME.textSecondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-        draw.SimpleText("Total: " .. total, "RareloadCaption", 12, 32, EV_THEME.textPrimary, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-        draw.SimpleText("Showing: " .. filtered, "RareloadCaption", 12, 50, EV_THEME.primary, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-        draw.SimpleText("Map: " .. game.GetMap(), "RareloadCaption", 12, 68, EV_THEME.textTertiary, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+        draw.SimpleText("Total: " .. total, "RareloadCaption", 12, 32, EV_THEME.textPrimary, TEXT_ALIGN_LEFT,
+            TEXT_ALIGN_TOP)
+        draw.SimpleText("Showing: " .. filtered, "RareloadCaption", 12, 50, EV_THEME.primary, TEXT_ALIGN_LEFT,
+            TEXT_ALIGN_TOP)
+        draw.SimpleText("Map: " .. game.GetMap(), "RareloadCaption", 12, 68, EV_THEME.textTertiary, TEXT_ALIGN_LEFT,
+            TEXT_ALIGN_TOP)
     end
 
     local topBar = vgui.Create("DPanel", frame)
@@ -591,7 +622,8 @@ function EntityViewer:Open()
     searchEntry.Paint = function(self, w, h)
         self:DrawTextEntryText(EV_THEME.textPrimary, EV_THEME.primary, EV_THEME.textPrimary)
         if self:GetValue() == "" then
-            draw.SimpleText("Search entities...", "RareloadBody", 0, h/2, EV_THEME.textTertiary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+            draw.SimpleText("Search entities...", "RareloadBody", 0, h / 2, EV_THEME.textTertiary, TEXT_ALIGN_LEFT,
+                TEXT_ALIGN_CENTER)
         end
     end
     searchEntry.OnChange = function(self)
@@ -608,15 +640,16 @@ function EntityViewer:Open()
         self.HoverAnim = Lerp(FrameTime() * 10, self.HoverAnim, self:IsHovered() and 1 or 0)
         local bgCol = THEME:LerpColor(self.HoverAnim * 0.3, EV_THEME.surface, EV_THEME.primary)
         draw.RoundedBox(8, 0, 0, w, h, bgCol)
-        draw.SimpleText("Sort: " .. EntityViewer.SortMode, "RareloadBody", w/2, h/2, EV_THEME.textPrimary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        draw.SimpleText("Sort: " .. EntityViewer.SortMode, "RareloadBody", w / 2, h / 2, EV_THEME.textPrimary,
+            TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
     sortBtn.DoClick = function()
-        if EntityViewer.SortMode == "Name" then 
+        if EntityViewer.SortMode == "Name" then
             EntityViewer.SortMode = "Distance"
-        elseif EntityViewer.SortMode == "Distance" then 
+        elseif EntityViewer.SortMode == "Distance" then
             EntityViewer.SortMode = "Health"
-        else 
-            EntityViewer.SortMode = "Name" 
+        else
+            EntityViewer.SortMode = "Name"
         end
         EntityViewer:RefreshList()
     end
@@ -631,10 +664,10 @@ function EntityViewer:Open()
         self.HoverAnim = Lerp(FrameTime() * 10, self.HoverAnim, self:IsHovered() and 1 or 0)
         local bgCol = THEME:LerpColor(self.HoverAnim, EV_THEME.surface, EV_THEME.primary)
         draw.RoundedBox(8, 0, 0, w, h, bgCol)
-        
+
         surface.SetDrawColor(255, 255, 255, 180 + 75 * self.HoverAnim)
         surface.SetMaterial(Material("icon16/arrow_refresh.png"))
-        surface.DrawTexturedRect(w/2 - 8, h/2 - 8, 16, 16)
+        surface.DrawTexturedRect(w / 2 - 8, h / 2 - 8, 16, 16)
     end
     refreshBtn.DoClick = function()
         EntityViewer.Data = EntityViewer:LoadData()
@@ -673,7 +706,7 @@ end
 
 function EntityViewer:RefreshList()
     if not IsValid(self.Grid) then return end
-    
+
     self:FilterAndSort()
     self.Grid:Clear()
 
@@ -681,8 +714,10 @@ function EntityViewer:RefreshList()
         local emptyLabel = vgui.Create("DPanel", self.Grid)
         emptyLabel:SetSize(660, 180)
         emptyLabel.Paint = function(self, w, h)
-            draw.SimpleText("No entities found", "RareloadSubheading", w/2, h/2 - 12, EV_THEME.textSecondary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-            draw.SimpleText("Try adjusting your search or category filter", "RareloadCaption", w/2, h/2 + 12, EV_THEME.textTertiary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            draw.SimpleText("No entities found", "RareloadSubheading", w / 2, h / 2 - 12, EV_THEME.textSecondary,
+                TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            draw.SimpleText("Try adjusting your search or category filter", "RareloadCaption", w / 2, h / 2 + 12,
+                EV_THEME.textTertiary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
         return
     end
@@ -700,9 +735,10 @@ function EntityViewer:RefreshList()
             function(data)
                 local entityId = ""
                 if data.rawData then
-                    entityId = data.rawData.RareloadNPCID or data.rawData.RareloadEntityID or data.rawData.UniqueID or ""
+                    entityId = data.rawData.id or data.rawData.RareloadNPCID or data.rawData.RareloadEntityID or
+                        data.rawData.RareloadID or data.rawData.UniqueID or ""
                 end
-                
+
                 net.Start("RareloadEntityViewer_Delete")
                 net.WriteString(tostring(entityId))
                 net.WriteString(data.class or "Unknown")
@@ -721,9 +757,10 @@ function EntityViewer:RefreshList()
                 CreateDetailsPanel(data, function(d)
                     local entityId = ""
                     if d.rawData then
-                        entityId = d.rawData.RareloadNPCID or d.rawData.RareloadEntityID or d.rawData.UniqueID or ""
+                        entityId = d.rawData.id or d.rawData.RareloadNPCID or d.rawData.RareloadEntityID or
+                            d.rawData.RareloadID or d.rawData.UniqueID or ""
                     end
-                    
+
                     net.Start("RareloadEntityViewer_Delete")
                     net.WriteString(tostring(entityId))
                     net.WriteString(d.class or "Unknown")
@@ -743,14 +780,14 @@ function EntityViewer:RefreshList()
         count = count + 1
         if count > 150 then break end
     end
-    
+
     self.Grid:InvalidateLayout(true)
 end
 
 net.Receive("RareloadEntityViewer_DeleteResult", function()
     local success = net.ReadBool()
     local message = net.ReadString()
-    
+
     if success then
         ShowNotification(message, NOTIFY_GENERIC)
         timer.Simple(0.2, function()
@@ -767,7 +804,14 @@ end)
 concommand.Add("rareload_entity_viewer", function() EntityViewer:Open() end)
 concommand.Add("entity_viewer_open", function() EntityViewer:Open() end)
 
-function OpenEntityViewer() 
-    EntityViewer:Open() 
+function OpenEntityViewer()
+    EntityViewer:Open()
 end
 
+hook.Add("RareloadPlayerPositionsUpdated", "RARELOAD_EntityViewer_AutoRefresh", function(mapName)
+    if mapName ~= game.GetMap() then return end
+    if not (EntityViewer and EntityViewer.Frame and IsValid(EntityViewer.Frame)) then return end
+
+    EntityViewer.Data = EntityViewer:LoadData()
+    EntityViewer:RefreshList()
+end)

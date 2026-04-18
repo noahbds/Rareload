@@ -50,31 +50,31 @@ concommand.Add("rareload_teleport_to", function(ply, cmd, args)
         ply:ChatPrint("[RARELOAD] You do not have permission to teleport.")
         return
     end
-    
+
     if #args < 3 then
         ply:ChatPrint("[RARELOAD] Usage: rareload_teleport_to <x> <y> <z>")
         return
     end
-    
+
     local x = tonumber(args[1])
     local y = tonumber(args[2])
     local z = tonumber(args[3])
-    
+
     if not x or not y or not z then
         ply:ChatPrint("[RARELOAD] Invalid coordinates.")
         return
     end
-    
+
     local targetPos = Vector(x, y, z)
-    
+
     local trace = util.TraceLine({
         start = targetPos + Vector(0, 0, 50),
         endpos = targetPos - Vector(0, 0, 50),
         filter = ply
     })
-    
+
     local safePos = trace.HitPos + Vector(0, 0, 10)
-    
+
     if not util.IsInWorld(safePos) then
         local fallback = Vector(0, 0, 256)
         local tr = util.TraceLine({
@@ -84,9 +84,9 @@ concommand.Add("rareload_teleport_to", function(ply, cmd, args)
         })
         safePos = (tr.Hit and tr.HitPos + Vector(0, 0, 16)) or fallback
     end
-    
+
     if ply:InVehicle() then ply:ExitVehicle() end
-    
+
     ply:SetPos(safePos)
     ply:SetVelocity(Vector(0, 0, 0))
     ply:ChatPrint("[RARELOAD] Teleported to position: " .. tostring(safePos))
@@ -101,123 +101,141 @@ net.Receive("RareloadEntityViewer_Delete", function(len, ply)
         net.Send(ply)
         return
     end
-    
+
     local entityId = net.ReadString()
     local entityClass = net.ReadString()
     local posX = net.ReadFloat()
     local posY = net.ReadFloat()
     local posZ = net.ReadFloat()
     local targetPos = Vector(posX, posY, posZ)
-    
+
+    if RARELOAD.LoadPlayerPositions then
+        RARELOAD.LoadPlayerPositions()
+    end
+
     local map = game.GetMap()
-    local filename = "rareload/player_positions_" .. map .. ".json"
-    
-    if not file.Exists(filename, "DATA") then
+    local mapData = RARELOAD.playerPositions and RARELOAD.playerPositions[map]
+    if not istable(mapData) then
         net.Start("RareloadEntityViewer_DeleteResult")
         net.WriteBool(false)
-        net.WriteString("Data file not found.")
+        net.WriteString("No saved data found for current map.")
         net.Send(ply)
         return
     end
-    
-    local raw = file.Read(filename, "DATA")
-    if not raw or raw == "" then
-        net.Start("RareloadEntityViewer_DeleteResult")
-        net.WriteBool(false)
-        net.WriteString("Failed to read data file.")
-        net.Send(ply)
-        return
-    end
-    
-    local ok, tbl = pcall(util.JSONToTable, raw)
-    if not ok or not istable(tbl) then
-        net.Start("RareloadEntityViewer_DeleteResult")
-        net.WriteBool(false)
-        net.WriteString("Invalid JSON in data file.")
-        net.Send(ply)
-        return
-    end
-    
-    -- Ensure tbl is valid before proceeding
-    if not tbl then
-        net.Start("RareloadEntityViewer_DeleteResult")
-        net.WriteBool(false)
-        net.WriteString("Failed to parse data file.")
-        net.Send(ply)
-        return
-    end
-    
-    -- Try to delete from the data structure using SnapshotUtils for proper handling
+
     local deleted = false
     local attempts = 0
-    
-    -- Iterate through all players' data
-    for mapKey, mapData in pairs(tbl) do
-        if istable(mapData) then
-            for steamID, playerData in pairs(mapData) do
-                if istable(playerData) then
-                    -- Check entities bucket
-                    if playerData.entities then
-                        attempts = attempts + 1
-                        if SnapshotUtils.HasSnapshot(playerData.entities) then
-                            -- Use proper SnapshotUtils method for duplicator snapshots
-                            if entityId and entityId ~= "" then
-                                local removed = SnapshotUtils.RemoveEntryByID(playerData.entities, entityId)
-                                if removed then
-                                    deleted = true
-                                    print("[RARELOAD] Deleted entity '" .. entityClass .. "' (ID: " .. entityId .. ") from " .. steamID .. "'s entities using SnapshotUtils")
-                                    break
-                                end
-                            end
-                        end
-                    end
-                    
-                    -- Check NPCs bucket as well
-                    if not deleted and playerData.npcs then
-                        attempts = attempts + 1
-                        if SnapshotUtils.HasSnapshot(playerData.npcs) then
-                            if entityId and entityId ~= "" then
-                                local removed = SnapshotUtils.RemoveEntryByID(playerData.npcs, entityId)
-                                if removed then
-                                    deleted = true
-                                    print("[RARELOAD] Deleted NPC '" .. entityClass .. "' (ID: " .. entityId .. ") from " .. steamID .. "'s NPCs using SnapshotUtils")
-                                    break
-                                end
-                            end
-                        end
+    local deletedSteamID = nil
+    local deletedBucket = nil
+    local resolvedDeleteID = entityId
+
+    local function RemoveByClassAndPosition(bucket, category)
+        if not SnapshotUtils.HasSnapshot(bucket) then
+            return false, nil
+        end
+
+        local summary = SnapshotUtils.GetSummary(bucket, {
+            category = category,
+            idPrefix = category
+        }) or {}
+
+        for _, entry in ipairs(summary) do
+            if entry.class == entityClass and entry.pos then
+                local px = tonumber(entry.pos.x) or 0
+                local py = tonumber(entry.pos.y) or 0
+                local pz = tonumber(entry.pos.z) or 0
+                local pos = Vector(px, py, pz)
+                if pos:DistToSqr(targetPos) <= 16 then
+                    local fallbackID = entry.id or entry.RareloadEntityID or entry.RareloadNPCID or entry.RareloadID
+                    if fallbackID and SnapshotUtils.RemoveEntryByID(bucket, fallbackID) then
+                        return true, fallbackID
                     end
                 end
-                
-                if deleted then break end
             end
         end
-        
-        if deleted then break end
+
+        return false, nil
     end
-    
+
+    for steamID, playerData in pairs(mapData) do
+        if not istable(playerData) then
+            continue
+        end
+
+        if playerData.entities and SnapshotUtils.HasSnapshot(playerData.entities) then
+            attempts = attempts + 1
+
+            local removed = false
+            if isstring(entityId) and entityId ~= "" then
+                removed = SnapshotUtils.RemoveEntryByID(playerData.entities, entityId)
+            else
+                removed, resolvedDeleteID = RemoveByClassAndPosition(playerData.entities, "entity")
+            end
+
+            if removed then
+                deleted = true
+                deletedSteamID = steamID
+                deletedBucket = "entities"
+                break
+            end
+        end
+
+        if playerData.npcs and SnapshotUtils.HasSnapshot(playerData.npcs) then
+            attempts = attempts + 1
+
+            local removed = false
+            if isstring(entityId) and entityId ~= "" then
+                removed = SnapshotUtils.RemoveEntryByID(playerData.npcs, entityId)
+            else
+                removed, resolvedDeleteID = RemoveByClassAndPosition(playerData.npcs, "npc")
+            end
+
+            if removed then
+                deleted = true
+                deletedSteamID = steamID
+                deletedBucket = "npcs"
+                break
+            end
+        end
+    end
+
     if not deleted then
         net.Start("RareloadEntityViewer_DeleteResult")
         net.WriteBool(false)
-        net.WriteString("Entity not found in data file (checked " .. attempts .. " buckets).")
+        net.WriteString("Entity not found in saved data (checked " .. attempts .. " buckets).")
         net.Send(ply)
         return
     end
-    
-    local out = util.TableToJSON(tbl, true)
-    if not out or out == "" then
-        net.Start("RareloadEntityViewer_DeleteResult")
-        net.WriteBool(false)
-        net.WriteString("Failed to serialize updated JSON.")
-        net.Send(ply)
-        return
+
+    if deletedSteamID and RARELOAD.SavePlayerPositionEntry and mapData[deletedSteamID] then
+        local targetPlayer = nil
+        for _, candidate in ipairs(player.GetAll()) do
+            if IsValid(candidate) and candidate:SteamID() == deletedSteamID then
+                targetPlayer = candidate
+                break
+            end
+        end
+
+        if IsValid(targetPlayer) then
+            RARELOAD.SavePlayerPositionEntry(targetPlayer, mapData[deletedSteamID])
+        else
+            local fakePly = {
+                SteamID = function() return deletedSteamID end,
+                SteamID64 = function() return "" end
+            }
+            RARELOAD.SavePlayerPositionEntry(fakePly, mapData[deletedSteamID])
+        end
     end
-    
-    file.Write(filename, out)
-    
+
+    if SyncPlayerPositions then
+        SyncPlayerPositions()
+    end
+
     net.Start("RareloadEntityViewer_DeleteResult")
     net.WriteBool(true)
     net.WriteString("Entity '" .. entityClass .. "' deleted successfully.")
     net.Send(ply)
-    
-    print("[RARELOAD] Entity Viewer: " .. ply:Nick() .. " deleted entity '" .. entityClass .. "' (ID: " .. entityId .. ")")
+
+    print("[RARELOAD] Entity Viewer: " .. ply:Nick() .. " deleted " .. deletedBucket .. " entry '" ..
+        entityClass .. "' (ID: " .. tostring(resolvedDeleteID) .. ", owner: " .. tostring(deletedSteamID) .. ")")
 end)

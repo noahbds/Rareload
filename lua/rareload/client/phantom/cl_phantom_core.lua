@@ -15,16 +15,9 @@ local PHANTOM_HEAD_OFFSET       = Vector(0, 0, 80)
 local PIXEL_VIS_HANDLE          = util.GetPixelVisibleHandle and util.GetPixelVisibleHandle() or nil
 
 local function IsClientDebugEnabled()
-    if RARELOAD and RARELOAD.IsDebugEnabled then
-        local ok, enabled = pcall(RARELOAD.IsDebugEnabled)
+    if RARELOAD and RARELOAD.ResolveClientDebugEnabled then
+        local ok, enabled = pcall(RARELOAD.ResolveClientDebugEnabled)
         if ok then
-            return enabled == true
-        end
-    end
-
-    if RARELOAD and RARELOAD.GetPlayerSetting then
-        local ok, enabled = pcall(RARELOAD.GetPlayerSetting, "debugEnabled", nil)
-        if ok and enabled ~= nil then
             return enabled == true
         end
     end
@@ -164,6 +157,7 @@ HandleNetReceive("SyncData", function()
 
     local mapName = game.GetMap()
     RARELOAD.playerPositions[mapName] = data.playerPositions or {}
+    hook.Run("RareloadPlayerPositionsUpdated", mapName)
 
     -- Only update RARELOAD.settings from SyncData if per-player settings
     -- haven't been received yet (MySettings is empty). Otherwise per-player
@@ -288,6 +282,7 @@ HandleNetReceive("SyncPlayerPositions", function()
     local mapName = game.GetMap()
     local positions = net.ReadTable() or {}
     RARELOAD.playerPositions[mapName] = positions
+    hook.Run("RareloadPlayerPositionsUpdated", mapName)
 end)
 
 local nextPhantomCheck = 0

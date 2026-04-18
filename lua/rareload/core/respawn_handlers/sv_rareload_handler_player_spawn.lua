@@ -9,6 +9,52 @@ local function HasSnapshotData(bucket)
     return istable(bucket) and #bucket > 0
 end
 
+local function ToSpawnVector(pos)
+    if pos and pos.x and pos.y and pos.z then
+        return Vector(pos.x, pos.y, pos.z)
+    end
+    return pos
+end
+
+local function ApplySpawnTransform(ply, opts)
+    if not IsValid(ply) then return end
+    opts = opts or {}
+
+    local targetPos = ToSpawnVector(opts.setPos)
+    local moveType = opts.moveType or MOVETYPE_WALK
+
+    timer.Simple(0, function()
+        if not IsValid(ply) then return end
+        ply:SetPos(targetPos)
+        ply:SetMoveType(moveType)
+    end)
+
+    RARELOAD.SavePositionToCache(opts.cachePos)
+
+    timer.Simple(0.05, function()
+        if not IsValid(ply) then return end
+
+        local parsedAngle = RARELOAD.DataUtils.ToAngle(opts.savedAng)
+        if parsedAngle then
+            ply:SetEyeAngles(parsedAngle)
+            if opts.successMessage and opts.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.Write then
+                local appendParsedAngle = opts.appendParsedAngle ~= false
+                local successLine = opts.successMessage
+                if appendParsedAngle then
+                    successLine = successLine .. tostring(parsedAngle)
+                end
+                RARELOAD.Debug.Write("respawn", "INFO", 0, successLine, { entity = ply })
+            end
+            return
+        end
+
+        if opts.warnOnAngleParseFailure and opts.debugEnabled and RARELOAD.Debug and RARELOAD.Debug.Write then
+            RARELOAD.Debug.Write("respawn", "WARNING", 0,
+                "Could not parse saved angle: " .. tostring(opts.savedAng), { entity = ply })
+        end
+    end)
+end
+
 function RARELOAD.HandlePlayerSpawn(ply)
     if not IsValid(ply) then return end
 
@@ -158,30 +204,15 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 if type(pos) == "table" and pos.x and pos.y and pos.z then
                     pos = Vector(pos.x, pos.y, pos.z)
                 end
-                -- Defer SetPos to next frame to ensure it persists after engine spawn processing
-                timer.Simple(0, function()
-                    if not IsValid(ply) then return end
-                    ply:SetPos(pos)
-                    ply:SetMoveType(moveType)
-                end)
-                RARELOAD.SavePositionToCache(safePos)
-
-                timer.Simple(0.05, function()
-                    if not IsValid(ply) then return end
-                    local parsedAngle = RARELOAD.DataUtils.ToAngle(SavedInfo.ang)
-                    if parsedAngle then
-                        ply:SetEyeAngles(parsedAngle)
-                        if DebugEnabled and RARELOAD.Debug and RARELOAD.Debug.Write then
-                            RARELOAD.Debug.Write("respawn", "INFO", 0,
-                                "Applied saved angle after anti-stuck: " .. tostring(parsedAngle), { entity = ply })
-                        end
-                    else
-                        if DebugEnabled and RARELOAD.Debug and RARELOAD.Debug.Write then
-                            RARELOAD.Debug.Write("respawn", "WARNING", 0,
-                                "Could not parse saved angle: " .. tostring(SavedInfo.ang), { entity = ply })
-                        end
-                    end
-                end)
+                ApplySpawnTransform(ply, {
+                    setPos = pos,
+                    cachePos = safePos,
+                    moveType = moveType,
+                    savedAng = SavedInfo.ang,
+                    debugEnabled = DebugEnabled,
+                    successMessage = "Applied saved angle after anti-stuck: ",
+                    warnOnAngleParseFailure = true
+                })
 
                 if safePos ~= SavedInfo.pos and DebugEnabled and RARELOAD.Debug and RARELOAD.Debug.Write then
                     RARELOAD.Debug.Write("respawn", "INFO", 0, "Player position adjusted by anti-stuck system",
@@ -192,17 +223,14 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 local fallbackPos = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
                     and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
                     or SavedInfo.pos
-                timer.Simple(0, function()
-                    if not IsValid(ply) then return end
-                    ply:SetPos(fallbackPos)
-                    ply:SetMoveType(moveType)
-                end)
-                timer.Simple(0.05, function()
-                    if not IsValid(ply) then return end
-                    local parsedAngle = RARELOAD.DataUtils.ToAngle(SavedInfo.ang)
-                    if parsedAngle then ply:SetEyeAngles(parsedAngle) end
-                end)
-                RARELOAD.SavePositionToCache(fallbackPos)
+                ApplySpawnTransform(ply, {
+                    setPos = fallbackPos,
+                    cachePos = fallbackPos,
+                    moveType = moveType,
+                    savedAng = SavedInfo.ang,
+                    debugEnabled = DebugEnabled,
+                    warnOnAngleParseFailure = false
+                })
                 ply:ChatPrint("[RARELOAD] Warning: Position may be stuck. Anti-stuck could not find a better spot.")
                 if RARELOAD.Debug and RARELOAD.Debug.Write then
                     RARELOAD.Debug.Write("respawn", "WARNING", 0,
@@ -219,59 +247,30 @@ function RARELOAD.HandlePlayerSpawn(ply)
             local pos = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
                 and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
                 or SavedInfo.pos
-            -- Defer SetPos to next frame to ensure it persists after engine spawn processing
-            timer.Simple(0, function()
-                if not IsValid(ply) then return end
-                ply:SetPos(pos)
-                ply:SetMoveType(moveType)
-            end)
-            RARELOAD.SavePositionToCache(SavedInfo.pos)
-
-            timer.Simple(0.05, function()
-                if not IsValid(ply) then return end
-                local parsedAngle = RARELOAD.DataUtils.ToAngle(SavedInfo.ang)
-                if parsedAngle then
-                    ply:SetEyeAngles(parsedAngle)
-                    if DebugEnabled and RARELOAD.Debug and RARELOAD.Debug.Write then
-                        RARELOAD.Debug.Write("respawn", "INFO", 0, "Applied saved angle: " .. tostring(parsedAngle),
-                            { entity = ply })
-                    end
-                else
-                    if DebugEnabled and RARELOAD.Debug and RARELOAD.Debug.Write then
-                        RARELOAD.Debug.Write("respawn", "WARNING", 0,
-                            "Could not parse saved angle: " .. tostring(SavedInfo.ang), { entity = ply })
-                    end
-                end
-            end)
+            ApplySpawnTransform(ply, {
+                setPos = pos,
+                cachePos = SavedInfo.pos,
+                moveType = moveType,
+                savedAng = SavedInfo.ang,
+                debugEnabled = DebugEnabled,
+                successMessage = "Applied saved angle: ",
+                warnOnAngleParseFailure = true
+            })
         end
     else
         local pos = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
             and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
             or SavedInfo.pos
-        -- Defer SetPos to next frame to ensure it persists after engine spawn processing
-        timer.Simple(0, function()
-            if not IsValid(ply) then return end
-            ply:SetPos(pos)
-            ply:SetMoveType(moveType)
-        end)
-        RARELOAD.SavePositionToCache(pos)
-
-        timer.Simple(0.05, function()
-            if not IsValid(ply) then return end
-            local parsedAngle = RARELOAD.DataUtils.ToAngle(SavedInfo.ang)
-            if parsedAngle then
-                ply:SetEyeAngles(parsedAngle)
-                if DebugEnabled and RARELOAD.Debug and RARELOAD.Debug.Write then
-                    RARELOAD.Debug.Write("respawn", "INFO", 0, "Applied saved angle (anti-stuck disabled)",
-                        { entity = ply })
-                end
-            else
-                if DebugEnabled and RARELOAD.Debug and RARELOAD.Debug.Write then
-                    RARELOAD.Debug.Write("respawn", "WARNING", 0,
-                        "Could not parse saved angle: " .. tostring(SavedInfo.ang), { entity = ply })
-                end
-            end
-        end)
+        ApplySpawnTransform(ply, {
+            setPos = pos,
+            cachePos = pos,
+            moveType = moveType,
+            savedAng = SavedInfo.ang,
+            debugEnabled = DebugEnabled,
+            successMessage = "Applied saved angle (anti-stuck disabled)",
+            appendParsedAngle = false,
+            warnOnAngleParseFailure = true
+        })
 
         if DebugEnabled and RARELOAD.Debug and RARELOAD.Debug.Write then
             RARELOAD.Debug.Write("respawn", "VERBOSE", 0, "Anti-stuck disabled; used saved position and angles directly",

@@ -9,23 +9,11 @@ return function(ply)
     local vehicles = {}
     for _, vehicle in ipairs(ents.FindByClass("prop_vehicle_*")) do
         if IsValid(vehicle) then
-            local isOwnedByPlayer = false
-            if RARELOAD.Ownership and RARELOAD.Ownership.IsOwner then
-                local ok, owned = pcall(RARELOAD.Ownership.IsOwner, vehicle, ply)
-                isOwnedByPlayer = ok and owned or false
-            end
+            local isOwnedByPlayer = RARELOAD.Ownership and RARELOAD.Ownership.IsOwnedByPlayerSafe and
+                RARELOAD.Ownership.IsOwnedByPlayerSafe(vehicle, ply)
 
-            local ownerSteamID = nil
-
-            if RARELOAD.Ownership and RARELOAD.Ownership.GetOwnerSteamID then
-                local ok, sid = pcall(RARELOAD.Ownership.GetOwnerSteamID, vehicle)
-                if ok and isstring(sid) and sid ~= "" then
-                    ownerSteamID = sid
-                    if not isOwnedByPlayer and IsValid(ply) and sid == ply:SteamID() then
-                        isOwnedByPlayer = true
-                    end
-                end
-            end
+            local ownerSteamID = RARELOAD.Ownership and RARELOAD.Ownership.GetOwnerSteamIDSafe and
+                RARELOAD.Ownership.GetOwnerSteamIDSafe(vehicle)
 
             if isOwnedByPlayer then
                 local vehicleData = {

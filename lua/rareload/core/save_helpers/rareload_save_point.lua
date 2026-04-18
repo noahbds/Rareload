@@ -3,30 +3,6 @@ RARELOAD.settings = RARELOAD.settings or {}
 
 -- Shared routine to save a player's respawn point and related state
 
-local function toVecTable(vec)
-    return RARELOAD.DataUtils.ToPositionTable(vec) or { x = 0, y = 0, z = 0 }
-end
-
-local function toAngTable(ang)
-    return RARELOAD.DataUtils.ToAngleTable(ang) or { p = 0, y = 0, r = 0 }
-end
-
-local function vecTablesEqual(a, b, eps)
-    if not a or not b then return false end
-    eps = eps or 0.001
-    return math.abs((a.x or 0) - (b.x or 0)) <= eps
-        and math.abs((a.y or 0) - (b.y or 0)) <= eps
-        and math.abs((a.z or 0) - (b.z or 0)) <= eps
-end
-
-local function angTablesEqual(a, b, epsDeg)
-    if not a or not b then return false end
-    epsDeg = epsDeg or 0.1
-    return math.abs((a.p or 0) - (b.p or 0)) <= epsDeg
-        and math.abs((a.y or 0) - (b.y or 0)) <= epsDeg
-        and math.abs((a.r or 0) - (b.r or 0)) <= epsDeg
-end
-
 local function listsEqualAsMultisets(t1, t2)
     if not t1 or not t2 then return false end
     if #t1 ~= #t2 then return false end
@@ -91,8 +67,8 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     local mapName = game.GetMap()
     RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
 
-    local newPos = toVecTable(worldPos or ply:GetPos())
-    local newAng = toAngTable(viewAng or ply:EyeAngles())
+    local newPos = RARELOAD.DataUtils.ToPositionTable(worldPos or ply:GetPos()) or { x = 0, y = 0, z = 0 }
+    local newAng = RARELOAD.DataUtils.ToAngleTable(viewAng or ply:EyeAngles()) or { p = 0, y = 0, r = 0 }
     local newActiveWeapon = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or "None"
 
     local newInventory = save_inventory(ply)
@@ -122,16 +98,22 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
 
     local oldData = RARELOAD.playerPositions[mapName][ply:SteamID()]
     local legacyDataFound = NeedsStructuralUpgrade(oldData)
+    local shouldSaveMapEntities = RARELOAD.GetPlayerSetting(ply, "retainMapEntities") and
+        RARELOAD.CheckPermission(ply, "SAVE_ENTITIES")
+    local shouldSaveMapNPCs = RARELOAD.GetPlayerSetting(ply, "retainMapNPCs") and
+        RARELOAD.CheckPermission(ply, "SAVE_NPCS")
+    local hasWorldSnapshotSaveEnabled = shouldSaveMapEntities or shouldSaveMapNPCs
 
     if oldData and not RARELOAD.GetPlayerSetting(ply, "autoSaveEnabled") then
         local inventoryUnchanged = not RARELOAD.GetPlayerSetting(ply, "retainInventory") or
             listsEqualAsMultisets(oldData.inventory or {}, newInventory)
 
-        local posSame = vecTablesEqual(oldData.pos, newPos)
-        local angSame = angTablesEqual(oldData.ang, newAng)
+        local posSame = RARELOAD.DataUtils.PositionsEqual(oldData.pos, newPos, 0.001)
+        local angSame = RARELOAD.DataUtils.AnglesEqual(oldData.ang, newAng, 0.1)
         local weaponSame = (oldData.activeWeapon == newActiveWeapon)
 
-        if posSame and angSame and weaponSame and inventoryUnchanged and not legacyDataFound then
+        if posSame and angSame and weaponSame and inventoryUnchanged and not legacyDataFound and
+            not hasWorldSnapshotSaveEnabled then
             return true, "unchanged"
         else
             local message = "[RARELOAD] Overwriting previous save: Position, Camera"
@@ -165,7 +147,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
             frozen = ply:IsFrozen(),
             noclip = ply:GetMoveType() == MOVETYPE_NOCLIP,
         }
-        
+
         if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
             local states = {}
             if playerData.playerStates.godmode then table.insert(states, "godmode") end
@@ -195,23 +177,21 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         playerData.vehicleState = save_vehicle_state(ply)
     end
 
-    if RARELOAD.GetPlayerSetting(ply, "retainMapEntities") and RARELOAD.CheckPermission(ply, "SAVE_ENTITIES") then
+    if shouldSaveMapEntities then
         local entityBucket = SnapshotUtils.NormalizeBucketForSave(save_entities(ply))
         if entityBucket then
             playerData.entities = entityBucket
         else
-            -- Keep the previous snapshot when capture is unavailable to avoid
-            -- wiping entity saves during transient states (e.g. map cleanup).
-            playerData.entities = oldData and oldData.entities or nil
+            playerData.entities = nil
         end
     end
 
-    if RARELOAD.GetPlayerSetting(ply, "retainMapNPCs") and RARELOAD.CheckPermission(ply, "SAVE_NPCS") then
+    if shouldSaveMapNPCs then
         local npcBucket = SnapshotUtils.NormalizeBucketForSave(save_npcs(ply))
         if npcBucket then
             playerData.npcs = npcBucket
         else
-            playerData.npcs = oldData and oldData.npcs or nil
+            playerData.npcs = nil
         end
     end
 
@@ -226,7 +206,8 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         success, err = RARELOAD.SavePlayerPositionEntry(ply, playerData)
     else
         success, err = pcall(function()
-            file.Write("rareload/player_positions_" .. mapName .. ".json", util.TableToJSON(RARELOAD.playerPositions, true))
+            file.Write("rareload/player_positions_" .. mapName .. ".json",
+                util.TableToJSON(RARELOAD.playerPositions, true))
         end)
     end
 

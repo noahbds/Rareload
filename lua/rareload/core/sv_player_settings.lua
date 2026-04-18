@@ -7,6 +7,7 @@ RARELOAD.PlayerSettings = RARELOAD.PlayerSettings or {}
 local playerSettingsCache = {}
 local lastSettingsSyncAt = {}
 local SETTINGS_SYNC_COOLDOWN = 0.75
+local DebugHelpers = include("rareload/debug/sv_debug_helpers.lua")
 
 -- Get default settings for a new player (from server ConVars)
 local function GetServerDefaultSettings()
@@ -71,18 +72,12 @@ local function EnsurePlayerSettingsFolderExists()
 end
 
 local function WriteSettingsDebug(level, message, details, context)
-    if not (RARELOAD.Debug and RARELOAD.Debug.Write) then return end
+    if not (DebugHelpers and DebugHelpers.Write) then return end
 
-    local logLevel = level or "INFO"
-    RARELOAD.Debug.Write("settings", logLevel, 0, tostring(message), context)
-
-    if istable(details) then
-        for key, value in pairs(details) do
-            RARELOAD.Debug.Write("settings", logLevel, 1, tostring(key) .. ": " .. tostring(value), context)
-        end
-    elseif details ~= nil then
-        RARELOAD.Debug.Write("settings", logLevel, 1, tostring(details), context)
-    end
+    DebugHelpers.Write("settings", level, message, details, {
+        context = context,
+        detailsAsPairs = true
+    })
 end
 
 -- Load settings for a specific player

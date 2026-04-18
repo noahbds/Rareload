@@ -1,14 +1,7 @@
 local function IsClientDebugEnabled()
-    if RARELOAD and RARELOAD.IsDebugEnabled then
-        local ok, enabled = pcall(RARELOAD.IsDebugEnabled)
+    if RARELOAD and RARELOAD.ResolveClientDebugEnabled then
+        local ok, enabled = pcall(RARELOAD.ResolveClientDebugEnabled)
         if ok then
-            return enabled == true
-        end
-    end
-
-    if RARELOAD and RARELOAD.GetPlayerSetting then
-        local ok, enabled = pcall(RARELOAD.GetPlayerSetting, "debugEnabled", nil)
-        if ok and enabled ~= nil then
             return enabled == true
         end
     end

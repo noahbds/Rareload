@@ -206,6 +206,14 @@ end
 
 function AntiStuck.ToVector(input)
     if not input then return nil end
+
+    if RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.ToVector then
+        local ok, vec = pcall(RARELOAD.DataUtils.ToVector, input)
+        if ok and vec and isvector and isvector(vec) then
+            return vec
+        end
+    end
+
     if type(input) == "Vector" then return input end
     if type(input) == "table" and input.x and input.y and input.z then
         return Vector(input.x, input.y, input.z)

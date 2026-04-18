@@ -17,6 +17,7 @@ local function IsClientDebugEnabled()
 end
 
 RARELOAD.IsDebugEnabled = IsClientDebugEnabled
+RARELOAD.ResolveClientDebugEnabled = IsClientDebugEnabled
 
 local lastSettingsRequestAt = 0
 local SETTINGS_REQUEST_COOLDOWN = 1.0

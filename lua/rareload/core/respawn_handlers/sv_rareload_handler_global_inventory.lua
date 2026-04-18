@@ -2,6 +2,7 @@
 RARELOAD = RARELOAD or nil
 RARELOAD.settings = RARELOAD.settings or {}
 RARELOAD.globalInventory = RARELOAD.globalInventory or {}
+local InventoryCommon = include("rareload/core/respawn_handlers/sv_rareload_inventory_common.lua")
 
 function RARELOAD.RestoreGlobalInventory(ply)
     if RARELOAD.CheckPermission and (not RARELOAD.CheckPermission(ply, "KEEP_INVENTORY") or not RARELOAD.CheckPermission(ply, "RETAIN_GLOBAL_INVENTORY")) then
@@ -22,95 +23,27 @@ function RARELOAD.RestoreGlobalInventory(ply)
         ply:StripWeapons()
     end
 
-    local debugMessages = {
-        adminOnly = {},
-        notRegistered = {},
-        givenWeapons = {}
-    }
-    local debugFlags = {
-        adminOnly = false,
-        notRegistered = false,
-        givenWeapons = false
-    }
-
-    local restoredCount = 0
-
-    for _, weaponClass in ipairs(globalInventoryData.weapons) do
-        local weaponInfo = weapons.Get(weaponClass)
-        local canGiveWeapon = weaponInfo and (weaponInfo.Spawnable or weaponInfo.AdminOnly)
-
-        if not canGiveWeapon then
-            -- Still try to give the weapon - it may work even if not in weapons.Get()
-            -- (e.g., HL2 default weapons, engine-registered weapons)
-            if not ply:HasWeapon(weaponClass) then
-                ply:Give(weaponClass)
-                if ply:HasWeapon(weaponClass) then
-                    restoredCount = restoredCount + 1
-                    if debugEnabled then
-                        debugFlags.givenWeapons = true
-                        table.insert(debugMessages.givenWeapons, "Successfully gave weapon: " .. weaponClass)
-                    end
-                elseif debugEnabled then
-                    if weaponInfo then
-                        debugFlags.adminOnly = true
-                        table.insert(debugMessages.adminOnly,
-                            "Weapon " .. weaponClass .. " is not spawnable and not admin-only.")
-                    else
-                        debugFlags.notRegistered = true
-                        table.insert(debugMessages.notRegistered,
-                            "Weapon " .. weaponClass .. " not in registry (may be engine weapon).")
-                    end
-                end
-            end
-        else
-            if not ply:HasWeapon(weaponClass) then
-                ply:Give(weaponClass)
-
-                if ply:HasWeapon(weaponClass) then
-                    restoredCount = restoredCount + 1
-
-                    if debugEnabled then
-                        debugFlags.givenWeapons = true
-                        table.insert(debugMessages.givenWeapons, "Successfully gave weapon: " .. weaponClass)
-                    end
-                elseif debugEnabled then
-                    debugFlags.givenWeapons = true
-                    table.insert(debugMessages.givenWeapons, "Failed to give weapon: " .. weaponClass)
-
-                    local weaponDetails = {
-                        "Weapon Info: " .. tostring(weaponInfo),
-                        "Weapon Base: " .. tostring(weaponInfo.Base),
-                        "PrintName: " .. tostring(weaponInfo.PrintName),
-                        "Spawnable: " .. tostring(weaponInfo.Spawnable),
-                        "AdminOnly: " .. tostring(weaponInfo.AdminOnly),
-                        "Primary Ammo: " .. tostring(weaponInfo.Primary and weaponInfo.Primary.Ammo or "N/A"),
-                        "Secondary Ammo: " .. tostring(weaponInfo.Secondary and weaponInfo.Secondary.Ammo or "N/A")
-                    }
-                    table.Add(debugMessages.givenWeapons, weaponDetails)
-                end
-            elseif debugEnabled then
-                table.insert(debugMessages.givenWeapons, "Player already has weapon: " .. weaponClass)
-            end
-        end
-    end
+    local debugMessages, debugFlags, restoredCount = InventoryCommon.RestoreWeaponsFromList(
+        ply,
+        globalInventoryData.weapons,
+        debugEnabled,
+        {
+            skipIfHasWeapon = true,
+            includeAlreadyHasDebug = true,
+            includeExtendedFailureDetails = false
+        }
+    )
 
 
     if debugEnabled then
         if RARELOAD.Debug and RARELOAD.Debug.LogWeaponMessages then
             RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
         else
-            if debugFlags.adminOnly then
-                print("[RARELOAD DEBUG] Admin-only weapons not given: " .. table.concat(debugMessages.adminOnly, ", "))
-            end
-            if debugFlags.notRegistered and not RARELOAD.GetPlayerSetting(ply, "retainInventory", true) then
-                print("[RARELOAD DEBUG] Unregistered weapons: " .. table.concat(debugMessages.notRegistered, ", "))
-            end
-            if debugFlags.givenWeapons then
-                print("[RARELOAD DEBUG] Weapon results: ")
-                for _, msg in ipairs(debugMessages.givenWeapons) do
-                    print("[RARELOAD DEBUG] - " .. msg)
-                end
-            end
+            InventoryCommon.PrintFallbackDebug(ply, debugMessages, debugFlags, {
+                notRegisteredGuardSettingKey = "retainInventory",
+                notRegisteredGuardDefault = true,
+                notRegisteredLabel = "Unregistered weapons"
+            })
         end
     end
 

@@ -6,6 +6,7 @@ RARELOAD.DuplicatorBridge = RARELOAD.DuplicatorBridge or {}
 local Bridge = RARELOAD.DuplicatorBridge
 local SERIALIZED_TYPE_KEY = "__rareload_type"
 local MAX_RECURSION_DEPTH = 8
+local DebugHelpers = include("rareload/debug/sv_debug_helpers.lua")
 
 local vector_origin = vector_origin or Vector(0, 0, 0)
 local angle_zero = angle_zero or Angle(0, 0, 0)
@@ -103,14 +104,15 @@ local function IsDuplicatorDebugEnabled()
 end
 
 local function WriteDuplicatorDebug(level, message)
-    if not IsDuplicatorDebugEnabled() then return end
+    if not (DebugHelpers and DebugHelpers.Write) then return end
 
-    if RARELOAD.Debug and RARELOAD.Debug.Write then
-        RARELOAD.Debug.Write("duplicator", level or "INFO", 0, tostring(message))
-        return
-    end
-
-    print("[RARELOAD] " .. tostring(message))
+    DebugHelpers.Write("duplicator", level, message, nil, {
+        gate = function()
+            return IsDuplicatorDebugEnabled()
+        end,
+        allowPrintFallback = true,
+        printPrefix = "[RARELOAD] "
+    })
 end
 
 function Bridge.IsSupported()
@@ -179,6 +181,53 @@ function Bridge.CaptureSnapshot(entities, opts)
     end
 
     return snapshot
+end
+
+local function buildPlayerCaptureOptions(ply)
+    return {
+        ownerSteamID = (IsValid(ply) and ply.SteamID and ply:SteamID()) or nil,
+        ownerSteamID64 = (IsValid(ply) and ply.SteamID64 and ply:SteamID64()) or nil,
+        anchor = IsValid(ply) and ply:GetPos() or nil
+    }
+end
+
+function Bridge.CaptureSnapshotForPlayer(entities, ply, onCaptureError)
+    if not Bridge.IsSupported() then
+        return nil
+    end
+
+    if not istable(entities) or #entities == 0 then
+        return nil
+    end
+
+    local snapshot, err = Bridge.CaptureSnapshot(entities, buildPlayerCaptureOptions(ply))
+    if not snapshot and err and isfunction(onCaptureError) then
+        onCaptureError(err)
+    end
+
+    return snapshot
+end
+
+function Bridge.FindSnapshotOwner(snapshot)
+    if not snapshot then return nil end
+    if not (player and player.GetAll) then return nil end
+
+    local sid64 = snapshot.ownerSteamID64
+    local sid = snapshot.ownerSteamID
+
+    for _, ply in ipairs(player.GetAll()) do
+        if IsValid(ply) then
+            if sid64 and ply.SteamID64 and ply:SteamID64() == sid64 then
+                return ply
+            end
+
+            if sid and ply.SteamID and ply:SteamID() == sid then
+                return ply
+            end
+        end
+    end
+
+    return nil
 end
 
 local function resolveAnchorVector(anchor)

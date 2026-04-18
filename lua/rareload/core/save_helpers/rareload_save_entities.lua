@@ -8,121 +8,28 @@ if not RARELOAD.Ownership then
     include("rareload/utils/rareload_ownership.lua")
 end
 
-if not (RARELOAD.Util and RARELOAD.Util.GenerateDeterministicID) then
-    if file.Exists("rareload/core/rareload_state_utils.lua", "LUA") then
-        include("rareload/core/rareload_state_utils.lua")
-    end
-end
-
-local function GenerateEntityUniqueID(ent)
-    return RARELOAD.Util and RARELOAD.Util.GenerateDeterministicID and RARELOAD.Util.GenerateDeterministicID(ent) or
-        "ent_legacyid"
-end
-
-local function GetOwnerSteamID(owner)
-    if not IsValid(owner) then return nil end
-    if owner.SteamID then
-        local ok, sid = pcall(owner.SteamID, owner)
-        if ok and isstring(sid) then return sid end
-    end
-    if owner.SteamID64 then
-        local ok, sid = pcall(owner.SteamID64, owner)
-        if ok and isstring(sid) then return sid end
-    end
-    return nil
-end
-
-local function IsEntityOwnedByPlayer(ent, ply)
-    if not IsValid(ent) or not IsValid(ply) then return false end
-
-    if RARELOAD.Ownership and RARELOAD.Ownership.IsOwner then
-        local ok, isOwner = pcall(RARELOAD.Ownership.IsOwner, ent, ply)
-        if ok and isOwner then
-            return true
-        end
-    end
-
-    if RARELOAD.Ownership and RARELOAD.Ownership.GetOwnerSteamID then
-        local ok, sid = pcall(RARELOAD.Ownership.GetOwnerSteamID, ent)
-        if ok and isstring(sid) and sid ~= "" and sid == ply:SteamID() then
-            return true
-        end
-    end
-
-    local owner = RARELOAD.Ownership and RARELOAD.Ownership.GetOwner and RARELOAD.Ownership.GetOwner(ent) or nil
-    return IsValid(owner) and owner == ply
-end
+local EntityIdentity = include("rareload/core/rareload_entity_identity.lua")
 
 local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
-
-local function IsDebugEnabledForPlayer(ply)
-    if RARELOAD and RARELOAD.GetPlayerSetting and IsValid(ply) then
-        return RARELOAD.GetPlayerSetting(ply, "debugEnabled", false)
-    end
-
-    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then
-        return DEBUG_CONFIG.ENABLED({ entity = ply })
-    end
-
-    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled or false
-end
+local DebugHelpers = include("rareload/debug/sv_debug_helpers.lua")
 
 local function WriteEntitySaveDebug(ply, level, message, details)
-    if not IsDebugEnabledForPlayer(ply) then return end
+    if not (DebugHelpers and DebugHelpers.Write) then return end
 
-    local logLevel = level or "INFO"
-
-    if RARELOAD.Debug and RARELOAD.Debug.Write then
-        RARELOAD.Debug.Write("entity_save", logLevel, 0, tostring(message), { entity = ply })
-        if istable(details) then
-            for _, line in ipairs(details) do
-                RARELOAD.Debug.Write("entity_save", logLevel, 1, tostring(line), { entity = ply })
-            end
-        elseif details ~= nil then
-            RARELOAD.Debug.Write("entity_save", logLevel, 1, tostring(details), { entity = ply })
-        end
-        return
-    end
-
-    print("[RARELOAD DEBUG] " .. tostring(message))
-    if istable(details) then
-        for _, line in ipairs(details) do
-            print("[RARELOAD DEBUG] " .. tostring(line))
-        end
-    elseif details ~= nil then
-        print("[RARELOAD DEBUG] " .. tostring(details))
-    end
+    DebugHelpers.Write("entity_save", level, message, details, {
+        ply = ply,
+        gate = true,
+        allowPrintFallback = true,
+        printPrefix = "[RARELOAD DEBUG] "
+    })
 end
 
 -- Duplicator-driven only: old per-entity save logic removed.
 
-local function CaptureDuplicatorSnapshot(ply, trackedEntities)
-    if not (DuplicatorBridge and DuplicatorBridge.IsSupported and DuplicatorBridge.IsSupported()) then
-        return nil
-    end
-
-    if not istable(trackedEntities) or #trackedEntities == 0 then
-        return nil
-    end
-
-    local snapshot, err = DuplicatorBridge.CaptureSnapshot(trackedEntities, {
-        ownerSteamID = (IsValid(ply) and ply.SteamID and ply:SteamID()) or nil,
-        ownerSteamID64 = (IsValid(ply) and ply.SteamID64 and ply:SteamID64()) or nil,
-        anchor = IsValid(ply) and ply:GetPos() or nil
-    })
-
-    if not snapshot and err then
-        WriteEntitySaveDebug(ply, "WARNING", "Duplicator snapshot capture failed", tostring(err))
-    end
-
-    return snapshot
-end
-
 return function(ply)
     if not IsValid(ply) then return {} end
 
-    local entities = {}
     local count = 0
     local startTime = SysTime()
     local duplicatorTargets = {}
@@ -130,31 +37,31 @@ return function(ply)
 
     for _, ent in ipairs(ents.GetAll()) do
         if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() and not ent:IsVehicle() then
-            local owner = RARELOAD.Ownership and RARELOAD.Ownership.GetOwner(ent) or nil
-            local ownerValid = IsEntityOwnedByPlayer(ent, ply)
+            local className = ent:GetClass()
+            local isWeaponEntity = ent:IsWeapon() or string.StartsWith(className or "", "weapon_")
+            if isWeaponEntity then
+                continue
+            end
+
+            local owner = RARELOAD.Ownership and RARELOAD.Ownership.ResolveOwner and RARELOAD.Ownership.ResolveOwner(ent) or
+                nil
+            local ownerValid = RARELOAD.Ownership and RARELOAD.Ownership.IsOwnedByPlayerSafe and
+                RARELOAD.Ownership.IsOwnedByPlayerSafe(ent, ply)
             if ownerValid then
                 count = count + 1
 
-                if not ent.RareloadEntityID then
-                    ---@diagnostic disable-next-line: inject-field
-                    ent.RareloadEntityID = GenerateEntityUniqueID(ent)
-                    if ent.SetNWString then
-                        pcall(function() ent:SetNWString("RareloadID", ent.RareloadEntityID) end)
-                    end
-                end
-
-                if ent.SetNWString and ent.RareloadEntityID and (ent.GetNWString and ent:GetNWString("RareloadID", "") == "") then
-                    pcall(function() ent:SetNWString("RareloadID", ent.RareloadEntityID) end)
-                end
-
+                EntityIdentity.EnsureID(ent, "RareloadEntityID", "ent_legacyid")
 
                 if not duplicatorSeen[ent] then
                     duplicatorSeen[ent] = true
                     duplicatorTargets[#duplicatorTargets + 1] = ent
                 end
 
-                local sid = GetOwnerSteamID(owner) or (RARELOAD.Ownership and RARELOAD.Ownership.GetOwnerSteamID and
-                    RARELOAD.Ownership.GetOwnerSteamID(ent)) or nil
+                local sid = (RARELOAD.Ownership and RARELOAD.Ownership.GetPlayerSteamIDSafe and
+                        RARELOAD.Ownership.GetPlayerSteamIDSafe(owner))
+                    or (RARELOAD.Ownership and RARELOAD.Ownership.GetOwnerSteamIDSafe and
+                        RARELOAD.Ownership.GetOwnerSteamIDSafe(ent))
+                    or nil
                 if sid then
                     ---@diagnostic disable-next-line: inject-field
                     ent.OriginalSpawner = sid
@@ -163,7 +70,9 @@ return function(ply)
         end
     end
 
-    local duplicatorSnapshot = CaptureDuplicatorSnapshot(ply, duplicatorTargets)
+    local duplicatorSnapshot = DuplicatorBridge.CaptureSnapshotForPlayer(duplicatorTargets, ply, function(err)
+        WriteEntitySaveDebug(ply, "WARNING", "Duplicator snapshot capture failed", tostring(err))
+    end)
     if not duplicatorSnapshot then
         local level = (count > 0) and "WARNING" or "VERBOSE"
         local reason = (count > 0)

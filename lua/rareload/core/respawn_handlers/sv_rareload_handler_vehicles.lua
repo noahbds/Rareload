@@ -4,28 +4,18 @@
 ---@class RARELOAD
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
-
-local function IsDebugEnabledForPlayer(ply)
-    if RARELOAD and RARELOAD.GetPlayerSetting and IsValid(ply) then
-        return RARELOAD.GetPlayerSetting(ply, "debugEnabled", false)
-    end
-
-    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then
-        return DEBUG_CONFIG.ENABLED({ entity = ply })
-    end
-
-    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled or false
-end
+local DebugState = include("rareload/debug/sv_debug_state.lua")
+local DebugHelpers = include("rareload/debug/sv_debug_helpers.lua")
 
 local function WriteVehicleDebug(ply, level, message)
-    if not IsDebugEnabledForPlayer(ply) then return end
+    if not (DebugHelpers and DebugHelpers.Write) then return end
 
-    if RARELOAD.Debug and RARELOAD.Debug.Write then
-        RARELOAD.Debug.Write("vehicle_respawn", level or "INFO", 0, tostring(message), { entity = ply })
-        return
-    end
-
-    print("[RARELOAD DEBUG] " .. tostring(message))
+    DebugHelpers.Write("vehicle_respawn", level, message, nil, {
+        ply = ply,
+        gate = true,
+        allowPrintFallback = true,
+        printPrefix = "[RARELOAD DEBUG] "
+    })
 end
 
 -- FIX IN PROGRESS
@@ -33,7 +23,8 @@ end
 function RARELOAD.RestoreVehicles(savedInfo, requestingPlayer)
     if not savedInfo or not savedInfo.vehicles then return end
     timer.Simple(1, function()
-        local debugEnabled = IsDebugEnabledForPlayer(requestingPlayer)
+        local debugEnabled = DebugState and DebugState.IsEnabledForPlayer and
+            DebugState.IsEnabledForPlayer(requestingPlayer)
         local vehicleCount = 0
         for _, vehicleData in ipairs(savedInfo.vehicles) do
             local exists = false

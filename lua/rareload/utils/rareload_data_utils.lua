@@ -23,6 +23,8 @@ function RARELOAD.DataUtils.ToVector(pos)
         return pos
     elseif type(pos) == "table" and pos.x and pos.y and pos.z then
         return Vector(pos.x, pos.y, pos.z)
+    elseif type(pos) == "table" and pos[1] ~= nil and pos[2] ~= nil and pos[3] ~= nil then
+        return Vector(tonumber(pos[1]) or 0, tonumber(pos[2]) or 0, tonumber(pos[3]) or 0)
     elseif type(pos) == "string" then
         local parsed = RARELOAD.DataUtils.ParsePositionString(pos)
         if parsed then
@@ -44,6 +46,8 @@ function RARELOAD.DataUtils.ToPositionTable(pos)
         return { x = pos.x, y = pos.y, z = pos.z }
     elseif isvector and isvector(pos) then
         return { x = pos.x, y = pos.y, z = pos.z }
+    elseif type(pos) == "table" and pos[1] ~= nil and pos[2] ~= nil and pos[3] ~= nil then
+        return { x = tonumber(pos[1]) or 0, y = tonumber(pos[2]) or 0, z = tonumber(pos[3]) or 0 }
     elseif type(pos) == "string" then
         return RARELOAD.DataUtils.ParsePositionString(pos)
     end
@@ -270,6 +274,22 @@ function RARELOAD.DataUtils.IsValidAngle(ang)
     return false
 end
 
+-- Compare two angles for equality (with optional tolerance in degrees)
+function RARELOAD.DataUtils.AnglesEqual(ang1, ang2, tolerance)
+    tolerance = tolerance or 0.1
+
+    local a1 = RARELOAD.DataUtils.ToAngleTable(ang1)
+    local a2 = RARELOAD.DataUtils.ToAngleTable(ang2)
+
+    if not (a1 and a2) then
+        return false
+    end
+
+    return math.abs((a1.p or 0) - (a2.p or 0)) <= tolerance and
+        math.abs((a1.y or 0) - (a2.y or 0)) <= tolerance and
+        math.abs((a1.r or 0) - (a2.r or 0)) <= tolerance
+end
+
 -- Check if an object is an entity or entity-like (has IsValid and GetPos)
 function RARELOAD.DataUtils.IsEntityLike(obj)
     return istable(obj) and isfunction(obj.IsValid) and isfunction(obj.GetPos)
@@ -429,7 +449,7 @@ function RARELOAD.DataUtils.SaveDataForPlayer(ply, dataType, data)
 
     -- Save the data
     fileData[mapName][steamID][dataType] = data
-    
+
     -- Also save player's last position and angle for context
     fileData[mapName][steamID].pos = RARELOAD.DataUtils.ToPositionTable(ply:GetPos())
     fileData[mapName][steamID].ang = RARELOAD.DataUtils.ToAngleTable(ply:GetAngles())
@@ -439,7 +459,7 @@ function RARELOAD.DataUtils.SaveDataForPlayer(ply, dataType, data)
         print("[RARELOAD ERROR] Failed to serialize player data to JSON.")
         return false
     end
-    
+
     file.Write(filePath, json)
     return true
 end

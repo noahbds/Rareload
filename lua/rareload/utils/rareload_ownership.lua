@@ -1,3 +1,5 @@
+---@diagnostic disable: inject-field
+
 ---@class RARELOAD
 RARELOAD = RARELOAD or {}
 RARELOAD.Ownership = RARELOAD.Ownership or {}
@@ -30,9 +32,9 @@ end
 
 function RARELOAD.Ownership.SetOwner(ent, owner)
     if not IsValid(ent) then return false end
-    
+
     local entIndex = ent:EntIndex()
-    
+
     if not IsValid(owner) or not owner:IsPlayer() then
         if OwnershipCache[entIndex] then
             local oldSteamID = OwnershipCache[entIndex].steamID
@@ -41,33 +43,33 @@ function RARELOAD.Ownership.SetOwner(ent, owner)
             end
             OwnershipCache[entIndex] = nil
         end
-        
+
         if CONFIG.USE_NETWORKED_VARS and ent.SetNWEntity then
             pcall(ent.SetNWEntity, ent, CONFIG.NETWORK_VAR_KEY, NULL)
             pcall(ent.SetNWString, ent, CONFIG.STEAMID_VAR_KEY, "")
         end
-        
+
         VerboseLog("Cleared ownership for entity %d (%s)", entIndex, ent:GetClass())
         return true
     end
-    
+
     local steamID = owner:SteamID()
     local steamID64 = owner:SteamID64()
-    
+
     if ent.SetCreator then
         pcall(ent.SetCreator, ent, owner)
     end
-    
+
     OwnershipCache[entIndex] = {
         owner = owner,
         steamID = steamID,
         steamID64 = steamID64,
         setTime = CurTime()
     }
-    
+
     OwnershipBySteamID[steamID] = OwnershipBySteamID[steamID] or {}
     OwnershipBySteamID[steamID][entIndex] = true
-    
+
     if CONFIG.USE_NETWORKED_VARS then
         if ent.SetNWEntity then
             pcall(ent.SetNWEntity, ent, CONFIG.NETWORK_VAR_KEY, owner)
@@ -76,28 +78,28 @@ function RARELOAD.Ownership.SetOwner(ent, owner)
             pcall(ent.SetNWString, ent, CONFIG.STEAMID_VAR_KEY, steamID)
         end
     end
-    
+
     ent.RareloadOwnerSteamID = steamID
     ent.RareloadOwnerSteamID64 = steamID64
-    
-    VerboseLog("Set ownership: Entity %d (%s) -> %s (%s)", 
+
+    VerboseLog("Set ownership: Entity %d (%s) -> %s (%s)",
         entIndex, ent:GetClass(), owner:Nick(), steamID)
-    
+
     return true
 end
 
 function RARELOAD.Ownership.GetOwner(ent)
     if not IsValid(ent) then return nil end
-    
+
     local entIndex = ent:EntIndex()
-    
+
     if ent.GetCreator then
         local success, creator = pcall(ent.GetCreator, ent)
         if success and IsValid(creator) and creator:IsPlayer() then
             return creator
         end
     end
-    
+
     local cached = OwnershipCache[entIndex]
     if cached then
         if IsValid(cached.owner) then
@@ -112,18 +114,18 @@ function RARELOAD.Ownership.GetOwner(ent)
             end
         end
     end
-    
+
     if ent.RareloadOwner and IsValid(ent.RareloadOwner) then
         return ent.RareloadOwner
     end
-    
+
     if CONFIG.USE_NETWORKED_VARS and ent.GetNWEntity then
         local success, nwOwner = pcall(ent.GetNWEntity, ent, CONFIG.NETWORK_VAR_KEY, NULL)
         if success and IsValid(nwOwner) and nwOwner:IsPlayer() then
             return nwOwner
         end
     end
-    
+
     local steamID = ent.RareloadOwnerSteamID
     if not steamID and ent.GetNWString then
         local success, sid = pcall(ent.GetNWString, ent, CONFIG.STEAMID_VAR_KEY, "")
@@ -131,7 +133,7 @@ function RARELOAD.Ownership.GetOwner(ent)
             steamID = sid
         end
     end
-    
+
     if steamID then
         for _, ply in ipairs(player.GetAll()) do
             if ply:SteamID() == steamID then
@@ -140,61 +142,139 @@ function RARELOAD.Ownership.GetOwner(ent)
             end
         end
     end
-    
+
     return nil
 end
 
 function RARELOAD.Ownership.GetOwnerSteamID(ent)
     if not IsValid(ent) then return nil end
-    
+
     local entIndex = ent:EntIndex()
-    
+
     local cached = OwnershipCache[entIndex]
     if cached and cached.steamID then
         return cached.steamID
     end
-    
+
     if ent.RareloadOwnerSteamID then
         return ent.RareloadOwnerSteamID
     end
-    
+
     if ent.GetNWString then
         local success, sid = pcall(ent.GetNWString, ent, CONFIG.STEAMID_VAR_KEY, "")
         if success and sid ~= "" then
             return sid
         end
     end
-    
+
     local owner = RARELOAD.Ownership.GetOwner(ent)
-    if IsValid(owner) then
+    if owner and IsValid(owner) and owner.SteamID then
         return owner:SteamID()
     end
-    
+
     return nil
 end
 
 function RARELOAD.Ownership.IsOwner(ent, ply)
     if not IsValid(ent) or not IsValid(ply) then return false end
-    
+
     local owner = RARELOAD.Ownership.GetOwner(ent)
     if IsValid(owner) then
         return owner == ply
     end
-    
+
     local ownerSteamID = RARELOAD.Ownership.GetOwnerSteamID(ent)
     if ownerSteamID then
         return ownerSteamID == ply:SteamID()
     end
-    
+
     return false
+end
+
+function RARELOAD.Ownership.GetPlayerSteamIDSafe(owner)
+    if not IsValid(owner) then return nil end
+
+    if owner.SteamID then
+        local ok, sid = pcall(owner.SteamID, owner)
+        if ok and isstring(sid) and sid ~= "" then
+            return sid
+        end
+    end
+
+    if owner.SteamID64 then
+        local ok, sid64 = pcall(owner.SteamID64, owner)
+        if ok and isstring(sid64) and sid64 ~= "" then
+            return sid64
+        end
+    end
+
+    return nil
+end
+
+function RARELOAD.Ownership.ResolveOwner(ent)
+    if not IsValid(ent) then return nil end
+
+    local ok, owner = pcall(RARELOAD.Ownership.GetOwner, ent)
+    if ok and owner and IsValid(owner) and owner:IsPlayer() then
+        return owner
+    end
+
+    if ent.GetOwner then
+        local success, fallbackOwner = pcall(ent.GetOwner, ent)
+        if success and IsValid(fallbackOwner) and fallbackOwner:IsPlayer() then
+            return fallbackOwner
+        end
+    end
+
+    if ent.GetNWEntity then
+        local success, nwOwner = pcall(ent.GetNWEntity, ent, CONFIG.NETWORK_VAR_KEY, NULL)
+        if success and IsValid(nwOwner) and nwOwner:IsPlayer() then
+            return nwOwner
+        end
+    end
+
+    return nil
+end
+
+function RARELOAD.Ownership.GetOwnerSteamIDSafe(ent)
+    if not IsValid(ent) then return nil end
+
+    local ok, sid = pcall(RARELOAD.Ownership.GetOwnerSteamID, ent)
+    if ok and isstring(sid) and sid ~= "" then
+        return sid
+    end
+
+    local owner = RARELOAD.Ownership.ResolveOwner(ent)
+    if IsValid(owner) then
+        return RARELOAD.Ownership.GetPlayerSteamIDSafe(owner)
+    end
+
+    return nil
+end
+
+function RARELOAD.Ownership.IsOwnedByPlayerSafe(ent, ply)
+    if not IsValid(ent) or not IsValid(ply) then return false end
+
+    local ok, isOwner = pcall(RARELOAD.Ownership.IsOwner, ent, ply)
+    if ok and isOwner then
+        return true
+    end
+
+    local ownerSteamID = RARELOAD.Ownership.GetOwnerSteamIDSafe(ent)
+    if ownerSteamID and ply.SteamID and ownerSteamID == ply:SteamID() then
+        return true
+    end
+
+    local owner = RARELOAD.Ownership.ResolveOwner(ent)
+    return IsValid(owner) and owner == ply
 end
 
 function RARELOAD.Ownership.GetPlayerEntities(ply)
     if not IsValid(ply) then return {} end
-    
+
     local steamID = ply:SteamID()
     local entities = {}
-    
+
     if OwnershipBySteamID[steamID] then
         for entIndex, _ in pairs(OwnershipBySteamID[steamID]) do
             local ent = Entity(entIndex)
@@ -203,29 +283,39 @@ function RARELOAD.Ownership.GetPlayerEntities(ply)
             end
         end
     end
-    
+
     return entities
 end
 
 function RARELOAD.Ownership.Transfer(ent, newOwner)
     if not IsValid(ent) then return false end
-    
+
     local oldOwner = RARELOAD.Ownership.GetOwner(ent)
     local success = RARELOAD.Ownership.SetOwner(ent, newOwner)
-    
+
     if success then
+        local oldOwnerName = "nobody"
+        if oldOwner and IsValid(oldOwner) then
+            oldOwnerName = oldOwner:Nick()
+        end
+
+        local newOwnerName = "nobody"
+        if newOwner and IsValid(newOwner) then
+            newOwnerName = newOwner:Nick()
+        end
+
         DebugLog("Transferred entity %d from %s to %s",
             ent:EntIndex(),
-            IsValid(oldOwner) and oldOwner:Nick() or "nobody",
-            IsValid(newOwner) and newOwner:Nick() or "nobody")
+            oldOwnerName,
+            newOwnerName)
     end
-    
+
     return success
 end
 
 function RARELOAD.Ownership.CleanupCache()
     local removedCount = 0
-    
+
     for entIndex, data in pairs(OwnershipCache) do
         local ent = Entity(entIndex)
         if not IsValid(ent) then
@@ -236,13 +326,13 @@ function RARELOAD.Ownership.CleanupCache()
             removedCount = removedCount + 1
         end
     end
-    
+
     for steamID, entities in pairs(OwnershipBySteamID) do
         if table.Count(entities) == 0 then
             OwnershipBySteamID[steamID] = nil
         end
     end
-    
+
     if removedCount > 0 then
         DebugLog("Cleanup removed %d invalid entries", removedCount)
     end
@@ -252,10 +342,10 @@ if SERVER then
     timer.Create("RareloadOwnershipCleanup", CONFIG.CACHE_CLEANUP_INTERVAL, 0, function()
         RARELOAD.Ownership.CleanupCache()
     end)
-    
+
     hook.Add("EntityRemoved", "RareloadOwnershipCleanup", function(ent)
         if not IsValid(ent) then return end
-        
+
         local entIndex = ent:EntIndex()
         if OwnershipCache[entIndex] then
             local steamID = OwnershipCache[entIndex].steamID
@@ -265,12 +355,12 @@ if SERVER then
             OwnershipCache[entIndex] = nil
         end
     end)
-    
+
     hook.Add("PlayerDisconnected", "RareloadOwnershipDisconnect", function(ply)
         if not IsValid(ply) then return end
-        
+
         local steamID = ply:SteamID()
-        
+
         if OwnershipBySteamID[steamID] then
             for entIndex, _ in pairs(OwnershipBySteamID[steamID]) do
                 if OwnershipCache[entIndex] then
@@ -278,17 +368,17 @@ if SERVER then
                 end
             end
         end
-        
+
         DebugLog("Player %s (%s) disconnected, preserved ownership data", ply:Nick(), steamID)
     end)
-    
+
     hook.Add("PlayerInitialSpawn", "RareloadOwnershipReconnect", function(ply)
         timer.Simple(1, function()
             if not IsValid(ply) then return end
-            
+
             local steamID = ply:SteamID()
             local restoredCount = 0
-            
+
             if OwnershipBySteamID[steamID] then
                 for entIndex, _ in pairs(OwnershipBySteamID[steamID]) do
                     local ent = Entity(entIndex)
@@ -296,18 +386,18 @@ if SERVER then
                         if OwnershipCache[entIndex] then
                             OwnershipCache[entIndex].owner = ply
                         end
-                        
+
                         ent.RareloadOwner = ply
-                        
+
                         if CONFIG.USE_NETWORKED_VARS and ent.SetNWEntity then
                             pcall(ent.SetNWEntity, ent, CONFIG.NETWORK_VAR_KEY, ply)
                         end
-                        
+
                         restoredCount = restoredCount + 1
                     end
                 end
             end
-            
+
             if restoredCount > 0 then
                 DebugLog("Restored ownership for %d entities to %s", restoredCount, ply:Nick())
             end

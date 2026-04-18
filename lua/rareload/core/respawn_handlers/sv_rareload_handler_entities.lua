@@ -17,26 +17,9 @@ end
 
 local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
-
-local function IsDebugEnabledForPlayer(ply)
-    if RARELOAD and RARELOAD.GetPlayerSetting and IsValid(ply) then
-        return RARELOAD.GetPlayerSetting(ply, "debugEnabled", false)
-    end
-
-    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then
-        return DEBUG_CONFIG.ENABLED({ entity = ply })
-    end
-
-    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled or false
-end
-
-local function IsAnyDebugEnabled()
-    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then
-        return DEBUG_CONFIG.ENABLED()
-    end
-
-    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled or false
-end
+local DebugState = include("rareload/debug/sv_debug_state.lua")
+local EntityIdentity = include("rareload/core/rareload_entity_identity.lua")
+local SnapshotRestore = include("rareload/core/respawn_handlers/sv_rareload_snapshot_restore.lua")
 
 local function CountTableEntries(tbl)
     if not istable(tbl) then return 0 end
@@ -46,30 +29,14 @@ local function CountTableEntries(tbl)
     end
     return count
 end
-
-local function FindSnapshotOwner(snapshot)
-    if not snapshot then return nil end
-    local sid64 = snapshot.ownerSteamID64
-    local sid = snapshot.ownerSteamID
-
-    for _, ply in ipairs(player.GetAll()) do
-        if sid64 and ply.SteamID64 and ply:SteamID64() == sid64 then
-            return ply
-        end
-        if sid and ply.SteamID and ply:SteamID() == sid then
-            return ply
-        end
-    end
-
-    return nil
-end
 function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
     if not savedInfo or not istable(savedInfo.entities) then
         return false
     end
 
     local snapshot = savedInfo.entities.__duplicator or nil
-    local debugEnabled = IsDebugEnabledForPlayer(requestingPlayer) or IsAnyDebugEnabled()
+    local debugEnabled = (DebugState and DebugState.IsEnabledForPlayer and DebugState.IsEnabledForPlayer(requestingPlayer))
+        or (DebugState and DebugState.IsAnyEnabled and DebugState.IsAnyEnabled())
     if not snapshot then
         if RARELOAD.Debug and RARELOAD.Debug.Write then
             RARELOAD.Debug.Write("entity_respawn", "WARNING", 0, "No duplicator snapshot found in SavedInfo.entities")
@@ -103,8 +70,9 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
         duplicatesRemoved = 0
     }
 
-    local targetOwner = IsValid(requestingPlayer) and requestingPlayer or FindSnapshotOwner(snapshot)
-    debugEnabled = debugEnabled or IsDebugEnabledForPlayer(targetOwner)
+    local targetOwner = IsValid(requestingPlayer) and requestingPlayer or DuplicatorBridge.FindSnapshotOwner(snapshot)
+    debugEnabled = debugEnabled or
+        (DebugState and DebugState.IsEnabledForPlayer and DebugState.IsEnabledForPlayer(targetOwner))
 
     if RARELOAD.Debug and RARELOAD.Debug.Write then
         RARELOAD.Debug.Write("entity_respawn", "INFO", 0,
@@ -118,44 +86,18 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
     end
 
     local indexToID = snapshot._indexMap or {}
-
-    local existingIDs = {}
-    for _, ent in ipairs(ents.GetAll()) do
-        if ent.RareloadEntityID then
-            existingIDs[ent.RareloadEntityID] = true
-        else
-            local nwID = ent:GetNWString("RareloadID", "")
-            if nwID ~= "" then
-                existingIDs[nwID] = true
+    local ok, res, skippedEntities = SnapshotRestore.RestoreWithExistingIDFilter(
+        snapshot,
+        indexToID,
+        "RareloadEntityID",
+        requestingPlayer,
+        function(err)
+            if debugEnabled then
+                print(string.format("[RARELOAD DEBUG] Server-context restore failed, retrying with player context: %s",
+                    tostring(err)))
             end
         end
-    end
-
-    local skippedEntities = {}
-
-    local restoreOptions = {
-        -- First try server context to avoid non-host sandbox/player-limit failures.
-        -- Ownership is re-applied explicitly per spawned entity below.
-        player = nil,
-        filter = function(index, entData)
-            local id = indexToID[index]
-            if id and existingIDs[id] then
-                table.insert(skippedEntities, id)
-                return false
-            end
-            return true
-        end
-    }
-
-    local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, restoreOptions)
-    if (not ok) and IsValid(requestingPlayer) then
-        if debugEnabled then
-            print(string.format("[RARELOAD DEBUG] Server-context restore failed, retrying with player context: %s",
-                tostring(res)))
-        end
-        restoreOptions.player = requestingPlayer
-        ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, restoreOptions)
-    end
+    )
 
     if debugEnabled and #skippedEntities > 0 then
         print(string.format("[RARELOAD DEBUG] Skipped %d existing entities (already on map)", #skippedEntities))
@@ -191,10 +133,7 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
 
             local savedID = indexToID[dupIndex]
             if savedID then
-                ent.RareloadEntityID = savedID
-                if ent.SetNWString then
-                    pcall(ent.SetNWString, ent, "RareloadID", savedID)
-                end
+                EntityIdentity.SetID(ent, "RareloadEntityID", savedID)
             end
 
             if IsValid(targetOwner) and RARELOAD.Ownership then
@@ -238,7 +177,7 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
         return
     end
 
-    if IsDebugEnabledForPlayer(ply) then
+    if DebugState and DebugState.IsEnabledForPlayer and DebugState.IsEnabledForPlayer(ply) then
         print(string.format("[RARELOAD] Admin %s respawning %s at %s",
             ply:Nick(), entityClass, tostring(position)))
     end

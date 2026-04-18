@@ -17,20 +17,14 @@ local CONFIG = {
     }
 }
 
+local DebugHelpers = include("rareload/debug/sv_debug_helpers.lua")
+
 local function IsDebugEnabledForPlayer(ply)
     if CONFIG.DEBUG then
         return true
     end
 
-    if RARELOAD and RARELOAD.GetPlayerSetting and IsValid(ply) then
-        return RARELOAD.GetPlayerSetting(ply, "debugEnabled", false)
-    end
-
-    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then
-        return DEBUG_CONFIG.ENABLED({ entity = ply })
-    end
-
-    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled or false
+    return DebugHelpers and DebugHelpers.IsEnabledForPlayer and DebugHelpers.IsEnabledForPlayer(ply) or false
 end
 
 local function DebugLog(ply, level, msg, ...)
@@ -39,9 +33,14 @@ local function DebugLog(ply, level, msg, ...)
     local logLevel = level or "INFO"
     local formatted = string.format(msg, ...)
 
-    if RARELOAD.Debug and RARELOAD.Debug.Write then
-        RARELOAD.Debug.Write("npc_save", logLevel, 0, formatted, { entity = ply })
-        return
+    if DebugHelpers and DebugHelpers.Write then
+        local wrote = DebugHelpers.Write("npc_save", logLevel, formatted, nil, {
+            ply = ply,
+            context = { entity = ply }
+        })
+        if wrote then
+            return
+        end
     end
 
     print("[RareLoad NPC Saver] " .. formatted)
@@ -52,94 +51,13 @@ end
 if not RARELOAD or not RARELOAD.Ownership then
     include("rareload/utils/rareload_ownership.lua")
 end
-
-local function GetEntityOwner(ent)
-    if not IsValid(ent) then return nil end
-
-    -- Use our ownership system first
-    if RARELOAD.Ownership and RARELOAD.Ownership.GetOwner then
-        local owner = RARELOAD.Ownership.GetOwner(ent)
-        if IsValid(owner) then
-            return owner
-        end
-    end
-
-    -- Fallback: Check entity's GetOwner
-    if ent.GetOwner then
-        local o = ent:GetOwner()
-        if IsValid(o) and o:IsPlayer() then return o end
-    end
-
-    -- Fallback: Check networked entity
-    if ent.GetNWEntity then
-        local o = ent:GetNWEntity("RareloadOwner")
-        if IsValid(o) and o:IsPlayer() then return o end
-    end
-
-    return nil
-end
-
-local function IsNPCOwnedByPlayer(npc, ply)
-    if not IsValid(npc) or not IsValid(ply) then return false end
-
-    if RARELOAD.Ownership and RARELOAD.Ownership.IsOwner then
-        local ok, isOwner = pcall(RARELOAD.Ownership.IsOwner, npc, ply)
-        if ok and isOwner then
-            return true
-        end
-    end
-
-    if RARELOAD.Ownership and RARELOAD.Ownership.GetOwnerSteamID then
-        local ok, sid = pcall(RARELOAD.Ownership.GetOwnerSteamID, npc)
-        if ok and isstring(sid) and sid ~= "" and sid == ply:SteamID() then
-            return true
-        end
-    end
-
-    local owner = GetEntityOwner(npc)
-    return IsValid(owner) and owner == ply
-end
-
--- Shared deterministic helpers (load once)
-if not (RARELOAD.Util and RARELOAD.Util.GenerateDeterministicID) then
-    if file.Exists("rareload/core/rareload_state_utils.lua", "LUA") then
-        include("rareload/core/rareload_state_utils.lua")
-    end
-end
-
-local function GenerateNPCUniqueID(npc)
-    return (RARELOAD.Util and RARELOAD.Util.GenerateDeterministicID) and RARELOAD.Util.GenerateDeterministicID(npc) or
-        "npc_legacyid"
-end
+local EntityIdentity = include("rareload/core/rareload_entity_identity.lua")
 
 local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 
-local function CaptureDuplicatorSnapshot(ply, trackedNPCs)
-    if not (DuplicatorBridge and DuplicatorBridge.IsSupported and DuplicatorBridge.IsSupported()) then
-        return nil
-    end
-
-    if not istable(trackedNPCs) or #trackedNPCs == 0 then
-        return nil
-    end
-
-    local snapshot, err = DuplicatorBridge.CaptureSnapshot(trackedNPCs, {
-        ownerSteamID = (IsValid(ply) and ply.SteamID and ply:SteamID()) or nil,
-        ownerSteamID64 = (IsValid(ply) and ply.SteamID64 and ply:SteamID64()) or nil,
-        anchor = IsValid(ply) and ply:GetPos() or nil
-    })
-
-    if not snapshot and err then
-        DebugLog(ply, "WARNING", "Duplicator snapshot capture failed: %s", tostring(err))
-    end
-
-    return snapshot
-end
-
 return function(ply)
     local startTime = SysTime()
-    local npcsData = {}
 
     local allNPCs = {}
     do
@@ -156,7 +74,8 @@ return function(ply)
     DebugLog(ply, "INFO", "Found %d NPCs on the map", npcCount)
 
     table.sort(allNPCs, function(a, b)
-        local ao, bo = GetEntityOwner(a), GetEntityOwner(b)
+        local ao = RARELOAD.Ownership and RARELOAD.Ownership.ResolveOwner and RARELOAD.Ownership.ResolveOwner(a) or nil
+        local bo = RARELOAD.Ownership and RARELOAD.Ownership.ResolveOwner and RARELOAD.Ownership.ResolveOwner(b) or nil
         return IsValid(ao) and not IsValid(bo)
     end)
 
@@ -166,7 +85,6 @@ return function(ply)
         allNPCs = { unpack(allNPCs, 1, CONFIG.MAX_NPCS_TO_SAVE) }
     end
 
-    local players = player.GetAll()
     local savedCount = 0
     local duplicatorTargets = {}
     local duplicatorSeen = {}
@@ -175,19 +93,12 @@ return function(ply)
         local npc = allNPCs[i]
         if not IsValid(npc) then continue end
 
-        local shouldSave = IsNPCOwnedByPlayer(npc, ply) or not CONFIG.SAVE_PLAYER_OWNED_ONLY
+        local shouldSave = (RARELOAD.Ownership and RARELOAD.Ownership.IsOwnedByPlayerSafe and
+                RARELOAD.Ownership.IsOwnedByPlayerSafe(npc, ply))
+            or not CONFIG.SAVE_PLAYER_OWNED_ONLY
         if not shouldSave then continue end
 
-        if not npc.RareloadNPCID then
-            npc.RareloadNPCID = GenerateNPCUniqueID(npc)
-            if npc.SetNWString then
-                pcall(function() npc:SetNWString("RareloadID", npc.RareloadNPCID) end)
-            end
-        end
-
-        if npc.SetNWString and npc.RareloadNPCID and (npc.GetNWString and npc:GetNWString("RareloadID", "") == "") then
-            pcall(function() npc:SetNWString("RareloadID", npc.RareloadNPCID) end)
-        end
+        EntityIdentity.EnsureID(npc, "RareloadNPCID", "npc_legacyid")
 
         if not duplicatorSeen[npc] then
             duplicatorSeen[npc] = true
@@ -199,7 +110,9 @@ return function(ply)
     local endTime = SysTime()
     DebugLog(ply, "INFO", "Saved %d/%d NPCs in %.3f seconds", savedCount, npcCount, endTime - startTime)
 
-    local duplicatorSnapshot = CaptureDuplicatorSnapshot(ply, duplicatorTargets)
+    local duplicatorSnapshot = DuplicatorBridge.CaptureSnapshotForPlayer(duplicatorTargets, ply, function(err)
+        DebugLog(ply, "WARNING", "Duplicator snapshot capture failed: %s", tostring(err))
+    end)
     if not duplicatorSnapshot then
         local level = (savedCount > 0) and "WARNING" or "VERBOSE"
         local reason = (savedCount > 0)

@@ -107,14 +107,6 @@ local function loadAddonSettings()
     return false, "Settings not available"
 end
 
-local function toVecTable(vec)
-    return RARELOAD.DataUtils.ToPositionTable(vec) or { x = 0, y = 0, z = 0 }
-end
-
-local function toAngTable(ang)
-    return RARELOAD.DataUtils.ToAngleTable(ang) or { p = 0, y = 0, r = 0 }
-end
-
 function TOOL:LeftClick(trace, ply)
     local ply = self:GetOwner()
 
@@ -231,9 +223,9 @@ function TOOL:Reload()
                 if RARELOAD.CheckPermission(ply, "VIEW_PHANTOM") then
                     net.Start("CreatePlayerPhantom")
                     net.WriteEntity(ply)
-                    local pos = toVecTable(previousData.pos)
+                    local pos = RARELOAD.DataUtils.ToPositionTable(previousData.pos) or { x = 0, y = 0, z = 0 }
                     net.WriteVector(Vector(pos.x, pos.y, pos.z))
-                    local ang = toAngTable(previousData.ang)
+                    local ang = RARELOAD.DataUtils.ToAngleTable(previousData.ang) or { p = 0, y = 0, r = 0 }
                     net.WriteAngle(Angle(ang.p, ang.y, ang.r))
                     net.Send(ply)
 
@@ -306,7 +298,7 @@ function TOOL.BuildCPanel(panel)
         draw.SimpleText("RARELOAD", "RareloadUI.Title", 12, h / 2 - 6, RareloadUI.Theme.Colors.Text.Primary,
             TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         draw.SimpleText("Configuration Panel", "RareloadUI.Small", 12, h / 2 + 10, RareloadUI.Theme.Colors.Text
-        .Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+            .Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 
         -- Version badge
         draw.SimpleText("v3.2", "RareloadUI.Small", w - 12, h / 2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT,
