@@ -1,105 +1,76 @@
 -- SED panel rendering functions (optimized)
 
--- Pre-allocated color constants (avoid 20+ Color() allocations per panel per frame)
-local BG_COLOR = Color(15, 18, 24, 250)
-local BG_COLOR_DISTANT = Color(15, 18, 24, 230)
-local HEADER_COLOR = Color(25, 30, 40, 255)
-local ACCENT_COLOR_ALPHA = Color(60, 140, 220, 100)
-local WHITE = Color(255, 255, 255)
-local LABEL_COLOR = Color(200, 210, 225, 255)
-local VALUE_COLOR = Color(240, 245, 250)
-local TAB_INACTIVE = Color(150, 160, 170, 200)
-local TAB_EMPTY = Color(105, 112, 122, 170)
-local TAB_COUNT_INACTIVE = Color(170, 180, 190, 180)
-local TAB_COUNT_EMPTY = Color(120, 125, 132, 130)
-local ARROW_COLOR = Color(150, 160, 170, 100)
-local SCROLL_BG = Color(25, 30, 40, 200)
-local SCROLL_HANDLE = Color(80, 140, 200, 200)
-local ROW_ALT = Color(32, 38, 48, 100)
-local VJ_OUTER = Color(40, 160, 100, 150)
-local VJ_INNER = Color(60, 200, 120, 220)
-local VJ_TEXT_COLOR = Color(255, 255, 255, 250)
-local HP_OUTER = Color(60, 80, 100, 180)
-local HP_BG = Color(25, 30, 38, 220)
-local HP_TEXT = Color(245, 248, 252)
-local HP_FILL = Color(100, 220, 70, 245)
-local ARMOR_OUTER = Color(60, 90, 130, 180)
-local ARMOR_BG = Color(25, 30, 40, 220)
-local ARMOR_FILL = Color(90, 150, 255, 230)
-local ARMOR_TEXT = Color(240, 245, 255)
-local HINT_INTERACT = Color(255, 235, 190)
-local HINT_CONTROLS = Color(225, 225, 230)
-local HINT_CANDIDATE = Color(160, 210, 255)
-local MINI_BG = Color(15, 18, 24, 220)
-local MINI_TEXT = Color(180, 200, 220, 220)
-local MARKER_BG = Color(15, 18, 24, 180)
-local MARKER_TEXT = Color(160, 180, 200, 200)
+local RS = SED and SED.RenderShared
+if not (RS and RS._initialized) then
+    include("rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
+    RS = SED and SED.RenderShared
+end
+
+if not (RS and RS._initialized) then
+    ErrorNoHalt("[Rareload] Missing shared renderer state in SED_panel_renderer.lua\n")
+    return
+end
+
+local BG_COLOR = RS.BG_COLOR
+local BG_COLOR_DISTANT = RS.BG_COLOR_DISTANT
+local HEADER_COLOR = RS.HEADER_COLOR
+local WHITE = RS.WHITE
+local LABEL_COLOR = RS.LABEL_COLOR
+local VALUE_COLOR = RS.VALUE_COLOR
+local TAB_INACTIVE = RS.TAB_INACTIVE
+local TAB_EMPTY = RS.TAB_EMPTY
+local TAB_COUNT_INACTIVE = RS.TAB_COUNT_INACTIVE
+local TAB_COUNT_EMPTY = RS.TAB_COUNT_EMPTY
+local ARROW_COLOR = RS.ARROW_COLOR
+local SCROLL_BG = RS.SCROLL_BG
+local SCROLL_HANDLE = RS.SCROLL_HANDLE
+local ROW_ALT = RS.ROW_ALT
+local VJ_OUTER = RS.VJ_OUTER
+local VJ_INNER = RS.VJ_INNER
+local VJ_TEXT_COLOR = RS.VJ_TEXT_COLOR
+local HP_OUTER = RS.HP_OUTER
+local HP_BG = RS.HP_BG
+local HP_TEXT = RS.HP_TEXT
+local HP_FILL = RS.HP_FILL
+local ARMOR_OUTER = RS.ARMOR_OUTER
+local ARMOR_BG = RS.ARMOR_BG
+local ARMOR_FILL = RS.ARMOR_FILL
+local ARMOR_TEXT = RS.ARMOR_TEXT
+local HINT_INTERACT = RS.HINT_INTERACT
+local HINT_CONTROLS = RS.HINT_CONTROLS
+local HINT_CANDIDATE = RS.HINT_CANDIDATE
+local MINI_TEXT = RS.MINI_TEXT
 
 -- Cached function references (avoid repeated table lookups in hot path)
-local cam_Start3D2D = cam.Start3D2D
-local cam_End3D2D = cam.End3D2D
-local surface_SetDrawColor = surface.SetDrawColor
-local surface_DrawRect = surface.DrawRect
-local surface_DrawOutlinedRect = surface.DrawOutlinedRect
-local surface_SetFont = surface.SetFont
-local surface_GetTextSize = surface.GetTextSize
-local draw_RoundedBox = draw.RoundedBox
-local draw_SimpleText = draw.SimpleText
-local render_SetStencilWriteMask = render.SetStencilWriteMask
-local render_SetStencilTestMask = render.SetStencilTestMask
-local render_SetStencilReferenceValue = render.SetStencilReferenceValue
-local render_SetStencilCompareFunction = render.SetStencilCompareFunction
-local render_SetStencilPassOperation = render.SetStencilPassOperation
-local render_SetStencilFailOperation = render.SetStencilFailOperation
-local render_SetStencilZFailOperation = render.SetStencilZFailOperation
-local render_ClearStencil = render.ClearStencil
-local render_SetStencilEnable = render.SetStencilEnable
-local math_sqrt = math.sqrt
-local math_max = math.max
-local math_min = math.min
-local math_Clamp = math.Clamp
-local math_abs = math.abs
-local math_floor = math.floor
-local math_ceil = math.ceil
-local math_AngleDifference = math.AngleDifference
-local string_Explode = string.Explode
-
-local function isColorLike(value)
-    return istable(value) and tonumber(value.r) ~= nil and tonumber(value.g) ~= nil and tonumber(value.b) ~= nil
-end
-
-local function safeTextColor(value, fallback)
-    if isColorLike(value) then
-        return value
-    end
-    return fallback
-end
-
-local function clipTextToWidth(text, maxWidth)
-    local t = tostring(text or "")
-    if t == "" or maxWidth <= 0 then return "" end
-
-    local w = surface_GetTextSize(t) or 0
-    if w <= maxWidth then
-        return t
-    end
-
-    local ellipsis = "..."
-    local ellipsisW = surface_GetTextSize(ellipsis) or 0
-    if ellipsisW >= maxWidth then
-        return ellipsis
-    end
-
-    local result = t
-    while #result > 0 do
-        result = string.sub(result, 1, #result - 1)
-        if (surface_GetTextSize(result) or 0) + ellipsisW <= maxWidth then
-            return result .. ellipsis
-        end
-    end
-
-    return ellipsis
-end
+local cam_Start3D2D = RS.cam_Start3D2D
+local cam_End3D2D = RS.cam_End3D2D
+local surface_SetDrawColor = RS.surface_SetDrawColor
+local surface_DrawRect = RS.surface_DrawRect
+local surface_DrawOutlinedRect = RS.surface_DrawOutlinedRect
+local surface_SetFont = RS.surface_SetFont
+local surface_GetTextSize = RS.surface_GetTextSize
+local draw_RoundedBox = RS.draw_RoundedBox
+local draw_SimpleText = RS.draw_SimpleText
+local render_SetStencilWriteMask = RS.render_SetStencilWriteMask
+local render_SetStencilTestMask = RS.render_SetStencilTestMask
+local render_SetStencilReferenceValue = RS.render_SetStencilReferenceValue
+local render_SetStencilCompareFunction = RS.render_SetStencilCompareFunction
+local render_SetStencilPassOperation = RS.render_SetStencilPassOperation
+local render_SetStencilFailOperation = RS.render_SetStencilFailOperation
+local render_SetStencilZFailOperation = RS.render_SetStencilZFailOperation
+local render_ClearStencil = RS.render_ClearStencil
+local render_SetStencilEnable = RS.render_SetStencilEnable
+local math_sqrt = RS.math_sqrt
+local math_max = RS.math_max
+local math_min = RS.math_min
+local math_Clamp = RS.math_Clamp
+local math_abs = RS.math_abs
+local math_floor = RS.math_floor
+local math_ceil = RS.math_ceil
+local math_AngleDifference = RS.math_AngleDifference
+local string_Explode = RS.string_Explode
+local safeTextColor = RS.safeTextColor
+local clipTextToWidth = RS.clipTextToWidth
 
 function SED.DrawSavedPanel(ent, saved, isNPC, precomputedParams, precomputedDistSqr)
     if not (IsValid(ent) and saved) then return end
@@ -194,17 +165,87 @@ function SED.DrawSavedPanel(ent, saved, isNPC, precomputedParams, precomputedDis
 
     local maxVisibleLines = SED.MAX_VISIBLE_LINES
     if currentLOD == 3 then
-        maxVisibleLines = math_min(10, SED.MAX_VISIBLE_LINES)
+        maxVisibleLines = math_min(8, SED.MAX_VISIBLE_LINES)
     elseif currentLOD == 2 then
-        maxVisibleLines = math_min(20, SED.MAX_VISIBLE_LINES)
+        maxVisibleLines = math_min(12, SED.MAX_VISIBLE_LINES)
     elseif currentLOD == 1 then
-        maxVisibleLines = math_min(30, SED.MAX_VISIBLE_LINES)
+        maxVisibleLines = math_min(15, SED.MAX_VISIBLE_LINES)
     end
 
-    local lineHeight = currentLOD >= 2 and 16 or 18
-    local titleHeight = currentLOD >= 2 and 30 or 44
+    local lineHeight = currentLOD >= 2 and 18 or 24
+    local titleHeight = currentLOD >= 2 and 30 or 52
     local tabHeight = currentLOD >= 2 and 24 or 32
-    local sidebarWidth = currentLOD >= 2 and 80 or 110
+    local sidebarWidth = currentLOD >= 2 and 80 or 120
+
+    local contentFont = "Trebuchet18"
+
+    local function performWrapText(text, maxWidth)
+        if not text or text == "" then return { text } end
+        local wrapCache = cache._wrap or {}
+        cache._wrap = wrapCache
+        wrapCache[activeCat] = wrapCache[activeCat] or { width = maxWidth, lines = {} }
+        local catWrap = wrapCache[activeCat]
+        if catWrap.width ~= maxWidth then
+            catWrap.width = maxWidth
+            catWrap.lines = {}
+        end
+
+        surface_SetFont(contentFont)
+        local textWidth = surface_GetTextSize(text) or 0
+        if textWidth <= maxWidth and not string.find(text, "\n") then
+            return { text }
+        end
+        local cached = catWrap.lines[text]
+        if cached then return cached end
+
+        local wrapLines = {}
+        local linesToProcess = string_Explode("\n", text)
+
+        for _, explLine in ipairs(linesToProcess) do
+            local words = string_Explode(" ", explLine)
+            local currentLine = ""
+
+            for i, word in ipairs(words) do
+                local testLine = currentLine
+
+                -- preserve leading spaces
+                if currentLine == "" and word == "" then
+                    testLine = testLine .. " "
+                elseif currentLine == "" then
+                    testLine = word
+                elseif word == "" then
+                    testLine = testLine .. " "
+                else
+                    testLine = testLine .. " " .. word
+                end
+
+                local testWidth = surface_GetTextSize(testLine) or 0
+
+                if testWidth <= maxWidth then
+                    currentLine = testLine
+                else
+                    if string.Trim(currentLine) ~= "" then
+                        wrapLines[#wrapLines + 1] = currentLine
+                        -- Try to carry over the indentation to the next wrapped line
+                        local indentMatch = string.match(explLine, "^(%s+)")
+                        currentLine = (indentMatch or "") .. word
+                    else
+                        wrapLines[#wrapLines + 1] = word
+                        currentLine = ""
+                    end
+                end
+            end
+
+            -- Ensure we push the last segment, explicitly allow mostly empty lines if original was empty
+            if currentLine ~= "" or explLine == "" then
+                wrapLines[#wrapLines + 1] = currentLine
+            end
+        end
+
+        local result = #wrapLines > 0 and wrapLines or { text }
+        catWrap.lines[text] = result
+        return result
+    end
 
     local width = cache.widths[activeCat] or 400
     if not cache.widths[activeCat] then
@@ -253,16 +294,80 @@ function SED.DrawSavedPanel(ent, saved, isNPC, precomputedParams, precomputedDis
         ((saved.class or saved.Class or saved.ClassName or "unknown") .. "?")
     local scrollTable = isNPC and SED.PanelScroll.npcs or SED.PanelScroll.entities
     local scrollKey = panelID .. "_" .. activeCat
-    local maxScrollLines = math_max(0, #lines - maxVisibleLines)
+
+    -- We must calculate the total physical lines for scrolling, not logical lines
+    local maxLabelWForScroll = cache.maxLabelWidths and cache.maxLabelWidths[activeCat] or 100
+    local maxValueWForScroll = width - sidebarWidth - maxLabelWForScroll - 40
+    if maxValueWForScroll < 90 then maxValueWForScroll = 90 end
+
+    local truePhysicalLinesTotal = 0
+    for _, l in ipairs(lines) do
+        truePhysicalLinesTotal = truePhysicalLinesTotal + #performWrapText(l[2] or "", maxValueWForScroll)
+    end
+
+    local maxScrollLines = math_max(0, truePhysicalLinesTotal - maxVisibleLines)
     local currentScroll = math_min(scrollTable[scrollKey] or 0, maxScrollLines)
     scrollTable[scrollKey] = currentScroll
 
-    local visibleLines = math_min(#lines - currentScroll, maxVisibleLines)
-    local contentHeight = visibleLines * lineHeight + 12
+    -- Recalculate contentHeight using actual wrapping and margins
+    -- and ensure the limit is evaluated using physical (wrapped) lines, not logical lines
+    local contentHeight = 12
+    local totalPhysicalLines = 0
+    local renderedLogicalItems = 0
+    local maxLabelW = cache.maxLabelWidths and cache.maxLabelWidths[activeCat] or 100
+    local maxValueWidthEstimate = width - sidebarWidth - maxLabelW - 40
+    if maxValueWidthEstimate < 90 then maxValueWidthEstimate = 90 end
 
-    local maxVisibleTabs = 4
-    local visibleTabCount = math_min(#categories, maxVisibleTabs)
-    local minSidebarHeight = visibleTabCount * tabHeight + 24
+    -- Advance through logical items, consuming physical lines equivalent to currentScroll
+    local physicalLinesSkipped = 0
+    local startIndex = 1
+    local physicalOffsetInsideStartItem = 0
+
+    for i, l in ipairs(lines) do
+        local requiredLines = #performWrapText(l[2] or "", maxValueWidthEstimate)
+        if physicalLinesSkipped + requiredLines > currentScroll then
+            startIndex = i
+            physicalOffsetInsideStartItem = currentScroll - physicalLinesSkipped
+            break
+        end
+        physicalLinesSkipped = physicalLinesSkipped + requiredLines
+    end
+
+    -- We'll calculate target heights based on what's visible
+    local itemsToDrawInfos = {}
+    for i = startIndex, #lines do
+        local l = lines[i]
+        local wrapLines = performWrapText(l[2] or "", maxValueWidthEstimate)
+        local linesNeededTotal = #wrapLines
+        local linesNeeded = linesNeededTotal
+
+        local startOffset = 0
+        if i == startIndex then
+            startOffset = physicalOffsetInsideStartItem
+            linesNeeded = linesNeeded - startOffset
+            wrapLines = { unpack(wrapLines, startOffset + 1) }
+        end
+
+        if totalPhysicalLines + linesNeeded > maxVisibleLines then
+            linesNeeded = maxVisibleLines - totalPhysicalLines
+            if linesNeeded <= 0 then break end
+            wrapLines = { unpack(wrapLines, 1, linesNeeded) }
+        end
+
+        contentHeight = contentHeight + (linesNeeded * lineHeight) + 4
+        totalPhysicalLines = totalPhysicalLines + linesNeeded
+        renderedLogicalItems = renderedLogicalItems + 1
+
+        table.insert(itemsToDrawInfos, {
+            logicalIndex = i,
+            linesNeeded = linesNeeded,
+            wrapLines = wrapLines,
+            isPartialStart = (i == startIndex and startOffset > 0)
+        })
+    end
+
+    local minVisibleTabs = math_min(#categories, 4)
+    local minSidebarHeight = minVisibleTabs * tabHeight + 24
 
     local calculatedHeight = titleHeight + contentHeight + 18
     local targetHeight = math_max(calculatedHeight, titleHeight + minSidebarHeight)
@@ -277,6 +382,8 @@ function SED.DrawSavedPanel(ent, saved, isNPC, precomputedParams, precomputedDis
 
     local panelHeight = cache.curHeight
     width = cache.curWidth
+
+    local maxVisibleTabs = math_max(minVisibleTabs, math_floor((panelHeight - titleHeight - 24) / tabHeight))
 
     local dir = (pos - eyePos)
     dir:Normalize()
@@ -380,9 +487,9 @@ function SED.DrawSavedPanel(ent, saved, isNPC, precomputedParams, precomputedDis
 
     local title = isNPC and "Saved NPC" or "Saved Entity"
     local titleFont = currentLOD >= 2 and "Trebuchet18" or "Trebuchet24"
-    draw_SimpleText(title, titleFont, offsetX + 12, offsetY + titleHeight / 2 - 1, WHITE,
+    draw_SimpleText(title, titleFont, offsetX + 12, offsetY + 6, WHITE,
         TEXT_ALIGN_LEFT,
-        TEXT_ALIGN_CENTER)
+        TEXT_ALIGN_TOP)
 
     if currentLOD < 2 then
         local subtitleClass = saved.class or saved.Class or saved.ClassName or "unknown"
@@ -400,9 +507,9 @@ function SED.DrawSavedPanel(ent, saved, isNPC, precomputedParams, precomputedDis
         surface_SetFont("Trebuchet18")
         subtitle = clipTextToWidth(subtitle, subtitleMaxW)
 
-        draw_SimpleText(subtitle, "Trebuchet18", offsetX + 12, offsetY + titleHeight - 6, MINI_TEXT,
+        draw_SimpleText(subtitle, "Trebuchet18", offsetX + 12, offsetY + 30, MINI_TEXT,
             TEXT_ALIGN_LEFT,
-            TEXT_ALIGN_BOTTOM)
+            TEXT_ALIGN_TOP)
     end
 
     local isVJBase = false
@@ -414,14 +521,17 @@ function SED.DrawSavedPanel(ent, saved, isNPC, precomputedParams, precomputedDis
     end
 
     if isNPC and isVJBase and currentLOD < 2 then
+        surface_SetFont(titleFont)
         local titleW = surface_GetTextSize(title) or 0
         local badgeX = offsetX + 16 + titleW + 10
-        local badgeY = offsetY + titleHeight / 2 - 9
+        -- Align Y coordinates properly instead of overlapping subtitle text
+        local badgeY = offsetY + 6
 
         draw_RoundedBox(5, badgeX - 1, badgeY - 1, 44, 18, VJ_OUTER)
         draw_RoundedBox(4, badgeX, badgeY, 42, 16, VJ_INNER)
 
-        draw_SimpleText("VJ", "Trebuchet18", badgeX + 21, badgeY + 8, VJ_TEXT_COLOR, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        draw_SimpleText("VJ", "Trebuchet18", badgeX + 21, badgeY + 8, VJ_TEXT_COLOR, TEXT_ALIGN_CENTER,
+            TEXT_ALIGN_CENTER)
     end
 
     if currentLOD < 2 then
@@ -607,61 +717,14 @@ function SED.DrawSavedPanel(ent, saved, isNPC, precomputedParams, precomputedDis
     end
 
     local startY = offsetY + titleHeight + 8
-    local contentFont = "Trebuchet18"
     surface_SetFont(contentFont)
-
-    local function WrapText(text, maxWidth)
-        if not text or text == "" then return { text } end
-        local wrapCache = cache._wrap or {}
-        cache._wrap = wrapCache
-        wrapCache[activeCat] = wrapCache[activeCat] or { width = maxWidth, lines = {} }
-        local catWrap = wrapCache[activeCat]
-        if catWrap.width ~= maxWidth then
-            catWrap.width = maxWidth
-            catWrap.lines = {}
-        end
-
-        local textWidth = surface_GetTextSize(text) or 0
-        if textWidth <= maxWidth then
-            return { text }
-        end
-        local cached = catWrap.lines[text]
-        if cached then return cached end
-
-        local words = string_Explode(" ", text)
-        local wrapLines = {}
-        local currentLine = ""
-
-        for _, word in ipairs(words) do
-            local testLine = currentLine == "" and word or (currentLine .. " " .. word)
-            local testWidth = surface_GetTextSize(testLine) or 0
-
-            if testWidth <= maxWidth then
-                currentLine = testLine
-            else
-                if currentLine ~= "" then
-                    wrapLines[#wrapLines + 1] = currentLine
-                    currentLine = word
-                else
-                    wrapLines[#wrapLines + 1] = word
-                end
-            end
-        end
-
-        if currentLine ~= "" then
-            wrapLines[#wrapLines + 1] = currentLine
-        end
-        local result = #wrapLines > 0 and wrapLines or { text }
-        catWrap.lines[text] = result
-        return result
-    end
 
     local contentOffsetX = sidebarWidth
     local labelX = offsetX + contentOffsetX + (currentLOD >= 2 and 12 or 16)
 
     local maxLabelW = cache.maxLabelWidths and cache.maxLabelWidths[activeCat] or 100
     local contentWidth = width - contentOffsetX - 28
-    local labelMaxW = math_Clamp(math_min(maxLabelW, contentWidth * 0.44), 90, 230)
+    local labelMaxW = math_Clamp(math_min(maxLabelW, contentWidth * 0.44), 90, 260)
     local valuePadding = 16
     local valueX = labelX + labelMaxW + valuePadding
 
@@ -670,40 +733,35 @@ function SED.DrawSavedPanel(ent, saved, isNPC, precomputedParams, precomputedDis
         maxValueWidth = 90
     end
 
-    local currentY = startY
-    local renderedLines = 0
+    local currentY = startY + 4
 
-    for i = 1, visibleLines do
-        local l = lines[currentScroll + i]
+    for _, drawInfo in ipairs(itemsToDrawInfos) do
+        local l = lines[drawInfo.logicalIndex]
         if not l then break end
 
-        local wrappedValue = WrapText(l[2] or "", maxValueWidth)
-        local lineCount = #wrappedValue
+        local wrappedValue = drawInfo.wrapLines
+        local lineCount = drawInfo.linesNeeded
+        local rowHeight = lineCount * lineHeight
 
-        if renderedLines + lineCount > visibleLines then
-            lineCount = visibleLines - renderedLines
-            wrappedValue = { unpack(wrappedValue, 1, lineCount) }
-        end
-
-        if currentLOD < 2 and (i + currentScroll) % 2 == 0 then
-            local bgHeight = lineCount * lineHeight
-            draw_RoundedBox(2, offsetX + contentOffsetX + 8, currentY - 3, width - contentOffsetX - 16, bgHeight + 4,
+        if currentLOD < 2 and (drawInfo.logicalIndex) % 2 == 0 then
+            draw_RoundedBox(2, offsetX + contentOffsetX + 8, currentY - 2, width - contentOffsetX - 16, rowHeight + 4,
                 ROW_ALT)
         end
 
-        local labelText = clipTextToWidth((l[1] or "") .. ":", labelMaxW)
-        draw_SimpleText(labelText, contentFont, labelX, currentY, LABEL_COLOR, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+        local labelText = ""
+        if not drawInfo.isPartialStart then
+            labelText = clipTextToWidth((l[1] or "") .. ":", labelMaxW)
+            draw_SimpleText(labelText, contentFont, labelX, currentY + 3, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+        end
 
         for j, valueLine in ipairs(wrappedValue) do
-            local valueColor = safeTextColor(l[3], VALUE_COLOR)
-            draw_SimpleText(valueLine, contentFont, valueX, currentY + (j - 1) * lineHeight, valueColor, TEXT_ALIGN_LEFT,
+            local valueColor = safeTextColor(l[3], LABEL_COLOR)
+            draw_SimpleText(valueLine, contentFont, valueX, currentY + 3 + (j - 1) * lineHeight, valueColor,
+                TEXT_ALIGN_LEFT,
                 TEXT_ALIGN_TOP)
         end
 
-        currentY = currentY + lineCount * lineHeight
-        renderedLines = renderedLines + lineCount
-
-        if renderedLines >= visibleLines then break end
+        currentY = currentY + rowHeight + 4
     end
 
     if maxScrollLines > 0 and currentLOD < 2 then
@@ -714,7 +772,7 @@ function SED.DrawSavedPanel(ent, saved, isNPC, precomputedParams, precomputedDis
 
         draw_RoundedBox(3, barX, barY, barW, barH, SCROLL_BG)
 
-        local handleH = math_max(20, barH * (visibleLines / #lines))
+        local handleH = math_max(20, barH * (renderedLogicalItems / #lines))
         local handleY = barY + (barH - handleH) * (currentScroll / maxScrollLines)
         draw_RoundedBox(3, barX, handleY, barW, handleH, SCROLL_HANDLE)
 
@@ -791,119 +849,4 @@ function SED.DrawSavedPanel(ent, saved, isNPC, precomputedParams, precomputedDis
         end
         cam_End3D2D()
     end
-end
-
--- ============================================================
--- Tier 1: Mini panel — lightweight tag with class name + HP bar
--- ~5-8 draw calls instead of 40+. No BuildPanelData, no tabs,
--- no sidebar, no stencil, no hit-test, no text wrapping.
--- ============================================================
-function SED.DrawMiniPanel(ent, saved, isNPC, renderParams, distSqr)
-    if not (IsValid(ent) and saved) then return end
-
-    SED.lpCache = SED.lpCache or LocalPlayer()
-    if not IsValid(SED.lpCache) then return end
-
-    local eyePos = SED.lpCache:EyePos()
-    local pos = ent:GetPos()
-    local distance = math_sqrt(distSqr)
-
-    local worldTopZ = renderParams and renderParams.worldTopZ
-    if not worldTopZ then
-        worldTopZ = pos.z + (renderParams and renderParams.size and renderParams.size.z or 20)
-    end
-
-    local drawPos = Vector(pos.x, pos.y, worldTopZ + 20)
-
-    local dir = (drawPos - eyePos)
-    dir:Normalize()
-    local ang = dir:Angle()
-    ang.y = ang.y - 90
-    ang.p = 0
-    ang.r = 90
-
-    local scale = math_Clamp(0.08 - distance * 0.00003, 0.03, 0.08)
-
-    local className = saved.class or saved.Class or saved.ClassName or saved.NPCName or "Unknown"
-    local title = isNPC and "Saved NPC" or "Saved Entity"
-
-    local maxHP = isNPC and (saved.MaxHealth or saved.maxHealth or 0) or 0
-    local curHP = isNPC and (saved.CurHealth or saved.health or 0) or 0
-    local w, h = 240, 52
-    if maxHP > 0 then h = 68 end
-
-    local ox, oy = -w / 2, -h / 2
-
-    cam_Start3D2D(drawPos, ang, scale)
-
-    draw_RoundedBox(6, ox, oy, w, h, MINI_BG)
-
-    surface_SetDrawColor(60, 140, 220, 200)
-    surface_DrawRect(ox, oy, w, 2)
-
-    draw_SimpleText(title, "Trebuchet18", ox + 8, oy + 10, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-    draw_SimpleText(className, "Trebuchet18", ox + 8, oy + 28, MINI_TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-
-    if maxHP > 0 then
-        local barW = w - 16
-        local hpFrac = math_Clamp(curHP / maxHP, 0, 1)
-        local bx, by = ox + 8, oy + 48
-
-        draw_RoundedBox(3, bx, by, barW, 12, HP_BG)
-
-        local fillW = (barW - 2) * hpFrac
-        if fillW > 0 then
-            HP_FILL.r = hpFrac > 0.5 and 100 or 220
-            HP_FILL.g = 220
-            draw_RoundedBox(3, bx + 1, by + 1, fillW, 10, HP_FILL)
-        end
-    end
-
-    cam_End3D2D()
-end
-
--- ============================================================
--- Tier 2: Marker — minimal colored tag, just class name
--- ~3 draw calls. Absolute minimum rendering.
--- ============================================================
-function SED.DrawMarker(ent, saved, renderParams, distSqr)
-    if not (IsValid(ent) and saved) then return end
-
-    SED.lpCache = SED.lpCache or LocalPlayer()
-    if not IsValid(SED.lpCache) then return end
-
-    local eyePos = SED.lpCache:EyePos()
-    local pos = ent:GetPos()
-    local distance = math_sqrt(distSqr)
-
-    local worldTopZ = renderParams and renderParams.worldTopZ
-    if not worldTopZ then
-        worldTopZ = pos.z + (renderParams and renderParams.size and renderParams.size.z or 20)
-    end
-
-    local drawPos = Vector(pos.x, pos.y, worldTopZ + 15)
-
-    local dir = (drawPos - eyePos)
-    dir:Normalize()
-    local ang = dir:Angle()
-    ang.y = ang.y - 90
-    ang.p = 0
-    ang.r = 90
-
-    local scale = math_Clamp(0.06 - distance * 0.00002, 0.02, 0.06)
-
-    local className = saved.class or saved.Class or saved.ClassName or saved.NPCName or "?"
-    local w, h = 110, 26
-    local ox, oy = -w / 2, -h / 2
-
-    cam_Start3D2D(drawPos, ang, scale)
-
-    draw_RoundedBox(4, ox, oy, w, h, MARKER_BG)
-
-    surface_SetDrawColor(60, 140, 220, 150)
-    surface_DrawRect(ox, oy, w, 2)
-
-    draw_SimpleText(className, "Trebuchet18", 0, oy + 13, MARKER_TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-
-    cam_End3D2D()
 end

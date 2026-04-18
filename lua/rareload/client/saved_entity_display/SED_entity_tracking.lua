@@ -81,67 +81,41 @@ timer.Simple(1, function()
     end
 end)
 
+local function purgeExpiredEntries(cache, now)
+    if not cache then return end
+    for key, entry in pairs(cache) do
+        if entry and entry.expires and entry.expires < now then
+            cache[key] = nil
+        end
+    end
+end
+
+local function pruneOldestIfNeeded(cache, maxCacheSize, now)
+    if not cache or table.Count(cache) <= maxCacheSize then return end
+
+    local oldest = now
+    local oldestKey = nil
+    for key, entry in pairs(cache) do
+        if entry and entry.expires and entry.expires < oldest then
+            oldest = entry.expires
+            oldestKey = key
+        end
+    end
+
+    if oldestKey then
+        cache[oldestKey] = nil
+    end
+end
+
 timer.Create("RARELOAD_CacheCleanup", 45, 0, function()
     local now = CurTime()
 
-    if SED.EntityPanelCache then
-        for id, entry in pairs(SED.EntityPanelCache) do
-            if entry and entry.expires and entry.expires < now then
-                SED.EntityPanelCache[id] = nil
-            end
-        end
-    end
-
-    if SED.NPCPanelCache then
-        for id, entry in pairs(SED.NPCPanelCache) do
-            if entry and entry.expires and entry.expires < now then
-                SED.NPCPanelCache[id] = nil
-            end
-        end
-    end
-
-    if SED.EntityBoundsCache then
-        for entIndex, entry in pairs(SED.EntityBoundsCache) do
-            if entry and entry.expires and entry.expires < now then
-                SED.EntityBoundsCache[entIndex] = nil
-            end
-        end
-    end
+    purgeExpiredEntries(SED.EntityPanelCache, now)
+    purgeExpiredEntries(SED.NPCPanelCache, now)
+    purgeExpiredEntries(SED.EntityBoundsCache, now)
 
     local maxCacheSize = 200
-    if SED.EntityPanelCache and table.Count(SED.EntityPanelCache) > maxCacheSize then
-        local oldest = now
-        local oldestKey = nil
-        for id, entry in pairs(SED.EntityPanelCache) do
-            if entry and entry.expires and entry.expires < oldest then
-                oldest = entry.expires
-                oldestKey = id
-            end
-        end
-        if oldestKey then SED.EntityPanelCache[oldestKey] = nil end
-    end
-
-    if SED.NPCPanelCache and table.Count(SED.NPCPanelCache) > maxCacheSize then
-        local oldest = now
-        local oldestKey = nil
-        for id, entry in pairs(SED.NPCPanelCache) do
-            if entry and entry.expires and entry.expires < oldest then
-                oldest = entry.expires
-                oldestKey = id
-            end
-        end
-        if oldestKey then SED.NPCPanelCache[oldestKey] = nil end
-    end
-
-    if SED.EntityBoundsCache and table.Count(SED.EntityBoundsCache) > maxCacheSize then
-        local oldest = now
-        local oldestKey = nil
-        for entIndex, entry in pairs(SED.EntityBoundsCache) do
-            if entry and entry.expires and entry.expires < oldest then
-                oldest = entry.expires
-                oldestKey = entIndex
-            end
-        end
-        if oldestKey then SED.EntityBoundsCache[oldestKey] = nil end
-    end
+    pruneOldestIfNeeded(SED.EntityPanelCache, maxCacheSize, now)
+    pruneOldestIfNeeded(SED.NPCPanelCache, maxCacheSize, now)
+    pruneOldestIfNeeded(SED.EntityBoundsCache, maxCacheSize, now)
 end)

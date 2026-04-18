@@ -106,6 +106,59 @@ local function EstimatePanelAimPos(ent, renderParams, eyePos)
     return basePos - horiz * outwardAmount
 end
 
+local function EstimatePanelScale(renderParams, distance)
+    local distanceScale = math.Clamp(1 - (distance / (renderParams and renderParams.isLarge and 3000 or 2000)), 0.3, 1.5)
+    local scale = (renderParams and renderParams.baseScale or SED.BASE_SCALE) * distanceScale
+    if renderParams and renderParams.isMassive then
+        scale = scale * 0.6
+    end
+    return math.Clamp(scale, SED.MIN_SCALE, SED.MAX_SCALE)
+end
+
+local function IsAimingEstimatedPanel(ent, renderParams, eyePos, eyeForward)
+    if not IsValid(ent) then return false, nil, nil end
+
+    local panelCenter = EstimatePanelAimPos(ent, renderParams, eyePos)
+    local toPanel = panelCenter - eyePos
+    local panelDistSqr = toPanel:LengthSqr()
+    if panelDistSqr < 1 then return false, nil, nil end
+
+    local panelDist = math.sqrt(panelDistSqr)
+    local panelNormal = toPanel / panelDist
+    local denom = eyeForward:Dot(panelNormal)
+    if math.abs(denom) <= 1e-4 then return false, nil, nil end
+
+    local t = toPanel:Dot(panelNormal) / denom
+    if t <= 0 then return false, nil, nil end
+
+    local hitPos = eyePos + eyeForward * t
+
+    local ang = toPanel:Angle()
+    ang.y = ang.y - 90
+    ang.p = 0
+    ang.r = 90
+
+    local right = ang:Right()
+    local up = ang:Up()
+    local rel = hitPos - panelCenter
+    local x = rel:Dot(right)
+    local y = rel:Dot(up)
+
+    local scale = EstimatePanelScale(renderParams, panelDist)
+
+    -- Conservative panel bounds for candidate bootstrap.
+    local estimatedWidth = (renderParams and renderParams.isLarge) and 620 or 520
+    local estimatedHeight = 280
+    local halfW = (estimatedWidth * 0.5) * scale
+    local halfH = (estimatedHeight * 0.5) * scale
+
+    if math.abs(x) <= halfW and math.abs(y) <= halfH then
+        return true, panelDistSqr, panelCenter
+    end
+
+    return false, panelDistSqr, panelCenter
+end
+
 function SED.QueueAllSavedPanels()
     SED.EnsureSavedLookup()
     SED.RescanLate()
@@ -224,33 +277,20 @@ function SED.QueueAllSavedPanels()
     if listCount == 0 then return end
 
 
-    -- Candidate detection based on PANEL position (not entity center), so aiming at SED panel promotes full view.
+    -- Candidate detection via panel ray hit-test so aiming the entity body alone does not promote full panel.
     if not SED.InteractionState.active then
         local eyeFwd = eyeForward
         local distThresholdSqr = 250000
-        local aimCosThreshold = 0.965925826 -- cos(15deg)
-        local aimCosThresholdSqr = aimCosThreshold * aimCosThreshold
         local bestIdx = nil
-        local bestCos = -1
         local bestDist = math.huge
 
         for i = 1, listCount do
             local item = queueList[i]
             if item then
-                local aimPos = EstimatePanelAimPos(item.ent, item.renderParams, eyePos)
-                local dx, dy, dz = aimPos.x - eyePos.x, aimPos.y - eyePos.y, aimPos.z - eyePos.z
-                local lenSqr = dx * dx + dy * dy + dz * dz
-
-                if lenSqr > 1 and lenSqr < distThresholdSqr then
-                    local dot = dx * eyeFwd.x + dy * eyeFwd.y + dz * eyeFwd.z
-                    if dot > 0 and dot * dot >= (aimCosThresholdSqr * lenSqr) then
-                        local cosValue = dot / math.sqrt(lenSqr)
-                        if cosValue > (bestCos + 5e-4) or (math.abs(cosValue - bestCos) <= 5e-4 and lenSqr < bestDist) then
-                            bestIdx = i
-                            bestDist = lenSqr
-                            bestCos = cosValue
-                        end
-                    end
+                local hit, panelDistSqr = IsAimingEstimatedPanel(item.ent, item.renderParams, eyePos, eyeFwd)
+                if hit and panelDistSqr and panelDistSqr < distThresholdSqr and panelDistSqr < bestDist then
+                    bestIdx = i
+                    bestDist = panelDistSqr
                 end
             end
         end
@@ -280,28 +320,80 @@ function SED.QueueAllSavedPanels()
     local candidateEnt = SED.CandidateEnt
     local MINI_DIST_SQR = SED.MINI_PANEL_DIST_SQR
 
+    local occluders = {}
+    local numOccluders = 0
+    local scrH_factor = ScrH() * 0.7
+
     for i = 1, maxQueue do
         local item = queueList[i]
         if item then
-            local rdata = GetRenderData()
-            rdata.ent = item.ent
-            rdata.saved = item.saved
-            rdata.isNPC = item.isNPC
-            rdata.renderParams = item.renderParams
-            rdata.distSqr = item.distSqr
+            local isCandidateOrFocused = (item.ent == isFocusedEnt or item.ent == candidateEnt)
+            local dist = math.sqrt(item.distSqr)
+            local scale = EstimatePanelScale(item.renderParams, dist)
 
-            -- Tier: 0 = full (candidate/focused), 1 = mini (close), 2 = marker (far)
-            if item.ent == isFocusedEnt or item.ent == candidateEnt then
-                rdata.tier = 0
+            local tier
+            if isCandidateOrFocused then
+                tier = 0
             elseif item.distSqr < MINI_DIST_SQR then
-                rdata.tier = 1
+                tier = 1
             else
-                rdata.tier = 2
+                tier = 2
             end
 
-            sedActiveCount = sedActiveCount + 1
-            sedActiveRender[sedActiveCount] = rdata
-            RARELOAD.DepthRenderer.AddRenderItem(item.pos, rdata.fn, "entity")
+            local aimPos = EstimatePanelAimPos(item.ent, item.renderParams, eyePos)
+            local scr = aimPos:ToScreen()
+            local occluded = false
+
+            local my_pW, my_pH
+            if tier == 0 then
+                my_pW, my_pH = 550, 320
+            elseif tier == 1 then
+                my_pW, my_pH = 260, 80
+            else
+                my_pW, my_pH = 120, 30
+            end
+
+            local screenScale = (scale * scrH_factor) / math.max(10, dist)
+            local myCenterY = scr.y - (my_pH * screenScale * 0.5)
+
+            if scr.visible and not isCandidateOrFocused then
+                for j = 1, numOccluders do
+                    local occ = occluders[j]
+                    local dx = math.abs(scr.x - occ.x)
+                    local dy = math.abs(myCenterY - occ.y)
+                    -- generous occlusion bounds
+                    if dx < occ.w and dy < occ.h then
+                        occluded = true
+                        break
+                    end
+                end
+            end
+
+            if not occluded then
+                local rdata = GetRenderData()
+                rdata.ent = item.ent
+                rdata.saved = item.saved
+                rdata.isNPC = item.isNPC
+                rdata.renderParams = item.renderParams
+                rdata.distSqr = item.distSqr
+                rdata.tier = tier
+
+                sedActiveCount = sedActiveCount + 1
+                sedActiveRender[sedActiveCount] = rdata
+                RARELOAD.DepthRenderer.AddRenderItem(item.pos, rdata.fn, "entity")
+
+                if scr.visible then
+                    numOccluders = numOccluders + 1
+                    local halfW = (my_pW / 2) * screenScale
+                    local fullH = my_pH * screenScale
+
+                    -- Multiply bounds by 1.5 and guarantee a min size of 60 to hide tight clusters
+                    local occludeW = math.max(halfW * 1.5, 60)
+                    local occludeH = math.max((fullH / 2) * 1.5, 50)
+
+                    occluders[numOccluders] = { x = scr.x, y = myCenterY, w = occludeW, h = occludeH }
+                end
+            end
         end
     end
 end

@@ -3,6 +3,12 @@ if SED then
     SED.NPCPanelCache = {}
 end
 
+local RS = SED and SED.RenderShared
+if not (RS and RS._initialized) then
+    include("rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
+    RS = SED and SED.RenderShared
+end
+
 local CATEGORY_LABEL_ORDER = {
     basic = {
         "NPC ID", "Entity ID", "Rareload NPC ID", "Rareload Entity ID", "Class", "Class Name", "NPC Name",
@@ -57,17 +63,18 @@ end
 
 local FALLBACK_TEXT_COLOR = Color(220, 220, 255)
 
-local function isColorLike(value)
-    return istable(value) and tonumber(value.r) ~= nil and tonumber(value.g) ~= nil and tonumber(value.b) ~= nil
-end
-
 local function resolveTextColor(value)
-    if isColorLike(value) then
+    local themeText = SED and SED.THEME and SED.THEME.text
+    if RS and RS.safeTextColor then
+        local fallback = RS.safeTextColor(themeText, FALLBACK_TEXT_COLOR)
+        return RS.safeTextColor(value, fallback)
+    end
+
+    if istable(value) and tonumber(value.r) ~= nil and tonumber(value.g) ~= nil and tonumber(value.b) ~= nil then
         return value
     end
 
-    local themeText = SED and SED.THEME and SED.THEME.text
-    if isColorLike(themeText) then
+    if istable(themeText) and tonumber(themeText.r) ~= nil and tonumber(themeText.g) ~= nil and tonumber(themeText.b) ~= nil then
         return themeText
     end
 
@@ -148,6 +155,74 @@ local function summarizeValueForPanel(value)
         return ("table(%d)"):format(count)
     end
     return tostring(value)
+end
+
+local function isLikelySoundPath(value)
+    if type(value) ~= "string" then return false end
+    local lower = value:lower()
+    return lower:find("%.wav$", 1, false) ~= nil or
+        lower:find("%.mp3$", 1, false) ~= nil or
+        lower:find("%.ogg$", 1, false) ~= nil
+end
+
+local function compactSoundPath(path)
+    if type(path) ~= "string" or path == "" then return nil end
+
+    local normalized = path:gsub("\\", "/")
+    local parts = string.Explode("/", normalized)
+    local clean = {}
+
+    for i = 1, #parts do
+        if parts[i] ~= "" then
+            clean[#clean + 1] = parts[i]
+        end
+    end
+
+    if #clean == 0 then
+        return normalized
+    end
+
+    local startIdx = math.max(1, #clean - 2)
+    local tail = {}
+    for i = startIdx, #clean do
+        tail[#tail + 1] = clean[i]
+    end
+
+    return table.concat(tail, "/")
+end
+
+local function summarizeSoundValueForPanel(value)
+    if type(value) == "string" then
+        if value == "" then return nil end
+        if isLikelySoundPath(value) then
+            return compactSoundPath(value)
+        end
+        return value
+    end
+
+    if not istable(value) then
+        return summarizeValueForPanel(value)
+    end
+
+    local soundItems = {}
+    for _, v in pairs(value) do
+        if type(v) == "string" and v ~= "" then
+            soundItems[#soundItems + 1] = v
+        end
+    end
+
+    if #soundItems == 0 then
+        return summarizeValueForPanel(value)
+    end
+
+    table.sort(soundItems)
+
+    local preview = {}
+    for i = 1, #soundItems do
+        preview[#preview + 1] = "\n  - " .. (compactSoundPath(soundItems[i]) or soundItems[i])
+    end
+
+    return string.format("%d sounds:%s", #soundItems, table.concat(preview, ""))
 end
 
 local function humanizeKeyLabel(label)
@@ -262,7 +337,7 @@ function SED.BuildPanelData(saved, ent, isNPC)
         table.insert(cats[cat], { label, textValue, rowColor, opts, addOrder })
     end
 
-    local function addPrefixedSummaries(cat, prefix, limit, col)
+    local function addPrefixedSummaries(cat, prefix, limit, col, summarizeFn)
         local rows = {}
         for k, v in pairs(saved) do
             if type(k) == "string" and k:sub(1, #prefix) == prefix then
@@ -281,7 +356,7 @@ function SED.BuildPanelData(saved, ent, isNPC)
             if shown >= limit then break end
 
             if not (type(row.value) == "boolean" and row.value == false) then
-                local summary = summarizeValueForPanel(row.value)
+                local summary = summarizeFn and summarizeFn(row.value, row.key) or summarizeValueForPanel(row.value)
                 if summary and summary ~= "{}" then
                     local label = humanizeKeyLabel(row.key:sub(#prefix + 1))
                     add(cat, label, summary, col)
@@ -759,7 +834,7 @@ function SED.BuildPanelData(saved, ent, isNPC)
     end
 
     if isNPC then
-        addPrefixedSummaries("sounds", "SoundTbl_", 24, Color(190, 170, 255))
+        addPrefixedSummaries("sounds", "SoundTbl_", 24, Color(190, 170, 255), summarizeSoundValueForPanel)
         addPrefixedSummaries("behavior", "AnimTbl_", 18, Color(220, 160, 160))
         addPrefixedSummaries("weapons", "Weapon_", 18, Color(255, 215, 140))
     end

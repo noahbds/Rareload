@@ -1,6 +1,4 @@
 RARELOAD = RARELOAD or {}
-RARELOAD._EntityInfo = RARELOAD._EntityInfo or {}
-RARELOAD._NPCInfo = RARELOAD._NPCInfo or {}
 RARELOAD.playerPositions = RARELOAD.playerPositions or {}
 RARELOAD.SavedEntityDisplay = RARELOAD.SavedEntityDisplay or {}
 
@@ -23,7 +21,7 @@ SED.DRAW_DISTANCE_SQR = SED.BASE_DRAW_DISTANCE * SED.BASE_DRAW_DISTANCE
 SED.BASE_SCALE = 0.11
 SED.MIN_SCALE = 0.05
 SED.MAX_SCALE = 0.25
-SED.MAX_VISIBLE_LINES = 10
+SED.MAX_VISIBLE_LINES = 7
 SED.SCROLL_SPEED = 3
 SED.LARGE_ENTITY_THRESHOLD = 200
 SED.MASSIVE_ENTITY_THRESHOLD = 800
@@ -110,9 +108,3 @@ SED.NPC_CATEGORIES = {
     { "keyvalues", "KeyValues",  Color(180, 180, 180) },
     { "meta",      "Meta",       Color(120, 200, 220) }
 }
-
-SED.surface_SetFont = surface.SetFont
-SED.surface_GetTextSize = surface.GetTextSize
-SED.surface_SetDrawColor = surface.SetDrawColor
-SED.draw_SimpleText = draw.SimpleText
-SED.draw_RoundedBox = draw.RoundedBox

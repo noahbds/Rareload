@@ -1,3 +1,14 @@
+-- TODO :
+-- Merge with SED panel renderer and use same rendering functions for consistency
+-- Add more info categories (position, equipment, stats)
+-- Implement pagination for long lists (inventory, entities, ammo, weaponNames)
+-- DEPRECATE THIS AFTER MERGE, as the info panel should be unified and consistent
+-- across both the phantom interaction and the SED.
+-- The core logic for building the info data can be reused in the main SED panel renderer
+-- with some adjustments for the phantom context.
+-----------------------------------------------------------------------------------
+
+
 local moveTypeNames = {
     [0] = "MOVETYPE_NONE",
     [1] = "MOVETYPE_ISOMETRIC",
@@ -206,7 +217,7 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
         table.insert(data.basic, { "Model", SavedInfo.playermodel, Color(200, 200, 200) })
     end
     table.insert(data.basic, { "Map", mapName, Color(180, 180, 200) })
-    
+
     -- Summary of saved data
     if lodLevel <= 2 then
         local savedItems = {}
@@ -217,12 +228,12 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
         if SavedInfo.playerStates then table.insert(savedItems, "States") end
         if SavedInfo.vehicles and #SavedInfo.vehicles > 0 then table.insert(savedItems, "Vehicles") end
         if SavedInfo.vehicleState then table.insert(savedItems, "VehicleState") end
-        
+
         local savedEntitiesCount = (SnapshotUtils.GetSummary(SavedInfo.entities, { category = "entity" }) or {})
         local savedNPCsCount = (SnapshotUtils.GetSummary(SavedInfo.npcs, { category = "npc" }) or {})
         if #savedEntitiesCount > 0 then table.insert(savedItems, "Entities") end
         if #savedNPCsCount > 0 then table.insert(savedItems, "NPCs") end
-        
+
         if #savedItems > 0 then
             table.insert(data.basic, { "Saved Data", table.concat(savedItems, ", "), Color(150, 255, 150) })
         end
@@ -401,7 +412,7 @@ function BuildPhantomInfoData(ply, SavedInfo, mapName, lodLevel)
         if SavedInfo.playerStates.notarget then table.insert(states, "NoTarget") end
         if SavedInfo.playerStates.frozen then table.insert(states, "Frozen") end
         if SavedInfo.playerStates.noclip then table.insert(states, "Noclip") end
-        
+
         if #states > 0 then
             table.insert(data.stats, { "Player States", table.concat(states, ", "), Color(255, 215, 0) })
         end
@@ -686,7 +697,6 @@ function DrawPhantomInfo(phantomData, playerPos, mapName)
             cam.End3D2D()
         end)
     end
-
 end
 
 function QueuePhantomPanelsForRendering()
@@ -725,7 +735,7 @@ function QueuePhantomPanelsForRendering()
                     local dx = phantomPos.x - eyePos.x
                     local dy = phantomPos.y - eyePos.y
                     local dz = phantomPos.z - eyePos.z
-                    local lenSqr = dx*dx + dy*dy + dz*dz
+                    local lenSqr = dx * dx + dy * dy + dz * dz
                     if lenSqr > 0 then
                         local dot = dx * eyeForward.x + dy * eyeForward.y + dz * eyeForward.z
                         if (dot * dot) < (fovCosSqr * lenSqr) then
