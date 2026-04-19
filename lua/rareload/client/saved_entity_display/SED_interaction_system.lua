@@ -21,6 +21,89 @@ function SED.KeyPressed(code)
     return false
 end
 
+function SED.SetCategoryPageState(cache, category, page)
+    if not cache then return end
+    cache.pageByCategory = cache.pageByCategory or {}
+    cache.pageByCategory[category] = math.max(1, math.floor(tonumber(page) or 1))
+end
+
+function SED.ClampCategoryPageState(cache, category, lineCount, linesPerPage)
+    if not cache then return 1, 1 end
+
+    local perPage = math.max(1, tonumber(linesPerPage) or 1)
+    local maxPage = math.max(1, math.ceil(math.max(lineCount or 0, 1) / perPage))
+    cache.pageByCategory = cache.pageByCategory or {}
+    local currentPage = cache.pageByCategory[category] or 1
+    currentPage = math.Clamp(currentPage, 1, maxPage)
+    cache.pageByCategory[category] = currentPage
+    return currentPage, maxPage
+end
+
+function SED.GetPhantomDrawDistSqr()
+    return SED.DRAW_DISTANCE_SQR
+end
+
+function SED.GetPhantomSavedInfo(mapName, steamID)
+    if not (mapName and steamID) then return nil end
+    local byMap = RARELOAD and RARELOAD.playerPositions and RARELOAD.playerPositions[mapName]
+    if not byMap then return nil end
+    return byMap[steamID]
+end
+
+function SED.GetPhantomInfoCache(steamID, buildDataFn, ply, savedInfo, mapName, cacheLifetime, defaultCategory)
+    if not steamID or steamID == "" then return nil end
+    if type(buildDataFn) ~= "function" then return nil end
+
+    local now = CurTime()
+    local cache = SED.PhantomInfoCache and SED.PhantomInfoCache[steamID] or nil
+    local activeCategory = (cache and cache.activeCategory) or defaultCategory or "basic"
+
+    if (not cache) or (cache.expires or 0) < now then
+        cache = {
+            data = buildDataFn(ply, savedInfo, mapName, 1),
+            expires = now + (tonumber(cacheLifetime) or 5),
+            activeCategory = activeCategory,
+            pageByCategory = (cache and cache.pageByCategory) or {}
+        }
+        SED.PhantomInfoCache = SED.PhantomInfoCache or {}
+        SED.PhantomInfoCache[steamID] = cache
+    end
+
+    cache.pageByCategory = cache.pageByCategory or {}
+    cache.pageByCategory[cache.activeCategory or activeCategory] = cache.pageByCategory
+    [cache.activeCategory or activeCategory] or 1
+    return cache
+end
+
+function SED.CycleCategoryState(cache, categoryList, currentCategory, delta)
+    if not cache or not categoryList or #categoryList == 0 then return currentCategory end
+
+    local currentIndex = 1
+    for i, cat in ipairs(categoryList) do
+        if cat[1] == currentCategory then
+            currentIndex = i
+            break
+        end
+    end
+
+    local newIndex = currentIndex + (tonumber(delta) or 0)
+    if newIndex < 1 then newIndex = #categoryList end
+    if newIndex > #categoryList then newIndex = 1 end
+
+    local newCategory = categoryList[newIndex][1]
+    if newCategory ~= currentCategory then
+        SED.SetCategoryPageState(cache, newCategory, 1)
+    end
+    return newCategory
+end
+
+function SED.StepCategoryPageState(cache, category, lineCount, linesPerPage, delta)
+    local currentPage, maxPage = SED.ClampCategoryPageState(cache, category, lineCount, linesPerPage)
+    currentPage = math.Clamp(currentPage + (tonumber(delta) or 0), 1, maxPage)
+    SED.SetCategoryPageState(cache, category, currentPage)
+    return currentPage, maxPage
+end
+
 function SED.PlayerIsHoldingSomething()
     SED.lpCache = SED.lpCache or LocalPlayer()
     if not IsValid(SED.lpCache) then return false end
@@ -44,12 +127,18 @@ function SED.PlayerIsHoldingSomething()
     return false
 end
 
-function SED.EnterInteraction(ent, isNPC, id)
+function SED.EnterInteraction(ent, isNPC, id, options)
     SED.InteractionState.active = true
     SED.InteractionState.ent = ent
     SED.InteractionState.id = id
     SED.InteractionState.isNPC = isNPC
     SED.InteractionState.lastAction = CurTime()
+    SED.InteractionState.kind = options and options.kind or (isNPC and "npc" or "entity")
+    SED.InteractionState.maxInteractDistSqr = options and options.maxInteractDistSqr or nil
+    SED.InteractionState.onCategoryChange = options and options.onCategoryChange or nil
+    SED.InteractionState.onPageChange = options and options.onPageChange or nil
+    SED.InteractionState.phantom = options and options.phantom or nil
+    SED.InteractionState.steamID = options and options.steamID or nil
     SED.lpCache = SED.lpCache or LocalPlayer()
     if IsValid(SED.lpCache) then
         SED.InteractionState.lockAng = SED.lpCache:EyeAngles()
@@ -75,6 +164,12 @@ function SED.LeaveInteraction()
     SED.InteractionState.id = nil
     SED.InteractionState.isNPC = false
     SED.InteractionState.lockAng = nil
+    SED.InteractionState.kind = nil
+    SED.InteractionState.maxInteractDistSqr = nil
+    SED.InteractionState.onCategoryChange = nil
+    SED.InteractionState.onPageChange = nil
+    SED.InteractionState.phantom = nil
+    SED.InteractionState.steamID = nil
     SED.LeaveTime = CurTime()
     if IsValid(SED.lpCache) then
         SED.lpCache:DrawViewModel(true)
@@ -86,6 +181,33 @@ function SED.HandleInteractionInput()
         local ent = SED.InteractionState.ent
         if not IsValid(ent) then
             SED.LeaveInteraction()
+            return
+        end
+
+        if SED.InteractionState.kind == "phantom" then
+            local eyePos = SED.lpCache:EyePos()
+            local maxInteractDistSqr = SED.InteractionState.maxInteractDistSqr or (SED.DRAW_DISTANCE_SQR * 1.1)
+            if eyePos:DistToSqr(ent:GetPos()) > maxInteractDistSqr then
+                SED.LeaveInteraction()
+                return
+            end
+
+            if SED.KeyPressed(SED.INTERACT_KEY) and SED.InteractModifierDown() then
+                SED.LeaveInteraction()
+                return
+            end
+
+            if SED.KeyPressed(KEY_LEFT) and SED.InteractionState.onCategoryChange then
+                SED.InteractionState.onCategoryChange(-1)
+            elseif SED.KeyPressed(KEY_RIGHT) and SED.InteractionState.onCategoryChange then
+                SED.InteractionState.onCategoryChange(1)
+            end
+
+            if SED.KeyPressed(KEY_UP) and SED.InteractionState.onPageChange then
+                SED.InteractionState.onPageChange(-1)
+            elseif SED.KeyPressed(KEY_DOWN) and SED.InteractionState.onPageChange then
+                SED.InteractionState.onPageChange(1)
+            end
             return
         end
 

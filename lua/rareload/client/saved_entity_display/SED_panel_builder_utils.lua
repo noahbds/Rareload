@@ -165,6 +165,33 @@ function PB.yesNo(value)
     return value and "Yes" or "No"
 end
 
+function PB.prettyClassName(className)
+    local value = tostring(className or "")
+    value = value:gsub("weapon_", ""):gsub("npc_", ""):gsub("_", " ")
+    value = value:gsub("(%a)([%w_']*)", function(first, rest)
+        return first:upper() .. rest
+    end)
+    return value
+end
+
+function PB.countEntries(tbl)
+    if type(tbl) ~= "table" then return 0 end
+    local count = 0
+    for _ in pairs(tbl) do
+        count = count + 1
+    end
+    return count
+end
+
+function PB.addLine(target, label, value, color, opts)
+    if not target then return end
+
+    local textValue = tostring(value or "")
+    if textValue == "" then return end
+
+    target[#target + 1] = { tostring(label or ""), textValue, PB.resolveTextColor(color), opts }
+end
+
 local FALLBACK_TEXT_COLOR = Color(220, 220, 255)
 
 function PB.resolveTextColor(value)
