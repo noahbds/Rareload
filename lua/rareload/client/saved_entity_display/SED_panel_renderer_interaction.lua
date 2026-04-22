@@ -1,4 +1,6 @@
--- SED panel interaction and hint rendering.
+-- SED_panel_renderer_interaction.lua  (refactored)
+-- Changes: local DrawHintWithBackground removed; uses SS.DrawHint instead.
+--          Panel hit-test now uses SS.PanelHitTest instead of inline math.
 
 local RS = SED and SED.RenderShared
 if not (RS and RS._initialized) then
@@ -11,101 +13,66 @@ if not (RS and RS._initialized) then
     return
 end
 
-local cam_Start3D2D = RS.cam_Start3D2D
-local cam_End3D2D = RS.cam_End3D2D
-local draw_SimpleText = RS.draw_SimpleText
-local draw_RoundedBox = RS.draw_RoundedBox
-local surface_SetFont = RS.surface_SetFont
-local surface_GetTextSize = RS.surface_GetTextSize
-local math_abs = RS.math_abs
-local math_AngleDifference = RS.math_AngleDifference
-
-local HINT_INTERACT = RS.HINT_INTERACT
-local HINT_CONTROLS = RS.HINT_CONTROLS
-local HINT_CANDIDATE = RS.HINT_CANDIDATE
-local HINT_INTERACT_BG = RS.HINT_INTERACT_BG
-local HINT_CONTROLS_BG = RS.HINT_CONTROLS_BG
-local HINT_CANDIDATE_BG = RS.HINT_CANDIDATE_BG
-
-local function drawHintWithBackground(text, x, y, textColor, bgColor)
-    surface_SetFont("Trebuchet18")
-    local textW = (surface_GetTextSize(text) or 0)
-    local padX = 8
-    local padY = 2
-    local boxW = textW + (padX * 2)
-    local boxH = 18 + (padY * 2)
-    draw_RoundedBox(6, x - boxW / 2, y - boxH / 2, boxW, boxH, bgColor)
-    draw_SimpleText(text, "Trebuchet18", x, y, textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+local SS = SED.Shared
+if not (SS and SS._initialized) then
+    include("rareload/client/saved_entity_display/SED_shared.lua")
+    SS = SED.Shared
 end
 
-function SED.PanelRendererHandleInteraction(ctx)
-    local ent = ctx.ent
-    local panelID = ctx.panelID
-    local isNPC = ctx.isNPC
-    local drawPos = ctx.drawPos
-    local panelHeight = ctx.panelHeight
-    local scale = ctx.scale
-    local ang = ctx.ang
-    local width = ctx.width
-    local currentLOD = ctx.currentLOD
+local cam_Start3D2D        = RS.cam_Start3D2D
+local cam_End3D2D          = RS.cam_End3D2D
+local math_abs             = RS.math_abs
+local math_AngleDifference = RS.math_AngleDifference
 
-    local aimAng = SED.lpCache:EyeAngles()
-    local panelCenter = Vector(drawPos.x, drawPos.y, drawPos.z)
-    local toPanelAng = (panelCenter - SED.lpCache:EyePos()):Angle()
-    local yawDiff = math_abs(math_AngleDifference(aimAng.y, toPanelAng.y))
-    local isFocused = SED.InteractionState.active and SED.InteractionState.ent == ent
+local HINT_INTERACT        = RS.HINT_INTERACT
+local HINT_CONTROLS        = RS.HINT_CONTROLS
+local HINT_CANDIDATE       = RS.HINT_CANDIDATE
+local HINT_INTERACT_BG     = RS.HINT_INTERACT_BG
+local HINT_CONTROLS_BG     = RS.HINT_CONTROLS_BG
+local HINT_CANDIDATE_BG    = RS.HINT_CANDIDATE_BG
+
+function SED.PanelRendererHandleInteraction(ctx)
+    local ent         = ctx.ent
+    local panelID     = ctx.panelID
+    local drawPos     = ctx.drawPos
+    local panelHeight = ctx.panelHeight
+    local scale       = ctx.scale
+    local ang         = ctx.ang
+    local width       = ctx.width
+    local currentLOD  = ctx.currentLOD
+
+    local isFocused   = SED.InteractionState.active and SED.InteractionState.ent == ent
     local isCandidate = false
 
-    local doHitTest = true
+    local doHitTest   = true
     if SED.HITTEST_ONLY_CANDIDATE and SED.CandidateEnt and SED.CandidateEnt ~= ent then
         doHitTest = false
     end
 
     if doHitTest then
-        local eyePos2 = SED.lpCache:EyePos()
-        local forward = SED.lpCache:EyeAngles():Forward()
-        local panelNormal = (panelCenter - eyePos2):GetNormalized()
-        local right = ang:Right()
-        local up = ang:Up()
+        local eyePos2     = SED.lpCache:EyePos()
+        local forward     = SED.lpCache:EyeAngles():Forward()
+        local panelCenter = Vector(drawPos.x, drawPos.y, drawPos.z)
 
-        local denom = forward:Dot(panelNormal)
-        local lookAtPanel = false
-        if math_abs(denom) > 1e-3 then
-            local t = (panelCenter - eyePos2):Dot(panelNormal) / denom
-            if t > 0 then
-                local hitPos = eyePos2 + forward * t
-                local rel = hitPos - panelCenter
-                local x = rel:Dot(right)
-                local y = rel:Dot(up)
-                local halfW = (width * 0.5) * scale
-                local halfH = (panelHeight * 0.5) * scale
-                if math_abs(x) <= halfW and math_abs(y) <= halfH then
-                    lookAtPanel = true
-                end
-            end
-        end
-
-        if lookAtPanel then
+        local hit         = SS.PanelHitTest(panelCenter, ang, scale, width, panelHeight, eyePos2, forward)
+        if hit then
             SED.LookingAtPanelUntil = CurTime() + 0.03
-        end
-
-        if not SED.InteractionState.active and lookAtPanel and SED.CandidateEnt == ent then
-            isCandidate = true
+            if not SED.InteractionState.active and SED.CandidateEnt == ent then
+                isCandidate = true
+            end
         end
     end
 
     if (isFocused or isCandidate) and currentLOD < 2 then
-        local hintY = drawPos.z + (panelHeight * scale) / 2 + 10
+        local hintY   = drawPos.z + (panelHeight * scale) * 0.5 + 10
         local hintPos = Vector(drawPos.x, drawPos.y, hintY)
-        local hintScale = scale * 0.8
 
-        cam_Start3D2D(hintPos, ang, hintScale)
+        cam_Start3D2D(hintPos, ang, scale * 0.8)
         if isFocused then
-            drawHintWithBackground("INTERACT MODE", 0, 0, HINT_INTERACT, HINT_INTERACT_BG)
-            drawHintWithBackground("Up/Down Tabs | Left/Right/MWheel Scroll | Shift+E Exit", 0, 24, HINT_CONTROLS,
-                HINT_CONTROLS_BG)
+            SS.DrawHint("INTERACT MODE", 0, 0, HINT_INTERACT, HINT_INTERACT_BG)
+            SS.DrawHint("Up/Down Tabs | Left/Right/MWheel Scroll | Shift+E Exit", 0, 24, HINT_CONTROLS, HINT_CONTROLS_BG)
         elseif isCandidate then
-            drawHintWithBackground("Shift + E to Inspect", 0, 0, HINT_CANDIDATE, HINT_CANDIDATE_BG)
+            SS.DrawHint("Shift + E to Inspect", 0, 0, HINT_CANDIDATE, HINT_CANDIDATE_BG)
         end
         cam_End3D2D()
     end

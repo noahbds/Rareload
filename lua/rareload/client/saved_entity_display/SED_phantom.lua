@@ -1,19 +1,34 @@
+-- SED_phantom.lua  (refactored)
+-- Removed:
+--   local DrawHintWithBackground   → SS.DrawHint
+--   inline hit-test blocks         → SS.PanelHitTest
+--   inline FOV cull                → SS.CullFOV
+--   inline scale calculation       → SS.PanelScale
+--   inline dir→angle calc          → SS.FacingAngle
+
 SED = SED or (RARELOAD and RARELOAD.SavedEntityDisplay) or {}
 SED.Phantom = SED.Phantom or {}
 
 local Phantom = SED.Phantom
-if Phantom._initialized then
-    return Phantom
-end
+if Phantom._initialized then return Phantom end
 
 local RS = SED.RenderShared
 if not (RS and RS._initialized) then
     include("rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
     RS = SED.RenderShared
 end
-
 if not (RS and RS._initialized) then
     ErrorNoHalt("[Rareload] Missing shared renderer state in SED_phantom.lua\n")
+    return Phantom
+end
+
+local SS = SED.Shared
+if not (SS and SS._initialized) then
+    include("rareload/client/saved_entity_display/SED_shared.lua")
+    SS = SED.Shared
+end
+if not (SS and SS._initialized) then
+    ErrorNoHalt("[Rareload] Missing SED.Shared in SED_phantom.lua\n")
     return Phantom
 end
 
@@ -23,9 +38,9 @@ if not PB then
     PB = SED and SED.PanelBuilder
 end
 
-local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
+local SnapshotUtils              = include("rareload/shared/rareload_snapshot_utils.lua")
 
-local moveTypeNames = {
+local moveTypeNames              = {
     [0] = "MOVETYPE_NONE",
     [1] = "MOVETYPE_ISOMETRIC",
     [2] = "MOVETYPE_WALK",
@@ -40,7 +55,7 @@ local moveTypeNames = {
     [11] = "MOVETYPE_CUSTOM"
 }
 
-local PHANTOM_CATEGORIES = {
+local PHANTOM_CATEGORIES         = {
     { "basic",     "Basic Information",       Color(70, 130, 180) },
     { "position",  "Position and Movement",   Color(60, 179, 113) },
     { "equipment", "Equipment",               Color(218, 165, 32) },
@@ -48,92 +63,69 @@ local PHANTOM_CATEGORIES = {
     { "stats",     "Statistics",              Color(147, 112, 219) }
 }
 
-local CACHE_LIFETIME = 5
-local MAX_VISIBLE_LINES = 8
-local MAX_RENDERED_PHANTOMS = 10
-local BASE_SCALE = 0.11
-local KEY_REPEAT_DELAY = 0.25
-local INTERACT_KEY = KEY_E
-local REQUIRE_SHIFT_MOD = true
+local CACHE_LIFETIME             = 5
+local MAX_VISIBLE_LINES          = 8
+local MAX_RENDERED_PHANTOMS      = 10
+local BASE_SCALE                 = 0.11
+local INTERACT_KEY               = KEY_E
 
-local PhantomInfoCache = SED.PhantomInfoCache or rawget(_G, "PhantomInfoCache") or {}
-SED.PhantomInfoCache = PhantomInfoCache
-local PhantomInteractionState = SED.InteractionState
+local PhantomInfoCache           = SED.PhantomInfoCache or rawget(_G, "PhantomInfoCache") or {}
+SED.PhantomInfoCache             = PhantomInfoCache
+local PhantomInteractionState    = SED.InteractionState
 local CandidatePhantom, CandidateSteamID, CandidateDistSqr
 local PhantomLookingAtPanelUntil = 0
 local lpCache
 
-local fontSizeCache = {}
-local panelSizeCache = {}
+local fontSizeCache              = {}
+local panelSizeCache             = {}
 
-local BG_COLOR = RS.BG_COLOR or Color(15, 18, 24, 250)
-local BG_COLOR_DISTANT = RS.BG_COLOR_DISTANT or Color(15, 18, 24, 230)
-local HEADER_COLOR = RS.HEADER_COLOR or Color(25, 30, 40, 255)
-local WHITE = RS.WHITE or Color(255, 255, 255)
-local LABEL_COLOR = RS.LABEL_COLOR or Color(200, 210, 225, 255)
-local VALUE_COLOR = RS.VALUE_COLOR or Color(240, 245, 250)
-local HINT_INTERACT = RS.HINT_INTERACT or Color(255, 235, 190)
-local HINT_CONTROLS = RS.HINT_CONTROLS or Color(225, 225, 230)
-local HINT_CANDIDATE = RS.HINT_CANDIDATE or Color(160, 210, 255)
-local HINT_INTERACT_BG = RS.HINT_INTERACT_BG or Color(18, 22, 30, 210)
-local HINT_CONTROLS_BG = RS.HINT_CONTROLS_BG or Color(18, 22, 30, 210)
-local HINT_CANDIDATE_BG = RS.HINT_CANDIDATE_BG or Color(18, 22, 30, 210)
+-- Alias RS constants
+local BG_COLOR                   = RS.BG_COLOR or Color(15, 18, 24, 250)
+local BG_COLOR_DISTANT           = RS.BG_COLOR_DISTANT or Color(15, 18, 24, 230)
+local HEADER_COLOR               = RS.HEADER_COLOR or Color(25, 30, 40, 255)
+local WHITE                      = RS.WHITE or Color(255, 255, 255)
+local LABEL_COLOR                = RS.LABEL_COLOR or Color(200, 210, 225, 255)
+local VALUE_COLOR                = RS.VALUE_COLOR or Color(240, 245, 250)
+local HINT_INTERACT              = RS.HINT_INTERACT or Color(255, 235, 190)
+local HINT_CONTROLS              = RS.HINT_CONTROLS or Color(225, 225, 230)
+local HINT_CANDIDATE             = RS.HINT_CANDIDATE or Color(160, 210, 255)
+local HINT_INTERACT_BG           = RS.HINT_INTERACT_BG or Color(18, 22, 30, 210)
+local HINT_CONTROLS_BG           = RS.HINT_CONTROLS_BG or Color(18, 22, 30, 210)
+local HINT_CANDIDATE_BG          = RS.HINT_CANDIDATE_BG or Color(18, 22, 30, 210)
 
-local SURF_SetFont = RS.surface_SetFont
-local SURF_GetTextSize = RS.surface_GetTextSize
-local SURF_SetDrawColor = RS.surface_SetDrawColor
-local DRAW_SimpleText = RS.draw_SimpleText
-local DRAW_RoundedBox = RS.draw_RoundedBox
-local cam_Start3D2D = RS.cam_Start3D2D
-local cam_End3D2D = RS.cam_End3D2D
-local clipTextToWidth = RS.clipTextToWidth
-local safeTextColor = RS.safeTextColor
+local SURF_SetFont               = RS.surface_SetFont
+local SURF_GetTextSize           = RS.surface_GetTextSize
+local SURF_SetDrawColor          = RS.surface_SetDrawColor
+local DRAW_SimpleText            = RS.draw_SimpleText
+local DRAW_RoundedBox            = RS.draw_RoundedBox
+local cam_Start3D2D              = RS.cam_Start3D2D
+local cam_End3D2D                = RS.cam_End3D2D
+local clipTextToWidth            = RS.clipTextToWidth
+local safeTextColor              = RS.safeTextColor
 
-local function DrawHintWithBackground(text, x, y, textColor, bgColor)
-    SURF_SetFont("Trebuchet18")
-    local textW = (SURF_GetTextSize(text) or 0)
-    local padX = 8
-    local padY = 2
-    local boxW = textW + (padX * 2)
-    local boxH = 18 + (padY * 2)
-    DRAW_RoundedBox(6, x - boxW / 2, y - boxH / 2, boxW, boxH, bgColor)
-    DRAW_SimpleText(text, "Trebuchet18", x, y, textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-end
+-- ─── Panel size helper ────────────────────────────────────────────────────────
 
 function Phantom.CalculateOptimalPanelSize(lines, numCategories)
-    if type(lines) ~= "table" then
-        return 350
-    end
+    if type(lines) ~= "table" then return 350 end
 
     local cacheKey = tostring(#lines) .. "_" .. tostring(numCategories or #PHANTOM_CATEGORIES)
-    if panelSizeCache[cacheKey] then
-        return panelSizeCache[cacheKey]
-    end
+    if panelSizeCache[cacheKey] then return panelSizeCache[cacheKey] end
 
     SURF_SetFont("Trebuchet18")
     local contentWidth = 360
-    local minWidth = 340
-    local maxWidth = 760
+    local minWidth, maxWidth = 340, 760
 
     for i = 1, math.min(#lines, 8) do
-        local lineData = lines[i]
-        local label = tostring(lineData and lineData[1] or "")
-        local value = tostring(lineData and lineData[2] or "")
+        local lineData    = lines[i]
+        local label       = tostring(lineData and lineData[1] or "")
+        local value       = tostring(lineData and lineData[2] or "")
+        local lk, vk      = "l:" .. label, "v:" .. value
 
-        local labelKey = "l:" .. label
-        local valueKey = "v:" .. value
+        fontSizeCache[lk] = fontSizeCache[lk] or (SURF_GetTextSize(label .. ":") or 0)
+        fontSizeCache[vk] = fontSizeCache[vk] or (SURF_GetTextSize(value) or 0)
 
-        if not fontSizeCache[labelKey] then
-            fontSizeCache[labelKey] = (SURF_GetTextSize(label .. ":") or 0)
-        end
-        if not fontSizeCache[valueKey] then
-            fontSizeCache[valueKey] = (SURF_GetTextSize(value) or 0)
-        end
-
-        contentWidth = math.max(contentWidth, fontSizeCache[labelKey] + fontSizeCache[valueKey] + 170)
-        if contentWidth > maxWidth then
-            break
-        end
+        contentWidth      = math.max(contentWidth, fontSizeCache[lk] + fontSizeCache[vk] + 170)
+        if contentWidth > maxWidth then break end
     end
 
     local minTabWidth = 60
@@ -143,19 +135,15 @@ function Phantom.CalculateOptimalPanelSize(lines, numCategories)
     return contentWidth
 end
 
+-- ─── Data builder ─────────────────────────────────────────────────────────────
+-- (BuildPhantomInfoData is unchanged – it doesn't duplicate render helpers)
+
 function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
-    lodLevel = lodLevel or 1
+    lodLevel      = lodLevel or 1
+    local data    = { basic = {}, position = {}, equipment = {}, entities = {}, stats = {} }
 
-    local data = {
-        basic = {},
-        position = {},
-        equipment = {},
-        entities = {},
-        stats = {}
-    }
-
-    local name = IsValid(ply) and ply:Nick() or tostring(ply and ply.Nick and ply:Nick() or "Unknown")
-    local steamID = IsValid(ply) and ply:SteamID() or tostring(ply and ply.SteamID and ply:SteamID() or "Unknown")
+    local name    = IsValid(ply) and ply:Nick() or "Unknown"
+    local steamID = IsValid(ply) and ply:SteamID() or "Unknown"
 
     PB.addLine(data.basic, "Player", name, Color(255, 255, 255))
     PB.addLine(data.basic, "SteamID", steamID, Color(200, 200, 200))
@@ -180,12 +168,12 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         if savedInfo.vehicles and #savedInfo.vehicles > 0 then savedItems[#savedItems + 1] = "Vehicles" end
         if savedInfo.vehicleState then savedItems[#savedItems + 1] = "VehicleState" end
 
-        local entitySummary = SnapshotUtils and SnapshotUtils.GetSummary and
+        local entS = SnapshotUtils and SnapshotUtils.GetSummary and
             SnapshotUtils.GetSummary(savedInfo.entities, { category = "entity" }) or {}
-        local npcSummary = SnapshotUtils and SnapshotUtils.GetSummary and
+        local npcS = SnapshotUtils and SnapshotUtils.GetSummary and
             SnapshotUtils.GetSummary(savedInfo.npcs, { category = "npc" }) or {}
-        if PB.countEntries(entitySummary) > 0 then savedItems[#savedItems + 1] = "Entities" end
-        if PB.countEntries(npcSummary) > 0 then savedItems[#savedItems + 1] = "NPCs" end
+        if PB.countEntries(entS) > 0 then savedItems[#savedItems + 1] = "Entities" end
+        if PB.countEntries(npcS) > 0 then savedItems[#savedItems + 1] = "NPCs" end
 
         if #savedItems > 0 then
             PB.addLine(data.basic, "Saved Data", table.concat(savedItems, ", "), Color(150, 255, 150))
@@ -193,24 +181,22 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
     end
 
     if savedInfo.pos then
-        if lodLevel <= 2 then
-            PB.addLine(data.position, "Position",
-                string.format("%.1f, %.1f, %.1f", savedInfo.pos.x, savedInfo.pos.y, savedInfo.pos.z),
-                Color(255, 255, 255))
-        else
-            PB.addLine(data.position, "Position",
-                string.format("(%d, %d, %d)", math.floor(savedInfo.pos.x), math.floor(savedInfo.pos.y),
-                    math.floor(savedInfo.pos.z)), Color(255, 255, 255))
-        end
+        local fmt = lodLevel <= 2
+            and string.format("%.1f, %.1f, %.1f", savedInfo.pos.x, savedInfo.pos.y, savedInfo.pos.z)
+            or string.format("(%d, %d, %d)", math.floor(savedInfo.pos.x), math.floor(savedInfo.pos.y),
+                math.floor(savedInfo.pos.z))
+        PB.addLine(data.position, "Position", fmt, Color(255, 255, 255))
     end
 
     if savedInfo.ang then
         PB.addLine(data.position, "Direction",
-            string.format("%.1f, %.1f, %.1f", savedInfo.ang.p, savedInfo.ang.y, savedInfo.ang.r), Color(220, 220, 220))
+            string.format("%.1f, %.1f, %.1f", savedInfo.ang.p, savedInfo.ang.y, savedInfo.ang.r),
+            Color(220, 220, 220))
     end
 
     if lodLevel <= 1 then
-        PB.addLine(data.position, "Movement Type", moveTypeNames[savedInfo.moveType] or "Unknown", Color(220, 220, 220))
+        PB.addLine(data.position, "Movement Type",
+            moveTypeNames[savedInfo.moveType] or "Unknown", Color(220, 220, 220))
     end
 
     if savedInfo.activeWeapon then
@@ -218,35 +204,23 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
     end
 
     local function formatWeaponAmmo(ammoData)
-        if type(ammoData) ~= "table" then
-            return "No ammo saved"
-        end
-
+        if type(ammoData) ~= "table" then return "No ammo saved" end
         local parts = {}
         local clip1 = math.floor(tonumber(ammoData.clip1) or -1)
-        local reserve1 = math.floor(tonumber(ammoData.primary) or 0)
+        local res1  = math.floor(tonumber(ammoData.primary) or 0)
         local clip2 = math.floor(tonumber(ammoData.clip2) or -1)
-        local reserve2 = math.floor(tonumber(ammoData.secondary) or 0)
-
+        local res2  = math.floor(tonumber(ammoData.secondary) or 0)
         if clip1 >= 0 then parts[#parts + 1] = "C1 " .. clip1 end
-        if reserve1 > 0 then parts[#parts + 1] = "R1 " .. reserve1 end
+        if res1 > 0 then parts[#parts + 1] = "R1 " .. res1 end
         if clip2 >= 0 then parts[#parts + 1] = "C2 " .. clip2 end
-        if reserve2 > 0 then parts[#parts + 1] = "R2 " .. reserve2 end
-
-        if #parts == 0 then
-            return "No ammo saved"
-        end
-
-        return table.concat(parts, " | ")
+        if res2 > 0 then parts[#parts + 1] = "R2 " .. res2 end
+        return #parts > 0 and table.concat(parts, " | ") or "No ammo saved"
     end
 
-    local inventory = (type(savedInfo.inventory) == "table") and savedInfo.inventory or {}
+    local inventory    = (type(savedInfo.inventory) == "table") and savedInfo.inventory or {}
     local ammoByWeapon = (type(savedInfo.ammo) == "table") and savedInfo.ammo or nil
     if #inventory > 0 or ammoByWeapon then
-        local invCounts = {}
-        local inInventory = {}
-        local weaponOrder = {}
-
+        local invCounts, inInventory, weaponOrder = {}, {}, {}
         for i = 1, #inventory do
             local class = tostring(inventory[i] or "")
             if class ~= "" then
@@ -257,43 +231,30 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
                 end
             end
         end
-
         if ammoByWeapon then
             local ammoOnly = {}
-            for class, _ in pairs(ammoByWeapon) do
+            for class in pairs(ammoByWeapon) do
                 class = tostring(class or "")
-                if class ~= "" and not inInventory[class] then
-                    ammoOnly[#ammoOnly + 1] = class
-                end
+                if class ~= "" and not inInventory[class] then ammoOnly[#ammoOnly + 1] = class end
             end
             table.sort(ammoOnly)
-            for i = 1, #ammoOnly do
-                weaponOrder[#weaponOrder + 1] = ammoOnly[i]
-            end
+            for _, c in ipairs(ammoOnly) do weaponOrder[#weaponOrder + 1] = c end
         end
 
-        PB.addLine(data.equipment, "Loadout", string.format("%d slots | %d unique", #inventory, #weaponOrder),
-            Color(255, 220, 150))
+        PB.addLine(data.equipment, "Loadout",
+            string.format("%d slots | %d unique", #inventory, #weaponOrder), Color(255, 220, 150))
 
-        for i = 1, #weaponOrder do
-            local class = weaponOrder[i]
-            local count = invCounts[class] or 0
-            local isActive = savedInfo.activeWeapon and class == savedInfo.activeWeapon
+        for _, class in ipairs(weaponOrder) do
+            local count      = invCounts[class] or 0
+            local isActive   = savedInfo.activeWeapon and class == savedInfo.activeWeapon
             local isAmmoOnly = not inInventory[class]
-
-            local label = (isActive and ">> " or " - ") .. PB.prettyClassName(class)
-            if count > 1 then
-                label = label .. " x" .. count
-            end
-            if isAmmoOnly then
-                label = label .. " [ammo-only]"
-            end
-
-            local ammoText = formatWeaponAmmo(ammoByWeapon and ammoByWeapon[class])
+            local label      = (isActive and ">> " or " - ") .. PB.prettyClassName(class)
+            if count > 1 then label = label .. " x" .. count end
+            if isAmmoOnly then label = label .. " [ammo-only]" end
             local rowColor = isActive and Color(255, 230, 140) or
                 (isAmmoOnly and Color(170, 220, 255) or Color(255, 210, 150))
-
-            PB.addLine(data.equipment, label, ammoText, rowColor, { noColon = true })
+            PB.addLine(data.equipment, label, formatWeaponAmmo(ammoByWeapon and ammoByWeapon[class]), rowColor,
+                { noColon = true })
         end
     end
 
@@ -302,14 +263,10 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
             PB.addLine(data.entities, config.totalLabel, "0", config.totalColor)
             return
         end
-
         PB.addLine(data.entities, config.totalLabel, tostring(#group), config.totalColor)
-        if lodLevel > 2 then
-            return
-        end
+        if lodLevel > 2 then return end
 
-        local counts = {}
-        local processCount = math.min(#group, lodLevel == 1 and 50 or 20)
+        local counts, processCount = {}, math.min(#group, lodLevel == 1 and 50 or 20)
         for i = 1, processCount do
             local entry = group[i]
             local class = (istable(entry) and (entry.class or entry.Class or entry[1])) or entry
@@ -318,32 +275,26 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         end
 
         local sorted = {}
-        for class, count in pairs(counts) do
-            sorted[#sorted + 1] = { class = class, count = count }
-        end
-
+        for class, count in pairs(counts) do sorted[#sorted + 1] = { class = class, count = count } end
         table.sort(sorted, function(a, b)
-            if a.count == b.count then
-                return a.class < b.class
-            end
-            return a.count > b.count
+            return a.count ~= b.count and a.count > b.count or a.class < b.class
         end)
 
         local showCount = math.min(#sorted, lodLevel == 1 and 10 or 5)
         for i = 1, showCount do
-            local entry = sorted[i]
             PB.addLine(data.entities, config.labelPrefix .. " " .. i,
-                string.format("%s (%d)", PB.prettyClassName(entry.class), entry.count), config.entryColor)
+                string.format("%s (%d)", PB.prettyClassName(sorted[i].class), sorted[i].count),
+                config.entryColor)
         end
-
         if #sorted > showCount then
             PB.addLine(data.entities, "...", "+" .. (#sorted - showCount) .. " more types", Color(150, 150, 150))
         end
     end
 
     processGroupedDataLOD(
-        (SnapshotUtils and SnapshotUtils.GetSummary and SnapshotUtils.GetSummary(savedInfo.entities, { category = "entity" })) or
-        {}, {
+        (SnapshotUtils and SnapshotUtils.GetSummary and
+            SnapshotUtils.GetSummary(savedInfo.entities, { category = "entity" })) or {},
+        {
             totalLabel = "Total Entities",
             totalColor = Color(255, 180, 180),
             labelPrefix = "Entity",
@@ -351,8 +302,8 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         })
 
     processGroupedDataLOD(
-        (SnapshotUtils and SnapshotUtils.GetSummary and SnapshotUtils.GetSummary(savedInfo.npcs, { category = "npc" })) or
-        {},
+        (SnapshotUtils and SnapshotUtils.GetSummary and
+            SnapshotUtils.GetSummary(savedInfo.npcs, { category = "npc" })) or {},
         {
             totalLabel = "Total NPCs",
             totalColor = Color(200, 255, 200),
@@ -375,38 +326,33 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
     end
 
     if savedInfo.ammo and type(savedInfo.ammo) == "table" then
-        local totalAmmo = 0
-        local ammoWeapons = 0
+        local totalAmmo, ammoWeapons = 0, 0
         for _, ammoData in pairs(savedInfo.ammo) do
-            local weaponTotal = 0
-            if ammoData.primary and ammoData.primary > 0 then
-                weaponTotal = weaponTotal + ammoData.primary
-            end
-            if ammoData.secondary and ammoData.secondary > 0 then weaponTotal = weaponTotal + ammoData.secondary end
-            if ammoData.clip1 and ammoData.clip1 > 0 then weaponTotal = weaponTotal + ammoData.clip1 end
-            if ammoData.clip2 and ammoData.clip2 > 0 then weaponTotal = weaponTotal + ammoData.clip2 end
-            if weaponTotal > 0 then
-                ammoWeapons = ammoWeapons + 1
-                totalAmmo = totalAmmo + weaponTotal
+            local wt = (ammoData.primary and ammoData.primary > 0 and ammoData.primary or 0)
+                + (ammoData.secondary and ammoData.secondary > 0 and ammoData.secondary or 0)
+                + (ammoData.clip1 and ammoData.clip1 > 0 and ammoData.clip1 or 0)
+                + (ammoData.clip2 and ammoData.clip2 > 0 and ammoData.clip2 or 0)
+            if wt > 0 then
+                ammoWeapons = ammoWeapons + 1; totalAmmo = totalAmmo + wt
             end
         end
-
         if totalAmmo > 0 then
-            PB.addLine(data.stats, "Ammo Reserve", totalAmmo .. " across " .. ammoWeapons .. " weapons",
-                Color(255, 200, 100))
+            PB.addLine(data.stats, "Ammo Reserve",
+                totalAmmo .. " across " .. ammoWeapons .. " weapons", Color(255, 200, 100))
         end
     end
 
     if savedInfo.vehicles and type(savedInfo.vehicles) == "table" and #savedInfo.vehicles > 0 then
         PB.addLine(data.stats, "Saved Vehicles", #savedInfo.vehicles, Color(200, 200, 255))
     end
-
     if savedInfo.vehicleState and type(savedInfo.vehicleState) == "table" then
         PB.addLine(data.stats, "In Vehicle", savedInfo.vehicleState.class or "Unknown", Color(200, 200, 255))
     end
 
     return data
 end
+
+-- ─── Permission check ─────────────────────────────────────────────────────────
 
 local function HasViewPhantomPermission()
     local lp = LocalPlayer()
@@ -417,6 +363,8 @@ local function HasViewPhantomPermission()
     return true
 end
 
+-- ─── Draw ─────────────────────────────────────────────────────────────────────
+
 local function BuildRenderData(phantomData, playerPos, mapName)
     local phantom, ply = phantomData.phantom, phantomData.ply
     if not IsValid(phantom) then return nil end
@@ -424,19 +372,19 @@ local function BuildRenderData(phantomData, playerPos, mapName)
     local steamID = phantomData.steamID or (IsValid(ply) and ply:SteamID())
     if not steamID or steamID == "" then return nil end
 
-    local savedInfo = SED.GetPhantomSavedInfo(mapName, steamID)
+    local savedInfo   = SED.GetPhantomSavedInfo(mapName, steamID)
     local displayName = IsValid(ply) and ply:Nick() or ("Player " .. steamID)
-    local infoTarget = IsValid(ply) and ply or {
-        Nick = function() return displayName end,
+    local infoTarget  = IsValid(ply) and ply or {
+        Nick    = function() return displayName end,
         SteamID = function() return steamID end
     }
 
-    local phantomPos = phantom:GetPos()
+    local phantomPos  = phantom:GetPos()
     local distanceSqr = playerPos:DistToSqr(phantomPos)
     if distanceSqr > SED.GetPhantomDrawDistSqr() then return nil end
 
-    local cache = SED.GetPhantomInfoCache(steamID, Phantom.BuildPhantomInfoData, infoTarget, savedInfo, mapName,
-        CACHE_LIFETIME, "basic")
+    local cache = SED.GetPhantomInfoCache(steamID, Phantom.BuildPhantomInfoData, infoTarget,
+        savedInfo, mapName, CACHE_LIFETIME, "basic")
     if not cache or not cache.data then return nil end
 
     local activeCategory = cache.activeCategory or "basic"
@@ -454,13 +402,10 @@ local function BuildRenderData(phantomData, playerPos, mapName)
     end
 
     local page, maxPage = SED.ClampCategoryPageState(cache, activeCategory, #lines, MAX_VISIBLE_LINES)
-    local pageStart = ((page - 1) * MAX_VISIBLE_LINES) + 1
-    local pageEnd = math.min(#lines, pageStart + MAX_VISIBLE_LINES - 1)
-    local visibleLines = {}
-
-    for i = pageStart, pageEnd do
-        visibleLines[#visibleLines + 1] = lines[i]
-    end
+    local pageStart     = (page - 1) * MAX_VISIBLE_LINES + 1
+    local pageEnd       = math.min(#lines, pageStart + MAX_VISIBLE_LINES - 1)
+    local visibleLines  = {}
+    for i = pageStart, pageEnd do visibleLines[#visibleLines + 1] = lines[i] end
 
     return {
         phantom = phantom,
@@ -486,99 +431,65 @@ function Phantom.DrawPhantomInfo(phantomData, playerPos, mapName)
     local renderData = BuildRenderData(phantomData, playerPos, mapName)
     if not renderData then return end
 
-    local phantom = renderData.phantom
-    local steamID = renderData.steamID
-    local displayName = renderData.displayName
-    local lines = renderData.lines
-    local categories = renderData.categories
+    local phantom        = renderData.phantom
+    local steamID        = renderData.steamID
+    local displayName    = renderData.displayName
+    local lines          = renderData.lines
+    local categories     = renderData.categories
     local activeCategory = renderData.activeCategory
 
-    lpCache = lpCache or LocalPlayer()
+    lpCache              = lpCache or LocalPlayer()
     if not IsValid(lpCache) then return end
 
-    local eyePos = lpCache:EyePos()
-    local pos = phantom:GetPos()
+    local eyePos       = lpCache:EyePos()
+    local pos          = phantom:GetPos()
+    local pMins, pMaxs = phantom:OBBMins(), phantom:OBBMaxs()
+    local headOff      = math.max(pMaxs.z - pMins.z + 10, 80)
 
-    local phantomMins, phantomMaxs = phantom:OBBMins(), phantom:OBBMaxs()
-    local phantomHeight = phantomMaxs.z - phantomMins.z
-    local headOffset = math.max(phantomHeight + 10, 80)
+    local width        = Phantom.CalculateOptimalPanelSize(lines, #categories)
+    local titleHeight  = 34
+    local tabHeight    = 22
+    local lineHeight   = 18
+    local panelHeight  = titleHeight + tabHeight + math.max(1, #lines) * lineHeight + 20
+    local distance     = math.sqrt(renderData.distanceSqr)
+    local scale        = math.Clamp(BASE_SCALE * (1 - distance / 4000), BASE_SCALE * 0.4, BASE_SCALE * 1.2)
 
-    local tempWidth = Phantom.CalculateOptimalPanelSize(lines, #categories)
-    local titleHeight = 34
-    local tabHeight = 22
-    local lineHeight = 18
-    local panelHeight = titleHeight + tabHeight + (math.max(1, #lines) * lineHeight) + 20
-    local scale = BASE_SCALE * math.Clamp(1 - (math.sqrt(renderData.distanceSqr) / 4000), 0.4, 1.2)
-    local panelHeightWorldUnits = panelHeight * scale
-    local panelBottomZ = pos.z + headOffset
-    local panelCenterZ = panelBottomZ + (panelHeightWorldUnits / 2)
-    local drawPos = Vector(pos.x, pos.y, panelCenterZ)
-    local distance = math.sqrt(renderData.distanceSqr)
-    local currentLOD = distance > 2400 and 2 or (distance > 1200 and 1 or 0)
+    local panelCenterZ = pos.z + headOff + (panelHeight * scale) * 0.5
+    local drawPos      = Vector(pos.x, pos.y, panelCenterZ)
+    local currentLOD   = distance > 2400 and 2 or (distance > 1200 and 1 or 0)
 
-    local dir = (pos - eyePos)
-    dir:Normalize()
-    local ang = dir:Angle()
-    ang.y = ang.y - 90
-    ang.p = 0
-    ang.r = 90
+    -- SS.FacingAngle replaces the three repeated lines
+    local ang          = SS.FacingAngle(pos - eyePos)
+    local offsetX      = -width * 0.5
+    local offsetY      = -panelHeight * 0.5
 
-    local width = tempWidth
-    local offsetX = -width / 2
-    local offsetY = -panelHeight / 2
-
-    local aimAng = lpCache:EyeAngles()
-    local toPhantomAng = (pos - lpCache:EyePos()):Angle()
-    local isFocused = PhantomInteractionState.active and PhantomInteractionState.steamID == steamID
-    local isCandidate = false
+    -- ── Candidate / focus state ───────────────────────────────────────────────
+    local isFocused    = PhantomInteractionState.active and PhantomInteractionState.steamID == steamID
+    local isCandidate  = false
 
     do
-        local eyePos2 = lpCache:EyePos()
         local forward = lpCache:EyeAngles():Forward()
-        local panelCenter = drawPos
-        local panelNormal = (panelCenter - eyePos2):GetNormalized()
-        local right = ang:Right()
-        local up = ang:Up()
-
-        local denom = forward:Dot(panelNormal)
-        local lookAtPanel = false
-        if math.abs(denom) > 1e-3 then
-            local t = (panelCenter - eyePos2):Dot(panelNormal) / denom
-            if t > 0 then
-                local hitPos = eyePos2 + forward * t
-                local rel = hitPos - panelCenter
-                local x = rel:Dot(right)
-                local y = rel:Dot(up)
-                local halfW = (width * 0.5) * scale
-                local halfH = (panelHeight * 0.5) * scale
-                if math.abs(x) <= halfW and math.abs(y) <= halfH then
-                    lookAtPanel = true
-                end
-            end
-        end
-
-        if lookAtPanel then
+        -- SS.PanelHitTest replaces the inline denom/t/rel/halfW/halfH block
+        local hit = SS.PanelHitTest(drawPos, ang, scale, width, panelHeight, eyePos, forward)
+        if hit then
             PhantomLookingAtPanelUntil = CurTime() + 0.03
-        end
-
-        if not isFocused and lookAtPanel and CandidatePhantom == phantom and CandidateSteamID == steamID then
-            isCandidate = true
+            if not isFocused and CandidatePhantom == phantom and CandidateSteamID == steamID then
+                isCandidate = true
+            end
         end
     end
 
+    -- ── Drawing ───────────────────────────────────────────────────────────────
     cam_Start3D2D(drawPos, ang, scale)
 
     surface.SetDrawColor(0, 0, 0, 130)
     surface.DrawRect(offsetX + 4, offsetY + 4, width, panelHeight)
     DRAW_RoundedBox(8, offsetX, offsetY, width, panelHeight, currentLOD >= 2 and BG_COLOR_DISTANT or BG_COLOR)
-
     DRAW_RoundedBox(8, offsetX, offsetY, width, titleHeight, HEADER_COLOR)
     surface.SetDrawColor(25, 30, 40, 255)
-    surface.DrawRect(offsetX, offsetY + titleHeight / 2, width, titleHeight / 2)
-
+    surface.DrawRect(offsetX, offsetY + titleHeight * 0.5, width, titleHeight * 0.5)
     surface.SetDrawColor(60, 140, 220, 255)
     surface.DrawRect(offsetX, offsetY + titleHeight - 2, width, 2)
-
     surface.SetDrawColor(20, 24, 30, 255)
     surface.DrawRect(offsetX, offsetY + titleHeight, width, panelHeight - titleHeight)
 
@@ -587,28 +498,29 @@ function Phantom.DrawPhantomInfo(phantomData, playerPos, mapName)
         surface.DrawOutlinedRect(offsetX + i, offsetY + i, width - i * 2, panelHeight - i * 2, 1)
     end
 
-    DRAW_SimpleText(string.format("Phantom of '%s'", displayName), currentLOD >= 2 and "Trebuchet18" or "Trebuchet24",
-        offsetX + 12,
-        offsetY + 6, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-    DRAW_SimpleText(string.format("Page %d/%d", renderData.page, renderData.maxPage), "Trebuchet18",
-        offsetX + width - 12, offsetY + 8, VALUE_COLOR, TEXT_ALIGN_RIGHT, TEXT_ALIGN_TOP)
+    DRAW_SimpleText(string.format("Phantom of '%s'", displayName),
+        currentLOD >= 2 and "Trebuchet18" or "Trebuchet24",
+        offsetX + 12, offsetY + 6, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+    DRAW_SimpleText(string.format("Page %d/%d", renderData.page, renderData.maxPage),
+        "Trebuchet18", offsetX + width - 12, offsetY + 8, VALUE_COLOR, TEXT_ALIGN_RIGHT, TEXT_ALIGN_TOP)
 
-    local tabY = offsetY + titleHeight
+    -- Tabs
+    local tabY     = offsetY + titleHeight
     local tabWidth = width / #categories
-    local minTabWidth = 60
-    if tabWidth < minTabWidth then
-        tabWidth = minTabWidth
-        width = math.max(width, #categories * minTabWidth)
-        offsetX = -width / 2
+    local minTabW  = 60
+    if tabWidth < minTabW then
+        tabWidth = minTabW
+        width    = math.max(width, #categories * minTabW)
+        offsetX  = -width * 0.5
     end
 
     for i, cat in ipairs(categories) do
         local catID, catName, catColor = cat[1], cat[2], cat[3]
-        local tabX = offsetX + (i - 1) * tabWidth
-        local isActive = (catID == activeCategory)
-        local fillCol = Color(math.floor(catColor.r * (isActive and 0.6 or 0.25)),
-            math.floor(catColor.g * (isActive and 0.6 or 0.25)), math.floor(catColor.b * (isActive and 0.6 or 0.25)),
-            isActive and 230 or 130)
+        local tabX                     = offsetX + (i - 1) * tabWidth
+        local isActive                 = (catID == activeCategory)
+        local alpha                    = isActive and 0.6 or 0.25
+        local fillCol                  = Color(math.floor(catColor.r * alpha), math.floor(catColor.g * alpha),
+            math.floor(catColor.b * alpha), isActive and 230 or 130)
         SURF_SetDrawColor(fillCol.r, fillCol.g, fillCol.b, fillCol.a)
         surface.DrawRect(tabX, tabY, tabWidth, tabHeight)
         if isActive then
@@ -616,58 +528,50 @@ function Phantom.DrawPhantomInfo(phantomData, playerPos, mapName)
             surface.DrawOutlinedRect(tabX, tabY, tabWidth, tabHeight, 1)
         end
 
-        local displayName = catName
+        local dispName = catName
         SURF_SetFont("Trebuchet18")
-        if (SURF_GetTextSize(displayName) or 0) > tabWidth - 8 then
-            displayName = displayName:gsub("Basic Information", "Basic")
-            displayName = displayName:gsub("Position and Movement", "Position")
-            displayName = displayName:gsub("Saved Entities and NPCs", "Entities")
-            if (SURF_GetTextSize(displayName) or 0) > tabWidth - 8 then
-                displayName = string.sub(displayName, 1, 6) .. ".."
+        if (SURF_GetTextSize(dispName) or 0) > tabWidth - 8 then
+            dispName = dispName:gsub("Basic Information", "Basic")
+                :gsub("Position and Movement", "Position")
+                :gsub("Saved Entities and NPCs", "Entities")
+            if (SURF_GetTextSize(dispName) or 0) > tabWidth - 8 then
+                dispName = string.sub(dispName, 1, 6) .. ".."
             end
         end
-
-        DRAW_SimpleText(displayName, "Trebuchet18", tabX + tabWidth / 2, tabY + tabHeight / 2,
+        DRAW_SimpleText(dispName, "Trebuchet18", tabX + tabWidth * 0.5, tabY + tabHeight * 0.5,
             isActive and Color(255, 255, 255) or Color(205, 205, 205), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
 
-    local startY = tabY + tabHeight + 6
+    -- Content rows
+    local startY    = tabY + tabHeight + 6
+    local labelX    = offsetX + 14
+    local valueX    = offsetX + 180
+    local maxValueW = math.max(90, width - (valueX - offsetX) - 24)
     SURF_SetFont("Trebuchet18")
-    local visibleLines = #lines
-    local labelX = offsetX + 14
-    local valueX = offsetX + 180
 
-    for i = 1, visibleLines do
-        local row = lines[i]
+    for i, row in ipairs(lines) do
         local y = startY + (i - 1) * lineHeight
-
         if i % 2 == 0 then
             SURF_SetDrawColor(40, 47, 60, 95)
             surface.DrawRect(offsetX + 6, y - 2, width - 12, lineHeight)
         end
-
-        local label = tostring(row and row[1] or "")
-        local value = tostring(row and row[2] or "")
+        local label      = tostring(row and row[1] or "")
+        local value      = tostring(row and row[2] or "")
         local valueColor = safeTextColor(row and row[3], VALUE_COLOR)
-        if not row or not row[4] or not row[4].noColon then
-            label = label .. ":"
-        end
-
-        local maxValueWidth = math.max(90, width - (valueX - offsetX) - 24)
-        value = clipTextToWidth(value, maxValueWidth)
-
+        if not row or not row[4] or not row[4].noColon then label = label .. ":" end
+        value = clipTextToWidth(value, maxValueW)
         DRAW_SimpleText(label, "Trebuchet18", labelX, y, LABEL_COLOR, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
         DRAW_SimpleText(value, "Trebuchet18", valueX, y, valueColor, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
     end
 
+    -- Scroll bar
     if renderData.maxPage > 1 then
         local trackX = offsetX + width - 9
         local trackY = startY
-        local trackH = math.max(12, visibleLines * lineHeight)
+        local trackH = math.max(12, #lines * lineHeight)
         local thumbH = math.max(10, math.floor(trackH / renderData.maxPage))
-        local t = (renderData.page - 1) / math.max(1, (renderData.maxPage - 1))
+        local t      = (renderData.page - 1) / math.max(1, renderData.maxPage - 1)
         local thumbY = trackY + math.floor((trackH - thumbH) * t)
-
         SURF_SetDrawColor(55, 70, 95, 180)
         surface.DrawRect(trackX, trackY, 4, trackH)
         SURF_SetDrawColor(130, 190, 255, 230)
@@ -676,27 +580,26 @@ function Phantom.DrawPhantomInfo(phantomData, playerPos, mapName)
 
     cam_End3D2D()
 
+    -- ── Hints (SS.DrawHint replaces the local DrawHintWithBackground) ─────────
     if isFocused or isCandidate then
         local ok = pcall(function()
-            local hintY = drawPos.z + (panelHeight * scale) / 2 + 10
+            local hintY   = drawPos.z + (panelHeight * scale) * 0.5 + 10
             local hintPos = Vector(drawPos.x, drawPos.y, hintY)
-            local hintScale = scale * 0.8
-
-            cam_Start3D2D(hintPos, ang, hintScale)
+            cam_Start3D2D(hintPos, ang, scale * 0.8)
             if isFocused then
-                DrawHintWithBackground("INTERACT MODE", 0, 0, HINT_INTERACT, HINT_INTERACT_BG)
-                DrawHintWithBackground("Left/Right Tabs | Up/Down/MWheel Scroll | Shift+E Exit", 0, 24,
-                    HINT_CONTROLS, HINT_CONTROLS_BG)
+                SS.DrawHint("INTERACT MODE", 0, 0, HINT_INTERACT, HINT_INTERACT_BG)
+                SS.DrawHint("Left/Right Tabs | Up/Down/MWheel Scroll | Shift+E Exit", 0, 24, HINT_CONTROLS,
+                    HINT_CONTROLS_BG)
             elseif isCandidate then
-                DrawHintWithBackground("Shift + E to Inspect", 0, 0, HINT_CANDIDATE, HINT_CANDIDATE_BG)
+                SS.DrawHint("Shift + E to Inspect", 0, 0, HINT_CANDIDATE, HINT_CANDIDATE_BG)
             end
             cam_End3D2D()
         end)
-        if not ok then
-            cam_End3D2D()
-        end
+        if not ok then cam_End3D2D() end
     end
 end
+
+-- ─── Queue ────────────────────────────────────────────────────────────────────
 
 function Phantom.QueuePhantomPanelsForRendering()
     if not HasViewPhantomPermission() then return end
@@ -706,67 +609,43 @@ function Phantom.QueuePhantomPanelsForRendering()
     lpCache = lpCache or LocalPlayer()
     if not IsValid(lpCache) then return end
 
-    local eyePos = lpCache:EyePos()
-    local eyeForward = lpCache:EyeAngles():Forward()
-    local aimAng = lpCache:EyeAngles()
-    local yawThreshold = 10
-    local distThresholdSqr = 40000
-    local drawDistSqr = SED.GetPhantomDrawDistSqr()
-    local fovCosSqr = (SED and SED.FOV_COS_THRESHOLD_SQR) or (math.cos(math.rad(50)) ^ 2)
-    local nearbyDistSqr = (SED and SED.NEARBY_DIST_SQR) or (150 * 150)
-    local mapName = game.GetMap()
+    local eyePos             = lpCache:EyePos()
+    local eyeForward         = lpCache:EyeAngles():Forward()
+    local aimAng             = lpCache:EyeAngles()
+    local yawThreshold       = 10
+    local distThreshSqr      = 40000
+    local drawDistSqr        = SED.GetPhantomDrawDistSqr()
+    local mapName            = game.GetMap()
 
-    Phantom.QueuedList = Phantom.QueuedList or {}
-    local queued = Phantom.QueuedList
-    local queueCount = 0
+    Phantom.QueuedList       = Phantom.QueuedList or {}
+    local queued, queueCount = Phantom.QueuedList, 0
 
     if RARELOAD.Phantom then
         for steamID, data in pairs(RARELOAD.Phantom) do
             if IsValid(data.phantom) then
                 local phantomPos = data.phantom:GetPos()
-                local distSqr = eyePos:DistToSqr(phantomPos)
-                if distSqr <= drawDistSqr then
-                    local withinView = true
-                    if distSqr > nearbyDistSqr then
-                        local dx = phantomPos.x - eyePos.x
-                        local dy = phantomPos.y - eyePos.y
-                        local dz = phantomPos.z - eyePos.z
-                        if distSqr > 0 then
-                            local dot = dx * eyeForward.x + dy * eyeForward.y + dz * eyeForward.z
-                            withinView = (dot > 0) and ((dot * dot) >= (fovCosSqr * distSqr)) or false
-                        end
-                    end
+                local distSqr    = eyePos:DistToSqr(phantomPos)
 
-                    if withinView then
-                        queueCount = queueCount + 1
-                        local entry = queued[queueCount]
-                        if not entry then
-                            entry = {}
-                            queued[queueCount] = entry
-                        end
-                        entry.steamID = steamID
-                        entry.data = data
-                        entry.distSqr = distSqr
-                        entry.pos = phantomPos
-                        entry.opts = entry.opts or { skipCull = true, distSqr = 0, priority = 0 }
-                        entry.opts.distSqr = distSqr
+                -- SS.CullFOV replaces the inline dot-product block
+                if distSqr <= drawDistSqr and SS.CullFOV(phantomPos, eyePos, eyeForward, distSqr) then
+                    queueCount         = queueCount + 1
+                    local entry        = queued[queueCount] or {}
+                    queued[queueCount] = entry
+                    entry.steamID      = steamID
+                    entry.data         = data
+                    entry.distSqr      = distSqr
+                    entry.pos          = phantomPos
+                    entry.opts         = entry.opts or { skipCull = true, distSqr = 0, priority = 0 }
+                    entry.opts.distSqr = distSqr
 
-                        if not PhantomInteractionState.active then
-                            local toPhantomAng = (phantomPos - eyePos):Angle()
-                            local yawDiff = math.abs(math.AngleDifference(aimAng.y, toPhantomAng.y))
-                            if distSqr < distThresholdSqr and yawDiff < yawThreshold then
-                                if not CandidatePhantom then
-                                    CandidatePhantom = data.phantom
-                                    CandidateSteamID = steamID
-                                    CandidateDistSqr = distSqr
-                                else
-                                    local bestDist = tonumber(CandidateDistSqr) or math.huge
-                                    if distSqr < bestDist then
-                                        CandidatePhantom = data.phantom
-                                        CandidateSteamID = steamID
-                                        CandidateDistSqr = distSqr
-                                    end
-                                end
+                    if not PhantomInteractionState.active then
+                        local toAng   = (phantomPos - eyePos):Angle()
+                        local yawDiff = math.abs(math.AngleDifference(aimAng.y, toAng.y))
+                        if distSqr < distThreshSqr and yawDiff < yawThreshold then
+                            if not CandidatePhantom or distSqr < (CandidateDistSqr or math.huge) then
+                                CandidatePhantom = data.phantom
+                                CandidateSteamID = steamID
+                                CandidateDistSqr = distSqr
                             end
                         end
                     end
@@ -775,14 +654,9 @@ function Phantom.QueuePhantomPanelsForRendering()
         end
     end
 
-    -- Clear remaining elements in queued list so sort doesn't process stale ones
-    for i = queueCount + 1, #queued do
-        queued[i] = nil
-    end
+    for i = queueCount + 1, #queued do queued[i] = nil end
 
-    table.sort(queued, function(a, b)
-        return a.distSqr < b.distSqr
-    end)
+    table.sort(queued, function(a, b) return a.distSqr < b.distSqr end)
 
     for i = 1, math.min(queueCount, MAX_RENDERED_PHANTOMS) do
         local entry = queued[i]
@@ -796,22 +670,24 @@ function Phantom.QueuePhantomPanelsForRendering()
         return
     end
 
-    if CandidatePhantom and CandidateSteamID and SED.KeyPressed(INTERACT_KEY) and SED.InteractModifierDown() then
+    if CandidatePhantom and CandidateSteamID and
+        SED.KeyPressed(INTERACT_KEY) and SED.InteractModifierDown() then
         SED.EnterInteraction(CandidatePhantom, false, CandidateSteamID, {
-            kind = "phantom",
+            kind               = "phantom",
             maxInteractDistSqr = SED.GetPhantomDrawDistSqr() * 1.1,
-            phantom = CandidatePhantom,
-            steamID = CandidateSteamID,
-            onCategoryChange = function(delta)
+            phantom            = CandidatePhantom,
+            steamID            = CandidateSteamID,
+            onCategoryChange   = function(delta)
                 local cache = SED.PhantomInfoCache and SED.PhantomInfoCache[PhantomInteractionState.steamID]
                 if not (cache and cache.activeCategory) then return end
-                cache.activeCategory = SED.CycleCategoryState(cache, PHANTOM_CATEGORIES, cache.activeCategory, delta)
+                cache.activeCategory = SED.CycleCategoryState(
+                    cache, PHANTOM_CATEGORIES, cache.activeCategory, delta)
             end,
-            onPageChange = function(delta)
+            onPageChange       = function(delta)
                 local cache = SED.PhantomInfoCache and SED.PhantomInfoCache[PhantomInteractionState.steamID]
                 if not (cache and cache.activeCategory) then return end
-                local lines = (cache.data and cache.data[cache.activeCategory]) or {}
-                SED.StepCategoryPageState(cache, cache.activeCategory, #lines, MAX_VISIBLE_LINES, delta)
+                local lineData = (cache.data and cache.data[cache.activeCategory]) or {}
+                SED.StepCategoryPageState(cache, cache.activeCategory, #lineData, MAX_VISIBLE_LINES, delta)
             end
         })
         surface.PlaySound("ui/buttonclick.wav")
@@ -824,12 +700,10 @@ hook.Add("CreateMove", "RARELOAD_PhantomPanels_CamLock", function(cmd)
     elseif PhantomLookingAtPanelUntil and CurTime() <= PhantomLookingAtPanelUntil then
         cmd:RemoveKey(IN_USE)
     end
-
     if not PhantomInteractionState.active then return end
 
     local phantom = PhantomInteractionState.phantom
     if not IsValid(phantom) then return end
-
     lpCache = lpCache or LocalPlayer()
     if not IsValid(lpCache) then return end
 
@@ -838,23 +712,24 @@ hook.Add("CreateMove", "RARELOAD_PhantomPanels_CamLock", function(cmd)
         ang = lpCache:EyeAngles()
         PhantomInteractionState.lockAng = ang
     end
-
     cmd:SetViewAngles(ang)
 end)
 
-Phantom._initialized = true
-Phantom.moveTypeNames = moveTypeNames
-Phantom.CATEGORIES = PHANTOM_CATEGORIES
-Phantom.InfoCache = PhantomInfoCache
-Phantom.QueuePhantomPanelsForRendering = Phantom.QueuePhantomPanelsForRendering
-Phantom.BuildPhantomInfoData = Phantom.BuildPhantomInfoData
-Phantom.CalculateOptimalPanelSize = Phantom.CalculateOptimalPanelSize
-Phantom.DrawPhantomInfo = Phantom.DrawPhantomInfo
+-- ─── Module exports ───────────────────────────────────────────────────────────
 
-PHANTOM_CATEGORIES = PHANTOM_CATEGORIES
-BuildPhantomInfoData = Phantom.BuildPhantomInfoData
-CalculateOptimalPanelSize = Phantom.CalculateOptimalPanelSize
-DrawPhantomInfo = Phantom.DrawPhantomInfo
-QueuePhantomPanelsForRendering = Phantom.QueuePhantomPanelsForRendering
+Phantom._initialized                   = true
+Phantom.moveTypeNames                  = moveTypeNames
+Phantom.CATEGORIES                     = PHANTOM_CATEGORIES
+Phantom.InfoCache                      = PhantomInfoCache
+Phantom.QueuePhantomPanelsForRendering = Phantom.QueuePhantomPanelsForRendering
+Phantom.BuildPhantomInfoData           = Phantom.BuildPhantomInfoData
+Phantom.CalculateOptimalPanelSize      = Phantom.CalculateOptimalPanelSize
+Phantom.DrawPhantomInfo                = Phantom.DrawPhantomInfo
+
+PHANTOM_CATEGORIES                     = PHANTOM_CATEGORIES
+BuildPhantomInfoData                   = Phantom.BuildPhantomInfoData
+CalculateOptimalPanelSize              = Phantom.CalculateOptimalPanelSize
+DrawPhantomInfo                        = Phantom.DrawPhantomInfo
+QueuePhantomPanelsForRendering         = Phantom.QueuePhantomPanelsForRendering
 
 return Phantom
