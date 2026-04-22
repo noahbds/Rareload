@@ -6,7 +6,6 @@ SED.RenderShared = SED.RenderShared or {}
 local RS = SED.RenderShared
 if RS._initialized then return end
 
--- Pre-allocated color constants (avoid repeated Color() allocations in hot paths)
 RS.BG_COLOR = Color(15, 18, 24, 250)
 RS.BG_COLOR_DISTANT = Color(15, 18, 24, 230)
 RS.HEADER_COLOR = Color(25, 30, 40, 255)
@@ -43,7 +42,6 @@ RS.MINI_TEXT = Color(180, 200, 220, 220)
 RS.MARKER_BG = Color(15, 18, 24, 180)
 RS.MARKER_TEXT = Color(160, 180, 200, 200)
 
--- Cached function references (avoid repeated table lookups)
 RS.cam_Start3D2D = cam.Start3D2D
 RS.cam_End3D2D = cam.End3D2D
 RS.surface_SetDrawColor = surface.SetDrawColor

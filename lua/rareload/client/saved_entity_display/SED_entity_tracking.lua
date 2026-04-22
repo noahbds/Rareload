@@ -1,7 +1,3 @@
--- SED_entity_tracking.lua  (refactored)
--- Changes: local purgeExpiredEntries / pruneOldestIfNeeded removed.
---          Timer now calls SS.CleanCaches instead.
-
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 local SS = SED.Shared
 if not (SS and SS._initialized) then
@@ -80,9 +76,6 @@ timer.Simple(1, function()
         if IsValid(ent) then SED.TrackIfSaved(ent) end
     end
 end)
-
--- ── Cache maintenance ────────────────────────────────────────────────────────
--- SS.CleanCaches replaces the two local helpers that were here before.
 
 timer.Create("RARELOAD_CacheCleanup", 45, 0, function()
     SS.CleanCaches(CurTime(), 200,

@@ -1,6 +1,5 @@
 -- SED_panel_renderer_interaction.lua  (refactored)
--- Changes: local DrawHintWithBackground removed; uses SS.DrawHint instead.
---          Panel hit-test now uses SS.PanelHitTest instead of inline math.
+
 
 local RS = SED and SED.RenderShared
 if not (RS and RS._initialized) then

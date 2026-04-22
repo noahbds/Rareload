@@ -1,5 +1,3 @@
--- Tier 1: lightweight panel renderer.
-
 local RS = SED and SED.RenderShared
 if not (RS and RS._initialized) then
     include("rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")

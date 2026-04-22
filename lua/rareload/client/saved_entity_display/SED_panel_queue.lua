@@ -1,10 +1,4 @@
 -- SED_panel_queue.lua  (refactored)
--- Changes:
---   EstimatePanelAimPos   → SS.PanelAimPos
---   EstimatePanelScale    → SS.PanelScale
---   IsAimingEstimatedPanel→ SS.PanelHitTest  (with SS.FacingAngle for the angle)
---   FOV dot-product guard → SS.CullFOV
--- Everything else (pool, occlusion, queue sort) is unchanged.
 
 local SS = SED.Shared
 if not (SS and SS._initialized) then
@@ -76,7 +70,6 @@ local function RecycleRenderData()
     sedActiveCount = 0
 end
 
--- Conservative hit-test used only for candidate bootstrap (before full render).
 local BOOTSTRAP_W = 520
 local BOOTSTRAP_H = 280
 local BOOTSTRAP_W_LARGE = 620
@@ -117,8 +110,10 @@ function SED.QueueAllSavedPanels()
 
     local TrackedEntities      = SED.TrackedEntities
     local TrackedNPCs          = SED.TrackedNPCs
+    local TrackedPhantoms      = SED.TrackedPhantoms or {}
     local SAVED_ENTITIES_BY_ID = SED.SAVED_ENTITIES_BY_ID
     local SAVED_NPCS_BY_ID     = SED.SAVED_NPCS_BY_ID
+    local PHANTOM_SAVED        = SED.PhantomSavedRecords or {}
     local CalcParams           = SED.CalculateEntityRenderParams
     local DRAW_DISTANCE_SQR    = SED.DRAW_DISTANCE_SQR
     local CULL_VIEW_CONE       = SED.CULL_VIEW_CONE
@@ -177,6 +172,33 @@ function SED.QueueAllSavedPanels()
         end
     end
 
+    for phantom, steamID in pairs(TrackedPhantoms) do
+        if IsValid(phantom) then
+            local rec = PHANTOM_SAVED[steamID]
+            if rec then
+                local entPos       = phantom:GetPos()
+                local distSqr      = eyePos:DistToSqr(entPos)
+                local renderParams = CalcParams(phantom)
+                local maxDistSqr   = renderParams and renderParams.drawDistanceSqr or DRAW_DISTANCE_SQR
+
+                if distSqr <= maxDistSqr and
+                    (not CULL_VIEW_CONE or SS.CullFOV(entPos, eyePos, eyeForward, distSqr)) then
+                    listCount            = listCount + 1
+                    local item           = GetQueueItem()
+                    item.ent             = phantom
+                    item.saved           = rec
+                    item.isNPC           = false
+                    item.distSqr         = distSqr
+                    item.renderParams    = renderParams
+                    item.pos             = entPos
+                    queueList[listCount] = item
+                end
+            end
+        else
+            SED.TrackedPhantoms[phantom] = nil
+        end
+    end
+
     for i = 1, #invalidEntities do
         local ent = invalidEntities[i]
         SED.TrackedEntities[ent] = nil
@@ -192,7 +214,6 @@ function SED.QueueAllSavedPanels()
 
     if listCount == 0 then return end
 
-    -- Candidate detection
     if not SED.InteractionState.active then
         local distThresholdSqr = 250000
         local bestIdx, bestDist = nil, math.huge

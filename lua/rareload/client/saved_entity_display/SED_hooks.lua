@@ -1,11 +1,8 @@
 local function IsClientDebugEnabled()
     if RARELOAD and RARELOAD.GetClientDebugEnabled then
         local ok, enabled = pcall(RARELOAD.GetClientDebugEnabled)
-        if ok then
-            return enabled == true
-        end
+        if ok then return enabled == true end
     end
-
     return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled == true
 end
 
@@ -14,7 +11,9 @@ hook.Add("OnEntityCreated", "RARELOAD_TrackSavedEntities", function(ent)
         if IsValid(ent) then SED.TrackIfSaved(ent) end
     end)
     timer.Simple(0.25, function()
-        if IsValid(ent) and (not SED.TrackedEntities[ent]) and (not SED.TrackedNPCs[ent]) then SED.TrackIfSaved(ent) end
+        if IsValid(ent) and (not SED.TrackedEntities[ent]) and (not SED.TrackedNPCs[ent]) then
+            SED.TrackIfSaved(ent)
+        end
     end)
 end)
 
@@ -44,6 +43,7 @@ end)
 hook.Add("EntityRemoved", "RARELOAD_UntrackSavedEntities", function(ent)
     if SED.TrackedEntities[ent] then SED.TrackedEntities[ent] = nil end
     if SED.TrackedNPCs[ent] then SED.TrackedNPCs[ent] = nil end
+    if SED.TrackedPhantoms[ent] then SED.TrackedPhantoms[ent] = nil end
 
     if SED.InteractionState.active and SED.InteractionState.ent == ent then
         SED.LeaveInteraction()
@@ -75,6 +75,10 @@ hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", func
     if not IsValid(SED.lpCache) then return end
 
     SED.CandidateEnt, SED.CandidateIsNPC, SED.CandidateID, SED.CandidateYawDiff = nil, nil, nil, nil
+
+    if SED.Phantom and SED.Phantom.InjectTracked then
+        SED.Phantom.InjectTracked(game.GetMap())
+    end
 
     if RARELOAD.DepthRenderer and RARELOAD.DepthRenderer.AddRenderItem then
         SED.QueueAllSavedPanels()

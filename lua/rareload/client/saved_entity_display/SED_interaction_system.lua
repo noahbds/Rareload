@@ -305,8 +305,6 @@ function SED.HandleInteractionInput()
                 local lines = cache.data[cache.activeCat] or {}
                 if #lines > 0 then
                     local currentScroll = scrollTable[scrollKey] or 0
-                    -- The actual max limit is dynamically calculated and clamped in SED_panel_renderer.lua
-                    -- This prevents it from being hard-locked by logical line counts instead of wrapped lines
                     scrollTable[scrollKey] = math.max(0, currentScroll + scrollDelta)
                 end
                 SED.ScrollDelta = 0

@@ -79,7 +79,6 @@ function SED.CalculateEntityRenderParams(ent)
         buffer = math.max(50, entityHeight * 0.25)
     end
 
-    -- Pre-compute worldTopZ to avoid 8x LocalToWorld per frame in renderer
     local worldTopZ
     if ent.LocalToWorld then
         local centerLocal = (obbMin + obbMax) * 0.5

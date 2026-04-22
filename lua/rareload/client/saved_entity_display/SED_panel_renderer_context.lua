@@ -134,11 +134,9 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
         surface_SetFont(contentFont)
         local textWidth = surface_GetTextSize(text) or 0
 
-        -- Use a fast path with a shared table to prevent allocating {text} 3 times per frame per short string
         if textWidth <= maxWidth and not string.find(text, "\n") then
             catWrap.fastReturn = catWrap.fastReturn or {}
             catWrap.fastReturn[1] = text
-            -- truncate any extra values in case it had >1 elements previously
             for k = 2, #catWrap.fastReturn do catWrap.fastReturn[k] = nil end
             return catWrap.fastReturn
         end
