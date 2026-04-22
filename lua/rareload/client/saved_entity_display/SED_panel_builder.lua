@@ -64,33 +64,40 @@ function SED.BuildPanelData(saved, ent, isNPC)
         return entry
     end
 
-    local cats = PB.newCategories()
+    local cats
 
-    local addOrder = 0
-    local seenByCategory = {}
+    -- NEW: If it's a phantom, directly use its built data instead of re-parsing
+    if saved and saved._isPhantom and saved._phantomData then
+        cats = saved._phantomData
+    else
+        cats = PB.newCategories()
 
-    local function add(cat, label, value, col, opts)
-        if value == nil or value == "" or not cats[cat] then return end
+        local addOrder = 0
+        local seenByCategory = {}
 
-        local textValue = tostring(value)
-        local rowColor = PB.resolveTextColor(col)
-        seenByCategory[cat] = seenByCategory[cat] or {}
+        local function add(cat, label, value, col, opts)
+            if value == nil or value == "" or not cats[cat] then return end
 
-        local dedupeKey = tostring(label) .. "\31" .. textValue
-        if seenByCategory[cat][dedupeKey] then return end
-        seenByCategory[cat][dedupeKey] = true
+            local textValue = tostring(value)
+            local rowColor = PB.resolveTextColor(col)
+            seenByCategory[cat] = seenByCategory[cat] or {}
 
-        addOrder = addOrder + 1
-        table.insert(cats[cat], { label, textValue, rowColor, opts, addOrder })
+            local dedupeKey = tostring(label) .. "\31" .. textValue
+            if seenByCategory[cat][dedupeKey] then return end
+            seenByCategory[cat][dedupeKey] = true
+
+            addOrder = addOrder + 1
+            table.insert(cats[cat], { label, textValue, rowColor, opts, addOrder })
+        end
+
+        PB.populateCategories({
+            saved = saved,
+            ent = ent,
+            isNPC = isNPC,
+            cats = cats,
+            add = add
+        })
     end
-
-    PB.populateCategories({
-        saved = saved,
-        ent = ent,
-        isNPC = isNPC,
-        cats = cats,
-        add = add
-    })
 
     local function clampCategory(catId)
         local list = cats[catId]

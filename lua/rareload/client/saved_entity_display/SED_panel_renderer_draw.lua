@@ -119,6 +119,10 @@ function SED.PanelRendererDraw(ctx)
     end
 
     local title = isNPC and "Saved NPC" or "Saved Entity"
+    if saved and saved._isPhantom and saved._phantomTitle then
+        title = saved._phantomTitle
+    end
+
     local titleFont = currentLOD >= 2 and "Trebuchet18" or "Trebuchet24"
     draw_SimpleText(title, titleFont, offsetX + 12, offsetY + 6, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
 
@@ -225,6 +229,7 @@ function SED.PanelRendererDraw(ctx)
     end
 
     local useStencil = #categories > maxVisibleTabs
+
     if useStencil then
         render_SetStencilWriteMask(0xFF)
         render_SetStencilTestMask(0xFF)
@@ -234,14 +239,12 @@ function SED.PanelRendererDraw(ctx)
         render_SetStencilFailOperation(STENCIL_KEEP)
         render_SetStencilZFailOperation(STENCIL_KEEP)
         render_ClearStencil()
-
         render_SetStencilEnable(true)
         render_SetStencilReferenceValue(1)
         render_SetStencilCompareFunction(STENCIL_ALWAYS)
         render_SetStencilPassOperation(STENCIL_REPLACE)
-
+        surface_SetDrawColor(20, 24, 30, 255)
         surface_DrawRect(offsetX, offsetY + titleHeight, sidebarWidth, panelHeight - titleHeight)
-
         render_SetStencilCompareFunction(STENCIL_EQUAL)
         render_SetStencilPassOperation(STENCIL_KEEP)
     end

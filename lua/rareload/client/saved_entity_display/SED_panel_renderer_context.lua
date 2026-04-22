@@ -53,6 +53,12 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
     if not cache then return nil end
 
     local categories = isNPC and SED.NPC_CATEGORIES or SED.ENT_CATEGORIES
+
+    -- NEW: Override categories for Phantoms
+    if saved and saved._isPhantom and saved._phantomCategories then
+        categories = saved._phantomCategories
+    end
+
     local activeCat = cache.activeCat
     local lines = cache.data[activeCat]
 
@@ -131,18 +137,19 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
             catWrap.lines = {}
         end
 
+        -- NEW: Check cache before doing any math
+        local cached = catWrap.lines[text]
+        if cached then return cached end
+
         surface_SetFont(contentFont)
         local textWidth = surface_GetTextSize(text) or 0
 
+        -- NEW: Return and cache a unique table, eliminating the reference bug
         if textWidth <= maxWidth and not string.find(text, "\n") then
-            catWrap.fastReturn = catWrap.fastReturn or {}
-            catWrap.fastReturn[1] = text
-            for k = 2, #catWrap.fastReturn do catWrap.fastReturn[k] = nil end
-            return catWrap.fastReturn
+            local res = { text }
+            catWrap.lines[text] = res
+            return res
         end
-
-        local cached = catWrap.lines[text]
-        if cached then return cached end
 
         local wrapLines = {}
         local linesToProcess = string_Explode("\n", text)

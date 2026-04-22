@@ -309,7 +309,7 @@ function Phantom.BuildSavedRecord(steamID, phantomData, mapName)
     local rec                        = {
         id                 = "phantom_" .. steamID,
         class              = name,
-        _phantomTitle      = string.format("Phantom of '%s'", name),
+        _phantomTitle      = string.format("Saved Position of '%s'", name),
         _isPhantom         = true,
         _ownerSteamID      = steamID,
         MaxHealth          = savedInfo and savedInfo.health or 100,

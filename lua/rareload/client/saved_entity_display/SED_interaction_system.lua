@@ -187,34 +187,6 @@ function SED.HandleInteractionInput()
         if SED.InteractionState.kind == "phantom" then
             local eyePos = SED.lpCache:EyePos()
             local maxInteractDistSqr = SED.InteractionState.maxInteractDistSqr or (SED.DRAW_DISTANCE_SQR * 1.1)
-            if eyePos:DistToSqr(ent:GetPos()) > maxInteractDistSqr then
-                SED.LeaveInteraction()
-                return
-            end
-
-            if SED.KeyPressed(SED.INTERACT_KEY) and SED.InteractModifierDown() then
-                SED.LeaveInteraction()
-                return
-            end
-
-            if SED.KeyPressed(KEY_LEFT) and SED.InteractionState.onCategoryChange then
-                SED.InteractionState.onCategoryChange(-1)
-            elseif SED.KeyPressed(KEY_RIGHT) and SED.InteractionState.onCategoryChange then
-                SED.InteractionState.onCategoryChange(1)
-            end
-
-            if SED.KeyPressed(KEY_UP) and SED.InteractionState.onPageChange then
-                SED.InteractionState.onPageChange(-1)
-            elseif SED.KeyPressed(KEY_DOWN) and SED.InteractionState.onPageChange then
-                SED.InteractionState.onPageChange(1)
-            end
-
-            local scrollDelta = SED.ScrollDelta
-            if scrollDelta ~= 0 and SED.InteractionState.onPageChange then
-                local scrollStep = scrollDelta > 0 and 1 or -1
-                SED.InteractionState.onPageChange(scrollStep)
-                SED.ScrollDelta = 0
-            end
             return
         end
 
@@ -247,6 +219,15 @@ function SED.HandleInteractionInput()
         end
 
         local savedRec = isNPC and SED.SAVED_NPCS_BY_ID[interactionID] or SED.SAVED_ENTITIES_BY_ID[interactionID]
+
+        -- NEW: Safe fallback lookup for Phantoms
+        if not savedRec and type(interactionID) == "string" and string.sub(interactionID, 1, 8) == "phantom_" then
+            local steamID = string.sub(interactionID, 9)
+            if SED.PhantomSavedRecords then
+                savedRec = SED.PhantomSavedRecords[steamID]
+            end
+        end
+
         if not savedRec then
             SED.LeaveInteraction()
             return
@@ -261,6 +242,12 @@ function SED.HandleInteractionInput()
         if cache and cache.activeCat then
             local categoryList = isNPC and SED.NPC_CATEGORIES or SED.ENT_CATEGORIES
             local scrollTable = isNPC and SED.PanelScroll.npcs or SED.PanelScroll.entities
+
+
+            -- NEW: Use phantom categories if applicable
+            if savedRec and savedRec._isPhantom and savedRec._phantomCategories then
+                categoryList = savedRec._phantomCategories
+            end
 
             -- Tab Navigation (Up/Down)
             if SED.KeyPressed(KEY_DOWN) or SED.KeyPressed(KEY_UP) then
