@@ -34,7 +34,10 @@ RS.ARMOR_FILL = Color(90, 150, 255, 230)
 RS.ARMOR_TEXT = Color(240, 245, 255)
 RS.HINT_INTERACT = Color(255, 235, 190)
 RS.HINT_CONTROLS = Color(225, 225, 230)
-RS.HINT_CANDIDATE = Color(160, 210, 255)
+RS.HINT_CANDIDATE = Color(255, 255, 255, 255)
+RS.HINT_INTERACT_BG = Color(18, 22, 30, 210)
+RS.HINT_CONTROLS_BG = Color(18, 22, 30, 210)
+RS.HINT_CANDIDATE_BG = Color(18, 22, 30, 210)
 RS.MINI_BG = Color(15, 18, 24, 220)
 RS.MINI_TEXT = Color(180, 200, 220, 220)
 RS.MARKER_BG = Color(15, 18, 24, 180)
@@ -69,8 +72,9 @@ RS.math_ceil = math.ceil
 RS.math_AngleDifference = math.AngleDifference
 RS.string_Explode = string.Explode
 
+local type = type
 local function isColorLike(value)
-    return istable(value) and tonumber(value.r) ~= nil and tonumber(value.g) ~= nil and tonumber(value.b) ~= nil
+    return type(value) == "table" and value.r and value.g and value.b
 end
 
 function RS.safeTextColor(value, fallback)
@@ -80,18 +84,25 @@ function RS.safeTextColor(value, fallback)
     return fallback
 end
 
+RS._clipCache = {}
+
 function RS.clipTextToWidth(text, maxWidth)
     local t = tostring(text or "")
     if t == "" or maxWidth <= 0 then return "" end
 
+    local cacheKey = t .. "_" .. maxWidth
+    if RS._clipCache[cacheKey] then return RS._clipCache[cacheKey] end
+
     local w = RS.surface_GetTextSize(t) or 0
     if w <= maxWidth then
+        RS._clipCache[cacheKey] = t
         return t
     end
 
     local ellipsis = "..."
     local ellipsisW = RS.surface_GetTextSize(ellipsis) or 0
     if ellipsisW >= maxWidth then
+        RS._clipCache[cacheKey] = ellipsis
         return ellipsis
     end
 
@@ -99,10 +110,13 @@ function RS.clipTextToWidth(text, maxWidth)
     while #result > 0 do
         result = string.sub(result, 1, #result - 1)
         if (RS.surface_GetTextSize(result) or 0) + ellipsisW <= maxWidth then
-            return result .. ellipsis
+            local finalRes = result .. ellipsis
+            RS._clipCache[cacheKey] = finalRes
+            return finalRes
         end
     end
 
+    RS._clipCache[cacheKey] = ellipsis
     return ellipsis
 end
 

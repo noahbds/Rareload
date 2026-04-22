@@ -71,7 +71,7 @@ function SED.GetPhantomInfoCache(steamID, buildDataFn, ply, savedInfo, mapName, 
 
     cache.pageByCategory = cache.pageByCategory or {}
     cache.pageByCategory[cache.activeCategory or activeCategory] = cache.pageByCategory
-    [cache.activeCategory or activeCategory] or 1
+        [cache.activeCategory or activeCategory] or 1
     return cache
 end
 
@@ -207,6 +207,13 @@ function SED.HandleInteractionInput()
                 SED.InteractionState.onPageChange(-1)
             elseif SED.KeyPressed(KEY_DOWN) and SED.InteractionState.onPageChange then
                 SED.InteractionState.onPageChange(1)
+            end
+
+            local scrollDelta = SED.ScrollDelta
+            if scrollDelta ~= 0 and SED.InteractionState.onPageChange then
+                local scrollStep = scrollDelta > 0 and 1 or -1
+                SED.InteractionState.onPageChange(scrollStep)
+                SED.ScrollDelta = 0
             end
             return
         end

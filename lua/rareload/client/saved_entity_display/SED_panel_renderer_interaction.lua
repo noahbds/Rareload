@@ -14,12 +14,29 @@ end
 local cam_Start3D2D = RS.cam_Start3D2D
 local cam_End3D2D = RS.cam_End3D2D
 local draw_SimpleText = RS.draw_SimpleText
+local draw_RoundedBox = RS.draw_RoundedBox
+local surface_SetFont = RS.surface_SetFont
+local surface_GetTextSize = RS.surface_GetTextSize
 local math_abs = RS.math_abs
 local math_AngleDifference = RS.math_AngleDifference
 
 local HINT_INTERACT = RS.HINT_INTERACT
 local HINT_CONTROLS = RS.HINT_CONTROLS
 local HINT_CANDIDATE = RS.HINT_CANDIDATE
+local HINT_INTERACT_BG = RS.HINT_INTERACT_BG
+local HINT_CONTROLS_BG = RS.HINT_CONTROLS_BG
+local HINT_CANDIDATE_BG = RS.HINT_CANDIDATE_BG
+
+local function drawHintWithBackground(text, x, y, textColor, bgColor)
+    surface_SetFont("Trebuchet18")
+    local textW = (surface_GetTextSize(text) or 0)
+    local padX = 8
+    local padY = 2
+    local boxW = textW + (padX * 2)
+    local boxH = 18 + (padY * 2)
+    draw_RoundedBox(6, x - boxW / 2, y - boxH / 2, boxW, boxH, bgColor)
+    draw_SimpleText(text, "Trebuchet18", x, y, textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+end
 
 function SED.PanelRendererHandleInteraction(ctx)
     local ent = ctx.ent
@@ -72,12 +89,8 @@ function SED.PanelRendererHandleInteraction(ctx)
             SED.LookingAtPanelUntil = CurTime() + 0.03
         end
 
-        if not SED.InteractionState.active and lookAtPanel then
+        if not SED.InteractionState.active and lookAtPanel and SED.CandidateEnt == ent then
             isCandidate = true
-            SED.CandidateEnt = ent
-            SED.CandidateIsNPC = isNPC
-            SED.CandidateID = panelID
-            SED.CandidateYawDiff = yawDiff
         end
     end
 
@@ -88,12 +101,11 @@ function SED.PanelRendererHandleInteraction(ctx)
 
         cam_Start3D2D(hintPos, ang, hintScale)
         if isFocused then
-            draw_SimpleText("INTERACT MODE", "Trebuchet18", 0, 0, HINT_INTERACT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-            draw_SimpleText("Up/Down Tabs | Left/Right/MWheel Scroll | Shift+E Exit", "Trebuchet18", 0, 20, HINT_CONTROLS,
-                TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            drawHintWithBackground("INTERACT MODE", 0, 0, HINT_INTERACT, HINT_INTERACT_BG)
+            drawHintWithBackground("Up/Down Tabs | Left/Right/MWheel Scroll | Shift+E Exit", 0, 24, HINT_CONTROLS,
+                HINT_CONTROLS_BG)
         elseif isCandidate then
-            draw_SimpleText("Shift + E to Inspect", "Trebuchet18", 0, 0, HINT_CANDIDATE, TEXT_ALIGN_CENTER,
-                TEXT_ALIGN_CENTER)
+            drawHintWithBackground("Shift + E to Inspect", 0, 0, HINT_CANDIDATE, HINT_CANDIDATE_BG)
         end
         cam_End3D2D()
     end

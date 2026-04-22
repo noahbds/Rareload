@@ -123,18 +123,16 @@ function SED.PanelRendererDraw(ctx)
     draw_SimpleText(title, titleFont, offsetX + 12, offsetY + 6, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
 
     if currentLOD < 2 then
-        local subtitleClass = saved.class or saved.Class or saved.ClassName or "unknown"
         local subtitleID = saved.id or saved.RareloadNPCID or saved.RareloadEntityID or saved.RareloadID
-        local subtitle = subtitleClass
-        if subtitleID then
-            local idText = tostring(subtitleID)
-            if #idText > 22 then
-                idText = "..." .. string.sub(idText, -19)
-            end
-            subtitle = subtitle .. " | " .. idText
+        local subtitle = subtitleID and tostring(subtitleID) or "unknown"
+
+        local maxHP = tonumber(saved.MaxHealth or saved.maxHealth or saved.StartHealth) or 0
+        local hpBarReserve = 0
+        if maxHP > 0 then
+            hpBarReserve = math_min(210, width - 220) + 16
         end
-        local hpBarW = math_min(210, width - 220)
-        local subtitleMaxW = math_max(90, width - hpBarW - 40)
+
+        local subtitleMaxW = math_max(120, width - hpBarReserve - 28)
         surface_SetFont("Trebuchet18")
         subtitle = clipTextToWidth(subtitle, subtitleMaxW)
 

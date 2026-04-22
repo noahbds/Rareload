@@ -1,7 +1,10 @@
+local RARELOAD = RARELOAD or {}
 RARELOAD.DepthRenderer = RARELOAD.DepthRenderer or {}
 
 local DepthRenderer = RARELOAD.DepthRenderer
 local renderQueue = {}
+local queueSize = 0
+local maxDistSqr = 15000 * 15000
 
 DepthRenderer.renderQueue = renderQueue
 DepthRenderer.MAX_DISTANCE = 15000
@@ -18,10 +21,8 @@ local istable = istable
 local tonumber = tonumber
 local SysTime = SysTime
 
-local maxDistSqr = DepthRenderer.MAX_DISTANCE * DepthRenderer.MAX_DISTANCE
 local itemPool = {}
 local poolSize = 0
-local queueSize = 0
 
 local cachedLP = nil
 local cachedEyePosX, cachedEyePosY, cachedEyePosZ = 0, 0, 0
@@ -32,7 +33,7 @@ local function UpdateCache()
     local frame = FrameNumber()
     if lastCacheFrame == frame then return end
     lastCacheFrame = frame
-    
+
     cachedLP = _LocalPlayer()
     if _IsValid(cachedLP) then
         local eyePos = cachedLP:EyePos()
@@ -42,6 +43,7 @@ local function UpdateCache()
     end
 end
 
+-- Sorting by top (5), priority (4), then distance (2)
 local function SortRenderItems(a, b)
     local aTop, bTop = a[5], b[5]
     if aTop ~= bTop then return not aTop end
@@ -59,27 +61,33 @@ end
 function DepthRenderer.AddRenderItem(pos, renderFunction, itemType, priorityOrOpts)
     if not pos or not renderFunction then return end
 
-    UpdateCache()
-    if not _IsValid(cachedLP) then return end
-
-    local px, py, pz = pos.x, pos.y, pos.z
-    local dx, dy, dz = px - cachedEyePosX, py - cachedEyePosY, pz - cachedEyePosZ
-    local distSqr = dx * dx + dy * dy + dz * dz
-    
-    if distSqr > maxDistSqr then return end
-
-    if DepthRenderer.CULL_BEHIND then
-        if (dx * cachedEyeVecX + dy * cachedEyeVecY + dz * cachedEyeVecZ) <= 0 then return end
-    end
-
     local onTop = false
     local priority = 0
+    local skipCull = false
+    local distSqr = 0
 
     if istable(priorityOrOpts) then
         priority = tonumber(priorityOrOpts.priority) or 0
         onTop = priorityOrOpts.onTop or false
+        skipCull = priorityOrOpts.skipCull or false
+        distSqr = tonumber(priorityOrOpts.distSqr) or 0
     else
         priority = tonumber(priorityOrOpts) or 0
+    end
+
+    if not skipCull then
+        UpdateCache()
+        if not _IsValid(cachedLP) then return end
+
+        local px, py, pz = pos.x, pos.y, pos.z
+        local dx, dy, dz = px - cachedEyePosX, py - cachedEyePosY, pz - cachedEyePosZ
+        distSqr = dx * dx + dy * dy + dz * dz
+
+        if distSqr > maxDistSqr then return end
+
+        if DepthRenderer.CULL_BEHIND then
+            if (dx * cachedEyeVecX + dy * cachedEyeVecY + dz * cachedEyeVecZ) <= 0 then return end
+        end
     end
 
     local item
@@ -100,12 +108,16 @@ function DepthRenderer.AddRenderItem(pos, renderFunction, itemType, priorityOrOp
     renderQueue[queueSize] = item
 end
 
-DepthRenderer.FRAME_BUDGET = 0.005  -- 5ms hard budget per frame
+DepthRenderer.FRAME_BUDGET = 0.005 -- 5ms hard budget per frame
+local lastSortTime = 0
 
 function DepthRenderer.ProcessRenderQueue()
     local n = queueSize
     if n == 0 then return end
 
+    -- Avoid resorting every single frame if the camera hasn't moved much and not enough time has passed.
+    -- But since new items are inserted every frame in random order by the hooks, we MUST sort if elements were added.
+    -- However, maybe we can just do the sort unconditionally since it's only max ~80 items and fast natively.
     if n > 1 then
         tbl_sort(renderQueue, SortRenderItems)
     end
@@ -119,14 +131,11 @@ function DepthRenderer.ProcessRenderQueue()
     end
 
     local upto = firstOnTopIndex and (firstOnTopIndex - 1) or n
-    local budget = DepthRenderer.FRAME_BUDGET
-    local startTime = SysTime()
 
     if DepthRenderer.USE_PCALL then
         for i = 1, upto do
             local fn = renderQueue[i][1]
             if fn then _pcall(fn) end
-            if i % 3 == 0 and (SysTime() - startTime) > budget then break end
         end
         if firstOnTopIndex then
             cam_IgnoreZ(true)
@@ -140,7 +149,6 @@ function DepthRenderer.ProcessRenderQueue()
         for i = 1, upto do
             local fn = renderQueue[i][1]
             if fn then fn() end
-            if i % 3 == 0 and (SysTime() - startTime) > budget then break end
         end
         if firstOnTopIndex then
             cam_IgnoreZ(true)
@@ -152,7 +160,7 @@ function DepthRenderer.ProcessRenderQueue()
         end
     end
 
-    for i = 1, n do
+    for i = n, 1, -1 do
         local item = renderQueue[i]
         item[1] = nil
         poolSize = poolSize + 1
@@ -163,7 +171,7 @@ function DepthRenderer.ProcessRenderQueue()
 end
 
 function DepthRenderer.ClearQueue()
-    for i = 1, queueSize do
+    for i = queueSize, 1, -1 do
         local item = renderQueue[i]
         item[1] = nil
         poolSize = poolSize + 1

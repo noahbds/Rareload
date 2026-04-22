@@ -6,12 +6,6 @@ function SED.GetNearestDistanceSqr(ent, eyePos, renderParams)
     local centerWorld = ent.LocalToWorld and ent:LocalToWorld(centerLocal) or ent:GetPos()
     local dCenter = eyePos:DistToSqr(centerWorld)
     local dNearest = math.huge
-    if ent.NearestPoint then
-        local ok, np = pcall(ent.NearestPoint, ent, eyePos)
-        if ok and isvector(np) then
-            dNearest = eyePos:DistToSqr(np)
-        end
-    end
     if dNearest < dCenter then
         return dNearest, centerWorld
     end
@@ -29,7 +23,7 @@ function SED.CalculateEntityRenderParams(ent)
 
     if cache and cache.expires > now then
         local currentPos = ent:GetPos()
-        if currentPos:DistToSqr(cache.lastPos) < 40000 then
+        if currentPos:DistToSqr(cache.lastPos) < 50000 then
             return cache
         end
     end

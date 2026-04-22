@@ -199,10 +199,9 @@ function SED.QueueAllSavedPanels()
                 local withinView = true
                 if CULL_VIEW_CONE and distSqr > NEARBY_DIST_SQR then
                     local dx, dy, dz = entPos.x - eyePos.x, entPos.y - eyePos.y, entPos.z - eyePos.z
-                    local lenSqr = dx * dx + dy * dy + dz * dz
-                    if lenSqr > 0 then
+                    if distSqr > 0 then
                         local dot = dx * eyeForward.x + dy * eyeForward.y + dz * eyeForward.z
-                        withinView = (dot * dot) >= (FOV_COS_THRESHOLD_SQR * lenSqr)
+                        withinView = (dot > 0) and ((dot * dot) >= (FOV_COS_THRESHOLD_SQR * distSqr)) or false
                     end
                 end
 
@@ -235,10 +234,9 @@ function SED.QueueAllSavedPanels()
                 local withinView = true
                 if CULL_VIEW_CONE and distSqr > NEARBY_DIST_SQR then
                     local dx, dy, dz = entPos.x - eyePos.x, entPos.y - eyePos.y, entPos.z - eyePos.z
-                    local lenSqr = dx * dx + dy * dy + dz * dz
-                    if lenSqr > 0 then
+                    if distSqr > 0 then
                         local dot = dx * eyeForward.x + dy * eyeForward.y + dz * eyeForward.z
-                        withinView = (dot * dot) >= (FOV_COS_THRESHOLD_SQR * lenSqr)
+                        withinView = (dot > 0) and ((dot * dot) >= (FOV_COS_THRESHOLD_SQR * distSqr)) or false
                     end
                 end
 
@@ -378,9 +376,12 @@ function SED.QueueAllSavedPanels()
                 rdata.distSqr = item.distSqr
                 rdata.tier = tier
 
+                rdata.opts = rdata.opts or { skipCull = true, distSqr = 0 }
+                rdata.opts.distSqr = item.distSqr
+
                 sedActiveCount = sedActiveCount + 1
                 sedActiveRender[sedActiveCount] = rdata
-                RARELOAD.DepthRenderer.AddRenderItem(item.pos, rdata.fn, "entity")
+                RARELOAD.DepthRenderer.AddRenderItem(item.pos, rdata.fn, "entity", rdata.opts)
 
                 if scr.visible then
                     numOccluders = numOccluders + 1
@@ -391,7 +392,15 @@ function SED.QueueAllSavedPanels()
                     local occludeW = math.max(halfW * 1.5, 60)
                     local occludeH = math.max((fullH / 2) * 1.5, 50)
 
-                    occluders[numOccluders] = { x = scr.x, y = myCenterY, w = occludeW, h = occludeH }
+                    local occ = occluders[numOccluders]
+                    if not occ then
+                        occ = {}
+                        occluders[numOccluders] = occ
+                    end
+                    occ.x = scr.x
+                    occ.y = myCenterY
+                    occ.w = occludeW
+                    occ.h = occludeH
                 end
             end
         end
