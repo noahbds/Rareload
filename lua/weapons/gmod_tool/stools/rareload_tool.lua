@@ -364,6 +364,10 @@ function TOOL.BuildCPanel(panel)
         "Restore NPCs on respawn")
     mapCategory:AddItem(toggleMapNPCs)
 
+    local toggleCleanupMap = RareloadUI.CreateToggleSwitch(mapCategory.Content, "Cleanup Map on Respawn",
+        "sv_rareload_cleanup_map", "Clean up the map right before respawning")
+    mapCategory:AddItem(toggleCleanupMap)
+
     -- ═══════════════════════════════════════════════════════════════
     -- TIMING SETTINGS CATEGORY
     -- ═══════════════════════════════════════════════════════════════

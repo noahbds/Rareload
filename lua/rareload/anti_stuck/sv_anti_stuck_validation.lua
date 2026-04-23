@@ -4,15 +4,23 @@ RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 local AntiStuck = RARELOAD.AntiStuck
 
-local function GetPlayerHullBounds(ply, tolerance)
-    tolerance = tolerance or AntiStuck.GetConfig("PLAYER_HULL_TOLERANCE")
-    local mins = ply:OBBMins() - Vector(tolerance, tolerance, 0)
-    local maxs = ply:OBBMaxs() + Vector(tolerance, tolerance, tolerance)
+local function GetPlayerHullBounds(ply, shrinkTolerance)
+    -- Instead of expanding the hull (which causes false positives against walls),
+    -- we SHRINK the hull slightly by the tolerance amount to be more forgiving.
+    shrinkTolerance = shrinkTolerance or 1
+    local mins = ply:OBBMins() + Vector(shrinkTolerance, shrinkTolerance, 0)
+    local maxs = ply:OBBMaxs() - Vector(shrinkTolerance, shrinkTolerance, shrinkTolerance)
+
+    -- Prevent inversion just in case
+    mins.x = math.min(mins.x, maxs.x)
+    mins.y = math.min(mins.y, maxs.y)
+    mins.z = math.min(mins.z, maxs.z)
+
     return mins, maxs
 end
 
-local function TracePlayerHull(pos, ply, tolerance)
-    local mins, maxs = GetPlayerHullBounds(ply, tolerance)
+local function TracePlayerHull(pos, ply, shrinkTolerance)
+    local mins, maxs = GetPlayerHullBounds(ply, shrinkTolerance)
     return util.TraceHull({
         start = pos,
         endpos = pos,
@@ -45,25 +53,12 @@ function AntiStuck.IsPositionStuck(pos, ply, isOriginalPosition)
 
     if not util.IsInWorld(pos) then return true, "outside_world" end
 
-    local simple = TracePlayerHull(pos, ply, AntiStuck.CONFIG.PLAYER_HULL_TOLERANCE * 0.5)
-    if not simple.Hit and not simple.StartSolid then
-        local ground = util.TraceLine({
-            start = pos,
-            endpos = pos - Vector(0, 0, AntiStuck.CONFIG.MIN_GROUND_DISTANCE * 2),
-            filter = ply,
-            mask = MASK_SOLID_BRUSHONLY,
-            collisiongroup = COLLISION_GROUP_NONE,
-            ignoreworld = false,
-            hitclientonly = false,
-            output = nil,
-            whitelist = nil
-        })
-        if ground.Hit and bit.band(util.PointContents(pos), CONTENTS_WATER) == 0 then
-            return false, "safe"
-        end
-    end
+    -- Check elevated position first to avoid catching the floor
+    local checkPos = pos + Vector(0, 0, 2)
 
-    local hull = TracePlayerHull(pos, ply, AntiStuck.CONFIG.PLAYER_HULL_TOLERANCE)
+    -- Primary solid collision check (Shrinking hull by 2 units to forgive grazing walls)
+    local hull = TracePlayerHull(checkPos, ply, 2)
+
     if hull.StartSolid or hull.AllSolid then
         AntiStuck.LogDebug("Position failed solid collision check", {
             methodName = "IsPositionStuck",
@@ -74,12 +69,9 @@ function AntiStuck.IsPositionStuck(pos, ply, isOriginalPosition)
         return true, "solid_collision"
     end
 
-    -- A direct hull trace can report Hit/Fraction changes even when the player can stand there.
-    -- Only classify as stuck if a stricter confirmation probe also starts in solid.
     if hull.Hit and hull.Fraction < 0.99 then
-        local confirmTolerance = math.max(AntiStuck.CONFIG.PLAYER_HULL_TOLERANCE * 0.25, 2)
-        local confirmPos = pos + Vector(0, 0, 2)
-        local confirmHull = TracePlayerHull(confirmPos, ply, confirmTolerance)
+        local confirmPos = pos + Vector(0, 0, 4)
+        local confirmHull = TracePlayerHull(confirmPos, ply, 3)
 
         if confirmHull.StartSolid or confirmHull.AllSolid then
             AntiStuck.LogDebug("Position failed confirmed collision probe", {
@@ -87,31 +79,62 @@ function AntiStuck.IsPositionStuck(pos, ply, isOriginalPosition)
                 position = pos,
                 reason = "solid_collision_confirmed",
                 collidingWith = confirmHull.Entity and IsValid(confirmHull.Entity) and confirmHull.Entity:GetClass() or
-                    "unknown"
+                "unknown"
             }, ply)
             return true, "solid_collision"
         end
     end
 
-    local checkPoints = { Vector(0, 0, 0), Vector(8, 0, 0), Vector(-8, 0, 0), Vector(0, 8, 0), Vector(0, -8, 0) }
+    -- Ground detection logic
+    local traceLen = math.max((AntiStuck.CONFIG and AntiStuck.CONFIG.MIN_GROUND_DISTANCE or 12) * 10, 150)
+    local checkPoints = {
+        Vector(0, 0, 0),
+        Vector(16, 0, 0), Vector(-16, 0, 0),
+        Vector(0, 16, 0), Vector(0, -16, 0),
+        Vector(16, 16, 0), Vector(-16, -16, 0)
+    }
+
+    local foundGround = false
+
+    -- 1. Try widened line traces first
     for _, offset in ipairs(checkPoints) do
         local ground = util.TraceLine({
-            start = pos + offset,
-            endpos = pos + offset - Vector(0, 0, AntiStuck.CONFIG.MIN_GROUND_DISTANCE * 6),
+            start = pos + offset + Vector(0, 0, 5),
+            endpos = pos + offset - Vector(0, 0, traceLen),
             filter = ply,
             mask = MASK_PLAYERSOLID,
             collisiongroup = COLLISION_GROUP_NONE,
-            ignoreworld = false,
-            hitclientonly = false,
-            output = nil,
-            whitelist = nil
+            ignoreworld = false
         })
-        if ground.Hit and ground.HitPos:DistToSqr(pos + offset) <= (AntiStuck.CONFIG.MIN_GROUND_DISTANCE * 6) ^ 2 then
-            local contents = util.PointContents(pos)
-            if bit.band(contents, CONTENTS_WATER) ~= 0 then return true, "in_water" end
-            if bit.band(contents, CONTENTS_SOLID) ~= 0 then return true, "inside_solid" end
-            return false, "safe"
+
+        if ground.Hit and ground.HitPos:DistToSqr(pos + offset) <= (traceLen ^ 2) then
+            foundGround = true
+            break
         end
+    end
+
+    -- 2. Fallback: Hull trace straight down (catches displacement seams that line traces miss)
+    if not foundGround then
+        local mins, maxs = GetPlayerHullBounds(ply, 2)
+        local groundHull = util.TraceHull({
+            start = pos + Vector(0, 0, 5),
+            endpos = pos - Vector(0, 0, traceLen),
+            mins = mins,
+            maxs = maxs,
+            filter = ply,
+            mask = MASK_PLAYERSOLID,
+            ignoreworld = false
+        })
+        if groundHull.Hit and not groundHull.StartSolid then
+            foundGround = true
+        end
+    end
+
+    if foundGround then
+        local contents = util.PointContents(pos + Vector(0, 0, 32))
+        if bit.band(contents, CONTENTS_WATER) ~= 0 then return true, "in_water" end
+        if bit.band(contents, CONTENTS_SOLID) ~= 0 then return true, "inside_solid" end
+        return false, "safe"
     end
 
     AntiStuck.LogDebug("Position has no ground beneath", { methodName = "IsPositionStuck", position = pos }, ply)
