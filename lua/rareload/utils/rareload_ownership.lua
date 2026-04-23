@@ -60,6 +60,14 @@ function RARELOAD.Ownership.SetOwner(ent, owner)
         pcall(ent.SetCreator, ent, owner)
     end
 
+    if ent.CPPISetOwner then
+        pcall(ent.CPPISetOwner, ent, owner)
+    end
+
+    if ent.SetPlayer then
+        pcall(ent.SetPlayer, ent, owner)
+    end
+
     OwnershipCache[entIndex] = {
         owner = owner,
         steamID = steamID,
@@ -97,6 +105,34 @@ function RARELOAD.Ownership.GetOwner(ent)
         local success, creator = pcall(ent.GetCreator, ent)
         if success and IsValid(creator) and creator:IsPlayer() then
             return creator
+        end
+    end
+
+    if ent.CPPIGetOwner then
+        local success, cppiOwner = pcall(ent.CPPIGetOwner, ent)
+        if success and IsValid(cppiOwner) and cppiOwner:IsPlayer() then
+            return cppiOwner
+        end
+    end
+
+    if ent.GetPlayer then
+        local success, playerOwner = pcall(ent.GetPlayer, ent)
+        if success and IsValid(playerOwner) and playerOwner:IsPlayer() then
+            return playerOwner
+        end
+    end
+
+    for _, ply in ipairs(player.GetAll()) do
+        if istable(ply.CleanupList) then
+            for _, entList in pairs(ply.CleanupList) do
+                if istable(entList) then
+                    for _, cleanedEnt in pairs(entList) do
+                        if cleanedEnt == ent then
+                            return ply
+                        end
+                    end
+                end
+            end
         end
     end
 
@@ -223,6 +259,34 @@ function RARELOAD.Ownership.ResolveOwner(ent)
         local success, fallbackOwner = pcall(ent.GetOwner, ent)
         if success and IsValid(fallbackOwner) and fallbackOwner:IsPlayer() then
             return fallbackOwner
+        end
+    end
+
+    if ent.GetPlayer then
+        local success, playerOwner = pcall(ent.GetPlayer, ent)
+        if success and IsValid(playerOwner) and playerOwner:IsPlayer() then
+            return playerOwner
+        end
+    end
+
+    if ent.CPPIGetOwner then
+        local success, cppiOwner = pcall(ent.CPPIGetOwner, ent)
+        if success and IsValid(cppiOwner) and cppiOwner:IsPlayer() then
+            return cppiOwner
+        end
+    end
+
+    for _, ply in ipairs(player.GetAll()) do
+        if istable(ply.CleanupList) then
+            for _, entList in pairs(ply.CleanupList) do
+                if istable(entList) then
+                    for _, cleanedEnt in pairs(entList) do
+                        if cleanedEnt == ent then
+                            return ply
+                        end
+                    end
+                end
+            end
         end
     end
 

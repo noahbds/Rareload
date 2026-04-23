@@ -271,21 +271,18 @@ net.Receive("RareloadUpdatePlayerSetting", function(len, ply)
         return
     end
 
-    -- Validate setting key against whitelist
     local expectedType = ALLOWED_CLIENT_SETTINGS[settingKey]
     if not expectedType then
         print("[RARELOAD] Player " .. ply:Nick() .. " attempted to modify restricted setting: " .. tostring(settingKey))
         return
     end
 
-    -- Validate value type matches expected type
     if valueType ~= expectedType then
         print("[RARELOAD] Player " ..
             ply:Nick() .. " sent wrong type for " .. settingKey .. ": expected " .. expectedType .. ", got " .. valueType)
         return
     end
 
-    -- Clamp numeric values to safe ranges
     if valueType == "number" and type(value) == "number" then
         if settingKey == "angleTolerance" then
             value = math.Clamp(value, 1, 360)
@@ -294,10 +291,8 @@ net.Receive("RareloadUpdatePlayerSetting", function(len, ply)
         end
     end
 
-    -- Update player's setting
     RARELOAD.PlayerSettings.Set(ply, settingKey, value)
 
-    -- Sync back to player (and potentially others if needed)
     RARELOAD.PlayerSettings.SyncToPlayer(ply, true)
 
     WriteSettingsDebug("INFO", "Player setting updated", {

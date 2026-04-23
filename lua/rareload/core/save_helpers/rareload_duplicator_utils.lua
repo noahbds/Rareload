@@ -281,7 +281,7 @@ function Bridge.RestoreSnapshot(snapshot, opts)
 
     resetDuplicatorFrame()
 
-    local pastePlayer = (IsValid(opts.player) and opts.player) or NULL
+    local pastePlayer = (IsValid(opts.player) and opts.player:IsPlayer()) and opts.player or nil
     local ok, createdEntities, createdConstraints = pcall(
         duplicator.Paste,
         pastePlayer,

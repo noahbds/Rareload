@@ -70,41 +70,105 @@ local function iterateSnapshot(snapshot, opts, callback)
     local idPrefix = (opts and opts.idPrefix) or (opts and opts.category) or "rareload"
     local category = (opts and opts.category) or "entity"
 
-    for dupIndex, entityDef in pairs(payload.Entities) do
-        local id = entityDef.RareloadEntityID or entityDef.RareloadNPCID or entityDef.RareloadID
-        if not id then
-            id = string.format("%s_%s", idPrefix, tostring(dupIndex))
+    if payload.Entities then
+        for dupIndex, entityDef in pairs(payload.Entities) do
+            local id = entityDef.RareloadEntityID or entityDef.RareloadNPCID or entityDef.RareloadID
+            if not id then
+                id = string.format("%s_%s", idPrefix, tostring(dupIndex))
+            end
+
+            local summary = table.Copy(entityDef)
+
+            summary.id = id
+            summary.class = entityDef.Class or entityDef.NPCName or entityDef.class or "unknown"
+            summary.model = entityDef.Model
+            summary.name = entityDef.Name
+            summary.skin = entityDef.Skin
+            summary.SavedViaDuplicator = true
+            summary._fromSnapshot = true
+            summary.spawnTime = snapshot.savedAt
+            summary.owner = snapshot.ownerSteamID or snapshot.ownerSteamID64
+            summary.originallySpawnedBy = entityDef.OriginalSpawner or snapshot.ownerSteamID
+            summary.maxHealth = entityDef.MaxHealth
+            summary.health = entityDef.CurHealth or entityDef.MaxHealth
+            summary.pos = copyVector(entityDef.Pos)
+            summary.ang = copyAngle(entityDef.Angle or entityDef.Ang)
+            summary.stateHash = entityDef.RareloadStateHash or entityDef.StateHash
+
+            if category == "npc" then
+                summary.npcName = entityDef.NPCName or summary.class
+            end
+
+            callback({
+                dupIndex = dupIndex,
+                id = id,
+                entity = entityDef,
+                summary = summary,
+                payload = payload
+            })
         end
+    end
 
-        local summary = table.Copy(entityDef)
-        
-        summary.id = id
-        summary.class = entityDef.Class or entityDef.NPCName or entityDef.class or "unknown"
-        summary.model = entityDef.Model
-        summary.name = entityDef.Name
-        summary.skin = entityDef.Skin
-        summary.SavedViaDuplicator = true
-        summary._fromSnapshot = true
-        summary.spawnTime = snapshot.savedAt
-        summary.owner = snapshot.ownerSteamID or snapshot.ownerSteamID64
-        summary.originallySpawnedBy = entityDef.OriginalSpawner or snapshot.ownerSteamID
-        summary.maxHealth = entityDef.MaxHealth
-        summary.health = entityDef.CurHealth or entityDef.MaxHealth
-        summary.pos = copyVector(entityDef.Pos)
-        summary.ang = copyAngle(entityDef.Angle or entityDef.Ang)
-        summary.stateHash = entityDef.RareloadStateHash or entityDef.StateHash
+    if payload.Constraints then
+        for dupIndex, constraintDef in pairs(payload.Constraints) do
+            local id = string.format("constraint_%s", tostring(dupIndex))
+            local summary = table.Copy(constraintDef)
 
-        if category == "npc" then
-            summary.npcName = entityDef.NPCName or summary.class
+            summary.id = id
+            summary.class = "constraint_" .. (constraintDef.Type and constraintDef.Type:lower() or "unknown")
+            summary.constraintType = constraintDef.Type
+
+            -- Calculate the position halfway through the constraint for display
+            local pos = nil
+            if constraintDef.Entity and #constraintDef.Entity >= 2 then
+                local idx1 = constraintDef.Entity[1].Index
+                local idx2 = constraintDef.Entity[2].Index
+
+                local ent1Def = idx1 and (payload.Entities[idx1] or payload.Entities[tostring(idx1)])
+                local ent2Def = idx2 and (payload.Entities[idx2] or payload.Entities[tostring(idx2)])
+
+                local p1 = ent1Def and ent1Def.Pos or nil
+                local p2 = ent2Def and ent2Def.Pos or nil
+
+                -- Support when attached to World (sometimes entity index is blank/zero, but there's a world position fallback in some constraint types... Wait, actually, world constraints usually just use raw vector coordinates)
+                if not p1 and constraintDef.Entity[1].World and constraintDef.Entity[1].LPos then
+                    p1 = constraintDef.Entity[1].LPos
+                end
+                if not p2 and constraintDef.Entity[2].World and constraintDef.Entity[2].LPos then
+                    p2 = constraintDef.Entity[2].LPos
+                end
+
+                if p1 and p2 then
+                    pos = {
+                        x = (p1.x + p2.x) / 2,
+                        y = (p1.y + p2.y) / 2,
+                        z = (p1.z + p2.z) / 2
+                    }
+                elseif p1 then
+                    pos = copyVector(p1)
+                elseif p2 then
+                    pos = copyVector(p2)
+                end
+            end
+
+            summary.name = (constraintDef.Type or "Constraint") .. " (" .. tostring(id) .. ")"
+            summary.SavedViaDuplicator = true
+            summary._fromSnapshot = true
+            summary.spawnTime = snapshot.savedAt
+            summary.owner = snapshot.ownerSteamID or snapshot.ownerSteamID64
+            summary.pos = pos
+
+            if pos then
+                callback({
+                    dupIndex = "c_" .. dupIndex,
+                    id = id,
+                    entity = constraintDef,
+                    summary = summary,
+                    payload = payload,
+                    isConstraint = true
+                })
+            end
         end
-
-        callback({
-            dupIndex = dupIndex,
-            id = id,
-            entity = entityDef,
-            summary = summary,
-            payload = payload
-        })
     end
 
     return payload
