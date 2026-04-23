@@ -536,20 +536,48 @@ local function CreateDetailsPanel(data, onDelete, viewer)
         return btn
     end
 
+    -- Adjust buttons logic dynamically with spacing for 4 items
+    local btnWidth = 122
+    local spacing = 10
+    local currentX = 0
+
     if data.pos then
-        CreateActionBtn("Teleport", 0, 160, EV_THEME.success, function()
+        CreateActionBtn("Teleport", currentX, btnWidth, EV_THEME.success, function()
             RunConsoleCommand("rareload_teleport_to", data.pos.x, data.pos.y, data.pos.z)
             ShowNotification("Teleporting...", NOTIFY_GENERIC)
             frame:Close()
         end)
+        currentX = currentX + btnWidth + spacing
     end
 
-    CreateActionBtn("Delete", 170, 160, EV_THEME.error, function()
+    -- INTEGRATED MODIFY DATA BUTTON
+    if CreateModifyDataButton then
+        local modContainer = vgui.Create("DPanel", actionBar)
+        modContainer:SetPos(currentX, 0)
+        modContainer:SetSize(btnWidth, 40)
+        modContainer.Paint = function() end
+
+        local modBtn = CreateModifyDataButton(modContainer, data, false, function(action, newData)
+            if viewer and viewer.ReloadDataAndRefresh then
+                viewer:ReloadDataAndRefresh()
+            end
+        end)
+        modBtn:Dock(FILL)
+        modBtn:DockMargin(0, 0, 0, 0)
+
+        currentX = currentX + btnWidth + spacing
+    end
+
+    CreateActionBtn("Delete", currentX, btnWidth, EV_THEME.error, function()
         if onDelete then onDelete(data) end
         frame:Close()
     end)
+    currentX = currentX + btnWidth + spacing
 
-    CreateActionBtn("Close", 340, 178, EV_THEME.surfaceVariant, function()
+    local closeWidth = 518 - currentX
+    if closeWidth < btnWidth then closeWidth = btnWidth end
+
+    CreateActionBtn("Close", currentX, closeWidth, EV_THEME.surfaceVariant, function()
         frame:Close()
     end)
 end
@@ -805,6 +833,57 @@ net.Receive("RareloadEntityViewer_DeleteResult", function()
         ShowNotification(message, NOTIFY_ERROR)
     end
 end)
+
+if SERVER then
+    util.AddNetworkString("RareloadEntityViewer_UpdateData")
+
+    net.Receive("RareloadEntityViewer_UpdateData", function(len, ply)
+        if not RARELOAD.CheckPermission(ply, "manage_entities") then return end
+
+        local targetID = net.ReadString()
+        local isNPC = net.ReadBool()
+        local newData = net.ReadTable()
+        local mapName = game.GetMap()
+
+        -- Locate the owner's file
+        local ownerSID = newData.ownerSteamID or ply:SteamID()
+        local cleanSID = string.lower(string.Replace(ownerSID, ":", "_"))
+        local filename = "rareload/player_positions/" .. mapName .. "/" .. cleanSID .. ".json"
+
+        if not file.Exists(filename, "DATA") then
+            print("[RARELOAD] Update failed: File not found " .. filename)
+            return
+        end
+
+        local raw = file.Read(filename, "DATA")
+        local ok, tbl = pcall(util.JSONToTable, raw)
+        if not ok or not istable(tbl) then return end
+
+        -- Find and replace the entity in the nested structure
+        local function replaceInTable(node)
+            if not istable(node) then return false end
+            for k, v in pairs(node) do
+                -- Check for ID match in NPs or Entities
+                if istable(v) and (v.RareloadNPCID == targetID or k == tostring(targetID)) then
+                    node[k] = newData
+                    return true
+                end
+                if istable(v) and replaceInTable(v) then return true end
+            end
+            return false
+        end
+
+        if replaceInTable(tbl) then
+            file.Write(filename, util.TableToJSON(tbl, true))
+
+            -- Force a reload so everyone sees the change
+            RARELOAD.LoadPlayerPositions(mapName)
+            SyncPlayerPositions()
+
+            print("[RARELOAD] " .. ply:Nick() .. " updated entity " .. targetID)
+        end
+    end)
+end
 
 concommand.Add("rareload_entity_viewer", function() EntityViewer:Open() end)
 concommand.Add("entity_viewer_open", function() EntityViewer:Open() end)

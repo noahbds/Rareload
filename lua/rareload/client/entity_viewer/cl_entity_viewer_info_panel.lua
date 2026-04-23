@@ -1,369 +1,109 @@
-local draw, surface, util, vgui, hook, render = draw, surface, util, vgui, hook, render
-local math, string, os = math, string, os
-local Color, Vector, Angle = Color, Vector, Angle
-local IsValid, CurTime, FrameTime, Lerp = IsValid, CurTime, FrameTime, Lerp
+local UI_COLORS = {
+    bg = Color(24, 25, 29),
+    sidebar = Color(18, 19, 22),
+    row = Color(32, 34, 40),
+    accent = Color(80, 140, 255),
+    text = Color(220, 220, 225),
+    muted = Color(130, 130, 140)
+}
 
-local MAT_DELETE_ICON = Material("icon16/image_delete.png")
-local MAT_TELEPORT = Material("icon16/arrow_right.png")
-local MAT_COPY = Material("icon16/page_copy.png")
-
-local function AddDetailRow(parent, label, value, color)
-    local row = vgui.Create("DPanel", parent)
-    row:Dock(TOP)
-    row:SetTall(32)
-    row:DockMargin(0, 0, 0, 4)
-    row.Paint = function(self, w, h)
-        draw.RoundedBox(6, 0, 0, w, h, THEME.surface)
-    end
-
-    local lbl = vgui.Create("DLabel", row)
-    lbl:SetText(label)
-    lbl:SetFont("RareloadLabel")
-    lbl:SetTextColor(THEME.textSecondary)
-    lbl:Dock(LEFT)
-    lbl:DockMargin(12, 0, 0, 0)
-    lbl:SetWide(100)
-
-    local val = vgui.Create("DLabel", row)
-    val:SetText(tostring(value))
-    val:SetFont("RareloadBody")
-    val:SetTextColor(color or THEME.textPrimary)
-    val:Dock(FILL)
-    val:DockMargin(10, 0, 40, 0)
-
-    local btn = vgui.Create("DButton", row)
-    btn:SetText("")
-    btn:Dock(RIGHT)
-    btn:SetWide(32)
-    btn.Paint = function(self, w, h)
-        if self:IsHovered() then
-            draw.RoundedBox(6, 0, 0, w, h, Color(255,255,255,10))
-        end
-        surface.SetDrawColor(THEME.textTertiary)
-        surface.SetMaterial(MAT_COPY)
-        surface.DrawTexturedRect(8, 8, 16, 16)
-    end
-    btn.DoClick = function()
-        SetClipboardText(tostring(value))
-        ShowNotification("Copied " .. label, NOTIFY_GENERIC)
-    end
+-- Formats SteamID for filesystem (STEAM_0:0:123 -> steam_0_0_123)
+local function GetCleanSteamID(sid)
+    return string.lower(string.Replace(sid, ":", "_"))
 end
 
-local function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
+function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
     local frame = vgui.Create("DFrame")
-    frame:SetSize(650, 700)
-    frame:SetTitle("")
+    frame:SetSize(850, 600)
     frame:Center()
+    frame:SetTitle("")
     frame:MakePopup()
     frame:SetBackgroundBlur(true)
-    
+
     frame.Paint = function(self, w, h)
-        THEME:DrawBlur(self, 4)
-        draw.RoundedBox(12, 0, 0, w, h, THEME.background)
-        draw.RoundedBoxEx(12, 0, 0, w, 60, THEME.backgroundDark, true, true, false, false)
-        
-        draw.SimpleText("Entity Details", "RareloadHeading", 20, 30, THEME.textPrimary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        
-        surface.SetDrawColor(THEME.border)
-        surface.DrawOutlinedRect(0, 0, w, h, 1)
+        draw.RoundedBox(8, 0, 0, w, h, UI_COLORS.bg)
+        draw.RoundedBoxEx(8, 0, 0, 200, h, UI_COLORS.sidebar, false, false, true, false)
+        draw.SimpleText("Entity Inspector", "RareloadHeading", 220, 30, UI_COLORS.text)
     end
 
-    local tabContainer = vgui.Create("DPanel", frame)
-    tabContainer:SetPos(0, 60)
-    tabContainer:SetSize(650, 40)
-    tabContainer.Paint = function(self, w, h)
-        surface.SetDrawColor(THEME.divider)
-        surface.DrawLine(0, h-1, w, h-1)
-    end
+    local sidebar = vgui.Create("DPanel", frame)
+    sidebar:SetSize(200, 600)
+    sidebar.Paint = function() end
 
-    local activeTab = "info"
-    local contentPanel = vgui.Create("DPanel", frame)
-    contentPanel:SetPos(0, 100)
-    contentPanel:SetSize(650, 520)
-    contentPanel.Paint = function() end
+    local content = vgui.Create("DPanel", frame)
+    content:SetPos(200, 60)
+    content:SetSize(650, 540)
+    content.Paint = function() end
 
-    local function CreateTab(text, id, x)
-        local btn = vgui.Create("DButton", tabContainer)
-        btn:SetText(text)
-        btn:SetFont("RareloadBody")
-        btn:SetPos(x, 5)
-        btn:SetSize(100, 30)
-        btn:SetTextColor(THEME.textPrimary)
-        
-        btn.Paint = function(self, w, h)
-            local isActive = activeTab == id
-            if isActive then
-                draw.RoundedBox(6, 0, 0, w, h, THEME.primary)
-            elseif self:IsHovered() then
-                draw.RoundedBox(6, 0, 0, w, h, THEME.surfaceVariant)
-            end
-        end
-        
-        btn.DoClick = function()
-            activeTab = id
-            contentPanel:Clear()
-            
-            if id == "info" then
-                local scroll = vgui.Create("DScrollPanel", contentPanel)
-                scroll:Dock(FILL)
-                scroll:DockMargin(20, 10, 20, 10)
-                
-                AddDetailRow(scroll, "Class", data.class or "Unknown", THEME.primary)
-                if data.model then AddDetailRow(scroll, "Model", data.model, THEME.textSecondary) end
-                if data.health then AddDetailRow(scroll, "Health", data.health .. "/" .. (data.maxHealth or "?"), THEME.success) end
-                
-                if data.pos then 
-                    local p = data.pos
-                    local px = tonumber(p.x) or 0
-                    local py = tonumber(p.y) or 0
-                    local pz = tonumber(p.z) or 0
-                    AddDetailRow(scroll, "Position", string.format("%.1f, %.1f, %.1f", px, py, pz), THEME.textSecondary) 
-                end
-                
-                if data.ang then
-                    local a = data.ang
-                    local ap = tonumber(a.p) or 0
-                    local ay = tonumber(a.y) or 0
-                    local ar = tonumber(a.r) or 0
-                    AddDetailRow(scroll, "Angles", string.format("%.1f, %.1f, %.1f", ap, ay, ar), THEME.textSecondary)
-                end
-                
-                if data.skin then AddDetailRow(scroll, "Skin", data.skin, THEME.textSecondary) end
-            elseif id == "json" then
-                if RARELOAD and RARELOAD.JSONEditor and RARELOAD.JSONEditor.Create then
-                    RARELOAD.JSONEditor.Create(contentPanel, data.rawData or data, isNPC, function(newData)
-                        local map = game.GetMap()
-                        local filename = "rareload/player_positions_" .. map .. ".json"
-                        if not file.Exists(filename, "DATA") then
-                            ShowNotification("Data file missing: " .. filename, NOTIFY_ERROR)
-                            return
-                        end
+    local activeTab = ""
+    local function SwitchTab(id)
+        if activeTab == id then return end
+        activeTab = id
+        content:Clear()
 
-                        local raw = file.Read(filename, "DATA")
-                        if not raw or raw == "" then
-                            ShowNotification("Failed to read data file", NOTIFY_ERROR)
-                            return
-                        end
+        if id == "info" then
+            local scroll = vgui.Create("DScrollPanel", content)
+            scroll:Dock(FILL)
+            scroll:DockMargin(20, 0, 20, 20)
 
-                        local ok, tbl = pcall(util.JSONToTable, raw)
-                        if not ok or not istable(tbl) then
-                            ShowNotification("Invalid JSON in data file", NOTIFY_ERROR)
-                            return
-                        end
-
-                        local targetId = newData.RareloadNPCID or (data.rawData and data.rawData.RareloadNPCID)
-                        local function replaceById(node)
-                            if not istable(node) then return false end
-                            if node.RareloadNPCID and node.RareloadNPCID == targetId then
-                                for k in pairs(node) do node[k] = nil end
-                                for k, v in pairs(newData) do node[k] = v end
-                                return true
-                            end
-                            for k, v in pairs(node) do
-                                if istable(v) then
-                                    if replaceById(v) then return true end
-                                end
-                            end
-                            return false
-                        end
-
-                        local replaced = replaceById(tbl)
-                        if not replaced then
-                            ShowNotification("Entity not found in data file", NOTIFY_ERROR)
-                            return
-                        end
-
-                        local out = util.TableToJSON(tbl, true)
-                        if not out or out == "" then
-                            ShowNotification("Failed to serialize updated JSON", NOTIFY_ERROR)
-                            return
-                        end
-
-                        file.Write(filename, out)
-                        ShowNotification("JSON saved", NOTIFY_GENERIC)
-                        if onAction then onAction(newData) end
-                        if OpenEntityViewer then
-                            OpenEntityViewer()
-                        end
-                    end)
-                else
-                    local lbl = vgui.Create("DLabel", contentPanel)
-                    lbl:SetText("JSON Editor not available")
-                    lbl:SetFont("RareloadBody")
-                    lbl:SetTextColor(THEME.textSecondary)
-                    lbl:Dock(FILL)
-                    lbl:SetContentAlignment(5)
+            local function AddRow(label, val)
+                local p = vgui.Create("DPanel", scroll)
+                p:Dock(TOP)
+                p:SetTall(40)
+                p:DockMargin(0, 0, 0, 8)
+                p.Paint = function(self, w, h)
+                    draw.RoundedBox(6, 0, 0, w, h, UI_COLORS.row)
+                    draw.SimpleText(label, "RareloadBody", 15, h / 2, UI_COLORS.muted, 0, 1)
+                    draw.SimpleText(tostring(val), "RareloadBody", 150, h / 2, UI_COLORS.text, 0, 1)
                 end
             end
+
+            AddRow("Class", data.class)
+            AddRow("Model", data.model)
+            AddRow("Health", (data.health or "?") .. " / " .. (data.maxHealth or "?"))
+            if data.pos then AddRow("Pos", string.format("%.1f, %.1f, %.1f", data.pos.x, data.pos.y, data.pos.z)) end
+            -- Find the id == "json" section in your CreateDetailsPanel
+        elseif id == "json" then
+            RARELOAD.JSONEditor.Create(content, data, isNPC, function(newData)
+                -- Get the unique ID of the entity we are editing
+                local targetId = newData.RareloadNPCID or (data.rawData and data.rawData.RareloadNPCID) or data.id
+
+                -- Send the new data to the Server to be saved to the file
+                net.Start("RareloadEntityViewer_UpdateData")
+                net.WriteString(tostring(targetId))
+                net.WriteBool(isNPC)
+                net.WriteTable(newData)
+                net.SendToServer()
+
+                ShowNotification("Update request sent to server...", NOTIFY_GENERIC)
+                frame:Close()
+
+                -- Optional: Refresh the main viewer after a short delay
+                timer.Simple(0.5, function()
+                    if OpenEntityViewer then OpenEntityViewer() end
+                end)
+            end)
         end
-        
-        return btn
     end
 
-    CreateTab("Info", "info", 20)
-    CreateTab("JSON Editor", "json", 130)
-
-    contentPanel:Clear()
-    local scroll = vgui.Create("DScrollPanel", contentPanel)
-    scroll:Dock(FILL)
-    scroll:DockMargin(20, 10, 20, 10)
-    
-    AddDetailRow(scroll, "Class", data.class or "Unknown", THEME.primary)
-    if data.model then AddDetailRow(scroll, "Model", data.model, THEME.textSecondary) end
-    if data.health then AddDetailRow(scroll, "Health", data.health .. "/" .. (data.maxHealth or "?"), THEME.success) end
-    
-    if data.pos then 
-        local p = data.pos
-        local px = tonumber(p.x) or 0
-        local py = tonumber(p.y) or 0
-        local pz = tonumber(p.z) or 0
-        AddDetailRow(scroll, "Position", string.format("%.1f, %.1f, %.1f", px, py, pz), THEME.textSecondary) 
-    end
-    
-    if data.ang then
-        local a = data.ang
-        local ap = tonumber(a.p) or 0
-        local ay = tonumber(a.y) or 0
-        local ar = tonumber(a.r) or 0
-        AddDetailRow(scroll, "Angles", string.format("%.1f, %.1f, %.1f", ap, ay, ar), THEME.textSecondary)
-    end
-    
-    if data.skin then AddDetailRow(scroll, "Skin", data.skin, THEME.textSecondary) end
-
-    local actions = vgui.Create("DPanel", frame)
-    actions:Dock(BOTTOM)
-    actions:SetTall(60)
-    actions:DockMargin(20, 0, 20, 20)
-    actions.Paint = function() end
-
-    local function AddActionBtn(text, color, func)
-        local btn = vgui.Create("DButton", actions)
-        btn:SetText(text)
-        btn:SetFont("RareloadBody")
-        btn:SetTextColor(THEME.textPrimary)
-        btn:Dock(RIGHT)
-        btn:DockMargin(10, 0, 0, 0)
-        btn:SetWide(100)
-        btn.Paint = function(self, w, h)
-            local col = color
-            if self:IsHovered() then col = THEME:LerpColor(0.1, col, Color(255,255,255)) end
-            draw.RoundedBox(6, 0, 0, w, h, col)
-        end
-        btn.DoClick = func
-    end
-
-    AddActionBtn("Close", THEME.surfaceVariant, function() frame:Close() end)
-    
-    AddActionBtn("Delete", THEME.error, function()
-        if onDeleted then onDeleted(data) end
-        frame:Close()
-    end)
-
-    if data.pos then
-        AddActionBtn("Teleport", THEME.success, function()
-            RunConsoleCommand("rareload_teleport_to", data.pos.x, data.pos.y, data.pos.z)
-            ShowNotification("Teleporting...", NOTIFY_GENERIC)
-        end)
-    end
-end
-
-function CreateInfoPanel(parent, data, isNPC, onDeleted, onAction)
-    local card = parent:Add("DButton")
-    card:SetText("")
-    card:SetSize(200, 260)
-    
-    local typeColor = THEME:GetEntityTypeColor(data.class)
-    local hoverFraction = 0
-
-    card.Paint = function(self, w, h)
-        local hovered = self:IsHovered()
-        hoverFraction = Lerp(FrameTime() * 10, hoverFraction, hovered and 1 or 0)
-        
-        THEME:DrawCard(0, 0, w, h, THEME.surface, hovered)
-        
-        draw.RoundedBoxEx(8, 0, h-4, w, 4, typeColor, false, false, true, true)
-    end
-
-    card.DoClick = function()
-        CreateDetailsPanel(data, isNPC, onDeleted, onAction)
-    end
-
-    local modelPanel = vgui.Create("DModelPanel", card)
-    modelPanel:SetPos(0, 0)
-    modelPanel:SetSize(200, 160)
-    modelPanel:SetMouseInputEnabled(false)
-
-    if data.model and util.IsValidModel(data.model) then
-        modelPanel:SetModel(data.model)
-        local ent = modelPanel:GetEntity()
-        if IsValid(ent) then
-            local min, max = ent:GetRenderBounds()
-            local center = (min + max) * 0.5
-            local sizeX = max.x - min.x
-            local sizeY = max.y - min.y
-            local sizeZ = max.z - min.z
-            local size = math.max(sizeX, sizeY, sizeZ)
-            
-            local fov = 40
-            local dist = (size * 1.3) / math.tan(math.rad(fov / 2))
-            
-            modelPanel:SetLookAt(center)
-            modelPanel:SetCamPos(center + Vector(dist * 0.5, dist * 0.4, dist * 0.35))
-            modelPanel:SetFOV(fov)
-            
-            modelPanel.LayoutEntity = function(self, ent)
-                ent:SetAngles(Angle(0, RealTime() * 30, 0))
+    local function Tab(name, id, y)
+        local b = vgui.Create("DButton", sidebar)
+        b:SetSize(200, 50)
+        b:SetPos(0, y)
+        b:SetText(name)
+        b:SetFont("RareloadBody")
+        b:SetTextColor(UI_COLORS.text)
+        b.Paint = function(self, w, h)
+            if activeTab == id then
+                draw.RoundedBox(0, 0, 0, 4, h, UI_COLORS.accent)
+                surface.SetDrawColor(80, 140, 255, 20)
+                surface.DrawRect(0, 0, w, h)
             end
         end
-    else
-        modelPanel.Paint = function(self, w, h)
-            draw.RoundedBoxEx(8, 0, 0, w, h, THEME.backgroundDark, true, true, false, false)
-            draw.SimpleText("?", "RareloadHeading", w/2, h/2, THEME.textDisabled, 1, 1)
-        end
+        b.DoClick = function() SwitchTab(id) end
     end
 
-    local info = vgui.Create("DPanel", card)
-    info:SetPos(0, 160)
-    info:SetSize(200, 100)
-    info:SetMouseInputEnabled(false)
-    info.Paint = function() end
-
-    local name = data.class or "Unknown"
-    if string.len(name) > 20 then name = string.sub(name, 1, 18) .. "..." end
-    
-    local lblName = vgui.Create("DLabel", info)
-    lblName:SetText(name)
-    lblName:SetFont("RareloadSubheading")
-    lblName:SetTextColor(THEME.textPrimary)
-    lblName:SetPos(10, 5)
-    lblName:SetSize(180, 20)
-    lblName:SetContentAlignment(5)
-
-    if data.health then
-        local hp = tonumber(data.health) or 0
-        local maxHp = tonumber(data.maxHealth) or hp
-        if maxHp > 0 then
-            local hpBar = vgui.Create("DPanel", info)
-            hpBar:SetPos(20, 35)
-            hpBar:SetSize(160, 6)
-            hpBar.Paint = function(self, w, h)
-                draw.RoundedBox(3, 0, 0, w, h, THEME.backgroundDark)
-                local frac = math.Clamp(hp / maxHp, 0, 1)
-                draw.RoundedBox(3, 0, 0, w * frac, h, THEME:GetHealthColor(hp, maxHp))
-            end
-        end
-    end
-
-    if data.pos and IsValid(LocalPlayer()) then
-        local dist = math.Round(LocalPlayer():GetPos():Distance(Vector(data.pos.x, data.pos.y, data.pos.z)))
-        local lblDist = vgui.Create("DLabel", info)
-        lblDist:SetText(dist .. " units")
-        lblDist:SetFont("RareloadCaption")
-        lblDist:SetTextColor(THEME.textSecondary)
-        lblDist:SetPos(10, 50)
-        lblDist:SetSize(180, 20)
-        lblDist:SetContentAlignment(5)
-    end
-
-    return card
+    Tab("Information", "info", 60)
+    Tab("Data Editor", "json", 110)
+    SwitchTab("info")
 end
