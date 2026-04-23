@@ -137,14 +137,12 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
             catWrap.lines = {}
         end
 
-        -- NEW: Check cache before doing any math
         local cached = catWrap.lines[text]
         if cached then return cached end
 
         surface_SetFont(contentFont)
         local textWidth = surface_GetTextSize(text) or 0
 
-        -- NEW: Return and cache a unique table, eliminating the reference bug
         if textWidth <= maxWidth and not string.find(text, "\n") then
             local res = { text }
             catWrap.lines[text] = res

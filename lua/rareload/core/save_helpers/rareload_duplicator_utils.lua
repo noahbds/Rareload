@@ -6,7 +6,7 @@ RARELOAD.DuplicatorBridge = RARELOAD.DuplicatorBridge or {}
 local Bridge = RARELOAD.DuplicatorBridge
 local SERIALIZED_TYPE_KEY = "__rareload_type"
 local MAX_RECURSION_DEPTH = 8
-local DebugHelpers = include("rareload/debug/sv_debug_helpers.lua")
+local DebugHelpers = SERVER and include("rareload/debug/sv_debug_helpers.lua") or {}
 
 local vector_origin = vector_origin or Vector(0, 0, 0)
 local angle_zero = angle_zero or Angle(0, 0, 0)
