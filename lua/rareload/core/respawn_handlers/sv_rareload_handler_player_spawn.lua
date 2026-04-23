@@ -157,20 +157,39 @@ function RARELOAD.HandlePlayerSpawn(ply)
         end
         return
     end
+
     if RARELOAD.GetPlayerSetting(ply, "cleanupMapAfterDeath", false) and ply.wasKilled then
         if not RARELOAD._isCleaningUpMap then
             RARELOAD._isCleaningUpMap = true
             ply.wasKilled = false
-            
+
             if RARELOAD.Debug and RARELOAD.Debug.Write then
                 RARELOAD.Debug.Write("respawn", "INFO", 0, "Cleaning up map before respawn", { entity = ply })
             elseif DebugEnabled then
                 print("[RARELOAD DEBUG] Cleaning up map before respawn.")
             end
-            
-            game.CleanUpMap()
-            
-            timer.Simple(0.5, function() RARELOAD._isCleaningUpMap = false end)
+
+            local preHookName = "RareloadSaveEntitiesBeforeCleanup"
+            local savedPreHook = hook.GetTable()["PreCleanupMap"] and hook.GetTable()["PreCleanupMap"][preHookName]
+
+            if savedPreHook then
+                hook.Remove("PreCleanupMap", preHookName)
+            end
+
+            game.CleanUpMap(false, {}, function()
+                if savedPreHook then
+                    hook.Add("PreCleanupMap", preHookName, savedPreHook)
+                end
+
+                timer.Simple(0.1, function()
+                    if IsValid(ply) then
+                        ply:Spawn()
+                    end
+                end)
+
+                timer.Simple(1, function() RARELOAD._isCleaningUpMap = false end)
+            end)
+
             return
         end
     end

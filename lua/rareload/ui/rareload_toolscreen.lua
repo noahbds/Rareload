@@ -38,20 +38,21 @@ end
 local ToolScreen = {}
 
 local FEATURES = {
-    { name = "Anti-stuck system",        key = "spawnModeEnabled",       kind = "bool" },
-    { name = "Auto Save",                key = "autoSaveEnabled",        kind = "bool" },
-    { name = "No Custom Death Respawn",  key = "nocustomrespawnatdeath", kind = "bool" },
-    { name = "Save Inventory",           key = "retainInventory",        kind = "bool" },
-    { name = "Save Global Inventory",    key = "retainGlobalInventory",  kind = "bool" },
-    { name = "Save Ammo",                key = "retainAmmo",             kind = "bool" },
-    { name = "Save Health and Armor",    key = "retainHealthArmor",      kind = "bool" },
-    { name = "Save Player States",       key = "retainPlayerStates",     kind = "bool" },
-    { name = "Save Entities",            key = "retainMapEntities",      kind = "bool" },
-    { name = "Save NPCs",                key = "retainMapNPCs",          kind = "bool" },
-    { name = "Debug Mode",               key = "debugEnabled",           kind = "bool" },
-    { name = "Auto Save Interval",       key = "autoSaveInterval",       kind = "value", unit = "s" },
-    { name = "Angle Tolerance",          key = "angleTolerance",         kind = "value", unit = "°" },
-    { name = "Max History Size",         key = "maxHistorySize",         kind = "value" }
+    { name = "Anti-stuck system",       key = "spawnModeEnabled",       kind = "bool" },
+    { name = "Auto Save",               key = "autoSaveEnabled",        kind = "bool" },
+    { name = "Clean Map on Death",      key = "cleanupMapAfterDeath",   kind = "bool" },
+    { name = "No Custom Death Respawn", key = "nocustomrespawnatdeath", kind = "bool" },
+    { name = "Save Inventory",          key = "retainInventory",        kind = "bool" },
+    { name = "Save Global Inventory",   key = "retainGlobalInventory",  kind = "bool" },
+    { name = "Save Ammo",               key = "retainAmmo",             kind = "bool" },
+    { name = "Save Health and Armor",   key = "retainHealthArmor",      kind = "bool" },
+    { name = "Save Player States",      key = "retainPlayerStates",     kind = "bool" },
+    { name = "Save Entities",           key = "retainMapEntities",      kind = "bool" },
+    { name = "Save NPCs",               key = "retainMapNPCs",          kind = "bool" },
+    { name = "Debug Mode",              key = "debugEnabled",           kind = "bool" },
+    { name = "Auto Save Interval",      key = "autoSaveInterval",       kind = "value", unit = "s" },
+    { name = "Angle Tolerance",         key = "angleTolerance",         kind = "value", unit = "°" },
+    { name = "Max History Size",        key = "maxHistorySize",         kind = "value" }
 }
 
 local TMP_COLOR = Color(255, 255, 255, 255)
@@ -522,7 +523,8 @@ local function drawPermissionDeniedImage(width, height)
         alpha = 255
         animProgress = 1
     else
-        local remainingTime = RARELOAD.permissionDeniedState.duration - (CurTime() - RARELOAD.permissionDeniedState.showTime)
+        local remainingTime = RARELOAD.permissionDeniedState.duration -
+            (CurTime() - RARELOAD.permissionDeniedState.showTime)
         alpha = 255
         if remainingTime < 0.5 then
             alpha = remainingTime * 510

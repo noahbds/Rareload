@@ -15,7 +15,8 @@ if SERVER then
             retainVehicleState = false, -- BROKEN
             retainMapEntities = true,
             retainMapNPCs = true,
-            retainVehicles = false, -- BROKEN
+            cleanupMapAfterDeath = false, -- Added Option
+            retainVehicles = false,       -- BROKEN
             nocustomrespawnatdeath = false,
             debugEnabled = false,
             maxHistorySize = 125,
