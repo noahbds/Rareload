@@ -6,7 +6,6 @@ if SERVER then
     include("rareload/anti_stuck/sv_anti_stuck_cache.lua")
     include("rareload/anti_stuck/sv_anti_stuck_validation.lua")
     include("rareload/anti_stuck/sv_anti_stuck_methods_loader.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_network.lua")
     include("rareload/anti_stuck/sv_anti_stuck_commands.lua")
 
     RARELOAD = RARELOAD or {}
