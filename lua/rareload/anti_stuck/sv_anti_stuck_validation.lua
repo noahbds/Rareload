@@ -64,7 +64,7 @@ function AntiStuck.IsPositionStuck(pos, ply, isOriginalPosition)
     end
 
     local hull = TracePlayerHull(pos, ply, AntiStuck.CONFIG.PLAYER_HULL_TOLERANCE)
-    if hull.StartSolid or (hull.Hit and hull.Fraction < 0.99) then
+    if hull.StartSolid or hull.AllSolid then
         AntiStuck.LogDebug("Position failed solid collision check", {
             methodName = "IsPositionStuck",
             position = pos,
@@ -72,6 +72,25 @@ function AntiStuck.IsPositionStuck(pos, ply, isOriginalPosition)
             collidingWith = hull.Entity and IsValid(hull.Entity) and hull.Entity:GetClass() or "unknown"
         }, ply)
         return true, "solid_collision"
+    end
+
+    -- A direct hull trace can report Hit/Fraction changes even when the player can stand there.
+    -- Only classify as stuck if a stricter confirmation probe also starts in solid.
+    if hull.Hit and hull.Fraction < 0.99 then
+        local confirmTolerance = math.max(AntiStuck.CONFIG.PLAYER_HULL_TOLERANCE * 0.25, 2)
+        local confirmPos = pos + Vector(0, 0, 2)
+        local confirmHull = TracePlayerHull(confirmPos, ply, confirmTolerance)
+
+        if confirmHull.StartSolid or confirmHull.AllSolid then
+            AntiStuck.LogDebug("Position failed confirmed collision probe", {
+                methodName = "IsPositionStuck",
+                position = pos,
+                reason = "solid_collision_confirmed",
+                collidingWith = confirmHull.Entity and IsValid(confirmHull.Entity) and confirmHull.Entity:GetClass() or
+                    "unknown"
+            }, ply)
+            return true, "solid_collision"
+        end
     end
 
     local checkPoints = { Vector(0, 0, 0), Vector(8, 0, 0), Vector(-8, 0, 0), Vector(0, 8, 0), Vector(0, -8, 0) }

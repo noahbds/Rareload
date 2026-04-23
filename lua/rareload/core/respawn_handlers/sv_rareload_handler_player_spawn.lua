@@ -108,6 +108,18 @@ function RARELOAD.HandlePlayerSpawn(ply)
     local SteamID = ply:SteamID()
     local MapName = game.GetMap()
     local SavedInfo = RARELOAD.playerPositions[MapName] and RARELOAD.playerPositions[MapName][SteamID]
+    local playerSpawnMode = RARELOAD.GetPlayerSetting(ply, "spawnModeEnabled", nil)
+    if playerSpawnMode == nil and Settings then
+        playerSpawnMode = Settings.spawnModeEnabled
+    end
+
+    local globalSpawnMode = (RARELOAD.settings and RARELOAD.settings.spawnModeEnabled)
+    if globalSpawnMode == nil then
+        globalSpawnMode = true
+    end
+
+    local antiStuckEnabled = (playerSpawnMode == true) and (globalSpawnMode == true)
+
     if RARELOAD.Debug and RARELOAD.Debug.Write then
         RARELOAD.Debug.Write("respawn", "INFO", 0, "Player spawn started", { entity = ply })
     end
@@ -163,7 +175,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
     end
     local moveType = tonumber(SavedInfo.moveType) or MOVETYPE_WALK
 
-    if RARELOAD.GetPlayerSetting(ply, "spawnModeEnabled", true) then
+    if antiStuckEnabled then
         if not RARELOAD.AntiStuck then
             include("rareload/anti_stuck/sv_anti_stuck_init.lua")
             if RARELOAD.AntiStuck.Initialize then
@@ -273,7 +285,8 @@ function RARELOAD.HandlePlayerSpawn(ply)
         })
 
         if DebugEnabled and RARELOAD.Debug and RARELOAD.Debug.Write then
-            RARELOAD.Debug.Write("respawn", "VERBOSE", 0, "Anti-stuck disabled; used saved position and angles directly",
+            RARELOAD.Debug.Write("respawn", "VERBOSE", 0,
+                "Anti-stuck disabled; used saved position and angles directly",
                 { entity = ply })
         end
     end

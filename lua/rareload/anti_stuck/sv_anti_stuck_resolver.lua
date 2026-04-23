@@ -82,7 +82,15 @@ if SERVER then
                 table.insert(lines, string.format("%d: %s (priority: %d, success: %.1f%%, timeout: %.1fs)",
                     i, method.name, method.priority or -1, (method.successRate or 0.5) * 100, method.timeout or 1.0))
             end
-            RARELOAD.Debug.LogGroup("Anti-Stuck Methods", "VERBOSE", { header, unpack(lines) })
+            if RARELOAD.Debug and type(RARELOAD.Debug.LogGroup) == "function" then
+                RARELOAD.Debug.LogGroup("Anti-Stuck Methods", "VERBOSE", { header, unpack(lines) }, "anti_stuck")
+            elseif RARELOAD.Debug and type(RARELOAD.Debug.Write) == "function" then
+                RARELOAD.Debug.Write("anti_stuck", "VERBOSE", 0, "Anti-Stuck Methods", nil)
+                RARELOAD.Debug.Write("anti_stuck", "VERBOSE", 1, header, nil)
+                for _, line in ipairs(lines) do
+                    RARELOAD.Debug.Write("anti_stuck", "VERBOSE", 1, line, nil)
+                end
+            end
         end
 
         return methodsCache

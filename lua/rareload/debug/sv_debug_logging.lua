@@ -58,6 +58,11 @@ function RARELOAD.Debug.Write(category, level, indentLevel, message, context)
 
         DEBUG_CONFIG.AddToLogBuffer(level, categoryDisplay, fileEntry)
     end
+
+    if context.entity and IsValid(context.entity) and context.entity:IsPlayer() and RARELOAD.Debug and RARELOAD.Debug.SendToPlayer then
+        local playerLine = indent .. header
+        RARELOAD.Debug.SendToPlayer(context.entity, playerLine)
+    end
 end
 
 local debugSections = {}

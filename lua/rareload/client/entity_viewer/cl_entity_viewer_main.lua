@@ -112,25 +112,34 @@ function EntityViewer:LoadData()
         return {}
     end
 
+    local localPly = LocalPlayer()
+    if not IsValid(localPly) then
+        return {}
+    end
+
+    local localSteamID = localPly:SteamID()
+    if not localSteamID or localSteamID == "" then
+        return {}
+    end
+
     local loaded = {}
 
-    for _, playerData in pairs(mapData) do
-        if not istable(playerData) then
-            continue
-        end
-
-        local entityList = SnapshotUtils and SnapshotUtils.GetSummary and SnapshotUtils.GetSummary(playerData.entities, {
-            category = "entity",
-            idPrefix = "entity"
-        }) or {}
-        local npcList = SnapshotUtils and SnapshotUtils.GetSummary and SnapshotUtils.GetSummary(playerData.npcs, {
-            category = "npc",
-            idPrefix = "npc"
-        }) or {}
-
-        ExtractEntities(entityList, loaded)
-        ExtractEntities(npcList, loaded)
+    local playerData = mapData[localSteamID]
+    if not istable(playerData) then
+        return loaded
     end
+
+    local entityList = SnapshotUtils and SnapshotUtils.GetSummary and SnapshotUtils.GetSummary(playerData.entities, {
+        category = "entity",
+        idPrefix = "entity"
+    }) or {}
+    local npcList = SnapshotUtils and SnapshotUtils.GetSummary and SnapshotUtils.GetSummary(playerData.npcs, {
+        category = "npc",
+        idPrefix = "npc"
+    }) or {}
+
+    ExtractEntities(entityList, loaded)
+    ExtractEntities(npcList, loaded)
 
     return loaded
 end

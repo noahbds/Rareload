@@ -45,6 +45,10 @@ local function LogStructured(category, level, title, lines, ply)
     end
 end
 
+function RARELOAD.Debug.LogGroup(title, level, lines, category, ply)
+    LogStructured(category or "system", level or "INFO", title, lines, ply)
+end
+
 local function FormatValue(value)
     if RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.FormatValue then
         return RARELOAD.DataUtils.FormatValue(value)
