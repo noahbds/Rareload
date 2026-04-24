@@ -55,8 +55,18 @@ if SERVER then
         if not IsValid(ply) then return end
         if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then return end
         EnsureFolderExists()
+
         if RARELOAD.SavePlayerPositionOnDisconnect then
             RARELOAD.SavePlayerPositionOnDisconnect(ply)
+        end
+
+        if RARELOAD.GetPlayerSetting(ply, "cleanupOwnedEntitiesOnDisconnect", false)
+            and RARELOAD.CleanupPlayerOwnedEntities then
+            local removed = RARELOAD.CleanupPlayerOwnedEntities(ply)
+            if RARELOAD.settings and RARELOAD.settings.debugEnabled then
+                print(string.format("[RARELOAD] Cleaned up %d owned entities for disconnecting player %s",
+                    removed, ply:Nick()))
+            end
         end
     end)
 

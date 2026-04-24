@@ -368,6 +368,17 @@ function TOOL.BuildCPanel(panel)
         "sv_rareload_cleanup_map", "Clean up the map right before respawning")
     mapCategory:AddItem(toggleCleanupMap)
 
+
+    local toggleOwnedOnly = RareloadUI.CreateToggleSwitch(mapCategory.Content, "Owned Entities Only",
+        "sv_rareload_cleanup_owned_only",
+        "Restrict death cleanup to your own Rareload-spawned entities/NPCs (no full map wipe)")
+    mapCategory:AddItem(toggleOwnedOnly)
+
+    local toggleCleanupDisconnect = RareloadUI.CreateToggleSwitch(mapCategory.Content, "Cleanup on Disconnect",
+        "sv_rareload_cleanup_on_disconnect",
+        "Remove your owned entities and NPCs when you disconnect")
+    mapCategory:AddItem(toggleCleanupDisconnect)
+
     -- ═══════════════════════════════════════════════════════════════
     -- TIMING SETTINGS CATEGORY
     -- ═══════════════════════════════════════════════════════════════

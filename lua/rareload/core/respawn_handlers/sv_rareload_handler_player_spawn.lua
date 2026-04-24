@@ -55,6 +55,55 @@ local function ApplySpawnTransform(ply, opts)
     end)
 end
 
+function RARELOAD.CleanupPlayerOwnedEntities(ply)
+    if not IsValid(ply) then return 0 end
+
+    local removed  = 0
+    local toRemove = {}
+
+    local function isOwnedByPly(ent)
+        if RARELOAD.Ownership and RARELOAD.Ownership.IsOwnedByPlayerSafe then
+            if RARELOAD.Ownership.IsOwnedByPlayerSafe(ent, ply) then return true end
+        end
+        if ent.CPPIGetOwner then
+            local ok, owner = pcall(ent.CPPIGetOwner, ent)
+            if ok and IsValid(owner) and owner == ply then return true end
+        end
+        if ent.GetCreator then
+            local ok, creator = pcall(ent.GetCreator, ent)
+            if ok and IsValid(creator) and creator == ply then return true end
+        end
+        return false
+    end
+
+    for _, ent in ipairs(ents.GetAll()) do
+        if not IsValid(ent) or ent:IsPlayer() then continue end
+
+        if not isOwnedByPly(ent) then continue end
+
+        if ent:IsWeapon()
+            or ent:GetClass() == "predicted_viewmodel"
+            or ent:GetClass() == "viewmodel" then
+            if ent.SetNWString then
+                pcall(ent.SetNWString, ent, "RareloadID", "")
+            end
+            ent.RareloadEntityID = nil
+            ent.RareloadNPCID    = nil
+        else
+            toRemove[#toRemove + 1] = ent
+        end
+    end
+
+    for _, ent in ipairs(toRemove) do
+        if IsValid(ent) then
+            ent:Remove()
+            removed = removed + 1
+        end
+    end
+
+    return removed
+end
+
 function RARELOAD.HandlePlayerSpawn(ply)
     if not IsValid(ply) then return end
 
@@ -65,26 +114,22 @@ function RARELOAD.HandlePlayerSpawn(ply)
         return true
     end
 
-    -- Ensure player settings are loaded before any spawn decisions.
     if RARELOAD.PlayerSettings and RARELOAD.PlayerSettings.Load then
         RARELOAD.PlayerSettings.Load(ply:SteamID())
     end
 
-    -- Check if addon is enabled for this player
     if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then return end
     if not hasPerm("LOAD_POSITION") or not hasPerm("RARELOAD_SPAWN") then
         return
     end
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
 
-    -- Load player positions for this specific player if not already loaded
     local mapName = game.GetMap()
     local steamID = ply:SteamID()
     local hasThisPlayerData = RARELOAD.playerPositions[mapName]
         and RARELOAD.playerPositions[mapName][steamID] ~= nil
 
     if not hasThisPlayerData and RARELOAD.LoadPlayerPositions then
-        -- Load all player positions (will load from disk if not in memory)
         RARELOAD.LoadPlayerPositions()
     end
 
@@ -98,7 +143,6 @@ function RARELOAD.HandlePlayerSpawn(ply)
         end
     end
 
-    -- Get player-specific settings instead of global
     local Settings = RARELOAD.PlayerSettings and RARELOAD.PlayerSettings.Get(ply) or RARELOAD.settings
     if not Settings then
         print("[RARELOAD] Error: Settings not loaded, cannot handle player spawn.")
@@ -159,38 +203,67 @@ function RARELOAD.HandlePlayerSpawn(ply)
     end
 
     if RARELOAD.GetPlayerSetting(ply, "cleanupMapAfterDeath", false) and ply.wasKilled then
-        if not RARELOAD._isCleaningUpMap then
-            RARELOAD._isCleaningUpMap = true
+        -- cleanupOnlyOwnedEntitiesOnDeath restricts the cleanup scope:
+        --   false (default) → full map wipe via game.CleanUpMap()
+        --   true            → only remove Rareload-spawned entities owned by this player
+        local ownedOnly = RARELOAD.GetPlayerSetting(ply, "cleanupOnlyOwnedEntitiesOnDeath", false)
+
+        if ownedOnly then
+            -- Scoped cleanup: remove only this player's Rareload-spawned entities/NPCs
             ply.wasKilled = false
 
             if RARELOAD.Debug and RARELOAD.Debug.Write then
-                RARELOAD.Debug.Write("respawn", "INFO", 0, "Cleaning up map before respawn", { entity = ply })
+                RARELOAD.Debug.Write("respawn", "INFO", 0,
+                    "Cleanup (owned only): removing player-owned Rareload entities before respawn", { entity = ply })
             elseif DebugEnabled then
-                print("[RARELOAD DEBUG] Cleaning up map before respawn.")
+                print("[RARELOAD DEBUG] Cleanup (owned only): removing player-owned Rareload entities before respawn.")
             end
 
-            local preHookName = "RareloadSaveEntitiesBeforeCleanup"
-            local savedPreHook = hook.GetTable()["PreCleanupMap"] and hook.GetTable()["PreCleanupMap"][preHookName]
+            local removed = RARELOAD.CleanupPlayerOwnedEntities(ply)
+            ply._rareloadSkipExistingFilter = true
 
-            if savedPreHook then
-                hook.Remove("PreCleanupMap", preHookName)
+            if DebugEnabled then
+                print(string.format("[RARELOAD DEBUG] Removed %d player-owned entities for %s",
+                    removed, ply:Nick()))
             end
 
-            game.CleanUpMap(false, {}, function()
-                if savedPreHook then
-                    hook.Add("PreCleanupMap", preHookName, savedPreHook)
+            -- Continue the normal spawn flow immediately — no re-spawn needed
+        else
+            -- Full map cleanup (original behaviour)
+            if not RARELOAD._isCleaningUpMap then
+                RARELOAD._isCleaningUpMap = true
+                ply.wasKilled = false
+
+                if RARELOAD.Debug and RARELOAD.Debug.Write then
+                    RARELOAD.Debug.Write("respawn", "INFO", 0, "Cleanup (full map): cleaning up before respawn",
+                        { entity = ply })
+                elseif DebugEnabled then
+                    print("[RARELOAD DEBUG] Cleanup (full map): cleaning up before respawn.")
                 end
 
-                timer.Simple(0.1, function()
-                    if IsValid(ply) then
-                        ply:Spawn()
+                local preHookName = "RareloadSaveEntitiesBeforeCleanup"
+                local savedPreHook = hook.GetTable()["PreCleanupMap"] and hook.GetTable()["PreCleanupMap"][preHookName]
+
+                if savedPreHook then
+                    hook.Remove("PreCleanupMap", preHookName)
+                end
+
+                game.CleanUpMap(false, {}, function()
+                    if savedPreHook then
+                        hook.Add("PreCleanupMap", preHookName, savedPreHook)
                     end
+
+                    timer.Simple(0.1, function()
+                        if IsValid(ply) then
+                            ply:Spawn()
+                        end
+                    end)
+
+                    timer.Simple(1, function() RARELOAD._isCleaningUpMap = false end)
                 end)
 
-                timer.Simple(1, function() RARELOAD._isCleaningUpMap = false end)
-            end)
-
-            return
+                return
+            end
         end
     end
 
@@ -268,7 +341,6 @@ function RARELOAD.HandlePlayerSpawn(ply)
                         { entity = ply })
                 end
             else
-                -- Anti-stuck resolution failed; still attempt the original saved position
                 local fallbackPos = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
                     and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
                     or SavedInfo.pos
@@ -399,20 +471,10 @@ function RARELOAD.HandlePlayerSpawn(ply)
         local playerPos = SavedInfo.pos
         RARELOAD.RestoreEntities(playerPos, SavedInfo, ply)
 
-        -- After entity restoration, the Source physics engine will push the
-        -- player out of any restored entity that overlaps the spawn position.
-        -- To prevent this, temporarily make all Rareload-spawned entities
-        -- non-solid, re-apply the current position (which may have been
-        -- adjusted by the anti-stuck system), then restore solidity.
         timer.Simple(0.1, function()
             if not IsValid(ply) then return end
-            -- Use the player's *current* position — this is either the saved
-            -- position or the safe position chosen by the anti-stuck system.
-            -- We must NOT overwrite it with SavedInfo.pos which could put the
-            -- player back into a stuck spot that anti-stuck already resolved.
             local currentPos = ply:GetPos()
 
-            -- Collect restored entities and make them temporarily non-solid
             local rareloadEnts = {}
             for _, ent in ipairs(ents.GetAll()) do
                 if IsValid(ent) and ent.SpawnedByRareload then
@@ -422,11 +484,8 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 end
             end
 
-            -- Re-apply the position while entities are non-solid so the
-            -- physics engine doesn't push the player away from the entities
             ply:SetPos(currentPos)
 
-            -- Restore entity solidity after the player is settled
             timer.Simple(0.15, function()
                 for _, ent in ipairs(rareloadEnts) do
                     if IsValid(ent) then
@@ -444,7 +503,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
         RARELOAD.RestoreNPCs(SavedInfo, ply)
     end
 
-    -- NEW - Restore player states (godmode, notarget, etc.)
+    -- Restore player states (godmode, notarget, etc.)
     if hasPerm("RETAIN_PLAYER_STATES") and RARELOAD.GetPlayerSetting(ply, "retainPlayerStates", true) and SavedInfo.playerStates then
         timer.Simple(0.1, function()
             if not IsValid(ply) then return end

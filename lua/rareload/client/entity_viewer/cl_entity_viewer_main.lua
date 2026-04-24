@@ -1,8 +1,3 @@
--- =============================================================================
--- cl_entity_viewer_main.lua
--- Main grid viewer: loads data, builds the frame, card grid, sidebar, search.
--- =============================================================================
--- Only import locals that are actually used in this file.
 local draw, surface, util, vgui, hook = draw, surface, util, vgui, hook
 local math, string = math, string
 local Color, Vector, Angle = Color, Vector, Angle
@@ -14,10 +9,6 @@ include("cl_entity_viewer_utils.lua")
 local SnapshotUtils       = include("rareload/shared/rareload_snapshot_utils.lua")
 
 EV_THEME                  = THEME
-
--- ---------------------------------------------------------------------------
--- EntityViewer state
--- ---------------------------------------------------------------------------
 local EntityViewer        = {}
 EntityViewer.Frame        = nil
 EntityViewer.Data         = {}
@@ -26,9 +17,6 @@ EntityViewer.SearchText   = ""
 EntityViewer.Category     = "All"
 EntityViewer.SortMode     = "Name"
 
--- ---------------------------------------------------------------------------
--- Delete helpers
--- ---------------------------------------------------------------------------
 local function ResolveDeleteEntityID(entityData)
     if not (entityData and entityData.rawData) then return "" end
     local raw = entityData.rawData
@@ -54,9 +42,6 @@ local function SendDeleteRequest(entityData)
     net.SendToServer()
 end
 
--- ---------------------------------------------------------------------------
--- Data extraction
--- ---------------------------------------------------------------------------
 local function ExtractEntities(tbl, result)
     result = result or {}
     if not tbl then return result end
@@ -116,9 +101,6 @@ local function ExtractEntities(tbl, result)
     return result
 end
 
--- ---------------------------------------------------------------------------
--- Data loading & filtering
--- ---------------------------------------------------------------------------
 function EntityViewer:LoadData()
     local mapName = game.GetMap()
     local mapData = RARELOAD and RARELOAD.playerPositions and RARELOAD.playerPositions[mapName]
@@ -188,9 +170,6 @@ function EntityViewer:ReloadDataAndRefresh()
     self:RefreshList()
 end
 
--- ---------------------------------------------------------------------------
--- Sidebar button
--- ---------------------------------------------------------------------------
 local function CreateSidebarButton(parent, text, yPos, onClick, viewer)
     local btn = vgui.Create("DButton", parent)
     btn:SetText("")
@@ -220,9 +199,6 @@ local function CreateSidebarButton(parent, text, yPos, onClick, viewer)
     return btn
 end
 
--- ---------------------------------------------------------------------------
--- Entity card (grid item)
--- ---------------------------------------------------------------------------
 local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails)
     local card = vgui.Create("DButton", parent)
     card:SetText("")
@@ -249,7 +225,6 @@ local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails)
         draw.RoundedBoxEx(8, 0, h - 4, w, 4, typeColor, false, false, true, true)
     end
 
-    -- Model preview
     local previewBg = vgui.Create("DPanel", card)
     previewBg:SetPos(8, 8)
     previewBg:SetSize(169, 120)
@@ -287,7 +262,6 @@ local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails)
         end
     end
 
-    -- Class label
     local name = data.class or "Unknown"
     if #name > 20 then name = string.sub(name, 1, 18) .. "..." end
 
@@ -299,7 +273,6 @@ local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails)
     lblName:SetSize(169, 20)
     lblName:SetContentAlignment(5)
 
-    -- Health bar (optional)
     local yOffset = 155
     if data.health and data.maxHealth then
         local hp    = tonumber(data.health) or 0
@@ -318,7 +291,6 @@ local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails)
         end
     end
 
-    -- Distance label (optional)
     if data.pos and IsValid(LocalPlayer()) then
         local dist      = math.Round(LocalPlayer():GetPos():Distance(data.pos))
         local distLabel = vgui.Create("DLabel", card)
@@ -330,7 +302,6 @@ local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails)
         distLabel:SetContentAlignment(5)
     end
 
-    -- Action buttons
     local btnContainer = vgui.Create("DPanel", card)
     btnContainer:SetPos(8, 195)
     btnContainer:SetSize(169, 32)
@@ -369,9 +340,6 @@ local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails)
     return card
 end
 
--- ---------------------------------------------------------------------------
--- EntityViewer:Open
--- ---------------------------------------------------------------------------
 function EntityViewer:Open()
     if IsValid(self.Frame) then self.Frame:Close() end
 
@@ -396,7 +364,6 @@ function EntityViewer:Open()
         surface.DrawLine(200, 55, w, 55)
     end
 
-    -- Close button
     local closeBtn = vgui.Create("DButton", frame)
     closeBtn:SetText("")
     closeBtn:SetSize(36, 36)
@@ -415,7 +382,6 @@ function EntityViewer:Open()
     closeBtn.DoClick = function() frame:Close() end
     self.CloseBtn = closeBtn
 
-    -- Sidebar header
     local sidebarHeader = vgui.Create("DPanel", frame)
     sidebarHeader:SetPos(0, 0)
     sidebarHeader:SetSize(200, 70)
@@ -425,7 +391,6 @@ function EntityViewer:Open()
             TEXT_ALIGN_CENTER)
     end
 
-    -- Category sidebar buttons
     local categories = { "All", "NPCs", "Weapons", "Vehicles", "Props" }
     for i, cat in ipairs(categories) do
         CreateSidebarButton(frame, cat, 70 + (i - 1) * 48, function()
@@ -434,7 +399,6 @@ function EntityViewer:Open()
         end, self)
     end
 
-    -- Stats panel
     local statsPanel = vgui.Create("DPanel", frame)
     statsPanel:SetPos(10, 520)
     statsPanel:SetSize(180, 85)
@@ -451,13 +415,11 @@ function EntityViewer:Open()
             TEXT_ALIGN_CENTER)
     end
 
-    -- Top bar
     local topBar = vgui.Create("DPanel", frame)
     topBar:SetPos(210, 0)
     topBar:SetSize(700, 55)
     topBar.Paint = function() end
 
-    -- Search box
     local searchContainer = vgui.Create("DPanel", topBar)
     searchContainer:SetPos(8, 10)
     searchContainer:SetSize(260, 36)
@@ -493,7 +455,6 @@ function EntityViewer:Open()
         EntityViewer:RefreshList()
     end
 
-    -- Sort cycle button
     local sortBtn = vgui.Create("DButton", topBar)
     sortBtn:SetPos(278, 10)
     sortBtn:SetSize(110, 36)
@@ -517,7 +478,6 @@ function EntityViewer:Open()
         EntityViewer:RefreshList()
     end
 
-    -- Refresh button
     local refreshBtn = vgui.Create("DButton", topBar)
     refreshBtn:SetPos(660, 10)
     refreshBtn:SetSize(36, 36)
@@ -537,7 +497,6 @@ function EntityViewer:Open()
         ShowNotification("Data refreshed!", NOTIFY_GENERIC)
     end
 
-    -- Scrollable card grid
     local scroll = vgui.Create("DScrollPanel", frame)
     scroll:SetPos(208, 63)
     scroll:SetSize(704, 550)
@@ -561,9 +520,6 @@ function EntityViewer:Open()
     self:RefreshList()
 end
 
--- ---------------------------------------------------------------------------
--- EntityViewer:RefreshList
--- ---------------------------------------------------------------------------
 function EntityViewer:RefreshList()
     if not IsValid(self.Grid) then return end
 
@@ -587,16 +543,16 @@ function EntityViewer:RefreshList()
 
     for _, entData in ipairs(self.FilteredData) do
         CreateEntityCard(self.Grid, entData,
-            function(data) -- teleport
+            function(data)
                 if data.pos then
                     RunConsoleCommand("rareload_teleport_to", data.pos.x, data.pos.y, data.pos.z)
                     ShowNotification("Teleporting...", NOTIFY_GENERIC)
                 end
             end,
-            function(data) -- delete
+            function(data)
                 SendDeleteRequest(data)
             end,
-            function(data) -- details popup (defined in cl_entity_viewer_info_panel.lua)
+            function(data)
                 CreateDetailsPanel(data, false, function(d)
                     SendDeleteRequest(d)
                 end, nil)
@@ -609,9 +565,6 @@ function EntityViewer:RefreshList()
     self.Grid:InvalidateLayout(true)
 end
 
--- ---------------------------------------------------------------------------
--- Net: delete result feedback
--- ---------------------------------------------------------------------------
 net.Receive("RareloadEntityViewer_DeleteResult", function()
     local success = net.ReadBool()
     local message = net.ReadString()
@@ -628,10 +581,6 @@ net.Receive("RareloadEntityViewer_DeleteResult", function()
     end
 end)
 
--- ---------------------------------------------------------------------------
--- Concommands  (single registration point – cl_entity_viewer.lua only calls
--- include(), so there is no duplicate registration)
--- ---------------------------------------------------------------------------
 concommand.Add("rareload_entity_viewer", function() EntityViewer:Open() end)
 concommand.Add("entity_viewer_open", function() EntityViewer:Open() end)
 
@@ -639,9 +588,6 @@ function OpenEntityViewer()
     EntityViewer:Open()
 end
 
--- ---------------------------------------------------------------------------
--- Auto-refresh when server pushes new position data
--- ---------------------------------------------------------------------------
 hook.Add("RareloadPlayerPositionsUpdated", "RARELOAD_EntityViewer_AutoRefresh", function(mapName)
     if mapName ~= game.GetMap() then return end
     if not (EntityViewer.Frame and IsValid(EntityViewer.Frame)) then return end

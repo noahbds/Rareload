@@ -14,6 +14,11 @@ function SnapshotRestore.BuildExistingIDSet(fieldName)
     end
 
     for _, ent in ipairs(ents.GetAll()) do
+        if ent:IsWeapon() then continue end
+        if ent:IsPlayer() then continue end
+        local cls = ent:GetClass()
+        if cls == "viewmodel" or cls == "predicted_viewmodel" then continue end
+
         local existingID = EntityIdentity.GetID(ent, fieldName)
         if existingID then
             existingIDs[existingID] = true
@@ -25,11 +30,15 @@ end
 
 function SnapshotRestore.RestoreWithExistingIDFilter(snapshot, indexToID, fieldName, requestingPlayer, onRetry)
     local skippedIDs = {}
-    local existingIDs = SnapshotRestore.BuildExistingIDSet(fieldName)
+
+    local skipFilter = IsValid(requestingPlayer) and requestingPlayer._rareloadSkipExistingFilter
+    if skipFilter then
+        requestingPlayer._rareloadSkipExistingFilter = nil
+    end
+
+    local existingIDs = (not skipFilter) and SnapshotRestore.BuildExistingIDSet(fieldName) or {}
 
     local restoreOptions = {
-        -- First try server context to avoid non-host sandbox/player-limit failures.
-        -- Ownership is re-applied explicitly by the caller after spawn.
         player = nil,
         filter = function(index, _)
             local id = indexToID[index]
