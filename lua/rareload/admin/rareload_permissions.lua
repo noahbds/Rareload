@@ -341,7 +341,7 @@ if SERVER then
             if mainData then
                 local jsonData = util.TableToJSON({
                     metadata = {
-                        version = "3.2",
+                        version = "3.3",
                         timestamp = backupTime,
                         format = "normalized"
                     },
@@ -534,7 +534,7 @@ if SERVER then
                 if playerData.nick == "Unknown Player" then
                     if sql.TableExists("rareload_player_data") then
                         local storedData = sql.QueryRow("SELECT nick FROM rareload_player_data WHERE steamid = " ..
-                        sql.SQLStr(steamID))
+                            sql.SQLStr(steamID))
                         if storedData and storedData.nick then
                             playerData.nick = storedData.nick
                         end

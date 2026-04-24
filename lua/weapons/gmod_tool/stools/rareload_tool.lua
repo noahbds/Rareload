@@ -301,7 +301,7 @@ function TOOL.BuildCPanel(panel)
             .Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 
         -- Version badge
-        draw.SimpleText("v3.2", "RareloadUI.Small", w - 12, h / 2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT,
+        draw.SimpleText("v3.3", "RareloadUI.Small", w - 12, h / 2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT,
             TEXT_ALIGN_CENTER)
     end
 
