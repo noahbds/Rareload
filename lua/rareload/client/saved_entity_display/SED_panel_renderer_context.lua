@@ -320,6 +320,8 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
     local ft = FrameTime() * 10
     cache.curWidth = Lerp(ft, cache.curWidth, targetWidth)
     cache.curHeight = Lerp(ft, cache.curHeight, targetHeight)
+    if math.abs(cache.curWidth - targetWidth) < 1 then cache.curWidth = targetWidth end
+    if math.abs(cache.curHeight - targetHeight) < 1 then cache.curHeight = targetHeight end
 
     local panelHeight = cache.curHeight
     width = cache.curWidth
@@ -373,8 +375,13 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
     local drawPos = basePos - horiz * outwardAmount
 
     if isLarge or isMassive then
-        local ok, tr = pcall(util.TraceLine, { start = eyePos, endpos = drawPos, filter = SED.lpCache })
-        if ok and tr and tr.Hit and tr.Entity == ent then
+        local now = CurTime()
+        if not renderParams._traceTime or (now - renderParams._traceTime) > 0.15 then
+            renderParams._traceTime = now
+            local ok, tr = pcall(util.TraceLine, { start = eyePos, endpos = drawPos, filter = SED.lpCache })
+            renderParams._traceBlocked = ok and tr and tr.Hit and tr.Entity == ent
+        end
+        if renderParams._traceBlocked then
             drawPos = drawPos - horiz * (outwardAmount * 0.5)
         end
     end

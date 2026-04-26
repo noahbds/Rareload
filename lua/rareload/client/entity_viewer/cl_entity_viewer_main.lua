@@ -509,8 +509,8 @@ function EntityViewer:Open()
     sbar.btnGrip.Paint = function(self, w, h) draw.RoundedBox(3, 0, 0, w, h, EV_THEME.primary) end
 
     local grid         = vgui.Create("DIconLayout", scroll)
-    grid:Dock(FILL)
-    grid:DockMargin(12, 12, 12, 12)
+    grid:SetPos(12, 12)
+    grid:SetWide(scroll:GetWide() - 24)
     grid:SetSpaceX(12)
     grid:SetSpaceY(12)
     self.Grid = grid

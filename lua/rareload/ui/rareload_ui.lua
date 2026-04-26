@@ -412,10 +412,17 @@ function RareloadUI.CreateCategory(parent, title, icon, defaultExpanded)
             targetH = targetH + 8
         end
 
+        local prevHeight = self.CurrentHeight
         self.CurrentHeight = AnimateLerp(self.CurrentHeight, targetH, 15)
-        content:SetTall(math.max(0, self.CurrentHeight))
-        self:SetTall(36 + math.max(0, self.CurrentHeight))
-        self:InvalidateParent(true)
+        if math.abs(self.CurrentHeight - targetH) < 0.5 then
+            self.CurrentHeight = targetH
+        end
+
+        if math.abs(self.CurrentHeight - prevHeight) > 0.05 then
+            content:SetTall(math.max(0, self.CurrentHeight))
+            self:SetTall(36 + math.max(0, self.CurrentHeight))
+            self:InvalidateParent(true)
+        end
     end
 
     container.Content = content
