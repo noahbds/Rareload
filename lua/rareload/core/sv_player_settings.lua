@@ -242,6 +242,11 @@ util.AddNetworkString("RareloadRequestPlayerSettings")
 
 -- Whitelist of settings the client is allowed to change
 local ALLOWED_CLIENT_SETTINGS = {
+    addonEnabled = "bool",
+    spawnModeEnabled = "bool",
+    autoSaveEnabled = "bool",
+    autoSaveInterval = "number",
+    maxHistorySize = "number",
     retainInventory = "bool",
     retainGlobalInventory = "bool",
     retainHealthArmor = "bool",
@@ -294,6 +299,10 @@ net.Receive("RareloadUpdatePlayerSetting", function(len, ply)
             value = math.Clamp(value, 1, 360)
         elseif settingKey == "maxDistance" then
             value = math.Clamp(value, 1, 500)
+        elseif settingKey == "autoSaveInterval" then
+            value = math.Clamp(value, 1, 60)
+        elseif settingKey == "maxHistorySize" then
+            value = math.Clamp(math.Round(value), 1, 150)
         end
     end
 
