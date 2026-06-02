@@ -5,8 +5,6 @@ RARELOAD.Theme = RARELOAD.Theme or {}
 
 local THEMES = {}
 
-local function clamp(a, b, c) return math.max(b, math.min(a, c)) end
-
 -- Base palettes for dark and light modes
 THEMES.dark = {
     -- Generic text

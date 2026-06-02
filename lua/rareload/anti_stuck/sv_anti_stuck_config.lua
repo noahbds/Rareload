@@ -31,15 +31,10 @@ AntiStuck.DefaultSettings = AntiStuck.DefaultSettings or {
     NAV_AREA_OFFSET_Z = 20,
     FALLBACK_HEIGHT = 8192,
 
-    SEARCH_RESOLUTIONS = { 32, 64, 128, 256 },
-    SPIRAL_RINGS = 8,
     MAX_DISTANCE = 1200,
-    VERTICAL_STEPS = 7,
-    VERTICAL_RANGE = 600,
 
     DISPLACEMENT_STEP_SIZE = 64,
     DISPLACEMENT_MAX_HEIGHT = 800,
-    SPACE_SCAN_ACCURACY = 3,
     EMERGENCY_SAFE_RADIUS = 160,
     RANDOM_ATTEMPTS = 25,
 
@@ -48,11 +43,8 @@ AntiStuck.DefaultSettings = AntiStuck.DefaultSettings or {
     METHOD_TIMEOUT_MULTIPLIERS = {
         TryCachedPositions = 0.3,
         TryDisplacement = 0.5,
-        Try3DSpaceScan = 0.8,
         TryNodeGraph = 1.0,
         TryMapEntities = 0.7,
-        TrySystematicGrid = 1.2,
-        TryWorldBrushes = 1.0,
         TryEmergencyTeleport = 0.2
     }
 }
@@ -62,9 +54,6 @@ AntiStuck.DefaultMethods = AntiStuck.DefaultMethods or {
     { name = "Smart Displacement", func = "TryDisplacement",      enabled = true, priority = 10, timeout = 0.8, description = "Fast: Intelligent physics-based movement" },
     { name = "Navigation Mesh",    func = "TryNodeGraph",         enabled = true, priority = 15, timeout = 1.0, description = "Optimal: Source engine navigation system" },
     { name = "Map Entities",       func = "TryMapEntities",       enabled = true, priority = 20, timeout = 0.7, description = "Fast: Leverage map entities and spawn points" },
-    { name = "3D Space Scan",      func = "Try3DSpaceScan",       enabled = true, priority = 25, timeout = 1.2, description = "Thorough: Advanced volumetric analysis" },
-    { name = "World Brushes",      func = "TryWorldBrushes",      enabled = true, priority = 30, timeout = 1.0, description = "Smart: Geometry-based positioning" },
-    { name = "Systematic Grid",    func = "TrySystematicGrid",    enabled = true, priority = 35, timeout = 1.5, description = "Comprehensive: Full area coverage" },
     { name = "Emergency Teleport", func = "TryEmergencyTeleport", enabled = true, priority = 45, timeout = 0.2, description = "Failsafe: Guaranteed positioning" }
 }
 
@@ -127,13 +116,6 @@ function AntiStuck.LogDebug(message, data, player, level)
     elseif AntiStuck.DebugEnabled() then
         print("[RARELOAD ANTI-STUCK] " .. tostring(message))
     end
-end
-
-function AntiStuck.LogStep(status, title, details)
-    if not (RARELOAD and RARELOAD.Debug) then return end
-    local sess = AntiStuck._currentSession
-    if not sess or not RARELOAD.Debug.AntiStuckStep then return end
-    RARELOAD.Debug.AntiStuckStep(sess, status, title, details)
 end
 
 AntiStuck.performanceStats = AntiStuck.performanceStats or {

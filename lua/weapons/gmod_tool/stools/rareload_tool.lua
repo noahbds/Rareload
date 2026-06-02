@@ -308,114 +308,53 @@ function TOOL.BuildCPanel(panel)
     -- ═══════════════════════════════════════════════════════════════
     -- CORE SETTINGS CATEGORY
     -- ═══════════════════════════════════════════════════════════════
+    local function addToggle(category, label, convar, tooltip)
+        category:AddItem(RareloadUI.CreateToggleSwitch(category.Content, label, convar, tooltip))
+    end
+
+    local function addSlider(category, label, tooltip, convar, minV, maxV, decimals, default, suffix)
+        category:AddItem(RareloadUI.CreateCompactSlider(category.Content, label, tooltip, convar,
+            minV, maxV, decimals, default, suffix))
+    end
+
     local coreCategory = RareloadUI.CreateCategory(panel, "Core Settings", "icon16/cog.png", true)
-
-    local toggleRareload = RareloadUI.CreateToggleSwitch(coreCategory.Content, "Enable Rareload", "sv_rareload_enabled",
-        "Master switch to enable/disable the addon")
-    coreCategory:AddItem(toggleRareload)
-
-    local toggleAntiStuck = RareloadUI.CreateToggleSwitch(coreCategory.Content, "Anti-Stuck System",
-        "sv_rareload_spawn_mode", "Prevents spawning inside objects")
-    coreCategory:AddItem(toggleAntiStuck)
-
-    local toggleAutoSave = RareloadUI.CreateToggleSwitch(coreCategory.Content, "Auto Save Position",
-        "sv_rareload_auto_save", "Automatically saves position periodically")
-    coreCategory:AddItem(toggleAutoSave)
-
-    local toggleNoCustomDeath = RareloadUI.CreateToggleSwitch(coreCategory.Content, "No Custom Respawn at Death",
-        "sv_rareload_no_custom_death", "Disable custom respawn when dying")
-    coreCategory:AddItem(toggleNoCustomDeath)
+    addToggle(coreCategory, "Enable Rareload", "sv_rareload_enabled", "Master switch to enable/disable the addon")
+    addToggle(coreCategory, "Anti-Stuck System", "sv_rareload_spawn_mode", "Prevents spawning inside objects")
+    addToggle(coreCategory, "Auto Save Position", "sv_rareload_auto_save", "Automatically saves position periodically")
+    addToggle(coreCategory, "No Custom Respawn at Death", "sv_rareload_no_custom_death", "Disable custom respawn when dying")
 
     -- ═══════════════════════════════════════════════════════════════
     -- PLAYER STATE CATEGORY
     -- ═══════════════════════════════════════════════════════════════
     local playerCategory = RareloadUI.CreateCategory(panel, "Player State Retention", "icon16/user.png", true)
-
-    local toggleHealth = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Health & Armor",
-        "sv_rareload_keep_health", "Restore health and armor on respawn")
-    playerCategory:AddItem(toggleHealth)
-
-    local toggleStates = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Player States",
-        "sv_rareload_keep_states", "Restore godmode, notarget, noclip, frozen")
-    playerCategory:AddItem(toggleStates)
-
-    local toggleInventory = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Inventory",
-        "sv_rareload_keep_inventory", "Restore weapons on respawn")
-    playerCategory:AddItem(toggleInventory)
-
-    local toggleAmmo = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Keep Ammo", "sv_rareload_keep_ammo",
-        "Restore ammunition on respawn")
-    playerCategory:AddItem(toggleAmmo)
-
-    local toggleGlobalInv = RareloadUI.CreateToggleSwitch(playerCategory.Content, "Global Inventory",
-        "sv_rareload_global_inventory", "Share inventory across all players")
-    playerCategory:AddItem(toggleGlobalInv)
+    addToggle(playerCategory, "Keep Health & Armor", "sv_rareload_keep_health", "Restore health and armor on respawn")
+    addToggle(playerCategory, "Keep Player States", "sv_rareload_keep_states", "Restore godmode, notarget, noclip, frozen")
+    addToggle(playerCategory, "Keep Inventory", "sv_rareload_keep_inventory", "Restore weapons on respawn")
+    addToggle(playerCategory, "Keep Ammo", "sv_rareload_keep_ammo", "Restore ammunition on respawn")
+    addToggle(playerCategory, "Global Inventory", "sv_rareload_global_inventory", "Share inventory across all players")
 
     -- ═══════════════════════════════════════════════════════════════
     -- MAP ENTITIES CATEGORY
     -- ═══════════════════════════════════════════════════════════════
     local mapCategory = RareloadUI.CreateCategory(panel, "Map Entities", "icon16/map.png", false)
-
-    local toggleMapEnts = RareloadUI.CreateToggleSwitch(mapCategory.Content, "Keep Map Entities",
-        "sv_rareload_keep_map_entities", "Restore map entities on respawn")
-    mapCategory:AddItem(toggleMapEnts)
-
-    local toggleMapNPCs = RareloadUI.CreateToggleSwitch(mapCategory.Content, "Keep Map NPCs", "sv_rareload_keep_map_npcs",
-        "Restore NPCs on respawn")
-    mapCategory:AddItem(toggleMapNPCs)
-
-    local toggleCleanupMap = RareloadUI.CreateToggleSwitch(mapCategory.Content, "Cleanup Map on Respawn",
-        "sv_rareload_cleanup_map", "Clean up the map right before respawning")
-    mapCategory:AddItem(toggleCleanupMap)
-
-
-    local toggleOwnedOnly = RareloadUI.CreateToggleSwitch(mapCategory.Content, "Owned Entities Only",
-        "sv_rareload_cleanup_owned_only",
+    addToggle(mapCategory, "Keep Map Entities", "sv_rareload_keep_map_entities", "Restore map entities on respawn")
+    addToggle(mapCategory, "Keep Map NPCs", "sv_rareload_keep_map_npcs", "Restore NPCs on respawn")
+    addToggle(mapCategory, "Cleanup Map on Respawn", "sv_rareload_cleanup_map", "Clean up the map right before respawning")
+    addToggle(mapCategory, "Owned Entities Only", "sv_rareload_cleanup_owned_only",
         "Restrict death cleanup to your own Rareload-spawned entities/NPCs (no full map wipe)")
-    mapCategory:AddItem(toggleOwnedOnly)
-
-    local toggleCleanupDisconnect = RareloadUI.CreateToggleSwitch(mapCategory.Content, "Cleanup on Disconnect",
-        "sv_rareload_cleanup_on_disconnect",
+    addToggle(mapCategory, "Cleanup on Disconnect", "sv_rareload_cleanup_on_disconnect",
         "Remove your owned entities and NPCs when you disconnect")
-    mapCategory:AddItem(toggleCleanupDisconnect)
 
     -- ═══════════════════════════════════════════════════════════════
     -- TIMING SETTINGS CATEGORY
     -- ═══════════════════════════════════════════════════════════════
     local timingCategory = RareloadUI.CreateCategory(panel, "Timing & Limits", "icon16/time.png", false)
-
-    local sliderInterval = RareloadUI.CreateCompactSlider(
-        timingCategory.Content,
-        "Auto Save Interval",
-        "Seconds between automatic saves",
-        "sv_rareload_auto_save_interval",
-        1, 60, 0,
-        5,
-        "s"
-    )
-    timingCategory:AddItem(sliderInterval)
-
-    local sliderAngle = RareloadUI.CreateCompactSlider(
-        timingCategory.Content,
-        "Angle Tolerance",
-        "Degrees of tolerance for entity restoration",
-        "sv_rareload_angle_tolerance",
-        1, 360, 0,
-        100,
-        "°"
-    )
-    timingCategory:AddItem(sliderAngle)
-
-    local sliderHistory = RareloadUI.CreateCompactSlider(
-        timingCategory.Content,
-        "History Size",
-        "Maximum position cache entries",
-        "sv_rareload_history_size",
-        1, 150, 0,
-        125,
-        ""
-    )
-    timingCategory:AddItem(sliderHistory)
+    addSlider(timingCategory, "Auto Save Interval", "Seconds between automatic saves",
+        "sv_rareload_auto_save_interval", 1, 60, 0, 5, "s")
+    addSlider(timingCategory, "Angle Tolerance", "Degrees of tolerance for entity restoration",
+        "sv_rareload_angle_tolerance", 1, 360, 0, 100, "°")
+    addSlider(timingCategory, "History Size", "Maximum position cache entries",
+        "sv_rareload_history_size", 1, 150, 0, 125, "")
 
     -- ═══════════════════════════════════════════════════════════════
     -- ACTIONS CATEGORY
@@ -452,9 +391,7 @@ function TOOL.BuildCPanel(panel)
     if RARELOAD.CheckPermission(LocalPlayer(), "DEBUG_MENU") then
         local debugCategory = RareloadUI.CreateCategory(panel, "Debug & Tools", "icon16/wrench.png", false)
 
-        local toggleDebug = RareloadUI.CreateToggleSwitch(debugCategory.Content, "Debug Mode", "sv_rareload_debug",
-            "Enable debug logging in console")
-        debugCategory:AddItem(toggleDebug)
+        addToggle(debugCategory, "Debug Mode", "sv_rareload_debug", "Enable debug logging in console")
 
         local entityViewerBtn = RareloadUI.CreateModernButton(
             debugCategory.Content,

@@ -15,11 +15,6 @@ if SERVER then
     local METHODS_CACHE_TTL = 45
     local positionMemory = {}
 
-    function AntiStuck.InvalidateResolverCache()
-        methodsCache = {}
-        lastMethodsLoad = 0
-    end
-
     local function GetOptimizedMethods()
         local currentTime = CurTime()
 
@@ -350,13 +345,4 @@ if SERVER then
         end
     end)
 
-    function AntiStuck.RefreshMethodsCache()
-        methodsCache = {}
-        lastMethodsLoad = 0
-        return GetOptimizedMethods()
-    end
-
-    function AntiStuck.GetPerformanceStats()
-        return AntiStuck.performanceStats
-    end
 end

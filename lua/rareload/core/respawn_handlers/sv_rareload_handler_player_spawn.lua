@@ -104,6 +104,95 @@ function RARELOAD.CleanupPlayerOwnedEntities(ply)
     return removed
 end
 
+-- Restore the player's previously active weapon, retrying as the loadout populates.
+local function RestoreActiveWeapon(ply, SavedInfo, canRestoreGlobalInventory, canRestoreInventory)
+    local function SendWeaponRestoreDebug(message)
+        if not RARELOAD.GetPlayerSetting(ply, "debugEnabled") then return end
+
+        local formatted = "[RARELOAD DEBUG] " .. tostring(message)
+        if RARELOAD.Debug and RARELOAD.Debug.SendToPlayer then
+            RARELOAD.Debug.SendToPlayer(ply, formatted)
+        else
+            print(formatted)
+        end
+    end
+
+    local activeWeaponToRestore = nil
+
+    if canRestoreGlobalInventory and RARELOAD.GetPlayerSetting(ply, "retainGlobalInventory") then
+        if RARELOAD.globalInventory and RARELOAD.globalInventory[ply:SteamID()] then
+            activeWeaponToRestore = RARELOAD.globalInventory[ply:SteamID()].activeWeapon
+            SendWeaponRestoreDebug("Using global inventory active weapon: " .. tostring(activeWeaponToRestore))
+        end
+    elseif canRestoreInventory and SavedInfo.activeWeapon then
+        activeWeaponToRestore = SavedInfo.activeWeapon
+        SendWeaponRestoreDebug("Using saved position active weapon: " .. tostring(activeWeaponToRestore))
+    end
+
+    if not activeWeaponToRestore then return end
+
+    SendWeaponRestoreDebug("Attempting to restore active weapon: " .. tostring(activeWeaponToRestore))
+    timer.Simple(0.2, function()
+        if not IsValid(ply) then
+            SendWeaponRestoreDebug("Player invalid before weapon selection")
+            return
+        end
+        local availableWeapons = {}
+        for _, weapon in ipairs(ply:GetWeapons()) do
+            if IsValid(weapon) then
+                table.insert(availableWeapons, weapon:GetClass())
+            end
+        end
+        SendWeaponRestoreDebug("Player weapons available: " .. table.concat(availableWeapons, ", "))
+    end)
+    timer.Simple(0.6, function()
+        if IsValid(ply) then
+            if ply:HasWeapon(activeWeaponToRestore) then
+                SendWeaponRestoreDebug("Selecting weapon (0.6s): " .. activeWeaponToRestore)
+                ply:SelectWeapon(activeWeaponToRestore)
+            else
+                SendWeaponRestoreDebug("Player doesn't have weapon (0.6s): " .. activeWeaponToRestore)
+            end
+        end
+    end)
+    timer.Simple(1.2, function()
+        if IsValid(ply) and ply:GetActiveWeapon() and ply:GetActiveWeapon():GetClass() ~= activeWeaponToRestore then
+            if ply:HasWeapon(activeWeaponToRestore) then
+                SendWeaponRestoreDebug("Second attempt selecting weapon (1.2s): " .. activeWeaponToRestore)
+                ply:SelectWeapon(activeWeaponToRestore)
+                timer.Simple(0.1, function()
+                    if IsValid(ply) and ply:HasWeapon(activeWeaponToRestore) then
+                        ply:ConCommand("use " .. activeWeaponToRestore)
+                    end
+                end)
+            else
+                SendWeaponRestoreDebug("Weapon still not available (1.2s): " .. activeWeaponToRestore)
+            end
+        end
+    end)
+    timer.Simple(1.5, function()
+        if IsValid(ply) then
+            local currentWeapon = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or "none"
+            SendWeaponRestoreDebug("Final weapon state - Current: " .. currentWeapon ..
+                ", Expected: " .. activeWeaponToRestore ..
+                ", Success: " .. tostring(currentWeapon == activeWeaponToRestore))
+        end
+    end)
+end
+
+-- Send the saved-position phantom preview to players who can view it.
+local function SendSpawnPhantom(ply, SavedInfo)
+    if not (RARELOAD.CheckPermission(ply, "VIEW_PHANTOM") and SavedInfo) then return end
+
+    local phantomPos = RARELOAD.DataUtils.ToVector(SavedInfo.pos) or ply:GetPos()
+    local phantomAng = RARELOAD.DataUtils.ToAngle(SavedInfo.ang) or ply:GetAngles()
+    net.Start("CreatePlayerPhantom")
+    net.WriteEntity(ply)
+    net.WriteVector(phantomPos)
+    net.WriteAngle(phantomAng)
+    net.Send(ply)
+end
+
 function RARELOAD.HandlePlayerSpawn(ply)
     if not IsValid(ply) then return end
 
@@ -173,9 +262,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
         RARELOAD.Debug.Write("respawn", "VERBOSE", 0, "Saved angle data: " .. tostring(SavedInfo.ang), { entity = ply })
     end
     if not Settings then return end
-    ply.lastSpawnPosition = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
-        and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
-        or SavedInfo.pos
+    ply.lastSpawnPosition = ToSpawnVector(SavedInfo.pos)
     ply.hasMovedAfterSpawn = false
     hook.Add("PlayerTick", "RARELOAD_CheckMovement_" .. ply:EntIndex(), function(ply, mv)
         if not IsValid(ply) or not ply.lastSpawnPosition then return end
@@ -186,21 +273,6 @@ function RARELOAD.HandlePlayerSpawn(ply)
             hook.Remove("PlayerTick", "RARELOAD_CheckMovement_" .. ply:EntIndex())
         end
     end)
-    if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then
-        for _, weapon in ipairs({
-            "weapon_crowbar", "weapon_physgun", "weapon_physcannon", "weapon_pistol", "weapon_357",
-            "weapon_smg1", "weapon_ar2", "weapon_shotgun", "weapon_crossbow", "weapon_frag", "weapon_rpg",
-            "gmod_tool", "gmod_camera", "gmod_toolgun"
-        }) do
-            ply:Give(weapon)
-        end
-        if RARELOAD.Debug and RARELOAD.Debug.Write then
-            RARELOAD.Debug.Write("respawn", "INFO", 0, "Addon disabled, default weapons given", { entity = ply })
-        elseif DebugEnabled then
-            print("[RARELOAD DEBUG] Addon disabled, default weapons given.")
-        end
-        return
-    end
 
     if RARELOAD.GetPlayerSetting(ply, "cleanupMapAfterDeath", false) and ply.wasKilled then
         -- cleanupOnlyOwnedEntitiesOnDeath restricts the cleanup scope:
@@ -284,6 +356,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
         return
     end
     local moveType = tonumber(SavedInfo.moveType) or MOVETYPE_WALK
+    local savedPos = ToSpawnVector(SavedInfo.pos)
 
     if antiStuckEnabled then
         if not RARELOAD.AntiStuck then
@@ -292,15 +365,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 RARELOAD.AntiStuck.Initialize()
             end
         end
-        local testPos = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
-            and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z + 2)
-            or (SavedInfo.pos + Vector(0, 0, 2))
-        local isStuck, stuckReason = false, nil
-
-        isStuck, stuckReason = RARELOAD.AntiStuck.IsPositionStuck(
-            (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
-            and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
-            or SavedInfo.pos, ply, true)
+        local isStuck, stuckReason = RARELOAD.AntiStuck.IsPositionStuck(savedPos, ply, true)
 
         if DebugEnabled and RARELOAD.Debug and RARELOAD.Debug.Write then
             local status = isStuck and "stuck" or "clear"
@@ -317,10 +382,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 RARELOAD.Debug.AntiStuck("IsPositionStuck",
                     { methodName = "IsPositionStuck", position = SavedInfo.pos, reason = stuckReason }, ply)
             end
-            local safePos, success = RARELOAD.AntiStuck.ResolveStuckPosition(
-                (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
-                and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
-                or SavedInfo.pos, ply)
+            local safePos, success = RARELOAD.AntiStuck.ResolveStuckPosition(savedPos, ply)
             if success then
                 local pos = safePos
                 if type(pos) == "table" and pos.x and pos.y and pos.z then
@@ -341,12 +403,9 @@ function RARELOAD.HandlePlayerSpawn(ply)
                         { entity = ply })
                 end
             else
-                local fallbackPos = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
-                    and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
-                    or SavedInfo.pos
                 ApplySpawnTransform(ply, {
-                    setPos = fallbackPos,
-                    cachePos = fallbackPos,
+                    setPos = savedPos,
+                    cachePos = savedPos,
                     moveType = moveType,
                     savedAng = SavedInfo.ang,
                     debugEnabled = DebugEnabled,
@@ -365,11 +424,8 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 RARELOAD.Debug.Write("respawn", "VERBOSE", 0, "Position status: Not stuck, using saved position",
                     { entity = ply })
             end
-            local pos = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
-                and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
-                or SavedInfo.pos
             ApplySpawnTransform(ply, {
-                setPos = pos,
+                setPos = savedPos,
                 cachePos = SavedInfo.pos,
                 moveType = moveType,
                 savedAng = SavedInfo.ang,
@@ -379,12 +435,9 @@ function RARELOAD.HandlePlayerSpawn(ply)
             })
         end
     else
-        local pos = (SavedInfo.pos and SavedInfo.pos.x and SavedInfo.pos.y and SavedInfo.pos.z)
-            and Vector(SavedInfo.pos.x, SavedInfo.pos.y, SavedInfo.pos.z)
-            or SavedInfo.pos
         ApplySpawnTransform(ply, {
-            setPos = pos,
-            cachePos = pos,
+            setPos = savedPos,
+            cachePos = savedPos,
             moveType = moveType,
             savedAng = SavedInfo.ang,
             debugEnabled = DebugEnabled,
@@ -538,84 +591,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
         end)
     end
 
-    local activeWeaponToRestore = nil
+    RestoreActiveWeapon(ply, SavedInfo, canRestoreGlobalInventory, canRestoreInventory)
 
-    local function SendWeaponRestoreDebug(message)
-        if not RARELOAD.GetPlayerSetting(ply, "debugEnabled") then return end
-
-        local formatted = "[RARELOAD DEBUG] " .. tostring(message)
-        if RARELOAD.Debug and RARELOAD.Debug.SendToPlayer then
-            RARELOAD.Debug.SendToPlayer(ply, formatted)
-        else
-            print(formatted)
-        end
-    end
-
-    if canRestoreGlobalInventory and RARELOAD.GetPlayerSetting(ply, "retainGlobalInventory") then
-        if RARELOAD.globalInventory and RARELOAD.globalInventory[ply:SteamID()] then
-            activeWeaponToRestore = RARELOAD.globalInventory[ply:SteamID()].activeWeapon
-            SendWeaponRestoreDebug("Using global inventory active weapon: " .. tostring(activeWeaponToRestore))
-        end
-    elseif canRestoreInventory and SavedInfo.activeWeapon then
-        activeWeaponToRestore = SavedInfo.activeWeapon
-        SendWeaponRestoreDebug("Using saved position active weapon: " .. tostring(activeWeaponToRestore))
-    end
-    if activeWeaponToRestore then
-        SendWeaponRestoreDebug("Attempting to restore active weapon: " .. tostring(activeWeaponToRestore))
-        timer.Simple(0.2, function()
-            if not IsValid(ply) then
-                SendWeaponRestoreDebug("Player invalid before weapon selection")
-                return
-            end
-            local availableWeapons = {}
-            for _, weapon in ipairs(ply:GetWeapons()) do
-                if IsValid(weapon) then
-                    table.insert(availableWeapons, weapon:GetClass())
-                end
-            end
-            SendWeaponRestoreDebug("Player weapons available: " .. table.concat(availableWeapons, ", "))
-        end)
-        timer.Simple(0.6, function()
-            if IsValid(ply) then
-                if ply:HasWeapon(activeWeaponToRestore) then
-                    SendWeaponRestoreDebug("Selecting weapon (0.6s): " .. activeWeaponToRestore)
-                    ply:SelectWeapon(activeWeaponToRestore)
-                else
-                    SendWeaponRestoreDebug("Player doesn't have weapon (0.6s): " .. activeWeaponToRestore)
-                end
-            end
-        end)
-        timer.Simple(1.2, function()
-            if IsValid(ply) and ply:GetActiveWeapon() and ply:GetActiveWeapon():GetClass() ~= activeWeaponToRestore then
-                if ply:HasWeapon(activeWeaponToRestore) then
-                    SendWeaponRestoreDebug("Second attempt selecting weapon (1.2s): " .. activeWeaponToRestore)
-                    ply:SelectWeapon(activeWeaponToRestore)
-                    timer.Simple(0.1, function()
-                        if IsValid(ply) and ply:HasWeapon(activeWeaponToRestore) then
-                            ply:ConCommand("use " .. activeWeaponToRestore)
-                        end
-                    end)
-                else
-                    SendWeaponRestoreDebug("Weapon still not available (1.2s): " .. activeWeaponToRestore)
-                end
-            end
-        end)
-        timer.Simple(1.5, function()
-            if IsValid(ply) then
-                local currentWeapon = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or "none"
-                SendWeaponRestoreDebug("Final weapon state - Current: " .. currentWeapon ..
-                    ", Expected: " .. activeWeaponToRestore ..
-                    ", Success: " .. tostring(currentWeapon == activeWeaponToRestore))
-            end
-        end)
-    end
-    if RARELOAD.CheckPermission(ply, "VIEW_PHANTOM") and SavedInfo then
-        local phantomPos = RARELOAD.DataUtils.ToVector(SavedInfo.pos) or ply:GetPos()
-        local phantomAng = RARELOAD.DataUtils.ToAngle(SavedInfo.ang) or ply:GetAngles()
-        net.Start("CreatePlayerPhantom")
-        net.WriteEntity(ply)
-        net.WriteVector(phantomPos)
-        net.WriteAngle(phantomAng)
-        net.Send(ply)
-    end
+    SendSpawnPhantom(ply, SavedInfo)
 end

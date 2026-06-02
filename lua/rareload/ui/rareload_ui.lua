@@ -94,34 +94,22 @@ local function AnimateLerp(current, target, speed)
 end
 
 local function SendConVarToServer(name, value)
-    -- Use new player settings system if available
-    if RARELOAD and RARELOAD.UpdatePlayerSetting and RARELOAD.ConVarToSetting then
-        local settingKey = RARELOAD.ConVarToSetting[name]
-        if settingKey then
-            -- Convert value to appropriate type
-            local convertedValue
-            if value == "0" then
-                convertedValue = false
-            elseif value == "1" then
-                convertedValue = true
-            else
-                convertedValue = tonumber(value) or value
-            end
+    if not (RARELOAD and RARELOAD.UpdatePlayerSetting and RARELOAD.ConVarToSetting) then return end
 
-            RARELOAD.UpdatePlayerSetting(settingKey, convertedValue)
-            return
-        end
-    end
+    local settingKey = RARELOAD.ConVarToSetting[name]
+    if not settingKey then return end
 
-    -- Fallback to old ConVar system
-    if RARELOAD and RARELOAD.SetConVar then
-        RARELOAD.SetConVar(name, value)
+    -- Convert value to appropriate type
+    local convertedValue
+    if value == "0" then
+        convertedValue = false
+    elseif value == "1" then
+        convertedValue = true
     else
-        net.Start("RareloadSetConVar")
-        net.WriteString(name)
-        net.WriteString(value)
-        net.SendToServer()
+        convertedValue = tonumber(value) or value
     end
+
+    RARELOAD.UpdatePlayerSetting(settingKey, convertedValue)
 end
 
 local function GetConVarValue(name)
@@ -184,156 +172,6 @@ end
 
 function RareloadUI.Lerp(t, a, b)
     return a + (b - a) * t
-end
-
-local function CreateBasePanel(parent, height, margin)
-    local theme = RareloadUI.Theme
-    margin = margin or theme.Sizes.Margin
-
-    local panel = vgui.Create("DPanel", parent)
-    panel:Dock(TOP)
-    panel:DockMargin(margin, margin, margin, margin)
-    panel:SetTall(height)
-    panel:SetPaintBackground(false)
-    panel.HoverFraction = 0
-    panel.PressFraction = 0
-
-    return panel
-end
-
-local function SetupButtonBehavior(panel)
-    panel:SetCursor("hand")
-    panel.Hovered = false
-    panel.Pressed = false
-
-    panel.OnCursorEntered = function(self)
-        self.Hovered = true
-        surface.PlaySound("ui/buttonrollover.wav")
-    end
-
-    panel.OnCursorExited = function(self)
-        self.Hovered = false
-        self.Pressed = false
-    end
-
-    panel.OnMousePressed = function(self)
-        self.Pressed = true
-    end
-
-    panel.OnMouseReleased = function(self)
-        if self.Pressed and self.Hovered and self.DoClick then
-            self:DoClick()
-        end
-        self.Pressed = false
-    end
-end
-
-local function CreateFlashEffect(parent, radius)
-    local theme = RareloadUI.Theme
-    local flash = vgui.Create("DPanel", parent)
-    flash:SetSize(parent:GetWide(), parent:GetTall())
-    flash:SetAlpha(120)
-    flash.Paint = function(self, w, h)
-        RareloadUI.DrawRoundedBox(0, 0, w, h, radius or theme.Sizes.CornerRadius, Color(255, 255, 255))
-    end
-    flash:AlphaTo(0, 0.3, 0, function() flash:Remove() end)
-    surface.PlaySound("ui/buttonclickrelease.wav")
-end
-
-local function CalculateButtonColor(baseColor, hoverFrac, pressFrac)
-    return Color(
-        baseColor.r + 20 * hoverFrac - 15 * pressFrac,
-        baseColor.g + 20 * hoverFrac - 15 * pressFrac,
-        baseColor.b + 20 * hoverFrac - 15 * pressFrac,
-        baseColor.a or 255
-    )
-end
-
-function RareloadUI.CreateToggle(parent, text, description, command, initialState, callback)
-    local theme = RareloadUI.Theme
-    local height = description and 70 or 50
-    local toggle = CreateBasePanel(parent, height)
-    toggle.Enabled = initialState or false
-    toggle.Fraction = toggle.Enabled and 1 or 0
-
-    local label = vgui.Create("DLabel", toggle)
-    label:Dock(LEFT)
-    label:SetWide(parent:GetWide() - 80)
-    label:SetText(text)
-    label:SetTextColor(theme.Colors.Text.Primary)
-    label:SetFont("RareloadUI.Heading")
-
-    if description then
-        local desc = vgui.Create("DLabel", toggle)
-        desc:Dock(BOTTOM)
-        desc:DockMargin(0, 5, 60, 0)
-        desc:SetText(description)
-        desc:SetTextColor(theme.Colors.Text.Secondary)
-        desc:SetFont("RareloadUI.Small")
-        desc:SetWrap(true)
-        desc:SetTall(30)
-    end
-
-    toggle.Paint = function(self, w, h)
-        local trackW, trackH = 46, 22
-        local trackX = w - trackW - 10
-        local trackY = (h - trackH) / 2
-
-        self.Fraction = AnimateLerp(self.Fraction, self.Enabled and 1 or 0)
-        self.HoverFraction = AnimateLerp(self.HoverFraction, self:IsHovered() and 1 or 0, 8)
-
-        local trackColor = self.Enabled and theme.Colors.Accent or theme.Colors.Button.Normal
-        RareloadUI.DrawRoundedBox(trackX, trackY, trackW, trackH, trackH / 2, trackColor)
-
-        local knobSize = trackH - 6
-        local knobX = trackX + 3 + (trackW - knobSize - 6) * self.Fraction
-        local knobY = trackY + 3
-
-        if self.HoverFraction > 0 then
-            RareloadUI.DrawCircle(knobX + knobSize / 2, knobY + knobSize / 2, knobSize / 2 + 4 * self.HoverFraction, 20,
-                ColorAlpha(theme.Colors.Text.Primary, 20 * self.HoverFraction))
-        end
-
-        RareloadUI.DrawCircle(knobX + knobSize / 2, knobY + knobSize / 2, knobSize / 2, 20, theme.Colors.Text.Primary)
-    end
-
-    toggle.OnMousePressed = function(self, keyCode)
-        if keyCode == MOUSE_LEFT then
-            self.Enabled = not self.Enabled
-            surface.PlaySound(self.Enabled and "ui/buttonclick.wav" or "ui/buttonclickrelease.wav")
-            RunConsoleCommand(command, self.Enabled and "1" or "0")
-            if callback then callback(self.Enabled) end
-        end
-    end
-
-    return toggle
-end
-
-function RareloadUI.CreateActionButton(parent, text, command)
-    local theme = RareloadUI.Theme
-    local button = CreateBasePanel(parent, theme.Sizes.ButtonHeight)
-    SetupButtonBehavior(button)
-
-    button.DoClick = function()
-        if command then RunConsoleCommand(command) end
-        CreateFlashEffect(button)
-    end
-
-    button.Paint = function(self, w, h)
-        self.HoverFraction = AnimateLerp(self.HoverFraction, self.Hovered and 1 or 0, 8)
-        self.PressFraction = AnimateLerp(self.PressFraction, self.Pressed and 1 or 0)
-
-        local color = CalculateButtonColor(theme.Colors.Success, self.HoverFraction, self.PressFraction)
-        RareloadUI.DrawRoundedBox(0, 0, w, h, theme.Sizes.CornerRadius, color)
-
-        draw.SimpleText(text, "RareloadUI.Button", w / 2, h / 2 + self.PressFraction, theme.Colors.Text.Primary,
-            TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-
-        surface.SetDrawColor(255, 255, 255, 30 + 20 * self.HoverFraction)
-        surface.DrawOutlinedRect(0, 0, w, h, 1)
-    end
-
-    return button
 end
 
 function RareloadUI.CreateCategory(parent, title, icon, defaultExpanded)

@@ -78,20 +78,6 @@ function THEME:DrawBlur(panel, amount)
     end
 end
 
--- Helper to draw a modern rounded card
-function THEME:DrawCard(x, y, w, h, color, hover)
-    draw.RoundedBox(8, x, y, w, h, color or self.surface)
-
-    if hover then
-        draw.RoundedBox(8, x, y, w, h, Color(255, 255, 255, 5))
-        surface.SetDrawColor(self.primary)
-        surface.DrawOutlinedRect(x, y, w, h, 2)
-    else
-        surface.SetDrawColor(0, 0, 0, 50)
-        surface.DrawOutlinedRect(x, y, w, h, 1)
-    end
-end
-
 -- Helper to get health color
 function THEME:GetHealthColor(health, maxHealth)
     if not health or not maxHealth or maxHealth <= 0 then return self.textSecondary end

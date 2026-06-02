@@ -119,16 +119,10 @@ function RARELOAD.DataUtils.ExtractVectorComponents(pos)
     return nil, nil, nil
 end
 
--- Convert position to a serializable object for data storage
+-- Convert position to a serializable object for data storage.
+-- Alias of ToPositionTable (which also handles indexed {x,y,z} arrays).
 function RARELOAD.DataUtils.ConvertToPositionObject(pos)
-    if type(pos) == "table" and pos.x and pos.y and pos.z then
-        return { x = pos.x, y = pos.y, z = pos.z }
-    elseif isvector and isvector(pos) then
-        return { x = pos.x, y = pos.y, z = pos.z }
-    elseif type(pos) == "string" then
-        return RARELOAD.DataUtils.ParsePositionString(pos)
-    end
-    return nil
+    return RARELOAD.DataUtils.ToPositionTable(pos)
 end
 
 -- Convert a position object back to a Vector
@@ -413,104 +407,3 @@ function RARELOAD.DataUtils.FormatAngleForJSON(ang, precision)
     return tostring(ang)
 end
 
--- ============================
--- DATA STORAGE FUNCTIONS
--- ============================
-
-local function GetSaveFilePath()
-    return "rareload/player_data_" .. game.GetMap() .. ".json"
-end
-
---[[
-    Saves a specific block of data for a player.
-    - ply: The player entity to save for.
-    - dataType: A string key for the data block (e.g., "entities", "npcs").
-    - data: The Lua table or dupe object to save.
-]]
-function RARELOAD.DataUtils.SaveDataForPlayer(ply, dataType, data)
-    if not IsValid(ply) or not dataType or not data then return false end
-
-    local filePath = GetSaveFilePath()
-    local steamID = ply:SteamID64()
-    local mapName = game.GetMap()
-
-    local fileData = {}
-    if file.Exists(filePath, "DATA") then
-        local content = file.Read(filePath, "DATA")
-        local ok, tbl = pcall(util.JSONToTable, content)
-        if ok and tbl then
-            fileData = tbl
-        end
-    end
-
-    -- Initialize structure
-    fileData[mapName] = fileData[mapName] or {}
-    fileData[mapName][steamID] = fileData[mapName][steamID] or {}
-
-    -- Save the data
-    fileData[mapName][steamID][dataType] = data
-
-    -- Also save player's last position and angle for context
-    fileData[mapName][steamID].pos = RARELOAD.DataUtils.ToPositionTable(ply:GetPos())
-    fileData[mapName][steamID].ang = RARELOAD.DataUtils.ToAngleTable(ply:GetAngles())
-
-    local json = util.TableToJSON(fileData, true)
-    if not json then
-        print("[RARELOAD ERROR] Failed to serialize player data to JSON.")
-        return false
-    end
-
-    file.Write(filePath, json)
-    return true
-end
-
---[[
-    Loads a specific block of data for a player.
-    - ply: The player entity to load for.
-    - dataType: A string key for the data block (e.g., "entities", "npcs").
-    - Returns the data block, or nil if not found.
-]]
-function RARELOAD.DataUtils.LoadDataForPlayer(ply, dataType)
-    if not IsValid(ply) or not dataType then return nil end
-
-    local filePath = GetSaveFilePath()
-    if not file.Exists(filePath, "DATA") then return nil end
-
-    local steamID = ply:SteamID64()
-    local mapName = game.GetMap()
-
-    local content = file.Read(filePath, "DATA")
-    if not content or content == "" then return nil end
-
-    local ok, fileData = pcall(util.JSONToTable, content)
-    if not ok or not fileData or not fileData[mapName] or not fileData[mapName][steamID] then
-        return nil
-    end
-
-    return fileData[mapName][steamID][dataType]
-end
-
---[[
-    Loads the entire data block for a player for the current map.
-    - ply: The player entity to load for.
-    - Returns the entire player data table, or nil if not found.
-]]
-function RARELOAD.DataUtils.LoadAllDataForPlayer(ply)
-    if not IsValid(ply) then return nil end
-
-    local filePath = GetSaveFilePath()
-    if not file.Exists(filePath, "DATA") then return nil end
-
-    local steamID = ply:SteamID64()
-    local mapName = game.GetMap()
-
-    local content = file.Read(filePath, "DATA")
-    if not content or content == "" then return nil end
-
-    local ok, fileData = pcall(util.JSONToTable, content)
-    if not ok or not fileData or not fileData[mapName] then
-        return nil
-    end
-
-    return fileData[mapName][steamID]
-end
