@@ -32,6 +32,23 @@ for _, def in ipairs(CONVAR_DEFS) do
     RARELOAD.SettingToConVar[def[4]] = def[1]
 end
 
+-- A ConVar represents a bool when its default is "0" or "1", otherwise a number.
+local function IsBoolDef(default)
+    return default == "0" or default == "1"
+end
+
+-- Read a ConVar's current value, coerced to bool/number per its default.
+local function ReadConVarValue(cv, default)
+    if IsBoolDef(default) then return cv:GetBool() end
+    return cv:GetFloat()
+end
+
+-- Coerce a ConVar string value (from a change callback) per its default.
+local function CoerceConVarString(newVal, default)
+    if IsBoolDef(default) then return newVal == "1" end
+    return tonumber(newVal) or 0
+end
+
 if SERVER then
     for _, def in ipairs(CONVAR_DEFS) do
         local name, default, description = def[1], def[2], def[3]
@@ -72,11 +89,7 @@ if SERVER then
             local cv = RARELOAD.ConVars[name]
 
             if cv then
-                if default == "0" or default == "1" then
-                    RARELOAD.settings[settingsKey] = cv:GetBool()
-                else
-                    RARELOAD.settings[settingsKey] = cv:GetFloat()
-                end
+                RARELOAD.settings[settingsKey] = ReadConVarValue(cv, default)
             end
         end
     end
@@ -89,11 +102,7 @@ if SERVER then
         cvars.AddChangeCallback(name, function(convar, oldVal, newVal)
             if not RARELOAD.settings then return end
 
-            if default == "0" or default == "1" then
-                RARELOAD.settings[settingsKey] = (newVal == "1")
-            else
-                RARELOAD.settings[settingsKey] = tonumber(newVal) or 0
-            end
+            RARELOAD.settings[settingsKey] = CoerceConVarString(newVal, default)
 
             if RARELOAD.SaveAddonState then
                 RARELOAD.SaveAddonState()
@@ -105,77 +114,12 @@ if SERVER then
         end, "RareloadSync_" .. name)
     end
 
-    util.AddNetworkString("RareloadSetConVar")
-
-    net.Receive("RareloadSetConVar", function(len, ply)
-        if not IsValid(ply) then return end
-
-        if not RARELOAD.CheckPermission(ply, "RARELOAD_TOGGLE") then
-            ply:ChatPrint("[RARELOAD] You don't have permission to change settings.")
-            return
-        end
-
-        local convarName = net.ReadString()
-        local value = net.ReadString()
-
-        if not RARELOAD.ConVars[convarName] then
-            ply:ChatPrint("[RARELOAD] Invalid setting: " .. convarName)
-            return
-        end
-
-        -- NEW: Instead of changing server ConVar (which affects everyone),
-        -- update this player's personal settings
-        local settingKey = RARELOAD.ConVarToSetting[convarName]
-        if settingKey and RARELOAD.PlayerSettings then
-            -- Convert value to appropriate type
-            local convertedValue
-            local def = nil
-            for _, d in ipairs(CONVAR_DEFS) do
-                if d[1] == convarName then
-                    def = d
-                    break
-                end
-            end
-
-            if def and (def[2] == "0" or def[2] == "1") then
-                convertedValue = (value == "1")
-            else
-                convertedValue = tonumber(value) or 0
-            end
-
-            -- Update player's personal settings
-            RARELOAD.PlayerSettings.Set(ply, settingKey, convertedValue)
-
-            -- Sync back to player
-            RARELOAD.PlayerSettings.SyncToPlayer(ply)
-
-            if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
-                print("[RARELOAD] " ..
-                    ply:Nick() .. " changed their " .. settingKey .. " to " .. tostring(convertedValue))
-            end
-        else
-            -- Fallback to old behavior if player settings system not loaded
-            RunConsoleCommand(convarName, value)
-
-            if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                print("[RARELOAD] " .. ply:Nick() .. " changed " .. convarName .. " to " .. value)
-            end
-        end
-    end)
-
     RARELOAD.SyncConVarsFromSettings = SyncConVarsFromSettings
     RARELOAD.SyncSettingsFromConVars = SyncSettingsFromConVars
 else
     for _, def in ipairs(CONVAR_DEFS) do
         local name = def[1]
         RARELOAD.ConVars[name] = GetConVar(name)
-    end
-
-    function RARELOAD.SetConVar(name, value)
-        net.Start("RareloadSetConVar")
-        net.WriteString(name)
-        net.WriteString(tostring(value))
-        net.SendToServer()
     end
 
     function RARELOAD.GetConVarBool(name)
@@ -194,11 +138,7 @@ else
             local name, default, _, settingsKey = def[1], def[2], def[3], def[4]
             local cv = GetConVar(name)
             if cv then
-                if default == "0" or default == "1" then
-                    RARELOAD.settings[settingsKey] = cv:GetBool()
-                else
-                    RARELOAD.settings[settingsKey] = cv:GetFloat()
-                end
+                RARELOAD.settings[settingsKey] = ReadConVarValue(cv, default)
             end
         end
     end
@@ -209,11 +149,7 @@ else
 
         cvars.AddChangeCallback(name, function(convar, oldVal, newVal)
             RARELOAD.settings = RARELOAD.settings or {}
-            if default == "0" or default == "1" then
-                RARELOAD.settings[settingsKey] = (newVal == "1")
-            else
-                RARELOAD.settings[settingsKey] = tonumber(newVal) or 0
-            end
+            RARELOAD.settings[settingsKey] = CoerceConVarString(newVal, default)
         end, "RareloadClientSync_" .. name)
     end
 

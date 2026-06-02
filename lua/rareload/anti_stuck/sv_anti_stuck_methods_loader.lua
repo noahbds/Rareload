@@ -30,7 +30,3 @@ function AntiStuck.LoadMethods(forceReload)
 
     return true
 end
-
-function AntiStuck.SaveMethods()
-    AntiStuck.LogDebug("SaveMethods skipped (runtime method editing disabled)", { methodName = "SaveMethods" })
-end

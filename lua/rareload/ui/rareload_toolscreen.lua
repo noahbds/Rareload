@@ -185,11 +185,8 @@ local function getProgressColor(progress)
     end
 end
 
-local function drawStatusEmoji(x, y, size, isSuccess, alpha, animProgress)
-    animProgress = animProgress or 1
-
-    local bgColor = isSuccess and TOOL_UI.COLORS.EMOJI.DATA_FOUND or TOOL_UI.COLORS.EMOJI.NO_DATA
-
+-- Draw the glowing circular backdrop shared by the status/permission icons. Returns bgSize.
+local function drawIconCircle(x, y, size, bgColor, alpha, animProgress)
     local bgSize = size * math.min(1, animProgress * 1.3)
     draw.NoTexture()
 
@@ -200,6 +197,29 @@ local function drawStatusEmoji(x, y, size, isSuccess, alpha, animProgress)
     surface.SetDrawColor(bgColor.r, bgColor.g, bgColor.b, alpha)
     RareloadUI.DrawCircle(x, y, bgSize, 40)
     RareloadUI.DrawCircle(x, y, bgSize, 40, Color(bgColor.r, bgColor.g, bgColor.b, alpha))
+
+    return bgSize
+end
+
+-- Draw the subtle top highlight arc shared by the status/permission icons.
+local function drawIconHighlightArc(x, y, bgSize, alpha)
+    surface.SetDrawColor(255, 255, 255, alpha * 0.15)
+    local highlightSize = bgSize * 0.9
+    local arcSegments = 10
+    for i = 0, arcSegments do
+        local a1 = math.rad(200 + (i / arcSegments) * 140)
+        local a2 = math.rad(200 + ((i + 1) / arcSegments) * 140)
+        surface.DrawLine(
+            x + math.cos(a1) * highlightSize, y + math.sin(a1) * highlightSize,
+            x + math.cos(a2) * highlightSize, y + math.sin(a2) * highlightSize)
+    end
+end
+
+local function drawStatusEmoji(x, y, size, isSuccess, alpha, animProgress)
+    animProgress = animProgress or 1
+
+    local bgColor = isSuccess and TOOL_UI.COLORS.EMOJI.DATA_FOUND or TOOL_UI.COLORS.EMOJI.NO_DATA
+    local bgSize = drawIconCircle(x, y, size, bgColor, alpha, animProgress)
 
     if isSuccess then
         if animProgress < 0.3 then return end
@@ -329,31 +349,20 @@ local function drawStatusEmoji(x, y, size, isSuccess, alpha, animProgress)
         end
     end
 
-    surface.SetDrawColor(255, 255, 255, alpha * 0.15)
-    local highlightSize = bgSize * 0.9
-    local arcSegments = 10
-    for i = 0, arcSegments do
-        local a1 = math.rad(200 + (i / arcSegments) * 140)
-        local a2 = math.rad(200 + ((i + 1) / arcSegments) * 140)
-
-        local x1 = x + math.cos(a1) * highlightSize
-        local y1 = y + math.sin(a1) * highlightSize
-        local x2 = x + math.cos(a2) * highlightSize
-        local y2 = y + math.sin(a2) * highlightSize
-
-        surface.DrawLine(x1, y1, x2, y2)
-    end
+    drawIconHighlightArc(x, y, bgSize, alpha)
 end
 
-local function drawReloadStateImage(width, height)
-    if not RARELOAD.reloadImageState then return end
+-- Shared full-screen overlay (dimmed backdrop + animated icon + fading caption).
+-- drawIcon(centerX, centerY, size, alpha, animProgress) renders the icon body.
+local function drawOverlay(state, clearState, width, height, drawIcon, text)
+    if not state then return end
 
-    if not RARELOAD.reloadImageState.animStartTime then
-        RARELOAD.reloadImageState.animStartTime = CurTime()
+    if not state.animStartTime then
+        state.animStartTime = CurTime()
     end
 
-    if CurTime() - RARELOAD.reloadImageState.showTime > RARELOAD.reloadImageState.duration then
-        RARELOAD.reloadImageState = nil
+    if CurTime() - state.showTime > state.duration then
+        clearState()
         return
     end
 
@@ -362,26 +371,21 @@ local function drawReloadStateImage(width, height)
         alpha = 255
         animProgress = 1
     else
-        local remainingTime = RARELOAD.reloadImageState.duration - (CurTime() - RARELOAD.reloadImageState.showTime)
+        local remainingTime = state.duration - (CurTime() - state.showTime)
         alpha = 255
         if remainingTime < 0.5 then
             alpha = remainingTime * 510
         end
-        animProgress = math.Clamp((CurTime() - RARELOAD.reloadImageState.animStartTime) / 0.8, 0, 1)
+        animProgress = math.Clamp((CurTime() - state.animStartTime) / 0.8, 0, 1)
     end
 
     surface.SetDrawColor(30, 30, 35, math.min(200, alpha))
     surface.DrawRect(0, 0, width, height)
 
     local emojiSize = math.min(width, height) * 0.3
-    local centerX = width / 2
-    local centerY = height / 2 - height * 0.1
+    drawIcon(width / 2, height / 2 - height * 0.1, emojiSize, alpha, animProgress)
 
-    drawStatusEmoji(centerX, centerY, emojiSize, RARELOAD.reloadImageState.hasData, alpha, animProgress)
-
-    local text = RARELOAD.reloadImageState.hasData and "Position Data Found" or "No Position Data"
     local textY = (height / 2) + 60
-
     if animProgress > 0.7 then
         local textAlpha = math.min(alpha, ((animProgress - 0.7) / 0.3) * 255)
         draw.SimpleText(text, "CTNV2", width / 2 + 2, textY + 2, Color(0, 0, 0, textAlpha), TEXT_ALIGN_CENTER)
@@ -389,23 +393,22 @@ local function drawReloadStateImage(width, height)
     end
 end
 
+local function drawReloadStateImage(width, height)
+    local state = RARELOAD.reloadImageState
+    if not state then return end
+
+    drawOverlay(state, function() RARELOAD.reloadImageState = nil end, width, height,
+        function(cx, cy, size, alpha, animProgress)
+            drawStatusEmoji(cx, cy, size, state.hasData, alpha, animProgress)
+        end,
+        state.hasData and "Position Data Found" or "No Position Data")
+end
+
 local function drawPermissionIcon(x, y, size, alpha, animProgress)
     animProgress = animProgress or 1
 
     local bgColor = TOOL_UI.COLORS.EMOJI.NO_PERMISSION
-
-    local bgSize = size * math.min(1, animProgress * 1.3)
-    draw.NoTexture()
-
-    -- Outer glow
-    surface.SetDrawColor(bgColor.r, bgColor.g, bgColor.b, alpha * 0.3)
-    RareloadUI.DrawCircle(x, y, bgSize + 4, 40)
-    RareloadUI.DrawCircle(x, y, bgSize + 4, 40, Color(bgColor.r, bgColor.g, bgColor.b, alpha * 0.3))
-
-    -- Main circle
-    surface.SetDrawColor(bgColor.r, bgColor.g, bgColor.b, alpha)
-    RareloadUI.DrawCircle(x, y, bgSize, 40)
-    RareloadUI.DrawCircle(x, y, bgSize, 40, Color(bgColor.r, bgColor.g, bgColor.b, alpha))
+    local bgSize = drawIconCircle(x, y, size, bgColor, alpha, animProgress)
 
     if animProgress < 0.3 then return end
 
@@ -489,66 +492,12 @@ local function drawPermissionIcon(x, y, size, alpha, animProgress)
         surface.DrawRect(x - size * 0.02, bodyY + bodyH * 0.45, size * 0.04, bodyH * 0.25)
     end
 
-    -- Highlight arc
-    surface.SetDrawColor(255, 255, 255, alpha * 0.15)
-    local highlightSize = bgSize * 0.9
-    local arcSegments = 10
-    for i = 0, arcSegments do
-        local a1 = math.rad(200 + (i / arcSegments) * 140)
-        local a2 = math.rad(200 + ((i + 1) / arcSegments) * 140)
-
-        local hx1 = x + math.cos(a1) * highlightSize
-        local hy1 = y + math.sin(a1) * highlightSize
-        local hx2 = x + math.cos(a2) * highlightSize
-        local hy2 = y + math.sin(a2) * highlightSize
-
-        surface.DrawLine(hx1, hy1, hx2, hy2)
-    end
+    drawIconHighlightArc(x, y, bgSize, alpha)
 end
 
 local function drawPermissionDeniedImage(width, height)
-    if not RARELOAD.permissionDeniedState then return end
-
-    if not RARELOAD.permissionDeniedState.animStartTime then
-        RARELOAD.permissionDeniedState.animStartTime = CurTime()
-    end
-
-    if CurTime() - RARELOAD.permissionDeniedState.showTime > RARELOAD.permissionDeniedState.duration then
-        RARELOAD.permissionDeniedState = nil
-        return
-    end
-
-    local alpha, animProgress
-    if DISABLE_ANIM then
-        alpha = 255
-        animProgress = 1
-    else
-        local remainingTime = RARELOAD.permissionDeniedState.duration -
-            (CurTime() - RARELOAD.permissionDeniedState.showTime)
-        alpha = 255
-        if remainingTime < 0.5 then
-            alpha = remainingTime * 510
-        end
-        animProgress = math.Clamp((CurTime() - RARELOAD.permissionDeniedState.animStartTime) / 0.8, 0, 1)
-    end
-
-    surface.SetDrawColor(30, 30, 35, math.min(200, alpha))
-    surface.DrawRect(0, 0, width, height)
-
-    local emojiSize = math.min(width, height) * 0.3
-    local centerX = width / 2
-    local centerY = height / 2 - height * 0.1
-
-    drawPermissionIcon(centerX, centerY, emojiSize, alpha, animProgress)
-
-    local text = "No Permission"
-    local textY = (height / 2) + 60
-
-    if animProgress > 0.7 then
-        local textAlpha = math.min(alpha, ((animProgress - 0.7) / 0.3) * 255)
-        draw.SimpleText(text, "CTNV2", width / 2 + 2, textY + 2, Color(0, 0, 0, textAlpha), TEXT_ALIGN_CENTER)
-        draw.SimpleText(text, "CTNV2", width / 2, textY, Color(255, 255, 255, textAlpha), TEXT_ALIGN_CENTER)
-    end
+    drawOverlay(RARELOAD.permissionDeniedState, function() RARELOAD.permissionDeniedState = nil end,
+        width, height, drawPermissionIcon, "No Permission")
 end
 
 function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offsetX, offsetY)

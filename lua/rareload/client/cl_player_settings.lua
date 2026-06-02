@@ -16,8 +16,6 @@ local function IsClientDebugEnabled()
     return false
 end
 
-RARELOAD.IsDebugEnabled = IsClientDebugEnabled
-RARELOAD.ResolveClientDebugEnabled = IsClientDebugEnabled
 RARELOAD.GetClientDebugEnabled = IsClientDebugEnabled
 
 local lastSettingsRequestAt = 0

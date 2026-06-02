@@ -4,12 +4,7 @@ function SED.GetNearestDistanceSqr(ent, eyePos, renderParams)
     if (not IsValid(ent)) or (not renderParams) then return math.huge, ent and ent:GetPos() or eyePos end
     local centerLocal = (renderParams.obbMin + renderParams.obbMax) * 0.5
     local centerWorld = ent.LocalToWorld and ent:LocalToWorld(centerLocal) or ent:GetPos()
-    local dCenter = eyePos:DistToSqr(centerWorld)
-    local dNearest = math.huge
-    if dNearest < dCenter then
-        return dNearest, centerWorld
-    end
-    return dCenter, centerWorld
+    return eyePos:DistToSqr(centerWorld), centerWorld
 end
 
 function SED.CalculateEntityRenderParams(ent)

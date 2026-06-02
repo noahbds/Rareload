@@ -152,58 +152,6 @@ function AntiStuck.ResetMethodStats(methodName)
     end
 end
 
-AntiStuck.emergencyFallbackMethod = function(originalPos, ply)
-    if RARELOAD.Debug and RARELOAD.Debug.Write then
-        RARELOAD.Debug.Write("anti_stuck", "WARNING", 0, "Using emergency fallback method", { entity = ply })
-    elseif AntiStuck.DebugEnabled and AntiStuck.DebugEnabled(ply) then
-        print("[RARELOAD ANTI-STUCK] Using emergency fallback method")
-    end
-
-    local offset = 50
-    local testPositions = {
-        originalPos + Vector(0, 0, 40),
-        originalPos + Vector(offset, 0, 0),
-        originalPos + Vector(-offset, 0, 0),
-        originalPos + Vector(0, offset, 0),
-        originalPos + Vector(0, -offset, 0),
-        originalPos + Vector(0, 0, 100),
-    }
-
-    for i, pos in ipairs(testPositions) do
-        if util.IsInWorld(pos) then
-            local isStuck = false
-            if AntiStuck.IsPositionStuck then
-                isStuck = AntiStuck.IsPositionStuck(pos, ply, false)
-            else
-                local tr = util.TraceLine({
-                    start = pos + Vector(0, 0, 20),
-                    endpos = pos - Vector(0, 0, 100),
-                    mask = MASK_PLAYERSOLID,
-                    collisiongroup = COLLISION_GROUP_NONE,
-                    ignoreworld = false,
-                    hitclientonly = false,
-                    output = {},
-                    filter = ply,
-                    whitelist = nil
-                })
-
-                if tr.Hit then
-                    local groundPos = tr.HitPos + Vector(0, 0, 10)
-                    if not AntiStuck.IsPositionStuck or not AntiStuck.IsPositionStuck(groundPos, ply, false) then
-                        return groundPos, AntiStuck.UNSTUCK_METHODS.SUCCESS
-                    end
-                end
-            end
-
-            if not isStuck then
-                return pos, AntiStuck.UNSTUCK_METHODS.SUCCESS
-            end
-        end
-    end
-
-    return Vector(0, 0, 4096), AntiStuck.UNSTUCK_METHODS.PARTIAL
-end
-
 function AntiStuck.ToVector(input)
     if not input then return nil end
 

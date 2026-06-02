@@ -21,87 +21,11 @@ function SED.KeyPressed(code)
     return false
 end
 
-function SED.SetCategoryPageState(cache, category, page)
-    if not cache then return end
-    cache.pageByCategory = cache.pageByCategory or {}
-    cache.pageByCategory[category] = math.max(1, math.floor(tonumber(page) or 1))
-end
-
-function SED.ClampCategoryPageState(cache, category, lineCount, linesPerPage)
-    if not cache then return 1, 1 end
-
-    local perPage = math.max(1, tonumber(linesPerPage) or 1)
-    local maxPage = math.max(1, math.ceil(math.max(lineCount or 0, 1) / perPage))
-    cache.pageByCategory = cache.pageByCategory or {}
-    local currentPage = cache.pageByCategory[category] or 1
-    currentPage = math.Clamp(currentPage, 1, maxPage)
-    cache.pageByCategory[category] = currentPage
-    return currentPage, maxPage
-end
-
-function SED.GetPhantomDrawDistSqr()
-    return SED.DRAW_DISTANCE_SQR
-end
-
 function SED.GetPhantomSavedInfo(mapName, steamID)
     if not (mapName and steamID) then return nil end
     local byMap = RARELOAD and RARELOAD.playerPositions and RARELOAD.playerPositions[mapName]
     if not byMap then return nil end
     return byMap[steamID]
-end
-
-function SED.GetPhantomInfoCache(steamID, buildDataFn, ply, savedInfo, mapName, cacheLifetime, defaultCategory)
-    if not steamID or steamID == "" then return nil end
-    if type(buildDataFn) ~= "function" then return nil end
-
-    local now = CurTime()
-    local cache = SED.PhantomInfoCache and SED.PhantomInfoCache[steamID] or nil
-    local activeCategory = (cache and cache.activeCategory) or defaultCategory or "basic"
-
-    if (not cache) or (cache.expires or 0) < now then
-        cache = {
-            data = buildDataFn(ply, savedInfo, mapName, 1),
-            expires = now + (tonumber(cacheLifetime) or 5),
-            activeCategory = activeCategory,
-            pageByCategory = (cache and cache.pageByCategory) or {}
-        }
-        SED.PhantomInfoCache = SED.PhantomInfoCache or {}
-        SED.PhantomInfoCache[steamID] = cache
-    end
-
-    cache.pageByCategory = cache.pageByCategory or {}
-    cache.pageByCategory[cache.activeCategory or activeCategory] = cache.pageByCategory
-        [cache.activeCategory or activeCategory] or 1
-    return cache
-end
-
-function SED.CycleCategoryState(cache, categoryList, currentCategory, delta)
-    if not cache or not categoryList or #categoryList == 0 then return currentCategory end
-
-    local currentIndex = 1
-    for i, cat in ipairs(categoryList) do
-        if cat[1] == currentCategory then
-            currentIndex = i
-            break
-        end
-    end
-
-    local newIndex = currentIndex + (tonumber(delta) or 0)
-    if newIndex < 1 then newIndex = #categoryList end
-    if newIndex > #categoryList then newIndex = 1 end
-
-    local newCategory = categoryList[newIndex][1]
-    if newCategory ~= currentCategory then
-        SED.SetCategoryPageState(cache, newCategory, 1)
-    end
-    return newCategory
-end
-
-function SED.StepCategoryPageState(cache, category, lineCount, linesPerPage, delta)
-    local currentPage, maxPage = SED.ClampCategoryPageState(cache, category, lineCount, linesPerPage)
-    currentPage = math.Clamp(currentPage + (tonumber(delta) or 0), 1, maxPage)
-    SED.SetCategoryPageState(cache, category, currentPage)
-    return currentPage, maxPage
 end
 
 function SED.PlayerIsHoldingSomething()

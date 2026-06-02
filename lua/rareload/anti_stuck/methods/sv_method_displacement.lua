@@ -21,12 +21,6 @@ local groundTrace = {
     start = Vector(),
     endpos = Vector()
 }
-local groundTrace = {
-    mask = MASK_SOLID_BRUSHONLY,
-    filter = nil,
-    start = Vector(),
-    endpos = Vector()
-}
 
 function AntiStuck.TryDisplacement(pos, ply)
     if not pos or not IsValid(ply) then
