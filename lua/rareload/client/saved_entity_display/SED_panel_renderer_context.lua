@@ -22,6 +22,80 @@ local math_Clamp = RS.math_Clamp
 local math_floor = RS.math_floor
 local string_Explode = RS.string_Explode
 
+local CONTENT_FONT = "Trebuchet18"
+
+-- Word-wraps `text` to `maxWidth`, memoizing results per active category on the
+-- panel cache. Hoisted out of PanelRendererBuildContext so the hot draw path
+-- isn't re-creating this closure every frame; cache/activeCat are passed in.
+local function wrapText(cache, activeCat, text, maxWidth)
+    if not text or text == "" then return { text } end
+    local wrapCache = cache._wrap or {}
+    cache._wrap = wrapCache
+    wrapCache[activeCat] = wrapCache[activeCat] or { width = maxWidth, lines = {} }
+    local catWrap = wrapCache[activeCat]
+    if catWrap.width ~= maxWidth then
+        catWrap.width = maxWidth
+        catWrap.lines = {}
+    end
+
+    local cached = catWrap.lines[text]
+    if cached then return cached end
+
+    surface_SetFont(CONTENT_FONT)
+    local textWidth = surface_GetTextSize(text) or 0
+
+    if textWidth <= maxWidth and not string.find(text, "\n") then
+        local res = { text }
+        catWrap.lines[text] = res
+        return res
+    end
+
+    local wrapLines = {}
+    local linesToProcess = string_Explode("\n", text)
+
+    for _, explLine in ipairs(linesToProcess) do
+        local words = string_Explode(" ", explLine)
+        local currentLine = ""
+
+        for _, word in ipairs(words) do
+            local testLine = currentLine
+
+            if currentLine == "" and word == "" then
+                testLine = testLine .. " "
+            elseif currentLine == "" then
+                testLine = word
+            elseif word == "" then
+                testLine = testLine .. " "
+            else
+                testLine = testLine .. " " .. word
+            end
+
+            local testWidth = surface_GetTextSize(testLine) or 0
+
+            if testWidth <= maxWidth then
+                currentLine = testLine
+            else
+                if string.Trim(currentLine) ~= "" then
+                    wrapLines[#wrapLines + 1] = currentLine
+                    local indentMatch = string.match(explLine, "^(%s+)")
+                    currentLine = (indentMatch or "") .. word
+                else
+                    wrapLines[#wrapLines + 1] = word
+                    currentLine = ""
+                end
+            end
+        end
+
+        if currentLine ~= "" or explLine == "" then
+            wrapLines[#wrapLines + 1] = currentLine
+        end
+    end
+
+    local result = #wrapLines > 0 and wrapLines or { text }
+    catWrap.lines[text] = result
+    return result
+end
+
 function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, precomputedDistSqr)
     if not (IsValid(ent) and saved) then return nil end
 
@@ -124,76 +198,7 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
     local tabHeight = currentLOD >= 2 and 24 or 32
     local sidebarWidth = currentLOD >= 2 and 80 or 120
 
-    local contentFont = "Trebuchet18"
-
-    local function performWrapText(text, maxWidth)
-        if not text or text == "" then return { text } end
-        local wrapCache = cache._wrap or {}
-        cache._wrap = wrapCache
-        wrapCache[activeCat] = wrapCache[activeCat] or { width = maxWidth, lines = {} }
-        local catWrap = wrapCache[activeCat]
-        if catWrap.width ~= maxWidth then
-            catWrap.width = maxWidth
-            catWrap.lines = {}
-        end
-
-        local cached = catWrap.lines[text]
-        if cached then return cached end
-
-        surface_SetFont(contentFont)
-        local textWidth = surface_GetTextSize(text) or 0
-
-        if textWidth <= maxWidth and not string.find(text, "\n") then
-            local res = { text }
-            catWrap.lines[text] = res
-            return res
-        end
-
-        local wrapLines = {}
-        local linesToProcess = string_Explode("\n", text)
-
-        for _, explLine in ipairs(linesToProcess) do
-            local words = string_Explode(" ", explLine)
-            local currentLine = ""
-
-            for _, word in ipairs(words) do
-                local testLine = currentLine
-
-                if currentLine == "" and word == "" then
-                    testLine = testLine .. " "
-                elseif currentLine == "" then
-                    testLine = word
-                elseif word == "" then
-                    testLine = testLine .. " "
-                else
-                    testLine = testLine .. " " .. word
-                end
-
-                local testWidth = surface_GetTextSize(testLine) or 0
-
-                if testWidth <= maxWidth then
-                    currentLine = testLine
-                else
-                    if string.Trim(currentLine) ~= "" then
-                        wrapLines[#wrapLines + 1] = currentLine
-                        local indentMatch = string.match(explLine, "^(%s+)")
-                        currentLine = (indentMatch or "") .. word
-                    else
-                        wrapLines[#wrapLines + 1] = word
-                        currentLine = ""
-                    end
-                end
-            end
-
-            if currentLine ~= "" or explLine == "" then
-                wrapLines[#wrapLines + 1] = currentLine
-            end
-        end
-
-        local result = #wrapLines > 0 and wrapLines or { text }
-        catWrap.lines[text] = result
-        return result
-    end
+    local contentFont = CONTENT_FONT
 
     local width = cache.widths[activeCat] or 400
     if not cache.widths[activeCat] then
@@ -248,7 +253,7 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
 
     local truePhysicalLinesTotal = 0
     for _, l in ipairs(lines) do
-        truePhysicalLinesTotal = truePhysicalLinesTotal + #performWrapText(l[2] or "", maxValueWForScroll)
+        truePhysicalLinesTotal = truePhysicalLinesTotal + #wrapText(cache, activeCat, l[2] or "", maxValueWForScroll)
     end
 
     local maxScrollLines = math_max(0, truePhysicalLinesTotal - maxVisibleLines)
@@ -267,7 +272,7 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
     local physicalOffsetInsideStartItem = 0
 
     for i, l in ipairs(lines) do
-        local requiredLines = #performWrapText(l[2] or "", maxValueWidthEstimate)
+        local requiredLines = #wrapText(cache, activeCat, l[2] or "", maxValueWidthEstimate)
         if physicalLinesSkipped + requiredLines > currentScroll then
             startIndex = i
             physicalOffsetInsideStartItem = currentScroll - physicalLinesSkipped
@@ -278,7 +283,7 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
 
     local itemsToDrawInfos = {}
     for i = startIndex, #lines do
-        local wrapLines = performWrapText(lines[i][2] or "", maxValueWidthEstimate)
+        local wrapLines = wrapText(cache, activeCat, lines[i][2] or "", maxValueWidthEstimate)
         local linesNeededTotal = #wrapLines
         local linesNeeded = linesNeededTotal
 
