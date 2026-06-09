@@ -42,7 +42,23 @@ local function SendDeleteRequest(entityData)
     net.SendToServer()
 end
 
-local function ExtractEntities(tbl, result)
+local function SendRespawnRequest(entityData)
+    if not entityData or not entityData.class or entityData.class == "" then return end
+
+    local pos = entityData.pos
+    if istable(pos) and not (isvector and isvector(pos)) then
+        pos = Vector(pos.x or 0, pos.y or 0, pos.z or 0)
+    end
+    if not pos then return end
+
+    -- NPCs and entities live in separate server snapshots with separate handlers.
+    net.Start(entityData.isNPC and "RareloadRespawnNPC" or "RareloadRespawnEntity")
+    net.WriteString(entityData.class)
+    net.WriteVector(pos)
+    net.SendToServer()
+end
+
+local function ExtractEntities(tbl, result, isNPC)
     result = result or {}
     if not tbl then return result end
 
@@ -69,6 +85,7 @@ local function ExtractEntities(tbl, result)
             health    = tbl.CurHealth or tbl.health,
             maxHealth = tbl.MaxHealth or tbl.maxHealth,
             skin      = tbl.Skin or tbl.skin,
+            isNPC     = isNPC or false,
             rawData   = tbl,
         }
 
@@ -94,7 +111,7 @@ local function ExtractEntities(tbl, result)
 
     for _, v in pairs(tbl) do
         if type(v) == "table" then
-            ExtractEntities(v, result)
+            ExtractEntities(v, result, isNPC)
         end
     end
 
@@ -121,8 +138,8 @@ function EntityViewer:LoadData()
         SnapshotUtils.GetSummary(playerData.npcs, { category = "npc", idPrefix = "npc" }) or {}
 
     local loaded = {}
-    ExtractEntities(entityList, loaded)
-    ExtractEntities(npcList, loaded)
+    ExtractEntities(entityList, loaded, false)
+    ExtractEntities(npcList, loaded, true)
     return loaded
 end
 
@@ -199,7 +216,7 @@ local function CreateSidebarButton(parent, text, yPos, onClick, viewer)
     return btn
 end
 
-local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails)
+local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails, onRespawn)
     local card = vgui.Create("DButton", parent)
     card:SetText("")
     card:SetSize(185, 235)
@@ -326,11 +343,13 @@ local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails)
         return btn
     end
 
-    CreateSmallButton(0, 52, "icon16/arrow_right.png", "Teleport to entity", EV_THEME.success,
+    CreateSmallButton(0, 40, "icon16/arrow_right.png", "Teleport to entity", EV_THEME.success,
         function() if onTeleport then onTeleport(data) end end)
-    CreateSmallButton(58, 52, "icon16/cross.png", "Delete from saved data", EV_THEME.error,
+    CreateSmallButton(43, 40, "icon16/arrow_refresh.png", "Respawn in world", EV_THEME.info,
+        function() if onRespawn then onRespawn(data) end end)
+    CreateSmallButton(86, 40, "icon16/cross.png", "Delete from saved data", EV_THEME.error,
         function() if onDelete then onDelete(data) end end)
-    CreateSmallButton(116, 53, "icon16/information.png", "View details", EV_THEME.info,
+    CreateSmallButton(129, 40, "icon16/information.png", "View details", EV_THEME.info,
         function() if onDetails then onDetails(data) end end)
 
     card.DoClick = function()
@@ -556,6 +575,10 @@ function EntityViewer:RefreshList()
                 CreateDetailsPanel(data, false, function(d)
                     SendDeleteRequest(d)
                 end, nil)
+            end,
+            function(data)
+                SendRespawnRequest(data)
+                ShowNotification("Respawning " .. (data.class or "entity") .. "...", NOTIFY_GENERIC)
             end
         )
         count = count + 1
