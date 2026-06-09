@@ -24,9 +24,6 @@ local string_Explode = RS.string_Explode
 
 local CONTENT_FONT = "Trebuchet18"
 
--- Word-wraps `text` to `maxWidth`, memoizing results per active category on the
--- panel cache. Hoisted out of PanelRendererBuildContext so the hot draw path
--- isn't re-creating this closure every frame; cache/activeCat are passed in.
 local function wrapText(cache, activeCat, text, maxWidth)
     if not text or text == "" then return { text } end
     local wrapCache = cache._wrap or {}
@@ -247,69 +244,96 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
     local scrollTable = isNPC and SED.PanelScroll.npcs or SED.PanelScroll.entities
     local scrollKey = panelID .. "_" .. activeCat
 
-    local maxLabelWForScroll = cache.maxLabelWidths and cache.maxLabelWidths[activeCat] or 100
-    local maxValueWForScroll = width - sidebarWidth - maxLabelWForScroll - 40
-    if maxValueWForScroll < 90 then maxValueWForScroll = 90 end
+    local layoutSig = activeCat .. "|" .. currentLOD .. "|" .. (scrollTable[scrollKey] or 0)
 
-    local truePhysicalLinesTotal = 0
-    for _, l in ipairs(lines) do
-        truePhysicalLinesTotal = truePhysicalLinesTotal + #wrapText(cache, activeCat, l[2] or "", maxValueWForScroll)
+    if activeCat == "position" or activeCat == "state" then
+        local p = ent:GetPos()
+        local a = ent:GetAngles()
+        layoutSig = layoutSig .. "|" .. p.x .. "," .. p.y .. "," .. p.z ..
+            "|" .. a.p .. "," .. a.y .. "," .. a.r
+        if ent.Health then layoutSig = layoutSig .. "|" .. ent:Health() end
     end
+    local layout = cache._layout
+    local itemsToDrawInfos, contentHeight, renderedLogicalItems, maxScrollLines, currentScroll
 
-    local maxScrollLines = math_max(0, truePhysicalLinesTotal - maxVisibleLines)
-    local currentScroll = math_min(scrollTable[scrollKey] or 0, maxScrollLines)
-    scrollTable[scrollKey] = currentScroll
+    if layout and cache._layoutSig == layoutSig then
+        itemsToDrawInfos     = layout.itemsToDrawInfos
+        contentHeight        = layout.contentHeight
+        renderedLogicalItems = layout.renderedLogicalItems
+        maxScrollLines       = layout.maxScrollLines
+        currentScroll        = layout.currentScroll
+        scrollTable[scrollKey] = currentScroll
+    else
+        local maxLabelW = cache.maxLabelWidths and cache.maxLabelWidths[activeCat] or 100
+        local maxValueWidthEstimate = width - sidebarWidth - maxLabelW - 40
+        if maxValueWidthEstimate < 90 then maxValueWidthEstimate = 90 end
 
-    local contentHeight = 12
-    local totalPhysicalLines = 0
-    local renderedLogicalItems = 0
-    local maxLabelW = cache.maxLabelWidths and cache.maxLabelWidths[activeCat] or 100
-    local maxValueWidthEstimate = width - sidebarWidth - maxLabelW - 40
-    if maxValueWidthEstimate < 90 then maxValueWidthEstimate = 90 end
-
-    local physicalLinesSkipped = 0
-    local startIndex = 1
-    local physicalOffsetInsideStartItem = 0
-
-    for i, l in ipairs(lines) do
-        local requiredLines = #wrapText(cache, activeCat, l[2] or "", maxValueWidthEstimate)
-        if physicalLinesSkipped + requiredLines > currentScroll then
-            startIndex = i
-            physicalOffsetInsideStartItem = currentScroll - physicalLinesSkipped
-            break
-        end
-        physicalLinesSkipped = physicalLinesSkipped + requiredLines
-    end
-
-    local itemsToDrawInfos = {}
-    for i = startIndex, #lines do
-        local wrapLines = wrapText(cache, activeCat, lines[i][2] or "", maxValueWidthEstimate)
-        local linesNeededTotal = #wrapLines
-        local linesNeeded = linesNeededTotal
-
-        local startOffset = 0
-        if i == startIndex then
-            startOffset = physicalOffsetInsideStartItem
-            linesNeeded = linesNeeded - startOffset
-            wrapLines = { unpack(wrapLines, startOffset + 1) }
+        local truePhysicalLinesTotal = 0
+        for _, l in ipairs(lines) do
+            truePhysicalLinesTotal = truePhysicalLinesTotal + #wrapText(cache, activeCat, l[2] or "", maxValueWidthEstimate)
         end
 
-        if totalPhysicalLines + linesNeeded > maxVisibleLines then
-            linesNeeded = maxVisibleLines - totalPhysicalLines
-            if linesNeeded <= 0 then break end
-            wrapLines = { unpack(wrapLines, 1, linesNeeded) }
+        maxScrollLines = math_max(0, truePhysicalLinesTotal - maxVisibleLines)
+        currentScroll = math_min(scrollTable[scrollKey] or 0, maxScrollLines)
+        scrollTable[scrollKey] = currentScroll
+
+        contentHeight = 12
+        local totalPhysicalLines = 0
+        renderedLogicalItems = 0
+
+        local physicalLinesSkipped = 0
+        local startIndex = 1
+        local physicalOffsetInsideStartItem = 0
+
+        for i, l in ipairs(lines) do
+            local requiredLines = #wrapText(cache, activeCat, l[2] or "", maxValueWidthEstimate)
+            if physicalLinesSkipped + requiredLines > currentScroll then
+                startIndex = i
+                physicalOffsetInsideStartItem = currentScroll - physicalLinesSkipped
+                break
+            end
+            physicalLinesSkipped = physicalLinesSkipped + requiredLines
         end
 
-        contentHeight = contentHeight + (linesNeeded * lineHeight) + 4
-        totalPhysicalLines = totalPhysicalLines + linesNeeded
-        renderedLogicalItems = renderedLogicalItems + 1
+        itemsToDrawInfos = {}
+        for i = startIndex, #lines do
+            local wrapLines = wrapText(cache, activeCat, lines[i][2] or "", maxValueWidthEstimate)
+            local linesNeededTotal = #wrapLines
+            local linesNeeded = linesNeededTotal
 
-        itemsToDrawInfos[#itemsToDrawInfos + 1] = {
-            logicalIndex = i,
-            linesNeeded = linesNeeded,
-            wrapLines = wrapLines,
-            isPartialStart = (i == startIndex and startOffset > 0)
-        }
+            local startOffset = 0
+            if i == startIndex then
+                startOffset = physicalOffsetInsideStartItem
+                linesNeeded = linesNeeded - startOffset
+                wrapLines = { unpack(wrapLines, startOffset + 1) }
+            end
+
+            if totalPhysicalLines + linesNeeded > maxVisibleLines then
+                linesNeeded = maxVisibleLines - totalPhysicalLines
+                if linesNeeded <= 0 then break end
+                wrapLines = { unpack(wrapLines, 1, linesNeeded) }
+            end
+
+            contentHeight = contentHeight + (linesNeeded * lineHeight) + 4
+            totalPhysicalLines = totalPhysicalLines + linesNeeded
+            renderedLogicalItems = renderedLogicalItems + 1
+
+            itemsToDrawInfos[#itemsToDrawInfos + 1] = {
+                logicalIndex = i,
+                linesNeeded = linesNeeded,
+                wrapLines = wrapLines,
+                isPartialStart = (i == startIndex and startOffset > 0)
+            }
+        end
+
+        layout = layout or {}
+        layout.itemsToDrawInfos     = itemsToDrawInfos
+        layout.contentHeight        = contentHeight
+        layout.renderedLogicalItems = renderedLogicalItems
+        layout.maxScrollLines       = maxScrollLines
+        layout.currentScroll        = currentScroll
+        cache._layout = layout
+        cache._layoutSig = layoutSig
     end
 
     local minVisibleTabs = math_min(#categories, 4)
