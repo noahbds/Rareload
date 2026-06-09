@@ -269,4 +269,32 @@ function SnapshotUtils.RemoveEntryByID(bucket, targetID, opts)
     return savePayload(snapshot, payload)
 end
 
+function SnapshotUtils.RemoveEntryByClassAndPos(bucket, className, targetPos, tolSqr)
+    if not SnapshotUtils.HasSnapshot(bucket) or not className or not targetPos then return false end
+    local snapshot = bucket.__duplicator
+    local payload = deserializePayload(snapshot)
+    if not payload or not payload.Entities then return false end
+
+    tolSqr = tolSqr or 16
+    local tx = tonumber(targetPos.x) or 0
+    local ty = tonumber(targetPos.y) or 0
+    local tz = tonumber(targetPos.z) or 0
+
+    for dupIndex, ent in pairs(payload.Entities) do
+        local class = ent.Class or ent.NPCName or ent.class
+        local p = copyVector(ent.Pos)
+        if class == className and p then
+            local dx, dy, dz = (p.x or 0) - tx, (p.y or 0) - ty, (p.z or 0) - tz
+            if (dx * dx + dy * dy + dz * dz) <= tolSqr then
+                payload.Entities[dupIndex] = nil
+                if snapshot._indexMap then snapshot._indexMap[dupIndex] = nil end
+                snapshot.entityCount = math.max((snapshot.entityCount or 1) - 1, 0)
+                return savePayload(snapshot, payload)
+            end
+        end
+    end
+
+    return false
+end
+
 return SnapshotUtils

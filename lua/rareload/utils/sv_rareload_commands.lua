@@ -130,30 +130,9 @@ net.Receive("RareloadEntityViewer_Delete", function(len, ply)
     local resolvedDeleteID = entityId
 
     local function RemoveByClassAndPosition(bucket, category)
-        if not SnapshotUtils.HasSnapshot(bucket) then
-            return false, nil
+        if SnapshotUtils.RemoveEntryByClassAndPos(bucket, entityClass, targetPos, 16) then
+            return true, entityClass .. " @ " .. tostring(targetPos)
         end
-
-        local summary = SnapshotUtils.GetSummary(bucket, {
-            category = category,
-            idPrefix = category
-        }) or {}
-
-        for _, entry in ipairs(summary) do
-            if entry.class == entityClass and entry.pos then
-                local px = tonumber(entry.pos.x) or 0
-                local py = tonumber(entry.pos.y) or 0
-                local pz = tonumber(entry.pos.z) or 0
-                local pos = Vector(px, py, pz)
-                if pos:DistToSqr(targetPos) <= 16 then
-                    local fallbackID = entry.id or entry.RareloadEntityID or entry.RareloadNPCID or entry.RareloadID
-                    if fallbackID and SnapshotUtils.RemoveEntryByID(bucket, fallbackID) then
-                        return true, fallbackID
-                    end
-                end
-            end
-        end
-
         return false, nil
     end
 
