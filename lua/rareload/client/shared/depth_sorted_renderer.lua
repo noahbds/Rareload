@@ -182,7 +182,8 @@ function DepthRenderer.ClearQueue()
 end
 
 hook.Add("PostDrawTranslucentRenderables", "RARELOAD_DepthSortedRenderer", function(bDepth, bSkybox)
-    if bDepth then return end
+    if bDepth or bSkybox then return end
+    if render.GetRenderTarget() ~= nil then return end
     DepthRenderer.ProcessRenderQueue()
 end)
 

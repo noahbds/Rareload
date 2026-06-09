@@ -61,7 +61,10 @@ hook.Add("PlayerBindPress", "RARELOAD_InteractScroll", function(ply, bind, press
     end
 end)
 
-hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", function()
+hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", function(bDrawingDepth, bDrawingSkybox)
+    if bDrawingDepth or bDrawingSkybox then return end
+    if render.GetRenderTarget() ~= nil then return end -- skip water/RT passes (remove this line if panels ever vanish)
+
     if not IsClientDebugEnabled() then return end
 
     local hasViewSEDPerm = true
