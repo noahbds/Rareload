@@ -264,13 +264,22 @@ function RARELOAD.HandlePlayerSpawn(ply)
     if not Settings then return end
     ply.lastSpawnPosition = ToSpawnVector(SavedInfo.pos)
     ply.hasMovedAfterSpawn = false
-    hook.Add("PlayerTick", "RARELOAD_CheckMovement_" .. ply:EntIndex(), function(ply, mv)
-        if not IsValid(ply) or not ply.lastSpawnPosition then return end
-        local moved = (ply:GetPos() - ply.lastSpawnPosition):LengthSqr() > 4
-        if moved and not ply.hasMovedAfterSpawn then
-            RARELOAD.SavePositionToCache(ply.lastSpawnPosition)
-            ply.hasMovedAfterSpawn = true
-            hook.Remove("PlayerTick", "RARELOAD_CheckMovement_" .. ply:EntIndex())
+    -- PlayerTick fires server-side for every player, so capture this player and
+    -- ignore ticks for anyone else -- otherwise the per-EntIndex hooks all run for
+    -- all players (N^2 work) and the hook leaks if the player leaves before moving.
+    local spawnedPly = ply
+    local moveHookName = "RARELOAD_CheckMovement_" .. ply:EntIndex()
+    hook.Add("PlayerTick", moveHookName, function(tickPly)
+        if not IsValid(spawnedPly) then
+            hook.Remove("PlayerTick", moveHookName)
+            return
+        end
+        if tickPly ~= spawnedPly or not spawnedPly.lastSpawnPosition then return end
+        if not spawnedPly.hasMovedAfterSpawn
+            and (spawnedPly:GetPos() - spawnedPly.lastSpawnPosition):LengthSqr() > 4 then
+            RARELOAD.SavePositionToCache(spawnedPly.lastSpawnPosition)
+            spawnedPly.hasMovedAfterSpawn = true
+            hook.Remove("PlayerTick", moveHookName)
         end
     end)
 

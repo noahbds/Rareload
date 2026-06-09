@@ -131,8 +131,12 @@ function RARELOAD.RestoreNPCs(savedInfo, requestingPlayer)
                 { entity = requestingPlayer })
         end
 
-        hook.Add("InitPostEntity", "RARELOAD_RestoreNPCs_OnReady", function()
-            hook.Remove("InitPostEntity", "RARELOAD_RestoreNPCs_OnReady")
+        -- Use a per-request hook name. A fixed name would let a second player's
+        -- deferred restore overwrite the first's, dropping the first player's NPCs.
+        local readyHookName = "RARELOAD_RestoreNPCs_OnReady_" ..
+            (IsValid(requestingPlayer) and requestingPlayer:SteamID() or tostring(snapshot))
+        hook.Add("InitPostEntity", readyHookName, function()
+            hook.Remove("InitPostEntity", readyHookName)
             timer.Simple(RARELOAD.settings.npcRestoreDelay or 1, function()
                 RARELOAD.RestoreNPCs(savedInfo, requestingPlayer)
             end)
