@@ -234,9 +234,14 @@ local function savePayload(snapshot, payload)
 end
 
 local function matchesID(entityDef, targetID)
-    if not targetID then return false end
-    local id = entityDef.RareloadEntityID or entityDef.RareloadNPCID or entityDef.RareloadID
-    return id == targetID
+    if targetID == nil or targetID == "" then return false end
+    local target = tostring(targetID)
+    local function eq(v) return v ~= nil and tostring(v) == target end
+    return eq(entityDef.RareloadEntityID)
+        or eq(entityDef.RareloadNPCID)
+        or eq(entityDef.RareloadID)
+        or eq(entityDef.id)
+        or eq(entityDef.UniqueID)
 end
 
 function SnapshotUtils.RemoveEntryByID(bucket, targetID, opts)

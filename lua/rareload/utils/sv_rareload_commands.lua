@@ -168,7 +168,8 @@ net.Receive("RareloadEntityViewer_Delete", function(len, ply)
             local removed = false
             if isstring(entityId) and entityId ~= "" then
                 removed = SnapshotUtils.RemoveEntryByID(playerData.entities, entityId)
-            else
+            end
+            if not removed then
                 removed, resolvedDeleteID = RemoveByClassAndPosition(playerData.entities, "entity")
             end
 
@@ -186,7 +187,8 @@ net.Receive("RareloadEntityViewer_Delete", function(len, ply)
             local removed = false
             if isstring(entityId) and entityId ~= "" then
                 removed = SnapshotUtils.RemoveEntryByID(playerData.npcs, entityId)
-            else
+            end
+            if not removed then
                 removed, resolvedDeleteID = RemoveByClassAndPosition(playerData.npcs, "npc")
             end
 
