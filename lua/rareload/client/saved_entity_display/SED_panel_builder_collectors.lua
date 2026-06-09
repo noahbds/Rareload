@@ -10,6 +10,22 @@ if not PB then
     return
 end
 
+-- Declarative spec for plain "first non-empty value" rows: { category, label, { source keys... } }.
+-- These have no guards/transforms (add() already skips nil/""), and every label has an explicit
+-- priority in CATEGORY_LABEL_ORDER, so batching them here never changes the final sort order.
+local SIMPLE_FIELDS = {
+    { "ownership", "OwnerID",        { "ownerSteamID", "RareloadOwnerSteamID" } },
+    { "ownership", "OwnerID64",      { "ownerSteamID64", "RareloadOwnerSteamID64" } },
+    { "ownership", "Rareload Owner", { "RareloadOwnerSteamID", "RareloadOwnerSteamID64" } },
+    { "ownership", "SpawnFlags",     { "spawnflags", "SpawnFlags" } },
+    { "ownership", "SpawnedBy",      { "originallySpawnedBy", "OriginalSpawner" } },
+    { "visual",    "Skin",          { "skin", "Skin" } },
+    { "visual",    "ModelScale",    { "modelScale", "ModelScale" } },
+    { "visual",    "RenderMode",    { "renderMode", "RenderMode" } },
+    { "visual",    "RenderFX",      { "renderFX", "RenderFx", "RenderFX" } },
+    { "visual",    "Material",      { "material", "Material", "materialOverride" } },
+}
+
 function PB.populateCategories(ctx)
     local saved = ctx.saved
     local ent = ctx.ent
@@ -82,9 +98,9 @@ function PB.populateCategories(ctx)
     if ownerValue then add("basic", "Owner", ownerValue) end
     if spawnTime then add("basic", "Spawned", os.date("%H:%M:%S", spawnTime)) end
 
-    add("ownership", "OwnerID", PB.firstValue(saved, "ownerSteamID", "RareloadOwnerSteamID"))
-    add("ownership", "OwnerID64", PB.firstValue(saved, "ownerSteamID64", "RareloadOwnerSteamID64"))
-    add("ownership", "Rareload Owner", PB.firstValue(saved, "RareloadOwnerSteamID", "RareloadOwnerSteamID64"))
+    for _, f in ipairs(SIMPLE_FIELDS) do
+        add(f[1], f[2], PB.firstValue(saved, unpack(f[3])))
+    end
 
     local savedPos = PB.firstValue(saved, "pos", "Pos")
     local savedAng = PB.firstValue(saved, "ang", "Angle", "Ang")
@@ -112,29 +128,20 @@ function PB.populateCategories(ctx)
     if saved.creationTime then
         add("saved", "Creation Time", string.format("%.2f", saved.creationTime), Color(200, 200, 150))
     end
-    if saved.SavedByRareload ~= nil then
-        add("saved", "Saved By Rareload", saved.SavedByRareload and "Yes" or "No", Color(200, 150, 200))
-    end
-
-    if saved.SavedViaDuplicator ~= nil then
-        add("saved", "Saved via Duplicator", saved.SavedViaDuplicator and "Yes" or "No", Color(100, 150, 255))
-    end
-    if saved.SpawnedByRareload ~= nil then
-        add("saved", "Spawned By Rareload", saved.SpawnedByRareload and "Yes" or "No", Color(120, 180, 255))
-    end
-    if saved.Persistent ~= nil then
-        add("saved", "Persistent", saved.Persistent and "Yes" or "No", Color(180, 180, 240))
-    end
+    add("saved", "Saved By Rareload", PB.yesNo(saved.SavedByRareload), Color(200, 150, 200))
+    add("saved", "Saved via Duplicator", PB.yesNo(saved.SavedViaDuplicator), Color(100, 150, 255))
+    add("saved", "Spawned By Rareload", PB.yesNo(saved.SpawnedByRareload), Color(120, 180, 255))
+    add("saved", "Persistent", PB.yesNo(saved.Persistent), Color(180, 180, 240))
 
     if saved.physics and istable(saved.physics) then
         local phys = saved.physics
-        if phys.exists ~= nil then add("saved", "Physics Exists", phys.exists and "Yes" or "No") end
+        add("saved", "Physics Exists", PB.yesNo(phys.exists))
         if phys.velocity then add("saved", "Physics Velocity", phys.velocity) end
-        if phys.frozen ~= nil then add("saved", "Physics Frozen", phys.frozen and "Yes" or "No") end
+        add("saved", "Physics Frozen", PB.yesNo(phys.frozen))
         if phys.mass then add("saved", "Physics Mass", phys.mass) end
         if phys.material then add("saved", "Physics Material", phys.material) end
-        if phys.gravityEnabled ~= nil then add("saved", "Gravity Enabled", phys.gravityEnabled and "Yes" or "No") end
-        if phys.motionEnabled ~= nil then add("saved", "Motion Enabled", phys.motionEnabled and "Yes" or "No") end
+        add("saved", "Gravity Enabled", PB.yesNo(phys.gravityEnabled))
+        add("saved", "Motion Enabled", PB.yesNo(phys.motionEnabled))
     end
 
     if istable(saved.PhysicsObjects) then
@@ -383,12 +390,12 @@ function PB.populateCategories(ctx)
         add("state", "Seq", saved.sequence)
         add("state", "Playback", saved.playbackRate)
     else
-        add("state", "Frozen", saved.frozen == nil and nil or (saved.frozen and "Yes" or "No"))
+        add("state", "Frozen", PB.yesNo(saved.frozen))
     end
 
     if isNPC then
         if saved.squad or saved.Squad then add("behavior", "Squad", PB.firstValue(saved, "squad", "Squad")) end
-        if saved.squadLeader ~= nil then add("behavior", "Leader", saved.squadLeader and "Yes" or "No") end
+        add("behavior", "Leader", PB.yesNo(saved.squadLeader))
         local targetData = saved.target or saved.Target
         if targetData and targetData.type then
             add("behavior", "Target", targetData.type .. ":" .. (targetData.id or targetData.class or "?"))
@@ -434,12 +441,7 @@ function PB.populateCategories(ctx)
     local subMaterials = PB.firstValue(saved, "subMaterials", "SubMaterials")
     local colorValue = PB.firstValue(saved, "color", "Color")
 
-    add("visual", "Skin", PB.firstValue(saved, "skin", "Skin"))
     if bodygroups then add("visual", "Bodygroups", table.Count(bodygroups)) end
-    add("visual", "ModelScale", PB.firstValue(saved, "modelScale", "ModelScale"))
-    add("visual", "RenderMode", PB.firstValue(saved, "renderMode", "RenderMode"))
-    add("visual", "RenderFX", PB.firstValue(saved, "renderFX", "RenderFx", "RenderFX"))
-    add("visual", "Material", PB.firstValue(saved, "material", "Material", "materialOverride"))
     local colorTbl = istable(colorValue) and colorValue or nil
     if colorTbl then
         local cr = tonumber(colorTbl.r)
@@ -493,10 +495,6 @@ function PB.populateCategories(ctx)
         add("physics", "CollGroup", PB.firstValue(saved, "collisionGroup", "ColGroup"))
         add("physics", "Solid", PB.firstValue(saved, "solidType", "SolidType"))
     end
-
-    add("ownership", "SpawnFlags", PB.firstValue(saved, "spawnflags", "SpawnFlags"))
-    add("ownership", "SpawnedBy", PB.firstValue(saved, "originallySpawnedBy", "OriginalSpawner"))
-    add("ownership", "OwnerID", PB.firstValue(saved, "ownerSteamID", "RareloadOwnerSteamID"))
 
     if istable(saved.keyvalues) or istable(saved.keyValues) then
         local kv = saved.keyvalues or saved.keyValues
