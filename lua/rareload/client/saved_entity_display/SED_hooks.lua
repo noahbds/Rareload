@@ -17,6 +17,16 @@ hook.Add("OnEntityCreated", "RARELOAD_TrackSavedEntities", function(ent)
     end)
 end)
 
+hook.Add("RareloadPlayerPositionsUpdated", "RARELOAD_SEDRefreshSavedLookup", function(mapName)
+    if mapName ~= game.GetMap() then return end
+    if not (SED and SED.RebuildSavedLookup) then return end
+
+    SED.RebuildSavedLookup()
+    if SED.PruneMissingTrackedEntities then
+        SED.PruneMissingTrackedEntities()
+    end
+end)
+
 hook.Add("CreateMove", "RARELOAD_SavedPanels_CamLock", function(cmd)
     if SED.InteractionState.active or CurTime() - SED.LeaveTime < 0.5 then
         cmd:RemoveKey(IN_USE)

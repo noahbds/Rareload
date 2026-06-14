@@ -39,6 +39,34 @@ function SED.RebuildSavedLookup()
     SED.MAP_LAST_BUILD = CurTime()
 end
 
+function SED.PruneMissingTrackedEntities()
+    local removed = 0
+
+    for ent, id in pairs(SED.TrackedEntities or {}) do
+        if not (id and SED.SAVED_ENTITIES_BY_ID and SED.SAVED_ENTITIES_BY_ID[id]) then
+            SED.TrackedEntities[ent] = nil
+            removed = removed + 1
+            local idx = IsValid(ent) and ent:EntIndex() or nil
+            if SED.EntityBoundsCache and idx then
+                SED.EntityBoundsCache[idx] = nil
+            end
+        end
+    end
+
+    for npc, id in pairs(SED.TrackedNPCs or {}) do
+        if not (id and SED.SAVED_NPCS_BY_ID and SED.SAVED_NPCS_BY_ID[id]) then
+            SED.TrackedNPCs[npc] = nil
+            removed = removed + 1
+            local idx = IsValid(npc) and npc:EntIndex() or nil
+            if SED.EntityBoundsCache and idx then
+                SED.EntityBoundsCache[idx] = nil
+            end
+        end
+    end
+
+    return removed
+end
+
 function SED.EnsureSavedLookup()
     if CurTime() - SED.MAP_LAST_BUILD > SED.SAVED_LOOKUP_INTERVAL then
         SED.RebuildSavedLookup()

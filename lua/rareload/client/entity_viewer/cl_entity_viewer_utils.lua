@@ -1,9 +1,20 @@
 local notificationQueue  = {}
 local notificationActive = false
+local lastNotificationSignature = nil
+local lastNotificationTime = 0
 
 function ShowNotification(message, type, duration, onDismiss)
     type     = type or NOTIFY_GENERIC
     duration = duration or 4
+
+    local signature = tostring(message) .. "|" .. tostring(type) .. "|" .. tostring(duration)
+    local now = CurTime()
+    if signature == lastNotificationSignature and (now - lastNotificationTime) < 0.35 then
+        return
+    end
+
+    lastNotificationSignature = signature
+    lastNotificationTime = now
 
     table.insert(notificationQueue, {
         message   = message,

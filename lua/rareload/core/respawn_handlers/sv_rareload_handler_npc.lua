@@ -256,6 +256,7 @@ net.Receive("RareloadRespawnNPC", function(len, ply)
     end
 
     local entityClass = net.ReadString()
+    local entityId = net.ReadString()
     local position = net.ReadVector()
 
     if not entityClass or entityClass == "" or not position then
@@ -278,6 +279,9 @@ net.Receive("RareloadRespawnNPC", function(len, ply)
         entity:Spawn()
         entity:Activate()
         entity.SpawnedByRareload = true
+        if entityId and entityId ~= "" then
+            EntityIdentity.SetID(entity, "RareloadNPCID", entityId)
+        end
         if RARELOAD.Ownership then
             RARELOAD.Ownership.SetOwner(entity, ply)
         end

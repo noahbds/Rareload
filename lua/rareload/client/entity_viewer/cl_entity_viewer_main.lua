@@ -16,6 +16,7 @@ EntityViewer.FilteredData = {}
 EntityViewer.SearchText   = ""
 EntityViewer.Category     = "All"
 EntityViewer.SortMode     = "Name"
+EntityViewer.PendingDeleteBatch = nil
 
 local function ResolveDeleteEntityID(entityData)
     if not (entityData and entityData.rawData) then return "" end
@@ -23,7 +24,8 @@ local function ResolveDeleteEntityID(entityData)
     return raw.id or raw.RareloadNPCID or raw.RareloadEntityID or raw.RareloadID or raw.UniqueID or ""
 end
 
-local function SendDeleteRequest(entityData)
+local function SendDeleteRequest(entityData, options)
+    options = options or {}
     local entityId = ResolveDeleteEntityID(entityData)
 
     net.Start("RareloadEntityViewer_Delete")
@@ -40,9 +42,39 @@ local function SendDeleteRequest(entityData)
     net.WriteFloat(posY)
     net.WriteFloat(posZ)
     net.SendToServer()
+
+    return true
 end
 
-local function SendRespawnRequest(entityData)
+local function SendDeleteManyRequest(items)
+    if not istable(items) or #items == 0 then return false end
+
+    net.Start("RareloadEntityViewer_DeleteMany")
+    net.WriteUInt(#items, 16)
+
+    for _, entityData in ipairs(items) do
+        local entityId = ResolveDeleteEntityID(entityData)
+        net.WriteString(tostring(entityId))
+        net.WriteString(tostring(entityData.class or "Unknown"))
+
+        local posX, posY, posZ = 0, 0, 0
+        if entityData.pos then
+            posX = entityData.pos.x or 0
+            posY = entityData.pos.y or 0
+            posZ = entityData.pos.z or 0
+        end
+
+        net.WriteFloat(posX)
+        net.WriteFloat(posY)
+        net.WriteFloat(posZ)
+    end
+
+    net.SendToServer()
+    return true
+end
+
+local function SendRespawnRequest(entityData, options)
+    options = options or {}
     if not entityData or not entityData.class or entityData.class == "" then return end
 
     local pos = entityData.pos
@@ -54,8 +86,19 @@ local function SendRespawnRequest(entityData)
     -- NPCs and entities live in separate server snapshots with separate handlers.
     net.Start(entityData.isNPC and "RareloadRespawnNPC" or "RareloadRespawnEntity")
     net.WriteString(entityData.class)
+    net.WriteString(tostring(entityData.id or ResolveDeleteEntityID(entityData) or ""))
     net.WriteVector(pos)
     net.SendToServer()
+
+    timer.Simple(0.25, function()
+        if SED and SED.RescanLate then
+            SED.RescanLate()
+        elseif SED and SED.RebuildSavedLookup then
+            SED.RebuildSavedLookup()
+        end
+    end)
+
+    return true
 end
 
 local function ExtractEntities(tbl, result, isNPC)
@@ -185,6 +228,14 @@ end
 function EntityViewer:ReloadDataAndRefresh()
     self.Data = self:LoadData()
     self:RefreshList()
+end
+
+local function ShowBulkConfirmation(title, message, onConfirm)
+    Derma_Query(message, title, "Proceed", function()
+        if onConfirm then
+            onConfirm()
+        end
+    end, "Cancel")
 end
 
 local function CreateSidebarButton(parent, text, yPos, onClick, viewer)
@@ -516,6 +567,68 @@ function EntityViewer:Open()
         ShowNotification("Data refreshed!", NOTIFY_GENERIC)
     end
 
+    local respawnAllBtn = vgui.Create("DButton", topBar)
+    respawnAllBtn:SetPos(396, 10)
+    respawnAllBtn:SetSize(116, 36)
+    respawnAllBtn:SetText("")
+    respawnAllBtn:SetTooltip("Respawn all filtered entities")
+    respawnAllBtn.HoverAnim = 0
+    respawnAllBtn.Paint = function(self, w, h)
+        self.HoverAnim = Lerp(FrameTime() * 10, self.HoverAnim, self:IsHovered() and 1 or 0)
+        local bgCol = THEME:LerpColor(self.HoverAnim * 0.4, EV_THEME.surface, EV_THEME.info)
+        draw.RoundedBox(8, 0, 0, w, h, bgCol)
+        draw.SimpleText("Respawn All", "RareloadBody", w / 2, h / 2,
+            EV_THEME.textPrimary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+    respawnAllBtn.DoClick = function()
+        local items = EntityViewer.FilteredData or {}
+        local total = #items
+        if total == 0 then
+            ShowNotification("No entities match the current filters.", NOTIFY_ERROR)
+            return
+        end
+
+        ShowBulkConfirmation("Respawn All", string.format("Respawn %d filtered entities?", total), function()
+            local respawned = 0
+            for _, data in ipairs(items) do
+                if SendRespawnRequest(data) then
+                    respawned = respawned + 1
+                end
+            end
+
+            ShowNotification(string.format("Respawned %d entities.", respawned),
+                respawned > 0 and NOTIFY_GENERIC or NOTIFY_ERROR)
+        end)
+    end
+
+    local deleteAllBtn = vgui.Create("DButton", topBar)
+    deleteAllBtn:SetPos(520, 10)
+    deleteAllBtn:SetSize(116, 36)
+    deleteAllBtn:SetText("")
+    deleteAllBtn:SetTooltip("Delete all filtered entities")
+    deleteAllBtn.HoverAnim = 0
+    deleteAllBtn.Paint = function(self, w, h)
+        self.HoverAnim = Lerp(FrameTime() * 10, self.HoverAnim, self:IsHovered() and 1 or 0)
+        local bgCol = THEME:LerpColor(self.HoverAnim * 0.4, EV_THEME.surface, EV_THEME.error)
+        draw.RoundedBox(8, 0, 0, w, h, bgCol)
+        draw.SimpleText("Delete All", "RareloadBody", w / 2, h / 2,
+            EV_THEME.textPrimary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+    deleteAllBtn.DoClick = function()
+        local items = EntityViewer.FilteredData or {}
+        local total = #items
+        if total == 0 then
+            ShowNotification("No entities match the current filters.", NOTIFY_ERROR)
+            return
+        end
+
+        ShowBulkConfirmation("Delete All", string.format("Permanently delete %d filtered entities?", total), function()
+            if SendDeleteManyRequest(items) then
+                ShowNotification(string.format("Deleting %d entities...", total), NOTIFY_GENERIC)
+            end
+        end)
+    end
+
     local scroll = vgui.Create("DScrollPanel", frame)
     scroll:SetPos(208, 63)
     scroll:SetSize(704, 550)
@@ -577,8 +690,9 @@ function EntityViewer:RefreshList()
                 end, nil)
             end,
             function(data)
-                SendRespawnRequest(data)
-                ShowNotification("Respawning " .. (data.class or "entity") .. "...", NOTIFY_GENERIC)
+                if SendRespawnRequest(data) then
+                    ShowNotification("Respawning " .. (data.class or "entity") .. "...", NOTIFY_GENERIC)
+                end
             end
         )
         count = count + 1

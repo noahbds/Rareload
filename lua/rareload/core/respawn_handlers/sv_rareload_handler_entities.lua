@@ -170,6 +170,7 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
     end
 
     local entityClass = net.ReadString()
+    local entityId = net.ReadString()
     local position = net.ReadVector()
 
     if not entityClass or entityClass == "" or not position or position:IsZero() then
@@ -220,6 +221,11 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
             if not IsValid(ent) then return nil end
 
             ent:SetPos(position)
+            if entityId and entityId ~= "" then
+                EntityIdentity.SetID(ent, "RareloadEntityID", entityId)
+            elseif matchedData and matchedData.id then
+                EntityIdentity.SetID(ent, "RareloadEntityID", matchedData.id)
+            end
 
             if matchedData.ang then
                 local ang
@@ -341,6 +347,9 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
                 basicEntity:SetPos(position)
                 basicEntity:Spawn()
                 basicEntity:Activate()
+                if entityId and entityId ~= "" then
+                    EntityIdentity.SetID(basicEntity, "RareloadEntityID", entityId)
+                end
 
                 if RARELOAD.Ownership then
                     RARELOAD.Ownership.SetOwner(basicEntity, ply)
@@ -360,6 +369,9 @@ net.Receive("RareloadRespawnEntity", function(len, ply)
             entity:Spawn()
             entity:Activate()
             entity.SpawnedByRareload = true
+            if entityId and entityId ~= "" then
+                EntityIdentity.SetID(entity, "RareloadEntityID", entityId)
+            end
 
             if RARELOAD.Ownership then
                 RARELOAD.Ownership.SetOwner(entity, ply)

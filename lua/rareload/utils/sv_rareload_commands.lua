@@ -42,6 +42,7 @@ end)
 
 util.AddNetworkString("RareloadEntityViewer_Teleport")
 util.AddNetworkString("RareloadEntityViewer_Delete")
+util.AddNetworkString("RareloadEntityViewer_DeleteMany")
 util.AddNetworkString("RareloadEntityViewer_DeleteResult")
 
 concommand.Add("rareload_teleport_to", function(ply, cmd, args)
@@ -219,4 +220,98 @@ net.Receive("RareloadEntityViewer_Delete", function(len, ply)
 
     print("[RARELOAD] Entity Viewer: " .. ply:Nick() .. " deleted " .. deletedBucket .. " entry '" ..
         entityClass .. "' (ID: " .. tostring(resolvedDeleteID) .. ", owner: " .. tostring(deletedSteamID) .. ")")
+end)
+
+-- Bulk-delete all entity/NPC entries sent by the client.
+-- Uses SnapshotUtils so the serialized duplicator payload is deserialized properly.
+net.Receive("RareloadEntityViewer_DeleteMany", function(len, ply)
+    if not IsValid(ply) or not ply:IsPlayer() then return end
+    if not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "MANAGE_ENTITIES") then
+        net.Start("RareloadEntityViewer_DeleteResult")
+        net.WriteBool(false)
+        net.WriteString("You do not have permission to delete entities.")
+        net.Send(ply)
+        return
+    end
+
+    local total = math.min(net.ReadUInt(16), 200)
+
+    local entries = {}
+    for i = 1, total do
+        entries[i] = {
+            id    = net.ReadString(),
+            class = net.ReadString(),
+            pos   = Vector(net.ReadFloat(), net.ReadFloat(), net.ReadFloat()),
+        }
+    end
+
+    if RARELOAD.LoadPlayerPositions then
+        RARELOAD.LoadPlayerPositions()
+    end
+
+    local map     = game.GetMap()
+    local mapData = RARELOAD.playerPositions and RARELOAD.playerPositions[map]
+
+    local deleted          = 0
+    local modifiedSteamIDs = {}
+
+    if istable(mapData) then
+        for _, entry in ipairs(entries) do
+            for steamID, playerData in pairs(mapData) do
+                if not istable(playerData) then continue end
+
+                local removed = false
+                for _, bucket in ipairs({ playerData.entities, playerData.npcs }) do
+                    if not (bucket and SnapshotUtils.HasSnapshot(bucket)) then continue end
+
+                    if isstring(entry.id) and entry.id ~= "" then
+                        removed = SnapshotUtils.RemoveEntryByID(bucket, entry.id)
+                    end
+                    if not removed then
+                        removed = SnapshotUtils.RemoveEntryByClassAndPos(bucket, entry.class, entry.pos, 16)
+                    end
+                    if removed then break end
+                end
+
+                if removed then
+                    modifiedSteamIDs[steamID] = true
+                    deleted = deleted + 1
+                    break
+                end
+            end
+        end
+
+        for steamID in pairs(modifiedSteamIDs) do
+            if RARELOAD.SavePlayerPositionEntry and mapData[steamID] then
+                local targetPlayer = nil
+                for _, candidate in ipairs(player.GetAll()) do
+                    if IsValid(candidate) and candidate:SteamID() == steamID then
+                        targetPlayer = candidate
+                        break
+                    end
+                end
+
+                if IsValid(targetPlayer) then
+                    RARELOAD.SavePlayerPositionEntry(targetPlayer, mapData[steamID])
+                else
+                    local fakePly = {
+                        SteamID   = function() return steamID end,
+                        SteamID64 = function() return "" end
+                    }
+                    RARELOAD.SavePlayerPositionEntry(fakePly, mapData[steamID])
+                end
+            end
+        end
+
+        if SyncPlayerPositions then SyncPlayerPositions() end
+    end
+
+    print(string.format("[RARELOAD] Entity Viewer: %s bulk-deleted %d/%d entries", ply:Nick(), deleted, total))
+
+    net.Start("RareloadEntityViewer_DeleteResult")
+    net.WriteBool(deleted > 0)
+    net.WriteString(deleted > 0
+        and string.format("Deleted %d/%d entities.", deleted, total)
+        or  "None of the selected entities were found in saved data.")
+    net.Send(ply)
 end)
