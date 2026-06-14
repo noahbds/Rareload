@@ -1,4 +1,10 @@
--- SED_panel_queue.lua  (refactored)
+-- SED_panel_queue.lua
+--
+-- Each frame: gather tracked saved entities/NPCs/phantoms in view, then hand each
+-- one to the depth-sorted renderer as a full panel. Panels are cheap to draw now
+-- (a single baked-texture blit -- see SED_panel_renderer_draw.lua), so there is no
+-- LOD tiering or screen-space occlusion culling; only distance and FOV culling,
+-- which decide what is worth drawing at all.
 
 local SS = SED.Shared
 if not (SS and SS._initialized) then
@@ -43,14 +49,7 @@ local function GetRenderData()
     else
         rdata = {}
         rdata.fn = function()
-            local tier = rdata.tier
-            if tier == 2 then
-                SED.DrawMarker(rdata.ent, rdata.saved, rdata.renderParams, rdata.distSqr)
-            elseif tier == 1 then
-                SED.DrawMiniPanel(rdata.ent, rdata.saved, rdata.isNPC, rdata.renderParams, rdata.distSqr)
-            else
-                SED.DrawSavedPanel(rdata.ent, rdata.saved, rdata.isNPC, rdata.renderParams, rdata.distSqr)
-            end
+            SED.DrawSavedPanel(rdata.ent, rdata.saved, rdata.isNPC, rdata.renderParams, rdata.distSqr)
         end
     end
     return rdata
@@ -62,7 +61,6 @@ local function RecycleRenderData()
         rdata.ent                        = nil
         rdata.saved                      = nil
         rdata.renderParams               = nil
-        rdata.tier                       = nil
         sedRenderPoolSize                = sedRenderPoolSize + 1
         sedRenderPool[sedRenderPoolSize] = rdata
         sedActiveRender[i]               = nil
@@ -91,6 +89,41 @@ local function IsAimingEstimatedPanel(ent, renderParams, eyePos, eyeForward)
     return hit, panelDistSqr
 end
 
+local function CollectBucket(tracked, lookup, isNPC, eyePos, eyeForward, listCount, invalid)
+    local CalcParams        = SED.CalculateEntityRenderParams
+    local DRAW_DISTANCE_SQR = SED.DRAW_DISTANCE_SQR
+    local CULL_VIEW_CONE    = SED.CULL_VIEW_CONE
+
+    for ent, id in pairs(tracked) do
+        if IsValid(ent) then
+            local rec = lookup[id]
+            if rec then
+                local entPos       = ent:GetPos()
+                local distSqr      = eyePos:DistToSqr(entPos)
+                local renderParams = CalcParams(ent)
+                local maxDistSqr   = renderParams and renderParams.drawDistanceSqr or DRAW_DISTANCE_SQR
+
+                if distSqr <= maxDistSqr and
+                    (not CULL_VIEW_CONE or SS.CullFOV(entPos, eyePos, eyeForward, distSqr)) then
+                    listCount            = listCount + 1
+                    local item           = GetQueueItem()
+                    item.ent             = ent
+                    item.saved           = rec
+                    item.isNPC           = isNPC
+                    item.distSqr         = distSqr
+                    item.renderParams    = renderParams
+                    item.pos             = entPos
+                    queueList[listCount] = item
+                end
+            end
+        elseif invalid then
+            invalid[#invalid + 1] = ent
+        end
+    end
+
+    return listCount
+end
+
 function SED.QueueAllSavedPanels()
     SED.EnsureSavedLookup()
     SED.RescanLate()
@@ -104,85 +137,28 @@ function SED.QueueAllSavedPanels()
 
     RecycleQueueList()
 
-    local listCount            = 0
-    local invalidEntities      = {}
-    local invalidNPCs          = {}
+    local listCount       = 0
+    local invalidEntities = {}
+    local invalidNPCs     = {}
 
-    local TrackedEntities      = SED.TrackedEntities
-    local TrackedNPCs          = SED.TrackedNPCs
-    local TrackedPhantoms      = SED.TrackedPhantoms or {}
-    local SAVED_ENTITIES_BY_ID = SED.SAVED_ENTITIES_BY_ID
-    local SAVED_NPCS_BY_ID     = SED.SAVED_NPCS_BY_ID
-    local PHANTOM_SAVED        = SED.PhantomSavedRecords or {}
-    local CalcParams           = SED.CalculateEntityRenderParams
-    local DRAW_DISTANCE_SQR    = SED.DRAW_DISTANCE_SQR
-    local CULL_VIEW_CONE       = SED.CULL_VIEW_CONE
+    listCount = CollectBucket(SED.TrackedEntities, SED.SAVED_ENTITIES_BY_ID, false, eyePos, eyeForward, listCount,
+        invalidEntities)
+    listCount = CollectBucket(SED.TrackedNPCs, SED.SAVED_NPCS_BY_ID, true, eyePos, eyeForward, listCount,
+        invalidNPCs)
 
-    for ent, id in pairs(TrackedEntities) do
-        if IsValid(ent) then
-            local rec = SAVED_ENTITIES_BY_ID[id]
-            if rec then
-                local entPos       = ent:GetPos()
-                local distSqr      = eyePos:DistToSqr(entPos)
-                local renderParams = CalcParams(ent)
-                local maxDistSqr   = renderParams and renderParams.drawDistanceSqr or DRAW_DISTANCE_SQR
-
-                if distSqr <= maxDistSqr and
-                    (not CULL_VIEW_CONE or SS.CullFOV(entPos, eyePos, eyeForward, distSqr)) then
-                    listCount            = listCount + 1
-                    local item           = GetQueueItem()
-                    item.ent             = ent
-                    item.saved           = rec
-                    item.isNPC           = false
-                    item.distSqr         = distSqr
-                    item.renderParams    = renderParams
-                    item.pos             = entPos
-                    queueList[listCount] = item
-                end
-            end
-        else
-            invalidEntities[#invalidEntities + 1] = ent
-        end
-    end
-
-    for npc, id in pairs(TrackedNPCs) do
-        if IsValid(npc) then
-            local rec = SAVED_NPCS_BY_ID[id]
-            if rec then
-                local entPos       = npc:GetPos()
-                local distSqr      = eyePos:DistToSqr(entPos)
-                local renderParams = CalcParams(npc)
-                local maxDistSqr   = renderParams and renderParams.drawDistanceSqr or DRAW_DISTANCE_SQR
-
-                if distSqr <= maxDistSqr and
-                    (not CULL_VIEW_CONE or SS.CullFOV(entPos, eyePos, eyeForward, distSqr)) then
-                    listCount            = listCount + 1
-                    local item           = GetQueueItem()
-                    item.ent             = npc
-                    item.saved           = rec
-                    item.isNPC           = true
-                    item.distSqr         = distSqr
-                    item.renderParams    = renderParams
-                    item.pos             = entPos
-                    queueList[listCount] = item
-                end
-            end
-        else
-            invalidNPCs[#invalidNPCs + 1] = npc
-        end
-    end
-
-    for phantom, steamID in pairs(TrackedPhantoms) do
+    -- Phantoms are keyed by steamID; prune invalid ones inline.
+    local PHANTOM_SAVED = SED.PhantomSavedRecords or {}
+    for phantom, steamID in pairs(SED.TrackedPhantoms or {}) do
         if IsValid(phantom) then
             local rec = PHANTOM_SAVED[steamID]
             if rec then
                 local entPos       = phantom:GetPos()
                 local distSqr      = eyePos:DistToSqr(entPos)
-                local renderParams = CalcParams(phantom)
-                local maxDistSqr   = renderParams and renderParams.drawDistanceSqr or DRAW_DISTANCE_SQR
+                local renderParams = SED.CalculateEntityRenderParams(phantom)
+                local maxDistSqr   = renderParams and renderParams.drawDistanceSqr or SED.DRAW_DISTANCE_SQR
 
                 if distSqr <= maxDistSqr and
-                    (not CULL_VIEW_CONE or SS.CullFOV(entPos, eyePos, eyeForward, distSqr)) then
+                    (not SED.CULL_VIEW_CONE or SS.CullFOV(entPos, eyePos, eyeForward, distSqr)) then
                     listCount            = listCount + 1
                     local item           = GetQueueItem()
                     item.ent             = phantom
@@ -214,6 +190,7 @@ function SED.QueueAllSavedPanels()
 
     if listCount == 0 then return end
 
+    -- Pick the panel the player is aiming at (for Shift+E interaction).
     if not SED.InteractionState.active then
         local distThresholdSqr = 250000
         local bestIdx, bestDist = nil, math.huge
@@ -243,91 +220,30 @@ function SED.QueueAllSavedPanels()
         end
     end
 
+    -- Nearest first, so the per-frame cap keeps the most relevant panels.
     table.sort(queueList, function(a, b)
         if not a then return false end
         if not b then return true end
         return a.distSqr < b.distSqr
     end)
 
-    local maxQueue      = math.min(listCount, SED.MAX_DRAW_PER_FRAME)
-    local isFocusedEnt  = SED.InteractionState.active and SED.InteractionState.ent
-    local candidateEnt  = SED.CandidateEnt
-    local MINI_DIST_SQR = SED.MINI_PANEL_DIST_SQR
-    local occluders     = {}
-    local numOccluders  = 0
-    local scrH_factor   = ScrH() * 0.7
+    local maxQueue = math.min(listCount, SED.MAX_DRAW_PER_FRAME)
 
     for i = 1, maxQueue do
         local item = queueList[i]
         if item then
-            local isCandidateOrFocused = (item.ent == isFocusedEnt or item.ent == candidateEnt)
-            local dist                 = math.sqrt(item.distSqr)
-            local scale                = SS.PanelScale(item.renderParams, dist)
+            local rdata                     = GetRenderData()
+            rdata.ent                       = item.ent
+            rdata.saved                     = item.saved
+            rdata.isNPC                     = item.isNPC
+            rdata.renderParams              = item.renderParams
+            rdata.distSqr                   = item.distSqr
+            rdata.opts                      = rdata.opts or { skipCull = true, distSqr = 0 }
+            rdata.opts.distSqr              = item.distSqr
 
-            local tier
-            if isCandidateOrFocused then
-                tier = 0
-            elseif item.distSqr < MINI_DIST_SQR then
-                tier = 1
-            else
-                tier = 2
-            end
-
-            local aimPos   = SS.PanelAimPos(item.ent, item.renderParams, eyePos)
-            local scr      = aimPos:ToScreen()
-            local occluded = false
-
-            local my_pW, my_pH
-            if tier == 0 then
-                my_pW, my_pH = 550, 320
-            elseif tier == 1 then
-                my_pW, my_pH = 260, 80
-            else
-                my_pW, my_pH = 120, 30
-            end
-
-            local screenScale = (scale * scrH_factor) / math.max(10, dist)
-            local myCenterY   = scr.y - (my_pH * screenScale * 0.5)
-
-            if scr.visible and not isCandidateOrFocused then
-                for j = 1, numOccluders do
-                    local occ = occluders[j]
-                    if math.abs(scr.x - occ.x) < occ.w and math.abs(myCenterY - occ.y) < occ.h then
-                        occluded = true
-                        break
-                    end
-                end
-            end
-
-            if not occluded then
-                local rdata                     = GetRenderData()
-                rdata.ent                       = item.ent
-                rdata.saved                     = item.saved
-                rdata.isNPC                     = item.isNPC
-                rdata.renderParams              = item.renderParams
-                rdata.distSqr                   = item.distSqr
-                rdata.tier                      = tier
-                rdata.opts                      = rdata.opts or { skipCull = true, distSqr = 0 }
-                rdata.opts.distSqr              = item.distSqr
-
-                sedActiveCount                  = sedActiveCount + 1
-                sedActiveRender[sedActiveCount] = rdata
-                RARELOAD.DepthRenderer.AddRenderItem(item.pos, rdata.fn, "entity", rdata.opts)
-
-                if scr.visible then
-                    numOccluders            = numOccluders + 1
-                    local halfW             = (my_pW * 0.5) * screenScale
-                    local fullH             = my_pH * screenScale
-                    local occludeW          = math.max(halfW * 1.5, 60)
-                    local occludeH          = math.max((fullH * 0.5) * 1.5, 50)
-                    local occ               = occluders[numOccluders] or {}
-                    occluders[numOccluders] = occ
-                    occ.x                   = scr.x
-                    occ.y                   = myCenterY
-                    occ.w                   = occludeW
-                    occ.h                   = occludeH
-                end
-            end
+            sedActiveCount                  = sedActiveCount + 1
+            sedActiveRender[sedActiveCount] = rdata
+            RARELOAD.DepthRenderer.AddRenderItem(item.pos, rdata.fn, "entity", rdata.opts)
         end
     end
 end

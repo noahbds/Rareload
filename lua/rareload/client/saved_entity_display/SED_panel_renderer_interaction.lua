@@ -38,7 +38,6 @@ function SED.PanelRendererHandleInteraction(ctx)
     local scale       = ctx.scale
     local ang         = ctx.ang
     local width       = ctx.width
-    local currentLOD  = ctx.currentLOD
 
     local isFocused   = SED.InteractionState.active and SED.InteractionState.ent == ent
     local isCandidate = false
@@ -62,7 +61,7 @@ function SED.PanelRendererHandleInteraction(ctx)
         end
     end
 
-    if (isFocused or isCandidate) and currentLOD < 2 then
+    if (isFocused or isCandidate) then
         local hintY   = drawPos.z + (panelHeight * scale) * 0.5 + 10
         local hintPos = Vector(drawPos.x, drawPos.y, hintY)
 

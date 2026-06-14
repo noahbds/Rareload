@@ -13,8 +13,9 @@ SED.SAVED_LOOKUP_INTERVAL = 0.5
 SED.LAST_RESCAN = 0
 SED.RESCAN_INTERVAL = 0.5
 SED.INFO_CACHE_LIFETIME = 5.0
-SED.MAX_DRAW_PER_FRAME = 20
-SED.MINI_PANEL_DIST_SQR = 500 * 500
+-- Capped at the RTT pool size (SED.RTT POOL_MAX) so each visible panel keeps its
+-- own baked texture instead of thrashing the cache.
+SED.MAX_DRAW_PER_FRAME = 16
 SED.BASE_DRAW_DISTANCE = 500
 SED.LARGE_ENTITY_DRAW_DISTANCE = 2500
 SED.DRAW_DISTANCE_SQR = SED.BASE_DRAW_DISTANCE * SED.BASE_DRAW_DISTANCE
@@ -46,8 +47,6 @@ SED.LookingAtPanelUntil = 0
 SED.EntityPanelCache = {}
 SED.NPCPanelCache = {}
 SED.EntityBoundsCache = {}
-SED.LastFrameRenderCount = 0
-SED.FrameRenderBudget = 0.003
 SED.lpCache = nil
 SED.lastPlayerCheck = 0
 

@@ -25,6 +25,9 @@ hook.Add("RareloadPlayerPositionsUpdated", "RARELOAD_SEDRefreshSavedLookup", fun
     if SED.PruneMissingTrackedEntities then
         SED.PruneMissingTrackedEntities()
     end
+    if SED.RTT and SED.RTT.InvalidateAll then
+        SED.RTT.InvalidateAll()
+    end
 end)
 
 hook.Add("CreateMove", "RARELOAD_SavedPanels_CamLock", function(cmd)

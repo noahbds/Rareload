@@ -1,4 +1,12 @@
 -- SED panel context and layout calculations.
+--
+-- An SED panel is just saved JSON formatted into labeled rows. Its size and
+-- contents are fully determined by (data, active tab, scroll) -- there is no
+-- distance-based LOD and no size animation. That determinism is what lets the
+-- panel be baked once to a texture (see SED_panel_renderer_draw.lua) and blitted
+-- cheaply every frame. The only values that change without a data save are the
+-- live "position"/"state" rows, which are folded into bakeSig so a moving entity
+-- re-bakes while a static one stays cached.
 
 local RS = SED and SED.RenderShared
 if not (RS and RS._initialized) then
@@ -22,7 +30,11 @@ local math_Clamp = RS.math_Clamp
 local math_floor = RS.math_floor
 local string_Explode = RS.string_Explode
 
-local CONTENT_FONT = "Trebuchet18"
+local CONTENT_FONT  = "Trebuchet18"
+local LINE_HEIGHT   = 24
+local TITLE_HEIGHT  = 52
+local TAB_HEIGHT    = 32
+local SIDEBAR_WIDTH = 120
 
 local function wrapText(cache, activeCat, text, maxWidth)
     if not text or text == "" then return { text } end
@@ -125,7 +137,7 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
 
     local categories = isNPC and SED.NPC_CATEGORIES or SED.ENT_CATEGORIES
 
-    -- NEW: Override categories for Phantoms
+    -- Override categories for Phantoms
     if saved and saved._isPhantom and saved._phantomCategories then
         categories = saved._phantomCategories
     end
@@ -152,60 +164,24 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
     end
 
     local distance = math_sqrt(distSqr)
-    local effectiveDistance = distance
     local isLarge = renderParams.isLarge
     local isMassive = renderParams.isMassive
-    local isMediumDistant = effectiveDistance > (isLarge and 800 or 400)
-    local isDistant = effectiveDistance > (isLarge and 1200 or 600)
-    local isVeryDistant = effectiveDistance > (isLarge and 1500 or 800)
-    local currentLOD = isVeryDistant and 3 or (isDistant and 2 or (isMediumDistant and 1 or 0))
-
-    if currentLOD < 2 and (isLarge or isMassive) then
-        local centerLocal = (renderParams.obbMin + renderParams.obbMax) * 0.5
-        if ent.LocalToWorld then
-            local wc = ent:LocalToWorld(centerLocal)
-            local d = (eyePos - wc):Length()
-            if d < effectiveDistance then effectiveDistance = d end
-        end
-
-        isMediumDistant = effectiveDistance > (isLarge and 800 or 400)
-        isDistant = effectiveDistance > (isLarge and 1200 or 600)
-        isVeryDistant = effectiveDistance > (isLarge and 1500 or 800)
-        currentLOD = isVeryDistant and 3 or (isDistant and 2 or (isMediumDistant and 1 or 0))
-    end
-
-    cache.lod = cache.lod or {}
-    local previousLOD = cache.lod[activeCat]
-    if previousLOD ~= nil and previousLOD ~= currentLOD then
-        cache.widths[activeCat] = nil
-    end
-    cache.lod[activeCat] = currentLOD
 
     local maxVisibleLines = SED.MAX_VISIBLE_LINES
-    if currentLOD == 3 then
-        maxVisibleLines = math_min(8, SED.MAX_VISIBLE_LINES)
-    elseif currentLOD == 2 then
-        maxVisibleLines = math_min(12, SED.MAX_VISIBLE_LINES)
-    elseif currentLOD == 1 then
-        maxVisibleLines = math_min(15, SED.MAX_VISIBLE_LINES)
-    end
-
-    local lineHeight = currentLOD >= 2 and 18 or 24
-    local titleHeight = currentLOD >= 2 and 30 or 52
-    local tabHeight = currentLOD >= 2 and 24 or 32
-    local sidebarWidth = currentLOD >= 2 and 80 or 120
-
+    local lineHeight = LINE_HEIGHT
+    local titleHeight = TITLE_HEIGHT
+    local tabHeight = TAB_HEIGHT
+    local sidebarWidth = SIDEBAR_WIDTH
     local contentFont = CONTENT_FONT
 
-    local width = cache.widths[activeCat] or 400
-    if not cache.widths[activeCat] then
-        surface_SetFont("Trebuchet18")
+    local width = cache.widths[activeCat]
+    if not width then
+        surface_SetFont(CONTENT_FONT)
         width = 300
         local maxContentWidth = 0
         local maxLabelW = 0
-        local sampleCount = currentLOD == 0 and 15 or currentLOD == 1 and 10 or 5
 
-        for i = 1, math_min(#lines, sampleCount) do
+        for i = 1, math_min(#lines, 15) do
             local l = lines[i]
             if l and l[1] and l[2] then
                 local label = (l[1] or "") .. ":"
@@ -216,22 +192,19 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
 
                 maxLabelW = math_max(maxLabelW, w1)
 
-                local lineContentWidth = w1 + w2 + (currentLOD >= 2 and 120 or 170)
+                local lineContentWidth = w1 + w2 + 170
                 maxContentWidth = math_max(maxContentWidth, lineContentWidth)
 
-                if w2 > (currentLOD >= 2 and 300 or 500) then
-                    maxContentWidth = math_min(maxContentWidth, currentLOD >= 2 and 450 or 700)
+                if w2 > 500 then
+                    maxContentWidth = math_min(maxContentWidth, 700)
                 end
             end
         end
 
-        width = math_max(width, maxContentWidth)
-        width = width + sidebarWidth
+        width = math_max(width, maxContentWidth) + sidebarWidth
+        width = math_Clamp(width, 450, isLarge and 1000 or 850)
+        maxLabelW = math_min(maxLabelW, 230)
 
-        local maxWidth = currentLOD >= 2 and 600 or (isLarge and 1000 or 850)
-        local minWidth = currentLOD >= 2 and 300 or 450
-        width = math_Clamp(width, minWidth, maxWidth)
-        maxLabelW = math_min(maxLabelW, currentLOD >= 2 and 170 or 230)
         cache.widths[activeCat] = width
         cache.maxLabelWidths = cache.maxLabelWidths or {}
         cache.maxLabelWidths[activeCat] = maxLabelW
@@ -244,15 +217,19 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
     local scrollTable = isNPC and SED.PanelScroll.npcs or SED.PanelScroll.entities
     local scrollKey = panelID .. "_" .. activeCat
 
-    local layoutSig = activeCat .. "|" .. currentLOD .. "|" .. (scrollTable[scrollKey] or 0)
-
+    -- Layout signature: everything that affects the rendered pixels. Static data
+    -- yields a constant signature (cache hit); live position/state rows fold in
+    -- the entity's current transform so movement triggers a re-bake.
+    local layoutSig = activeCat .. "|" .. (scrollTable[scrollKey] or 0)
     if activeCat == "position" or activeCat == "state" then
         local p = ent:GetPos()
         local a = ent:GetAngles()
         layoutSig = layoutSig .. "|" .. p.x .. "," .. p.y .. "," .. p.z ..
             "|" .. a.p .. "," .. a.y .. "," .. a.r
         if ent.Health then layoutSig = layoutSig .. "|" .. ent:Health() end
+        if ent.GetVelocity then layoutSig = layoutSig .. "|" .. math_floor(ent:GetVelocity():Length()) end
     end
+
     local layout = cache._layout
     local itemsToDrawInfos, contentHeight, renderedLogicalItems, maxScrollLines, currentScroll
 
@@ -340,29 +317,9 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
     local minSidebarHeight = minVisibleTabs * tabHeight + 24
 
     local calculatedHeight = titleHeight + contentHeight + 18
-    local targetHeight = math_max(calculatedHeight, titleHeight + minSidebarHeight)
-    local targetWidth = width
-
-    cache.curWidth = cache.curWidth or targetWidth
-    cache.curHeight = cache.curHeight or targetHeight
-
-    local ft = FrameTime() * 10
-    cache.curWidth = Lerp(ft, cache.curWidth, targetWidth)
-    cache.curHeight = Lerp(ft, cache.curHeight, targetHeight)
-    if math.abs(cache.curWidth - targetWidth) < 1 then cache.curWidth = targetWidth end
-    if math.abs(cache.curHeight - targetHeight) < 1 then cache.curHeight = targetHeight end
-
-    local panelHeight = cache.curHeight
-    width = cache.curWidth
+    local panelHeight = math_max(calculatedHeight, titleHeight + minSidebarHeight)
 
     local maxVisibleTabs = math_max(minVisibleTabs, math_floor((panelHeight - titleHeight - 24) / tabHeight))
-
-    local dir = (pos - eyePos)
-    dir:Normalize()
-    local ang = dir:Angle()
-    ang.y = ang.y - 90
-    ang.p = 0
-    ang.r = 90
 
     local distanceScale = math_Clamp(1 - (distance / (isLarge and 3000 or 2000)), 0.3, 1.5)
     local scale = renderParams.baseScale * distanceScale
@@ -415,14 +372,14 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
         end
     end
 
+    local ang
     do
         local faceDir = (drawPos - eyePos)
         faceDir:Normalize()
-        local newAng = faceDir:Angle()
-        newAng.y = newAng.y - 90
-        newAng.p = 0
-        newAng.r = 90
-        ang = newAng
+        ang = faceDir:Angle()
+        ang.y = ang.y - 90
+        ang.p = 0
+        ang.r = 90
     end
 
     local eyeToPanel = drawPos - eyePos
@@ -446,9 +403,13 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
     if targetScroll < 0 then targetScroll = 0 end
     if targetScroll > #categories - visibleCount then targetScroll = #categories - visibleCount end
 
-    cache.sidebarScroll = cache.sidebarScroll or targetScroll
-    cache.sidebarScroll = Lerp(ft, cache.sidebarScroll, targetScroll)
-    local currentScrollPos = cache.sidebarScroll
+    -- Sidebar scroll snaps to the active tab (no animation -> deterministic bake).
+    local currentScrollPos = targetScroll
+
+    -- bakeSig keys the render-target cache. Width/height are deterministic from
+    -- content, and _layoutSig already folds in live transform, so this is stable
+    -- for a static panel and changes exactly when the rendered pixels change.
+    local bakeSig = panelID .. "|" .. math_floor(width) .. "x" .. math_floor(panelHeight) .. "|" .. layoutSig
 
     return {
         ent = ent,
@@ -458,11 +419,11 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
         drawPos = drawPos,
         ang = ang,
         panelID = panelID,
+        bakeSig = bakeSig,
         cache = cache,
         categories = categories,
         activeCat = activeCat,
         lines = lines,
-        currentLOD = currentLOD,
         lineHeight = lineHeight,
         titleHeight = titleHeight,
         tabHeight = tabHeight,

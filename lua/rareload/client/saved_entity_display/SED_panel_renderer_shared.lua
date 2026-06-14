@@ -7,7 +7,6 @@ local RS = SED.RenderShared
 if RS._initialized then return end
 
 RS.BG_COLOR = Color(15, 18, 24, 250)
-RS.BG_COLOR_DISTANT = Color(15, 18, 24, 230)
 RS.HEADER_COLOR = Color(25, 30, 40, 255)
 RS.WHITE = Color(255, 255, 255)
 RS.LABEL_COLOR = Color(200, 210, 225, 255)
@@ -37,10 +36,7 @@ RS.HINT_CANDIDATE = Color(255, 255, 255, 255)
 RS.HINT_INTERACT_BG = Color(18, 22, 30, 210)
 RS.HINT_CONTROLS_BG = Color(18, 22, 30, 210)
 RS.HINT_CANDIDATE_BG = Color(18, 22, 30, 210)
-RS.MINI_BG = Color(15, 18, 24, 220)
 RS.MINI_TEXT = Color(180, 200, 220, 220)
-RS.MARKER_BG = Color(15, 18, 24, 180)
-RS.MARKER_TEXT = Color(160, 180, 200, 200)
 
 RS.cam_Start3D2D = cam.Start3D2D
 RS.cam_End3D2D = cam.End3D2D
