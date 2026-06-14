@@ -1,5 +1,3 @@
--- SED panel drawing routines.
-
 local RS = SED and SED.RenderShared
 if not (RS and RS._initialized) then
     include("rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
@@ -52,12 +50,9 @@ local math_floor                 = RS.math_floor
 local math_ceil                  = RS.math_ceil
 local clipTextToWidth            = RS.clipTextToWidth
 local safeTextColor              = RS.safeTextColor
-
 local surface_SetMaterial        = surface.SetMaterial
 local surface_DrawTexturedRectUV = surface.DrawTexturedRectUV
 
--- Draws all panel content with its top-left at (ox, oy). Called inside the RTT
--- bake (origin 0,0) on a cache miss, or directly in cam.Start3D2D as a fallback.
 local function DrawContent(ctx, ox, oy)
     local ent                  = ctx.ent
     local saved                = ctx.saved
@@ -81,23 +76,18 @@ local function DrawContent(ctx, ox, oy)
 
     local tabStartY = oy + titleHeight + 12
 
-    -- Background
     draw_RoundedBox(8, ox, oy, width, panelHeight, BG_COLOR)
 
-    -- Header
     draw_RoundedBox(8, ox, oy, width, titleHeight, HEADER_COLOR)
     surface_SetDrawColor(25, 30, 40, 255)
     surface_DrawRect(ox, oy + titleHeight / 2, width, titleHeight / 2)
 
-    -- Sidebar background
     surface_SetDrawColor(20, 24, 30, 255)
     surface_DrawRect(ox, oy + titleHeight, sidebarWidth, panelHeight - titleHeight)
 
-    -- Sidebar / content divider
     surface_SetDrawColor(35, 40, 50, 255)
     surface_DrawRect(ox + sidebarWidth, oy + titleHeight, 1, panelHeight - titleHeight)
 
-    -- Header / content separator line
     surface_SetDrawColor(60, 140, 220, 255)
     surface_DrawRect(ox, oy + titleHeight - 2, width, 2)
 
@@ -208,9 +198,6 @@ local function DrawContent(ctx, ox, oy)
             TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
 
-    -- Sidebar scroll snaps to whole tab positions (see context builder), so the
-    -- visible tab window is always exactly visibleCount aligned tabs -- no partial
-    -- tabs spill out and no stencil/scissor clipping is needed.
     local activeCol   = WHITE
     local foundActive = false
     local activeIndex = ctx.activeIndex
@@ -338,14 +325,12 @@ local function DrawContent(ctx, ox, oy)
 end
 
 function SED.PanelRendererDraw(ctx)
-    local w   = ctx.width
-    local h   = ctx.panelHeight
-    local ox  = ctx.offsetX
-    local oy  = ctx.offsetY
+    local w = ctx.width
+    local h = ctx.panelHeight
+    local ox = ctx.offsetX
+    local oy = ctx.offsetY
     local RTT = SED.RTT
 
-    -- Fetch the baked texture (with its UV extents), baking on a cache miss.
-    -- nil means RTT is unavailable (no hardware support) -> draw directly.
     local rtMat, uMax, vMax
     if RTT and ctx.bakeSig then
         rtMat, uMax, vMax = RTT.GetMat(ctx.bakeSig)
@@ -358,13 +343,10 @@ function SED.PanelRendererDraw(ctx)
 
     cam_Start3D2D(ctx.drawPos, ctx.ang, ctx.scale)
 
-    -- Drop shadow drawn fresh each frame (cheap, keeps the bake fully transparent).
     surface_SetDrawColor(0, 0, 0, 150)
     surface_DrawRect(ox + 4, oy + 4, w, h)
 
     if rtMat then
-        -- White, full alpha: the draw color modulates the texture, and the last
-        -- color set was the shadow's translucent black.
         surface_SetDrawColor(255, 255, 255, 255)
         surface_SetMaterial(rtMat)
         surface_DrawTexturedRectUV(ox, oy, w, h, 0, 0, uMax, vMax)

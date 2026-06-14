@@ -1,6 +1,3 @@
--- SED_phantom.lua  (refactored: own draw/queue/LOD pipeline removed)
-
-
 SED                     = SED or (RARELOAD and RARELOAD.SavedEntityDisplay) or {}
 SED.Phantom             = SED.Phantom or {}
 SED.TrackedPhantoms     = SED.TrackedPhantoms or {}

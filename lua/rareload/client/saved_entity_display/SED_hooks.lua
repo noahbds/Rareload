@@ -25,6 +25,10 @@ hook.Add("RareloadPlayerPositionsUpdated", "RARELOAD_SEDRefreshSavedLookup", fun
     if SED.PruneMissingTrackedEntities then
         SED.PruneMissingTrackedEntities()
     end
+
+    SED.EntityPanelCache = {}
+    SED.NPCPanelCache = {}
+    if SED.PhantomSavedRecords then table.Empty(SED.PhantomSavedRecords) end
     if SED.RTT and SED.RTT.InvalidateAll then
         SED.RTT.InvalidateAll()
     end
@@ -76,7 +80,7 @@ end)
 
 hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", function(bDrawingDepth, bDrawingSkybox)
     if bDrawingDepth or bDrawingSkybox then return end
-    if render.GetRenderTarget() ~= nil then return end -- skip water/RT passes (remove this line if panels ever vanish)
+    if render.GetRenderTarget() ~= nil then return end
 
     if not IsClientDebugEnabled() then return end
 
@@ -90,7 +94,7 @@ hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", func
     SED.lpCache = LocalPlayer()
     if not IsValid(SED.lpCache) then return end
 
-    SED.CandidateEnt, SED.CandidateIsNPC, SED.CandidateID, SED.CandidateYawDiff = nil, nil, nil, nil
+    SED.CandidateEnt, SED.CandidateIsNPC, SED.CandidateID = nil, nil, nil
 
     if SED.Phantom and SED.Phantom.InjectTracked then
         SED.Phantom.InjectTracked(game.GetMap())

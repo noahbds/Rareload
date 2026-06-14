@@ -2,7 +2,6 @@ RARELOAD = RARELOAD or {}
 RARELOAD.playerPositions = RARELOAD.playerPositions or {}
 RARELOAD.SavedEntityDisplay = RARELOAD.SavedEntityDisplay or {}
 
--- SED is the client-side system for displaying saved entity and NPC information in-world.
 SED = RARELOAD.SavedEntityDisplay
 SED.SAVED_ENTITIES_BY_ID = {}
 SED.SAVED_NPCS_BY_ID = {}
@@ -13,8 +12,6 @@ SED.SAVED_LOOKUP_INTERVAL = 0.5
 SED.LAST_RESCAN = 0
 SED.RESCAN_INTERVAL = 0.5
 SED.INFO_CACHE_LIFETIME = 5.0
--- Capped at the RTT pool size (SED.RTT POOL_MAX) so each visible panel keeps its
--- own baked texture instead of thrashing the cache.
 SED.MAX_DRAW_PER_FRAME = 16
 SED.BASE_DRAW_DISTANCE = 500
 SED.LARGE_ENTITY_DRAW_DISTANCE = 2500
@@ -38,7 +35,6 @@ SED.KEY_REPEAT_DELAY = 0.25
 SED.CandidateEnt = nil
 SED.CandidateIsNPC = nil
 SED.CandidateID = nil
-SED.CandidateYawDiff = nil
 SED.INTERACT_KEY = KEY_E
 SED.REQUIRE_SHIFT_MOD = true
 SED.ScrollDelta = 0
@@ -50,17 +46,12 @@ SED.EntityBoundsCache = {}
 SED.lpCache = nil
 SED.lastPlayerCheck = 0
 
--- END OF CONFIGURATION
-
-
--- Optional theme utils for light/dark awareness
 if not RARELOAD.Theme or not RARELOAD.Theme.IsLightMode then
     if file.Exists("rareload/client/shared/theme_utils.lua", "LUA") then
         include("rareload/client/shared/theme_utils.lua")
     end
 end
 
--- Default (dark) theme
 SED.THEME = _G.THEME or {
     background = Color(20, 20, 30, 220),
     header = Color(30, 30, 45, 255),
@@ -68,7 +59,6 @@ SED.THEME = _G.THEME or {
     text = Color(220, 220, 255)
 }
 
--- Light mode overrides
 if RARELOAD.Theme and RARELOAD.Theme.IsLightMode and RARELOAD.Theme.IsLightMode() then
     SED.THEME = {
         background = Color(248, 249, 251, 230),

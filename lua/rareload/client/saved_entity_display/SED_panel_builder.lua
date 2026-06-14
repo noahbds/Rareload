@@ -1,5 +1,3 @@
--- SED panel data builder entry point.
-
 if SED then
     SED.EntityPanelCache = {}
     SED.NPCPanelCache = {}
@@ -40,33 +38,11 @@ function SED.BuildPanelData(saved, ent, isNPC)
     local entry = panelCache[id]
 
     if entry and entry.expires > now then
-        if IsValid(ent) and entry.data then
-            local liveData = entry.data.position
-            if liveData then
-                local pos = ent:GetPos()
-                local ang = ent:GetAngles()
-                local vel = ent:GetVelocity()
-                local maxHP = PB.firstValue(saved, "MaxHealth", "maxHealth", "StartHealth") or 0
-
-                for _, line in ipairs(liveData) do
-                    if line[1] == "Live Pos" then
-                        line[2] = string.format("%.0f %.0f %.0f", pos.x, pos.y, pos.z)
-                    elseif line[1] == "Live Ang" then
-                        line[2] = string.format("%.0f %.0f %.0f", ang.p, ang.y, ang.r)
-                    elseif line[1] == "Live Vel" then
-                        line[2] = string.format("%.0f %.0f %.0f", vel.x, vel.y, vel.z)
-                    elseif line[1] == "Live HP" and ent.Health then
-                        line[2] = maxHP > 0 and (ent:Health() .. " / " .. maxHP) or tostring(ent:Health())
-                    end
-                end
-            end
-        end
         return entry
     end
 
     local cats
 
-    -- NEW: If it's a phantom, directly use its built data instead of re-parsing
     if saved and saved._isPhantom and saved._phantomData then
         cats = saved._phantomData
     else
@@ -122,12 +98,7 @@ function SED.BuildPanelData(saved, ent, isNPC)
 
     local oldEntry = panelCache[id]
     local oldActiveCat = (oldEntry and oldEntry.activeCat) or "basic"
-    local oldAnimTabY = oldEntry and oldEntry.animTabY
-    local oldSidebarScroll = oldEntry and oldEntry.sidebarScroll
-    local oldCurWidth = oldEntry and oldEntry.curWidth
-    local oldCurHeight = oldEntry and oldEntry.curHeight
     local oldMaxLabelWidths = oldEntry and oldEntry.maxLabelWidths
-    local oldLod = oldEntry and oldEntry.lod
     local oldWrap = oldEntry and oldEntry._wrap
     local oldWidths = (oldEntry and oldEntry.widths) or {}
 
@@ -136,14 +107,14 @@ function SED.BuildPanelData(saved, ent, isNPC)
         counts = categoryCounts,
         expires = now + SED.INFO_CACHE_LIFETIME * 2,
         activeCat = oldActiveCat,
-        animTabY = oldAnimTabY,
-        sidebarScroll = oldSidebarScroll,
-        curWidth = oldCurWidth,
-        curHeight = oldCurHeight,
         maxLabelWidths = oldMaxLabelWidths,
-        lod = oldLod,
         _wrap = oldWrap,
-        widths = oldWidths
+        widths = oldWidths,
+        _gen = (oldEntry and oldEntry._gen or 0) + 1,
+        _liveGen = oldEntry and oldEntry._liveGen,
+        _liveP = oldEntry and oldEntry._liveP,
+        _liveA = oldEntry and oldEntry._liveA,
+        _liveHP = oldEntry and oldEntry._liveHP,
     }
     panelCache[id] = entry
     return entry

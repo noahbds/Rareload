@@ -1,11 +1,3 @@
--- SED_panel_queue.lua
---
--- Each frame: gather tracked saved entities/NPCs/phantoms in view, then hand each
--- one to the depth-sorted renderer as a full panel. Panels are cheap to draw now
--- (a single baked-texture blit -- see SED_panel_renderer_draw.lua), so there is no
--- LOD tiering or screen-space occlusion culling; only distance and FOV culling,
--- which decide what is worth drawing at all.
-
 local SS = SED.Shared
 if not (SS and SS._initialized) then
     include("rareload/client/saved_entity_display/SED_shared.lua")
@@ -72,6 +64,25 @@ local BOOTSTRAP_W = 520
 local BOOTSTRAP_H = 280
 local BOOTSTRAP_W_LARGE = 620
 
+local math_sqrt = math.sqrt
+
+local function SortQueue(a, b)
+    if not a then return false end
+    if not b then return true end
+    if a.priority ~= b.priority then return a.priority < b.priority end
+    return a.distSqr < b.distSqr
+end
+
+local function PanelAnchorZ(rp, posZ)
+    local topZ = (rp and rp.worldTopZ) or (posZ + 40)
+    local buf  = (rp and rp.buffer) or 20
+    local mult = 0.45
+    if rp then
+        if rp.isMassive then mult = 1.0 elseif rp.isLarge then mult = 0.7 end
+    end
+    return topZ + buf * mult
+end
+
 local function IsAimingEstimatedPanel(ent, renderParams, eyePos, eyeForward)
     if not IsValid(ent) then return false, nil end
 
@@ -113,6 +124,7 @@ local function CollectBucket(tracked, lookup, isNPC, eyePos, eyeForward, listCou
                     item.distSqr         = distSqr
                     item.renderParams    = renderParams
                     item.pos             = entPos
+                    item.priority        = isNPC and 1 or 0
                     queueList[listCount] = item
                 end
             end
@@ -146,7 +158,6 @@ function SED.QueueAllSavedPanels()
     listCount = CollectBucket(SED.TrackedNPCs, SED.SAVED_NPCS_BY_ID, true, eyePos, eyeForward, listCount,
         invalidNPCs)
 
-    -- Phantoms are keyed by steamID; prune invalid ones inline.
     local PHANTOM_SAVED = SED.PhantomSavedRecords or {}
     for phantom, steamID in pairs(SED.TrackedPhantoms or {}) do
         if IsValid(phantom) then
@@ -167,6 +178,7 @@ function SED.QueueAllSavedPanels()
                     item.distSqr         = distSqr
                     item.renderParams    = renderParams
                     item.pos             = entPos
+                    item.priority        = 2
                     queueList[listCount] = item
                 end
             end
@@ -190,42 +202,47 @@ function SED.QueueAllSavedPanels()
 
     if listCount == 0 then return end
 
-    -- Pick the panel the player is aiming at (for Shift+E interaction).
     if not SED.InteractionState.active then
         local distThresholdSqr = 250000
-        local bestIdx, bestDist = nil, math.huge
+        local efx, efy, efz = eyeForward.x, eyeForward.y, eyeForward.z
+        local epx, epy, epz = eyePos.x, eyePos.y, eyePos.z
 
+        local bestIdx, bestCos = nil, 0.5
         for i = 1, listCount do
             local item = queueList[i]
             if item then
-                local hit, panelDistSqr = IsAimingEstimatedPanel(item.ent, item.renderParams, eyePos, eyeForward)
-                if hit and panelDistSqr and panelDistSqr < distThresholdSqr and panelDistSqr < bestDist then
-                    bestIdx = i
-                    bestDist = panelDistSqr
+                local p = item.pos
+                local dx = p.x - epx
+                local dy = p.y - epy
+                local dz = PanelAnchorZ(item.renderParams, p.z) - epz
+                local len2 = dx * dx + dy * dy + dz * dz
+                if len2 > 1 then
+                    local d = dx * efx + dy * efy + dz * efz
+                    if d > 0 then
+                        local cos = d / math_sqrt(len2)
+                        if cos > bestCos then bestCos = cos; bestIdx = i end
+                    end
                 end
             end
         end
 
         if bestIdx then
-            local item  = queueList[bestIdx]
-            local saved = item and item.saved
-            if saved then
-                SED.CandidateEnt     = item.ent
-                SED.CandidateIsNPC   = item.isNPC
-                SED.CandidateID      = saved.id or saved.RareloadNPCID or saved.RareloadEntityID or
-                    saved.RareloadID or
-                    ((saved.class or saved.Class or saved.ClassName or "unknown") .. "?")
-                SED.CandidateYawDiff = 0
+            local item = queueList[bestIdx]
+            local hit, panelDistSqr = IsAimingEstimatedPanel(item.ent, item.renderParams, eyePos, eyeForward)
+            if hit and panelDistSqr and panelDistSqr < distThresholdSqr then
+                local saved = item.saved
+                if saved then
+                    SED.CandidateEnt   = item.ent
+                    SED.CandidateIsNPC = item.isNPC
+                    SED.CandidateID    = saved.id or saved.RareloadNPCID or saved.RareloadEntityID or
+                        saved.RareloadID or
+                        ((saved.class or saved.Class or saved.ClassName or "unknown") .. "?")
+                end
             end
         end
     end
 
-    -- Nearest first, so the per-frame cap keeps the most relevant panels.
-    table.sort(queueList, function(a, b)
-        if not a then return false end
-        if not b then return true end
-        return a.distSqr < b.distSqr
-    end)
+    table.sort(queueList, SortQueue)
 
     local maxQueue = math.min(listCount, SED.MAX_DRAW_PER_FRAME)
 

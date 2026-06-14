@@ -75,13 +75,22 @@ end
 
 function SED.TrackIfSaved(ent)
     if not IsValid(ent) or ent:IsPlayer() then return end
+    SED.TrackIfSavedInternal(ent)
+end
+
+function SED.TrackIfSavedInternal(ent)
+    if not IsValid(ent) or ent:IsPlayer() then return end
     local id = ent.GetNWString and ent:GetNWString("RareloadID", "") or ""
     if id == "" then return end
     SED.EnsureSavedLookup()
     if ent:IsNPC() then
-        if SED.SAVED_NPCS_BY_ID[id] then SED.TrackedNPCs[ent] = id end
+        if SED.SAVED_NPCS_BY_ID[id] then
+            SED.TrackedNPCs[ent] = id
+        end
     else
-        if SED.SAVED_ENTITIES_BY_ID[id] then SED.TrackedEntities[ent] = id end
+        if SED.SAVED_ENTITIES_BY_ID[id] then
+            SED.TrackedEntities[ent] = id
+        end
     end
 end
 
@@ -89,12 +98,17 @@ function SED.RescanLate()
     if CurTime() - SED.LAST_RESCAN < SED.RESCAN_INTERVAL then return end
     SED.LAST_RESCAN = CurTime()
 
-    local processed, maxPerRescan = 0, 256
-    for _, ent in ipairs(ents.GetAll()) do
-        if IsValid(ent) and not SED.TrackedEntities[ent] and not SED.TrackedNPCs[ent] then
-            SED.TrackIfSaved(ent)
-            processed = processed + 1
-            if processed >= maxPerRescan then break end
+    local processed, maxPerRescan = 0, 128
+    local allEnts = ents.GetAll()
+    local totalEnts = #allEnts
+
+    if table.Count(SED.TrackedEntities) + table.Count(SED.TrackedNPCs) < totalEnts * 0.8 then
+        for _, ent in ipairs(allEnts) do
+            if IsValid(ent) and not SED.TrackedEntities[ent] and not SED.TrackedNPCs[ent] then
+                SED.TrackIfSavedInternal(ent)
+                processed = processed + 1
+                if processed >= maxPerRescan then break end
+            end
         end
     end
 end

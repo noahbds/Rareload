@@ -1,6 +1,5 @@
 local SED = RARELOAD.SavedEntityDisplay
 
-
 function SED.InteractModifierDown()
     if not SED.REQUIRE_SHIFT_MOD then return true end
     if input.IsKeyDown(KEY_LSHIFT) or input.IsKeyDown(KEY_RSHIFT) then return true end
@@ -144,7 +143,6 @@ function SED.HandleInteractionInput()
 
         local savedRec = isNPC and SED.SAVED_NPCS_BY_ID[interactionID] or SED.SAVED_ENTITIES_BY_ID[interactionID]
 
-        -- NEW: Safe fallback lookup for Phantoms
         if not savedRec and type(interactionID) == "string" and string.sub(interactionID, 1, 8) == "phantom_" then
             local steamID = string.sub(interactionID, 9)
             if SED.PhantomSavedRecords then
@@ -167,13 +165,10 @@ function SED.HandleInteractionInput()
             local categoryList = isNPC and SED.NPC_CATEGORIES or SED.ENT_CATEGORIES
             local scrollTable = isNPC and SED.PanelScroll.npcs or SED.PanelScroll.entities
 
-
-            -- NEW: Use phantom categories if applicable
             if savedRec and savedRec._isPhantom and savedRec._phantomCategories then
                 categoryList = savedRec._phantomCategories
             end
 
-            -- Tab Navigation (Up/Down)
             if SED.KeyPressed(KEY_DOWN) or SED.KeyPressed(KEY_UP) then
                 local dir = (input.IsKeyDown(KEY_DOWN) and not input.IsKeyDown(KEY_UP)) and 1 or -1
                 local currentIdx = 1
@@ -206,7 +201,6 @@ function SED.HandleInteractionInput()
                 scrollTable[interactionID .. "_" .. cache.activeCat] = 0
             end
 
-            -- Content Scrolling (Left/Right)
             local scrollDelta = SED.ScrollDelta
             if input.IsKeyDown(KEY_LEFT) then scrollDelta = scrollDelta - SED.SCROLL_SPEED end
             if input.IsKeyDown(KEY_RIGHT) then scrollDelta = scrollDelta + SED.SCROLL_SPEED end
