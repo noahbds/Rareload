@@ -70,8 +70,8 @@ local math_sqrt = math.sqrt
 local function SortQueue(a, b)
     if not a then return false end
     if not b then return true end
-    if a.priority ~= b.priority then return a.priority < b.priority end
-    return a.distSqr < b.distSqr
+    if a.distSqr ~= b.distSqr then return a.distSqr < b.distSqr end
+    return a.priority < b.priority
 end
 
 local function PanelAnchorZ(rp, posZ)

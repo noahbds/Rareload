@@ -158,7 +158,6 @@ function SED.HandleInteractionInput()
         local panelCache = isNPC and SED.NPCPanelCache or SED.EntityPanelCache
         local cache = panelCache[interactionID]
         if not cache then
-            -- Live rows come from the live world object (panels anchor to the phantom).
             local liveEnt
             local trackTable = isNPC and SED.TrackedNPCs or SED.TrackedEntities
             for e, eid in pairs(trackTable or {}) do
@@ -176,6 +175,14 @@ function SED.HandleInteractionInput()
 
             if savedRec and savedRec._isPhantom and savedRec._phantomCategories then
                 categoryList = savedRec._phantomCategories
+            end
+
+            local panelID = cache._panelID
+            if not panelID then
+                local rawID = savedRec.id or savedRec.RareloadNPCID or savedRec.RareloadEntityID or savedRec.RareloadID or
+                    ((savedRec.class or savedRec.Class or savedRec.ClassName or "unknown") .. "?")
+                panelID = (savedRec._isPhantom and "P:" or (isNPC and "N:" or "E:")) .. tostring(rawID)
+                cache._panelID = panelID
             end
 
             if SED.KeyPressed(KEY_DOWN) or SED.KeyPressed(KEY_UP) then
@@ -207,7 +214,7 @@ function SED.HandleInteractionInput()
                 currentIdx = nextIdx
 
                 cache.activeCat = categoryList[currentIdx][1]
-                scrollTable[interactionID .. "_" .. cache.activeCat] = 0
+                scrollTable[panelID .. "_" .. cache.activeCat] = 0
             end
 
             local scrollDelta = SED.ScrollDelta
@@ -215,7 +222,7 @@ function SED.HandleInteractionInput()
             if input.IsKeyDown(KEY_RIGHT) then scrollDelta = scrollDelta + SED.SCROLL_SPEED end
 
             if scrollDelta ~= 0 then
-                local scrollKey = interactionID .. "_" .. cache.activeCat
+                local scrollKey = panelID .. "_" .. cache.activeCat
                 local lines = cache.data[cache.activeCat] or {}
                 if #lines > 0 then
                     local currentScroll = scrollTable[scrollKey] or 0
