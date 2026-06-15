@@ -195,9 +195,9 @@ function TOOL:Reload()
     local historySize = RARELOAD.GetPositionHistory(steamID, mapName)
 
     if historySize > 0 then
-        local previousData = RARELOAD.GetPreviousPositionData(steamID, mapName)
 
-        if previousData then
+    local previousData = RARELOAD.GetPreviousPositionData(steamID, mapName)
+         if previousData then
             RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
             RARELOAD.playerPositions[mapName][steamID] = previousData
 
@@ -206,8 +206,10 @@ function TOOL:Reload()
                     util.TableToJSON(RARELOAD.playerPositions, true))
             end)
 
-            if success then
-                local remaining = RARELOAD.GetPositionHistory(steamID, mapName)
+           local success, err = RARELOAD.SavePlayerPositionEntry(ply, previousData)
+
+             if success then
+                 local remaining = RARELOAD.GetPositionHistory(steamID, mapName)
                 ply:ChatPrint("[RARELOAD] Restored previous position data. (" .. remaining .. " positions in history)")
 
                 if SyncPlayerPositions then
