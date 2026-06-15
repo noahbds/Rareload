@@ -20,7 +20,7 @@ local CONVAR_DEFS = {
     { "sv_rareload_cleanup_owned_only",    "0",   "When cleanup on death is enabled, only remove the player's own Rareload-spawned entities/NPCs instead of wiping the whole map", "cleanupOnlyOwnedEntitiesOnDeath" },
     { "sv_rareload_cleanup_on_disconnect", "0",   "Remove the player's owned entities and NPCs when they disconnect",                                                              "cleanupOwnedEntitiesOnDisconnect" },
 
-    { "sv_rareload_auto_save_interval",    "5",   "Seconds between auto saves",                                                                                                    "autoSaveInterval" },
+    { "sv_rareload_auto_save_interval",    "0",   "Seconds between auto saves",                                                                                                    "autoSaveInterval" },
     { "sv_rareload_angle_tolerance",       "100", "Angle tolerance for entity restoration",                                                                                        "angleTolerance" },
     { "sv_rareload_history_size",          "125", "Maximum position history entries",                                                                                              "maxHistorySize" },
 }
@@ -32,18 +32,15 @@ for _, def in ipairs(CONVAR_DEFS) do
     RARELOAD.SettingToConVar[def[4]] = def[1]
 end
 
--- A ConVar represents a bool when its default is "0" or "1", otherwise a number.
 local function IsBoolDef(default)
     return default == "0" or default == "1"
 end
 
--- Read a ConVar's current value, coerced to bool/number per its default.
 local function ReadConVarValue(cv, default)
     if IsBoolDef(default) then return cv:GetBool() end
     return cv:GetFloat()
 end
 
--- Coerce a ConVar string value (from a change callback) per its default.
 local function CoerceConVarString(newVal, default)
     if IsBoolDef(default) then return newVal == "1" end
     return tonumber(newVal) or 0
@@ -143,7 +140,6 @@ else
         end
     end
 
-    -- Keep RARELOAD.settings in sync when replicated ConVars change
     for _, def in ipairs(CONVAR_DEFS) do
         local name, default, _, settingsKey = def[1], def[2], def[3], def[4]
 
@@ -153,7 +149,6 @@ else
         end, "RareloadClientSync_" .. name)
     end
 
-    -- Initialize settings from ConVars as soon as the client is ready
     hook.Add("InitPostEntity", "RareloadClientSettingsInit", function()
         RARELOAD.LoadSettingsFromConVars()
     end)

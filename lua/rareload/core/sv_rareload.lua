@@ -15,7 +15,7 @@ if SERVER then
             retainVehicleState = false, -- BROKEN
             retainMapEntities = true,
             retainMapNPCs = true,
-            cleanupMapAfterDeath = false, -- Added Option
+            cleanupMapAfterDeath = false,
             retainVehicles = false,       -- BROKEN
             nocustomrespawnatdeath = false,
             debugEnabled = false,
@@ -33,7 +33,7 @@ if SERVER then
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
     RARELOAD.globalInventory = RARELOAD.globalInventory or {}
     RARELOAD.lastSavedTime = 0
-    RARELOAD.version = "3.3"
+    RARELOAD.version = "3.4"
     ADDON_STATE_FILE_PATH = "rareload/addon_state.json"
 
     util.AddNetworkString("RareloadAntiStuckPriorities")
@@ -77,7 +77,6 @@ if SERVER then
             SaveAddonState()
         end
 
-        -- Trigger hook to sync ConVars with loaded settings
         hook.Run("RareloadSettingsLoaded")
     end
 
@@ -139,7 +138,6 @@ if SERVER then
             return RARELOAD.Permissions.HasPermission(ply, permName)
         end
 
-        -- Fallback to permission defaults if HasPermission is not loaded yet
         if RARELOAD.Permissions.DEFS and RARELOAD.Permissions.DEFS[permName] then
             return RARELOAD.Permissions.DEFS[permName].default
         end
@@ -204,7 +202,6 @@ if SERVER then
         return true
     end
 
-    -- Sends the full map-keyed positions table to clients.
     function SyncPlayerPositions(ply, steamIDFilter)
         local mapName = game.GetMap()
         local sourcePositions = RARELOAD.playerPositions[mapName] or {}

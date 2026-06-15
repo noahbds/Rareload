@@ -1,5 +1,3 @@
----@diagnostic disable: inject-field, undefined-field
-
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 
 local function HasSnapshotData(bucket)
@@ -104,7 +102,6 @@ function RARELOAD.CleanupPlayerOwnedEntities(ply)
     return removed
 end
 
--- Restore the player's previously active weapon, retrying as the loadout populates.
 local function RestoreActiveWeapon(ply, SavedInfo, canRestoreGlobalInventory, canRestoreInventory)
     local function SendWeaponRestoreDebug(message)
         if not RARELOAD.GetPlayerSetting(ply, "debugEnabled") then return end
@@ -180,7 +177,6 @@ local function RestoreActiveWeapon(ply, SavedInfo, canRestoreGlobalInventory, ca
     end)
 end
 
--- Send the saved-position phantom preview to players who can view it.
 local function SendSpawnPhantom(ply, SavedInfo)
     if not (RARELOAD.CheckPermission(ply, "VIEW_PHANTOM") and SavedInfo) then return end
 
@@ -264,9 +260,6 @@ function RARELOAD.HandlePlayerSpawn(ply)
     if not Settings then return end
     ply.lastSpawnPosition = ToSpawnVector(SavedInfo.pos)
     ply.hasMovedAfterSpawn = false
-    -- PlayerTick fires server-side for every player, so capture this player and
-    -- ignore ticks for anyone else -- otherwise the per-EntIndex hooks all run for
-    -- all players (N^2 work) and the hook leaks if the player leaves before moving.
     local spawnedPly = ply
     local moveHookName = "RARELOAD_CheckMovement_" .. ply:EntIndex()
     hook.Add("PlayerTick", moveHookName, function(tickPly)
@@ -284,13 +277,9 @@ function RARELOAD.HandlePlayerSpawn(ply)
     end)
 
     if RARELOAD.GetPlayerSetting(ply, "cleanupMapAfterDeath", false) and ply.wasKilled then
-        -- cleanupOnlyOwnedEntitiesOnDeath restricts the cleanup scope:
-        --   false (default) → full map wipe via game.CleanUpMap()
-        --   true            → only remove Rareload-spawned entities owned by this player
         local ownedOnly = RARELOAD.GetPlayerSetting(ply, "cleanupOnlyOwnedEntitiesOnDeath", false)
 
         if ownedOnly then
-            -- Scoped cleanup: remove only this player's Rareload-spawned entities/NPCs
             ply.wasKilled = false
 
             if RARELOAD.Debug and RARELOAD.Debug.Write then
@@ -307,10 +296,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 print(string.format("[RARELOAD DEBUG] Removed %d player-owned entities for %s",
                     removed, ply:Nick()))
             end
-
-            -- Continue the normal spawn flow immediately — no re-spawn needed
         else
-            -- Full map cleanup (original behaviour)
             if not RARELOAD._isCleaningUpMap then
                 RARELOAD._isCleaningUpMap = true
                 ply.wasKilled = false
@@ -357,14 +343,19 @@ function RARELOAD.HandlePlayerSpawn(ply)
         end
         return
     end
-    -- Mark spawn time so autosave doesn't immediately overwrite the saved position
     ply._rareloadSpawnTime = CurTime()
     SavedInfo = RARELOAD.playerPositions[MapName] and RARELOAD.playerPositions[MapName][SteamID]
     if not SavedInfo then
         if DebugEnabled then RARELOAD.Debug.SendToPlayer(ply, "[RARELOAD DEBUG] No saved player info found.") end
         return
     end
+    local keepPlayerStates = hasPerm("RETAIN_PLAYER_STATES")
+        and RARELOAD.GetPlayerSetting(ply, "retainPlayerStates", true)
+
     local moveType = tonumber(SavedInfo.moveType) or MOVETYPE_WALK
+    if moveType == MOVETYPE_NOCLIP and not keepPlayerStates then
+        moveType = MOVETYPE_WALK
+    end
     local savedPos = ToSpawnVector(SavedInfo.pos)
 
     if antiStuckEnabled then
@@ -565,8 +556,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
         RARELOAD.RestoreNPCs(SavedInfo, ply)
     end
 
-    -- Restore player states (godmode, notarget, etc.)
-    if hasPerm("RETAIN_PLAYER_STATES") and RARELOAD.GetPlayerSetting(ply, "retainPlayerStates", true) and SavedInfo.playerStates then
+    if keepPlayerStates and SavedInfo.playerStates then
         timer.Simple(0.1, function()
             if not IsValid(ply) then return end
 

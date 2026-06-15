@@ -10,7 +10,6 @@ if SERVER then
         "SyncPlayerPositionsChunk",
         "RareloadTeleportTo",
         "RareloadReloadData",
-        "RareloadSyncAutoSaveTime",
         "RareloadSendPermissionsDefinitions",
     }
 

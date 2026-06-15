@@ -4,8 +4,6 @@
 
 -- 90% OF THIS FILE IS USED BY THE RARELOAD TOOL and the entity viewer.
 
-
-
 local RareloadUI = {}
 
 RARELOAD = RARELOAD or {}
@@ -99,12 +97,12 @@ local function SendConVarToServer(name, value)
     local settingKey = RARELOAD.ConVarToSetting[name]
     if not settingKey then return end
 
-    -- Convert value to appropriate type
+    local cv = GetConVar(name)
+    local default = cv and cv:GetDefault() or nil
+
     local convertedValue
-    if value == "0" then
-        convertedValue = false
-    elseif value == "1" then
-        convertedValue = true
+    if default == "0" or default == "1" then
+        convertedValue = (value == "1" or value == "true")
     else
         convertedValue = tonumber(value) or value
     end
@@ -185,7 +183,7 @@ function RareloadUI.CreateCategory(parent, title, icon, defaultExpanded)
     container:DockMargin(5, 5, 5, 2)
     container:SetPaintBackground(false)
     container.IsExpanded = defaultExpanded
-    container.CurrentHeight = defaultExpanded and 1000 or 0
+    container.CurrentHeight = 0
 
     local header = vgui.Create("DButton", container)
     header:Dock(TOP)
@@ -250,15 +248,21 @@ function RareloadUI.CreateCategory(parent, title, icon, defaultExpanded)
             targetH = targetH + 8
         end
 
-        local prevHeight = self.CurrentHeight
-        self.CurrentHeight = AnimateLerp(self.CurrentHeight, targetH, 15)
-        if math.abs(self.CurrentHeight - targetH) < 0.5 then
+        if not self._laidOut then
+            self._laidOut = true
             self.CurrentHeight = targetH
+        else
+            self.CurrentHeight = AnimateLerp(self.CurrentHeight, targetH, 15)
+            if math.abs(self.CurrentHeight - targetH) < 0.5 then
+                self.CurrentHeight = targetH
+            end
         end
 
-        if math.abs(self.CurrentHeight - prevHeight) > 0.05 then
-            content:SetTall(math.max(0, self.CurrentHeight))
-            self:SetTall(36 + math.max(0, self.CurrentHeight))
+        local h = math.max(0, self.CurrentHeight)
+        if self._appliedHeight == nil or math.abs(h - self._appliedHeight) > 0.05 then
+            self._appliedHeight = h
+            content:SetTall(h)
+            self:SetTall(36 + h)
             self:InvalidateParent(true)
         end
     end

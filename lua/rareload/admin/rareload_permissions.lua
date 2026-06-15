@@ -75,7 +75,6 @@ if SERVER then
                 end
             end
 
-            -- Re-sync the target player's own permissions so their UI updates
             for _, target in ipairs(player.GetAll()) do
                 if target:SteamID() == targetSteamID then
                     RARELOAD.Permissions.SyncToPlayer(target)
@@ -84,7 +83,6 @@ if SERVER then
             end
         end)
 
-        -- Sync the player's own permissions when they join
         hook.Add("PlayerInitialSpawn", "RareloadSyncPlayerOwnPermissions", function(ply)
             timer.Simple(2, function()
                 if IsValid(ply) and RARELOAD.Permissions.SyncToPlayer then
@@ -124,7 +122,6 @@ if SERVER then
         return false
     end
 
-    -- Send a player their own resolved permissions (used on join and after admin changes)
     function RARELOAD.Permissions.SyncToPlayer(ply)
         if not IsValid(ply) then return end
 
@@ -341,7 +338,7 @@ if SERVER then
             if mainData then
                 local jsonData = util.TableToJSON({
                     metadata = {
-                        version = "3.3",
+                        version = "3.4",
                         timestamp = backupTime,
                         format = "normalized"
                     },

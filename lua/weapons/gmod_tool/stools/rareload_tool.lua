@@ -1,14 +1,11 @@
----@diagnostic disable: param-type-mismatch, assign-type-mismatch, inject-field, undefined-field
----@class RARELOAD
 local RARELOAD              = RARELOAD or {}
 RARELOAD.settings           = RARELOAD.settings or {}
 RARELOAD.playerPositions    = RARELOAD.playerPositions or {}
-RARELOAD.serverLastSaveTime = 0
+RARELOAD.lastMoveTime       = RARELOAD.lastMoveTime or 0
 
 UI                          = include("rareload/ui/rareload_ui.lua")
 RareloadUI                  = UI
 
----@class TOOL
 local TOOL                  = TOOL or {}
 TOOL.Category               = "Rareload"
 TOOL.Name                   = "Position Saver Tool"
@@ -47,18 +44,13 @@ if CLIENT then
     include("rareload/utils/rareload_fonts.lua")
     RARELOAD.RegisterFonts()
     UI.RegisterLanguage()
-    net.Receive("RareloadSyncAutoSaveTime", function()
-        RARELOAD.serverLastSaveTime = net.ReadFloat()
-    end)
-
     net.Receive("RareloadPlayerMoved", function()
         RARELOAD.lastMoveTime = net.ReadFloat()
         RARELOAD.showAutoSaveMessage = false
     end)
 
     net.Receive("RareloadAutoSaveTriggered", function()
-        local triggerTime = net.ReadFloat()
-        RARELOAD.newAutoSaveTrigger = triggerTime
+        net.ReadFloat()
         RARELOAD.showAutoSaveMessage = true
         RARELOAD.autoSaveMessageTime = CurTime()
     end)
@@ -82,7 +74,6 @@ end
 
 local function loadAddonSettings()
     if CLIENT then
-        -- Clients always read from replicated ConVars (authoritative source)
         if RARELOAD.LoadSettingsFromConVars then
             RARELOAD.LoadSettingsFromConVars()
             return true, nil
@@ -90,7 +81,6 @@ local function loadAddonSettings()
         return false, "Settings not available"
     end
 
-    -- Server reads from file, then syncs ConVars
     local addonStateFilePath = "rareload/addon_state.json"
 
     if file.Exists(addonStateFilePath, "DATA") then
@@ -275,33 +265,24 @@ function TOOL.BuildCPanel(panel)
 
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
 
-    -- Custom styled panel background
     panel.Paint = function(self, w, h)
         surface.SetDrawColor(35, 39, 47, 255)
         surface.DrawRect(0, 0, w, h)
     end
 
-    -- Header with branding
     local headerPanel = vgui.Create("DPanel", panel)
     headerPanel:Dock(TOP)
     headerPanel:DockMargin(5, 5, 5, 8)
     headerPanel:SetTall(50)
     headerPanel.Paint = function(self, w, h)
-        -- Gradient background
         RareloadUI.DrawRoundedBox(0, 0, w, h, 8, Color(45, 50, 60, 255))
-
-        -- Accent line
         surface.SetDrawColor(RareloadUI.Theme.Colors.Accent)
         surface.DrawRect(0, h - 3, w, 3)
-
-        -- Title
         draw.SimpleText("RARELOAD", "RareloadUI.Title", 12, h / 2 - 6, RareloadUI.Theme.Colors.Text.Primary,
             TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         draw.SimpleText("Configuration Panel", "RareloadUI.Small", 12, h / 2 + 10, RareloadUI.Theme.Colors.Text
             .Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-
-        -- Version badge
-        draw.SimpleText("v3.3", "RareloadUI.Small", w - 12, h / 2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT,
+        draw.SimpleText("v3.4", "RareloadUI.Small", w - 12, h / 2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT,
             TEXT_ALIGN_CENTER)
     end
 
@@ -349,8 +330,8 @@ function TOOL.BuildCPanel(panel)
     -- TIMING SETTINGS CATEGORY
     -- ═══════════════════════════════════════════════════════════════
     local timingCategory = RareloadUI.CreateCategory(panel, "Timing & Limits", "icon16/time.png", false)
-    addSlider(timingCategory, "Auto Save Interval", "Seconds between automatic saves",
-        "sv_rareload_auto_save_interval", 1, 60, 0, 5, "s")
+    addSlider(timingCategory, "Auto Save Interval", "Idle seconds before an auto save (0 = save whenever you stop moving)",
+        "sv_rareload_auto_save_interval", 0, 60, 0, 5, "s")
     addSlider(timingCategory, "Angle Tolerance", "Degrees of tolerance for entity restoration",
         "sv_rareload_angle_tolerance", 1, 360, 0, 100, "°")
     addSlider(timingCategory, "History Size", "Maximum position cache entries",
@@ -405,7 +386,6 @@ function TOOL.BuildCPanel(panel)
         debugCategory:AddItem(entityViewerBtn)
     end
 
-    -- Footer credit
     local footerPanel = vgui.Create("DPanel", panel)
     footerPanel:Dock(TOP)
     footerPanel:DockMargin(5, 10, 5, 5)
@@ -416,7 +396,6 @@ function TOOL.BuildCPanel(panel)
     end
 end
 
----@diagnostic disable: param-type-mismatch, assign-type-mismatch, inject-field, undefined-field
 local screenTool = include("rareload/ui/rareload_toolscreen.lua")
 
 function TOOL:DrawToolScreen()

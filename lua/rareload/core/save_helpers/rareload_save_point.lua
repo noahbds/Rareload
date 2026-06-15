@@ -1,8 +1,6 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 
--- Shared routine to save a player's respawn point and related state
-
 local function listsEqualAsMultisets(t1, t2)
     if not t1 or not t2 then return false end
     if #t1 ~= #t2 then return false end
@@ -62,6 +60,7 @@ end
 function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     opts = opts or {}
     if not IsValid(ply) then return false, "invalid player" end
+    local silent = opts.silent or false
 
     EnsureFolderExists()
     local mapName = game.GetMap()
@@ -115,14 +114,14 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         if posSame and angSame and weaponSame and inventoryUnchanged and not legacyDataFound and
             not hasWorldSnapshotSaveEnabled then
             return true, "unchanged"
-        else
+        elseif not silent then
             local message = "[RARELOAD] Overwriting previous save: Position, Camera"
             if RARELOAD.GetPlayerSetting(ply, "retainInventory") then
                 message = message .. ", Inventory"
             end
             print(message .. " updated.")
         end
-    else
+    elseif not silent then
         local message = "[RARELOAD] Player position and camera"
         if RARELOAD.GetPlayerSetting(ply, "retainInventory") then
             message = message .. " and inventory"
@@ -139,7 +138,6 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         inventory = newInventory,
     }
 
-    -- Save player states (godmode, notarget, etc.)
     if RARELOAD.GetPlayerSetting(ply, "retainPlayerStates") then
         playerData.playerStates = {
             godmode = ply:HasGodMode(),
@@ -177,21 +175,20 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         playerData.vehicleState = save_vehicle_state(ply)
     end
 
-    if shouldSaveMapEntities then
-        local entityBucket = SnapshotUtils.NormalizeBucketForSave(save_entities(ply))
-        if entityBucket then
-            playerData.entities = entityBucket
-        else
-            playerData.entities = nil
+    if opts.skipWorldSnapshot then
+        if oldData then
+            if shouldSaveMapEntities then playerData.entities = oldData.entities end
+            if shouldSaveMapNPCs then playerData.npcs = oldData.npcs end
         end
-    end
+    else
+        if shouldSaveMapEntities then
+            local entityBucket = SnapshotUtils.NormalizeBucketForSave(save_entities(ply))
+            playerData.entities = entityBucket or nil
+        end
 
-    if shouldSaveMapNPCs then
-        local npcBucket = SnapshotUtils.NormalizeBucketForSave(save_npcs(ply))
-        if npcBucket then
-            playerData.npcs = npcBucket
-        else
-            playerData.npcs = nil
+        if shouldSaveMapNPCs then
+            local npcBucket = SnapshotUtils.NormalizeBucketForSave(save_npcs(ply))
+            playerData.npcs = npcBucket or nil
         end
     end
 
@@ -214,14 +211,16 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     if not success then
         print("[RARELOAD] Failed to save position data: " .. tostring(err))
         return false, err
-    else
+    elseif not silent then
         print("[RARELOAD] Player position successfully saved.")
     end
 
-    local whereMsg = opts.whereMsg or "your location"
-    ply:ChatPrint("[Rareload] Saved respawn position at " .. whereMsg)
+    if not silent then
+        local whereMsg = opts.whereMsg or "your location"
+        ply:ChatPrint("[Rareload] Saved respawn position at " .. whereMsg)
+    end
 
-    if RARELOAD.CheckPermission(ply, "VIEW_PHANTOM") then
+    if not silent and RARELOAD.CheckPermission(ply, "VIEW_PHANTOM") then
         net.Start("CreatePlayerPhantom")
         net.WriteEntity(ply)
         net.WriteVector(RARELOAD.DataUtils.ToVector(newPos) or Vector(0, 0, 0))

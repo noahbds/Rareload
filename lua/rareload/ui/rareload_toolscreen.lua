@@ -17,7 +17,7 @@ end
 local TOOL_UI = {
     COLORS = RARELOAD.Theme.BuildToolscreenColors(),
     ANIMATION = {
-        SAVE_MESSAGE_DURATION = 5,
+        SAVE_MESSAGE_DURATION = 1.5,
         PULSE_THRESHOLD = 3,
         BLINK_THRESHOLD = 1
     },
@@ -55,9 +55,6 @@ local FEATURES = {
     { name = "Max History Size",        key = "maxHistorySize",         kind = "value" }
 }
 
-local TMP_COLOR = Color(255, 255, 255, 255)
-local TMP_COLOR2 = Color(255, 255, 255, 255)
-
 local function initAnimState(RARELOAD)
     RARELOAD.AnimState = RARELOAD.AnimState or {
         lastSaveTime = 0,
@@ -79,7 +76,7 @@ local function initAnimState(RARELOAD)
     return RARELOAD.AnimState
 end
 
-local function drawWaitingForTriggerBar(width, height, state, barY, barHeight, currentTime, baseColor)
+local function drawWaitingForTriggerBar(width, height, state, barY, barHeight, currentTime, baseColor, text)
     if RARELOAD.showAutoSaveMessage or RARELOAD.activeProgress then
         state.waitingForTrigger = false
         return
@@ -102,7 +99,7 @@ local function drawWaitingForTriggerBar(width, height, state, barY, barHeight, c
     end
 
     local textY = barY + barHeight / 2
-    local infoText = "Ready for next save..."
+    local infoText = text or "Ready for next save..."
     local textColor = TOOL_UI.COLORS.TEXT.NORMAL
 
     draw.SimpleText(infoText, "CTNV", width / 2 + 1, textY + 1, TOOL_UI.COLORS.TEXT.SHADOW, TEXT_ALIGN_CENTER,
@@ -111,8 +108,10 @@ local function drawWaitingForTriggerBar(width, height, state, barY, barHeight, c
 end
 
 local function drawAutoSaveMessage(width, height, barY, barHeight)
+    local duration = TOOL_UI.ANIMATION.SAVE_MESSAGE_DURATION
+    local elapsed = CurTime() - RARELOAD.autoSaveMessageTime
     local textY = barY + barHeight / 2
-    local opacity = math.Clamp(255 - (CurTime() - RARELOAD.autoSaveMessageTime) / 5 * 255, 0, 255)
+    local opacity = math.Clamp(255 - (elapsed / duration) * 255, 0, 255)
     local messageColor = Color(TOOL_UI.COLORS.AUTO_SAVE_MESSAGE.r, TOOL_UI.COLORS.AUTO_SAVE_MESSAGE.g,
         TOOL_UI.COLORS.AUTO_SAVE_MESSAGE.b, opacity)
     local shadowColor = Color(0, 0, 0, opacity * 0.7)
@@ -120,7 +119,7 @@ local function drawAutoSaveMessage(width, height, barY, barHeight)
     draw.SimpleText("Auto Saved!", "CTNV", width / 2 + 1, textY + 1, shadowColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     draw.SimpleText("Auto Saved!", "CTNV", width / 2, textY, messageColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
-    if CurTime() - RARELOAD.autoSaveMessageTime > 5 then
+    if elapsed > duration then
         RARELOAD.showAutoSaveMessage = false
     end
 end
@@ -641,22 +640,29 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
 
     render.SetScissorRect(0, 0, 0, 0, false)
 
-    if settings.autoSaveEnabled and settings.autoSaveInterval then
+    local autoSaveInterval = tonumber(settings.autoSaveInterval)
+    if settings.autoSaveEnabled and autoSaveInterval then
         local currentTime = CurTime()
-        local lastSave = RARELOAD.serverLastSaveTime or 0
-        local lastMove = RARELOAD.lastMoveTime or currentTime
-        local interval = math.max(settings.autoSaveInterval, 0.1)
+        local lastMove = RARELOAD.lastMoveTime or 0
+        local interval = math.max(autoSaveInterval, 0.1)
+        local barHeight = TOOL_UI.LAYOUT.BAR_HEIGHT
+        local barY = height - 22
 
         if RARELOAD.showAutoSaveMessage then
-            local barHeight = TOOL_UI.LAYOUT.BAR_HEIGHT
-            local barY = height - 22
             drawAutoSaveMessage(width, height, barY, barHeight)
+        elseif autoSaveInterval <= 0 then
+            -- Instant mode: an interval of 0 saves whenever the player stops moving,
+            -- so there is no countdown -- just a steady indicator.
+            RARELOAD.activeProgress = false
+            state.waitingForTrigger = true
+            drawWaitingForTriggerBar(width, height, state, barY, barHeight, currentTime,
+                getProgressColor(1), "Saves when you stop moving")
         else
+            -- The auto-save fires once the player has been idle for the interval, so
+            -- the bar is the idle timer: it fills while standing still and resets the
+            -- moment the player moves. Full + nothing new -> "waiting for next save".
             local timeElapsed = math.max(0, currentTime - lastMove)
             local progress = math.Clamp(timeElapsed / interval, 0, 1)
-
-            local barHeight = TOOL_UI.LAYOUT.BAR_HEIGHT
-            local barY = height - 22
             local timeRemaining = math.max(0, interval - timeElapsed)
 
             local remainInt = math.floor(timeRemaining)
@@ -666,9 +672,13 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
             end
 
             RARELOAD.activeProgress = (progress > 0 and progress < 1)
-
+            
             if progress >= 1 then
-                state.waitingForTrigger = true
+                state.fullSince = state.fullSince or currentTime
+                state.waitingForTrigger = (currentTime - state.fullSince) > 0.6
+            else
+                state.fullSince = nil
+                state.waitingForTrigger = false
             end
 
             local baseColor = getProgressColor(progress)
@@ -681,7 +691,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
     end
 
     if not RARELOAD.reloadImageState and not RARELOAD.permissionDeniedState then
-        draw.SimpleText("v3.3", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT,
+        draw.SimpleText("v3.4", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT,
             TEXT_ALIGN_BOTTOM)
     elseif RARELOAD.permissionDeniedState then
         drawPermissionDeniedImage(width, height)
