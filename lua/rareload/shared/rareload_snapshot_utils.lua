@@ -297,4 +297,58 @@ function SnapshotUtils.RemoveEntryByClassAndPos(bucket, className, targetPos, to
     return false
 end
 
+function SnapshotUtils.MergePreserveExisting(oldBucket, freshBucket, category)
+    if not SnapshotUtils.HasSnapshot(freshBucket) then return freshBucket end
+    if not SnapshotUtils.HasSnapshot(oldBucket) then return freshBucket end
+
+    local freshSnap    = freshBucket.__duplicator
+    local freshPayload = deserializePayload(freshSnap)
+    local oldPayload   = deserializePayload(oldBucket.__duplicator)
+    if not (freshPayload and istable(freshPayload.Entities)) then return freshBucket end
+    if not (oldPayload and istable(oldPayload.Entities)) then return freshBucket end
+
+    local function defID(def)
+        local id = def.RareloadEntityID or def.RareloadNPCID or def.RareloadID
+        return id ~= nil and tostring(id) or nil
+    end
+
+    local oldById = {}
+    for _, def in pairs(oldPayload.Entities) do
+        local id = defID(def)
+        if id then oldById[id] = def end
+    end
+
+    local replaced = 0
+    for dupIndex, def in pairs(freshPayload.Entities) do
+        local id = defID(def)
+        if id and oldById[id] then
+            freshPayload.Entities[dupIndex] = oldById[id]
+            replaced = replaced + 1
+        end
+    end
+
+    if replaced == 0 then return freshBucket end
+
+    local serialized = serializePayload(freshPayload)
+    if not serialized then return freshBucket end
+
+    local mergedSnap = {
+        version         = freshSnap.version,
+        savedAt         = os.time(),
+        entityCount     = table.Count(freshPayload.Entities),
+        constraintCount = istable(freshPayload.Constraints) and table.Count(freshPayload.Constraints) or 0,
+        ownerSteamID    = freshSnap.ownerSteamID,
+        ownerSteamID64  = freshSnap.ownerSteamID64,
+        anchor          = freshSnap.anchor,
+        bounds          = freshSnap.bounds,
+        payload         = serialized,
+    }
+
+    SnapshotUtils.EnsureIndexMap(mergedSnap, { category = category or "entity", idPrefix = category or "entity" })
+
+    local bucket = {}
+    rawset(bucket, "__duplicator", mergedSnap)
+    return bucket
+end
+
 return SnapshotUtils

@@ -320,7 +320,11 @@ function TOOL.BuildCPanel(panel)
     local mapCategory = RareloadUI.CreateCategory(panel, "Map Entities", "icon16/map.png", false)
     addToggle(mapCategory, "Keep Map Entities", "sv_rareload_keep_map_entities", "Restore map entities on respawn")
     addToggle(mapCategory, "Keep Map NPCs", "sv_rareload_keep_map_npcs", "Restore NPCs on respawn")
+    addToggle(mapCategory, "Overwrite Moved on Save", "sv_rareload_auto_overwrite",
+        "When you save, also update already-saved entities/NPCs you've moved or changed. Off keeps their old saved state (newly spawned ones are still added)")
     addToggle(mapCategory, "Cleanup Map on Respawn", "sv_rareload_cleanup_map", "Clean up the map right before respawning")
+    addToggle(mapCategory, "Saved Entities Only", "sv_rareload_cleanup_only_saved",
+        "When cleanup on death is enabled, only remove entities/NPCs that were saved by Rareload instead of wiping the whole map")
     addToggle(mapCategory, "Owned Entities Only", "sv_rareload_cleanup_owned_only",
         "Restrict death cleanup to your own Rareload-spawned entities/NPCs (no full map wipe)")
     addToggle(mapCategory, "Cleanup on Disconnect", "sv_rareload_cleanup_on_disconnect",

@@ -30,8 +30,8 @@ if not SED.PanelRendererHandleInteraction then
     return
 end
 
-function SED.DrawSavedPanel(ent, saved, isNPC, precomputedParams, precomputedDistSqr)
-    local ctx = SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, precomputedDistSqr)
+function SED.DrawSavedPanel(ent, saved, isNPC, precomputedParams, precomputedDistSqr, liveEnt)
+    local ctx = SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, precomputedDistSqr, liveEnt)
     if not ctx then return end
 
     SED.PanelRendererDraw(ctx)

@@ -1,3 +1,6 @@
+-- WILL BE DEPRACATED AND MERGED WITH THE RARELOAD.SavedEntityDisplay system in the future. --- IGNORE ---
+-- MERGE WILL USE THE SED_object_phantom system instead of this one. --- IGNORE ---
+
 RARELOAD                        = RARELOAD or {}
 RARELOAD.playerPositions        = RARELOAD.playerPositions or {}
 RARELOAD.settings               = RARELOAD.settings or {}
@@ -247,9 +250,6 @@ HandleNetReceive("SyncData", function()
         hook.Run("RareloadPlayerPositionsUpdated", mapName)
     end
 
-    -- Only update RARELOAD.settings from SyncData if per-player settings
-    -- haven't been received yet (MySettings is empty). Otherwise per-player
-    -- settings take priority over server globals.
     if not RARELOAD.MySettings or not next(RARELOAD.MySettings) then
         local oldDebugEnabled = IsClientDebugEnabled()
         RARELOAD.settings = data.settings or {}
@@ -258,15 +258,10 @@ HandleNetReceive("SyncData", function()
             UpdatePhantomVisibility()
         end
 
-        -- Ask for authoritative per-player settings when SyncData had to fallback to globals.
         if RARELOAD.RequestPlayerSettings then
             RARELOAD.RequestPlayerSettings()
         end
     end
-
-    -- Do NOT overwrite RARELOAD.Phantom from server data.
-    -- The server's Phantom table has no valid ClientsideModel references;
-    -- overwriting would destroy existing client-side phantom entities.
 end)
 
 HandleNetReceive("CreatePlayerPhantom", function()
@@ -362,8 +357,8 @@ function RARELOAD.RefreshPhantoms()
 end
 
 local function BufferPhantom()
-    -- Keep as a no-op: client should not reload authoritative player position data from local disk.
-    -- Data is synced from server via SyncData/SyncPlayerPositions for consistent multiplayer behavior.
+    -- This function is called every frame in PostDrawOpaqueRenderables
+    -- to ensure that phantoms are created and updated as needed.
 end
 
 HandleNetReceive("SyncPlayerPositions", function()

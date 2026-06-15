@@ -8,6 +8,7 @@ include("rareload/client/saved_entity_display/SED_panel_renderer.lua")
 include("rareload/client/saved_entity_display/SED_panel_queue.lua")
 include("rareload/client/saved_entity_display/SED_interaction_system.lua")
 include("rareload/client/saved_entity_display/SED_phantom.lua")
+include("rareload/client/saved_entity_display/SED_object_phantom.lua")
 include("rareload/client/saved_entity_display/SED_hooks.lua")
 
 if CLIENT then

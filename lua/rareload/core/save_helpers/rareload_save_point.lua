@@ -175,20 +175,31 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         playerData.vehicleState = save_vehicle_state(ply)
     end
 
-    if opts.skipWorldSnapshot then
+    local autoOverwrite = RARELOAD.GetPlayerSetting(ply, "autoOverwriteModified", false)
+
+    local function captureBucket(captureFn, oldBucket, category)
+        local fresh = SnapshotUtils.NormalizeBucketForSave(captureFn(ply))
+        if autoOverwrite then
+            return fresh
+        end
+        if fresh and oldBucket and SnapshotUtils.HasSnapshot(oldBucket) then
+            return SnapshotUtils.MergePreserveExisting(oldBucket, fresh, category)
+        end
+        return fresh or oldBucket
+    end
+
+    if opts.skipWorldSnapshot and not autoOverwrite then
         if oldData then
             if shouldSaveMapEntities then playerData.entities = oldData.entities end
             if shouldSaveMapNPCs then playerData.npcs = oldData.npcs end
         end
     else
         if shouldSaveMapEntities then
-            local entityBucket = SnapshotUtils.NormalizeBucketForSave(save_entities(ply))
-            playerData.entities = entityBucket or nil
+            playerData.entities = captureBucket(save_entities, oldData and oldData.entities, "entity")
         end
 
         if shouldSaveMapNPCs then
-            local npcBucket = SnapshotUtils.NormalizeBucketForSave(save_npcs(ply))
-            playerData.npcs = npcBucket or nil
+            playerData.npcs = captureBucket(save_npcs, oldData and oldData.npcs, "npc")
         end
     end
 

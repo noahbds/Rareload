@@ -41,7 +41,7 @@ local function GetRenderData()
     else
         rdata = {}
         rdata.fn = function()
-            SED.DrawSavedPanel(rdata.ent, rdata.saved, rdata.isNPC, rdata.renderParams, rdata.distSqr)
+            SED.DrawSavedPanel(rdata.ent, rdata.saved, rdata.isNPC, rdata.renderParams, rdata.distSqr, rdata.liveEnt)
         end
     end
     return rdata
@@ -53,6 +53,7 @@ local function RecycleRenderData()
         rdata.ent                        = nil
         rdata.saved                      = nil
         rdata.renderParams               = nil
+        rdata.liveEnt                    = nil
         sedRenderPoolSize                = sedRenderPoolSize + 1
         sedRenderPool[sedRenderPoolSize] = rdata
         sedActiveRender[i]               = nil
@@ -100,36 +101,37 @@ local function IsAimingEstimatedPanel(ent, renderParams, eyePos, eyeForward)
     return hit, panelDistSqr
 end
 
-local function CollectBucket(tracked, lookup, isNPC, eyePos, eyeForward, listCount, invalid)
+local function CollectObjectPhantoms(eyePos, eyeForward, listCount, liveByID)
     local CalcParams        = SED.CalculateEntityRenderParams
     local DRAW_DISTANCE_SQR = SED.DRAW_DISTANCE_SQR
     local CULL_VIEW_CONE    = SED.CULL_VIEW_CONE
 
-    for ent, id in pairs(tracked) do
-        if IsValid(ent) then
-            local rec = lookup[id]
+    for id, data in pairs(SED.ObjectPhantoms or {}) do
+        local phantom = data.phantom
+        if IsValid(phantom) then
+            local lookup = data.isNPC and SED.SAVED_NPCS_BY_ID or SED.SAVED_ENTITIES_BY_ID
+            local rec    = lookup and lookup[id]
             if rec then
-                local entPos       = ent:GetPos()
+                local entPos       = phantom:GetPos()
                 local distSqr      = eyePos:DistToSqr(entPos)
-                local renderParams = CalcParams(ent)
+                local renderParams = CalcParams(phantom)
                 local maxDistSqr   = renderParams and renderParams.drawDistanceSqr or DRAW_DISTANCE_SQR
 
                 if distSqr <= maxDistSqr and
                     (not CULL_VIEW_CONE or SS.CullFOV(entPos, eyePos, eyeForward, distSqr)) then
                     listCount            = listCount + 1
                     local item           = GetQueueItem()
-                    item.ent             = ent
+                    item.ent             = phantom
                     item.saved           = rec
-                    item.isNPC           = isNPC
+                    item.isNPC           = data.isNPC
                     item.distSqr         = distSqr
                     item.renderParams    = renderParams
                     item.pos             = entPos
-                    item.priority        = isNPC and 1 or 0
+                    item.priority        = data.isNPC and 1 or 0
+                    item.liveEnt         = liveByID and liveByID[id] or nil
                     queueList[listCount] = item
                 end
             end
-        elseif invalid then
-            invalid[#invalid + 1] = ent
         end
     end
 
@@ -149,14 +151,19 @@ function SED.QueueAllSavedPanels()
 
     RecycleQueueList()
 
-    local listCount       = 0
-    local invalidEntities = {}
-    local invalidNPCs     = {}
+    local listCount = 0
 
-    listCount = CollectBucket(SED.TrackedEntities, SED.SAVED_ENTITIES_BY_ID, false, eyePos, eyeForward, listCount,
-        invalidEntities)
-    listCount = CollectBucket(SED.TrackedNPCs, SED.SAVED_NPCS_BY_ID, true, eyePos, eyeForward, listCount,
-        invalidNPCs)
+    -- Reverse map saved id -> live world object, so each phantom-anchored panel can show
+    -- live-drift data for its counterpart (if one currently exists in the world).
+    local liveByID = {}
+    for ent, id in pairs(SED.TrackedEntities) do
+        if IsValid(ent) then liveByID[id] = ent end
+    end
+    for npc, id in pairs(SED.TrackedNPCs) do
+        if IsValid(npc) then liveByID[id] = npc end
+    end
+
+    listCount = CollectObjectPhantoms(eyePos, eyeForward, listCount, liveByID)
 
     local PHANTOM_SAVED = SED.PhantomSavedRecords or {}
     for phantom, steamID in pairs(SED.TrackedPhantoms or {}) do
@@ -179,25 +186,13 @@ function SED.QueueAllSavedPanels()
                     item.renderParams    = renderParams
                     item.pos             = entPos
                     item.priority        = 2
+                    item.liveEnt         = nil
                     queueList[listCount] = item
                 end
             end
         else
             SED.TrackedPhantoms[phantom] = nil
         end
-    end
-
-    for i = 1, #invalidEntities do
-        local ent = invalidEntities[i]
-        SED.TrackedEntities[ent] = nil
-        local idx = ent:EntIndex()
-        if SED.EntityBoundsCache and idx then SED.EntityBoundsCache[idx] = nil end
-    end
-    for i = 1, #invalidNPCs do
-        local npc = invalidNPCs[i]
-        SED.TrackedNPCs[npc] = nil
-        local idx = npc:EntIndex()
-        if SED.EntityBoundsCache and idx then SED.EntityBoundsCache[idx] = nil end
     end
 
     if listCount == 0 then return end
@@ -255,6 +250,7 @@ function SED.QueueAllSavedPanels()
             rdata.isNPC                     = item.isNPC
             rdata.renderParams              = item.renderParams
             rdata.distSqr                   = item.distSqr
+            rdata.liveEnt                   = item.liveEnt
             rdata.opts                      = rdata.opts or { skipCull = true, distSqr = 0 }
             rdata.opts.distSqr              = item.distSqr
 

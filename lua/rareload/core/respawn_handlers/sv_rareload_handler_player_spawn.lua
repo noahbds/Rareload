@@ -102,6 +102,39 @@ function RARELOAD.CleanupPlayerOwnedEntities(ply)
     return removed
 end
 
+function RARELOAD.CleanupSavedEntities(ply)
+    if not IsValid(ply) then return 0 end
+    local removed  = 0
+    local toRemove = {}
+
+    for _, ent in ipairs(ents.GetAll()) do
+        if not IsValid(ent) or ent:IsPlayer() then continue end
+
+        if not ent.SavedByRareload then continue end
+
+        if ent:IsWeapon()
+            or ent:GetClass() == "predicted_viewmodel"
+            or ent:GetClass() == "viewmodel" then
+            if ent.SetNWString then
+                pcall(ent.SetNWString, ent, "RareloadID", "")
+            end
+            ent.RareloadEntityID = nil
+            ent.RareloadNPCID    = nil
+        else
+            toRemove[#toRemove + 1] = ent
+        end
+    end
+
+    for _, ent in ipairs(toRemove) do
+        if IsValid(ent) then
+            ent:Remove()
+            removed = removed + 1
+        end
+    end
+
+    return removed
+end
+
 local function RestoreActiveWeapon(ply, SavedInfo, canRestoreGlobalInventory, canRestoreInventory)
     local function SendWeaponRestoreDebug(message)
         if not RARELOAD.GetPlayerSetting(ply, "debugEnabled") then return end
@@ -278,6 +311,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
 
     if RARELOAD.GetPlayerSetting(ply, "cleanupMapAfterDeath", false) and ply.wasKilled then
         local ownedOnly = RARELOAD.GetPlayerSetting(ply, "cleanupOnlyOwnedEntitiesOnDeath", false)
+        local savedOnly = RARELOAD.GetPlayerSetting(ply, "cleanupOnlySavedEntitiesOnDeath", false)
 
         if ownedOnly then
             ply.wasKilled = false
@@ -296,6 +330,23 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 print(string.format("[RARELOAD DEBUG] Removed %d player-owned entities for %s",
                     removed, ply:Nick()))
             end
+        elseif savedOnly then
+            ply.wasKilled = false
+
+            if RARELOAD.Debug and RARELOAD.Debug.Write then
+                RARELOAD.Debug.Write("respawn", "INFO", 0,
+                    "Cleanup (saved only): removing Rareload saved entities before respawn", { entity = ply })
+            elseif DebugEnabled then
+                print("[RARELOAD DEBUG] Cleanup (saved only): removing Rareload saved entities before respawn.")
+            end
+
+            local removed = RARELOAD.CleanupSavedEntities(ply)
+            ply._rareloadSkipExistingFilter = true
+
+            if DebugEnabled then
+                print(string.format("[RARELOAD DEBUG] Removed %d saved entities for %s",
+                    removed, ply:Nick()))
+            end
         else
             if not RARELOAD._isCleaningUpMap then
                 RARELOAD._isCleaningUpMap = true
@@ -309,7 +360,8 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 end
 
                 local preHookName = "RareloadSaveEntitiesBeforeCleanup"
-                local savedPreHook = hook.GetTable()["PreCleanupMap"] and hook.GetTable()["PreCleanupMap"][preHookName]
+                local savedPreHook = hook.GetTable()["PreCleanupMap"] and
+                    hook.GetTable()["PreCleanupMap"][preHookName]
 
                 if savedPreHook then
                     hook.Remove("PreCleanupMap", preHookName)

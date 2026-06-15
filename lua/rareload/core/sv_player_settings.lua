@@ -38,8 +38,10 @@ local function GetServerDefaultSettings()
             retainVehicleState = false,
             retainMapEntities = true,
             retainMapNPCs = true,
+            autoOverwriteModified = false,
             cleanupMapAfterDeath = false,
             cleanupOnlyOwnedEntitiesOnDeath = false,
+            cleanupOnlySavedEntitiesOnDeath = false,
             cleanupOwnedEntitiesOnDisconnect = false,
             retainVehicles = false,
             nocustomrespawnatdeath = false,
@@ -192,7 +194,6 @@ end
 
 function RARELOAD.PlayerSettings.Set(ply, settingKey, value)
     if not IsValid(ply) then return false end
-
     local steamID = ply:SteamID()
     local settings = RARELOAD.PlayerSettings.Load(steamID)
 
@@ -252,8 +253,10 @@ local ALLOWED_CLIENT_SETTINGS = {
     nocustomrespawnatdeath = "bool",
     retainVehicleState = "bool",
     retainMapEntities = "bool",
+    autoOverwriteModified = "bool",
     cleanupMapAfterDeath = "bool",
     cleanupOnlyOwnedEntitiesOnDeath = "bool",
+    cleanupOnlySavedEntitiesOnDeath = "bool",
     cleanupOwnedEntitiesOnDisconnect = "bool",
     retainMapNPCs = "bool",
     retainVehicles = "bool",

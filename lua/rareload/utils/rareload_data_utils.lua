@@ -406,4 +406,3 @@ function RARELOAD.DataUtils.FormatAngleForJSON(ang, precision)
     end
     return tostring(ang)
 end
-

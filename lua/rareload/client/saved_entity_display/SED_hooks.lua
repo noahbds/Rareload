@@ -37,7 +37,8 @@ end)
 hook.Add("CreateMove", "RARELOAD_SavedPanels_CamLock", function(cmd)
     if SED.InteractionState.active or CurTime() - SED.LeaveTime < 0.5 then
         cmd:RemoveKey(IN_USE)
-    elseif SED.LookingAtPanelUntil and CurTime() <= SED.LookingAtPanelUntil then
+    elseif SED.LookingAtPanelUntil and CurTime() <= SED.LookingAtPanelUntil
+        and SED.InteractModifierDown and SED.InteractModifierDown() then
         cmd:RemoveKey(IN_USE)
     end
     if not SED.InteractionState.active then return end

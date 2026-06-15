@@ -158,7 +158,16 @@ function SED.HandleInteractionInput()
         local panelCache = isNPC and SED.NPCPanelCache or SED.EntityPanelCache
         local cache = panelCache[interactionID]
         if not cache then
-            cache = SED.BuildPanelData(savedRec, ent, isNPC)
+            -- Live rows come from the live world object (panels anchor to the phantom).
+            local liveEnt
+            local trackTable = isNPC and SED.TrackedNPCs or SED.TrackedEntities
+            for e, eid in pairs(trackTable or {}) do
+                if eid == interactionID and IsValid(e) then
+                    liveEnt = e
+                    break
+                end
+            end
+            cache = SED.BuildPanelData(savedRec, liveEnt, isNPC)
         end
 
         if cache and cache.activeCat then

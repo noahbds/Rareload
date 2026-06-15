@@ -219,11 +219,15 @@ local function RebuildLayout(cache, lines, categories, activeCat, scrollTable, s
     }
 end
 
-function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, precomputedDistSqr)
+function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, precomputedDistSqr, liveEnt)
     if not (IsValid(ent) and saved) then return nil end
 
     SED.lpCache = SED.lpCache or LocalPlayer()
     if not IsValid(SED.lpCache) then return nil end
+
+    -- `ent` is the anchor (the saved object's phantom, sitting at the saved position).
+    -- `liveEnt` is the live world object, used only for live-drift data (may be nil).
+    local liveSrc = (liveEnt and IsValid(liveEnt)) and liveEnt or nil
 
     local eyePos = SED.lpCache:EyePos()
     local pos = ent:GetPos()
@@ -234,7 +238,7 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
     local distSqr = precomputedDistSqr or eyePos:DistToSqr(pos)
     if distSqr > renderParams.drawDistanceSqr then return nil end
 
-    local cache = SED.BuildPanelData(saved, ent, isNPC)
+    local cache = SED.BuildPanelData(saved, liveSrc, isNPC)
     if not cache then return nil end
 
     local categories = isNPC and SED.NPC_CATEGORIES or SED.ENT_CATEGORIES
@@ -257,7 +261,8 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
     end
     lines = lines or {}
     if #lines == 0 then
-        local fallbackClass = saved.class or saved.Class or saved.ClassName or ent:GetClass() or "Unknown"
+        local fallbackClass = saved.class or saved.Class or saved.ClassName or
+            (liveSrc and liveSrc:GetClass()) or "Unknown"
         lines = { { "No data", "No captured values available for " .. fallbackClass, VALUE_COLOR } }
     end
 
@@ -271,29 +276,30 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
 
     local isLiveTab = (activeCat == "position" or activeCat == "state")
     local liveGen = cache._liveGen or 0
-    if isLiveTab then
-        local a = ent.GetAngles and ent:GetAngles() or nil
-        local moved = (not cache._liveP) or cache._liveP:DistToSqr(pos) > MOVE_EPS_SQR
+    if isLiveTab and liveSrc then
+        local livePos = liveSrc:GetPos()
+        local a = liveSrc.GetAngles and liveSrc:GetAngles() or nil
+        local moved = (not cache._liveP) or cache._liveP:DistToSqr(livePos) > MOVE_EPS_SQR
         if not moved and a then
             local la = cache._liveA
             if (not la) or (math_abs(a.p - la.p) + math_abs(a.y - la.y) + math_abs(a.r - la.r)) > ANG_EPS then
                 moved = true
             end
         end
-        if not moved and ent.Health and cache._liveHP ~= ent:Health() then moved = true end
+        if not moved and liveSrc.Health and cache._liveHP ~= liveSrc:Health() then moved = true end
         if moved then
             liveGen = liveGen + 1
             cache._liveGen = liveGen
-            cache._liveP = pos
+            cache._liveP = livePos
             cache._liveA = a
-            cache._liveHP = ent.Health and ent:Health() or 0
+            cache._liveHP = liveSrc.Health and liveSrc:Health() or 0
 
             local liveData = cache.data and cache.data.position
             if liveData then
                 for _, line in ipairs(liveData) do
                     local k = line[1]
                     if k == "Live Pos" then
-                        line[2] = string.format("%.0f, %.0f, %.0f", pos.x, pos.y, pos.z)
+                        line[2] = string.format("%.0f, %.0f, %.0f", livePos.x, livePos.y, livePos.z)
                     elseif k == "Live Ang" and a then
                         line[2] = string.format("%.0f, %.0f, %.0f", a.p, a.y, a.r)
                     end
