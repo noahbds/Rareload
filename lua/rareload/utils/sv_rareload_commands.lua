@@ -1,5 +1,3 @@
-util.AddNetworkString("UpdatePhantomPosition")
-
 -- Include SnapshotUtils for proper entity deletion
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 

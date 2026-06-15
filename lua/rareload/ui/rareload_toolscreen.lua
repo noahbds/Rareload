@@ -672,7 +672,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
             end
 
             RARELOAD.activeProgress = (progress > 0 and progress < 1)
-            
+
             if progress >= 1 then
                 state.fullSince = state.fullSince or currentTime
                 state.waitingForTrigger = (currentTime - state.fullSince) > 0.6
@@ -691,7 +691,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
     end
 
     if not RARELOAD.reloadImageState and not RARELOAD.permissionDeniedState then
-        draw.SimpleText("v3.4", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT,
+        draw.SimpleText("v3.5", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT,
             TEXT_ALIGN_BOTTOM)
     elseif RARELOAD.permissionDeniedState then
         drawPermissionDeniedImage(width, height)

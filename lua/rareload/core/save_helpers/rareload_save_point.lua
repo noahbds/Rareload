@@ -231,19 +231,8 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         ply:ChatPrint("[Rareload] Saved respawn position at " .. whereMsg)
     end
 
-    if not silent and RARELOAD.CheckPermission(ply, "VIEW_PHANTOM") then
-        net.Start("CreatePlayerPhantom")
-        net.WriteEntity(ply)
-        net.WriteVector(RARELOAD.DataUtils.ToVector(newPos) or Vector(0, 0, 0))
-        local savedAng = Angle(newAng.p, newAng.y, newAng.r)
-        net.WriteAngle(savedAng)
-        net.Send(ply)
-    end
-
-    if RARELOAD.UpdateClientPhantoms then
-        RARELOAD.UpdateClientPhantoms(ply, newPos, newAng)
-    end
-
+    -- Player phantoms are derived client-side from the synced player positions (see the SED phantom
+    -- system), so just push the updated data; no dedicated phantom net messages are needed.
     if SyncPlayerPositions then
         SyncPlayerPositions(nil, ply:SteamID())
     end

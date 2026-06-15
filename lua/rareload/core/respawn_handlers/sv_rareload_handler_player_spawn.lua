@@ -210,18 +210,6 @@ local function RestoreActiveWeapon(ply, SavedInfo, canRestoreGlobalInventory, ca
     end)
 end
 
-local function SendSpawnPhantom(ply, SavedInfo)
-    if not (RARELOAD.CheckPermission(ply, "VIEW_PHANTOM") and SavedInfo) then return end
-
-    local phantomPos = RARELOAD.DataUtils.ToVector(SavedInfo.pos) or ply:GetPos()
-    local phantomAng = RARELOAD.DataUtils.ToAngle(SavedInfo.ang) or ply:GetAngles()
-    net.Start("CreatePlayerPhantom")
-    net.WriteEntity(ply)
-    net.WriteVector(phantomPos)
-    net.WriteAngle(phantomAng)
-    net.Send(ply)
-end
-
 function RARELOAD.HandlePlayerSpawn(ply)
     if not IsValid(ply) then return end
 
@@ -643,6 +631,4 @@ function RARELOAD.HandlePlayerSpawn(ply)
     end
 
     RestoreActiveWeapon(ply, SavedInfo, canRestoreGlobalInventory, canRestoreInventory)
-
-    SendSpawnPhantom(ply, SavedInfo)
 end

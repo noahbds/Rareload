@@ -21,26 +21,19 @@ RARELOAD.GetClientDebugEnabled = IsClientDebugEnabled
 local lastSettingsRequestAt = 0
 local SETTINGS_REQUEST_COOLDOWN = 1.0
 
--- Receive player settings from server
 net.Receive("RareloadSyncPlayerSettings", function()
     local settings = net.ReadTable()
 
     if settings then
         RARELOAD.MySettings = settings
-
-        -- Update RARELOAD.settings for backward compatibility
         RARELOAD.settings = table.Copy(settings)
-
-        -- Trigger hook for UI updates
         hook.Run("RareloadPlayerSettingsUpdated", settings)
     end
 end)
 
--- Send a setting update to server
 function RARELOAD.UpdatePlayerSetting(settingKey, value)
     if not settingKey then return end
 
-    -- Determine value type
     local valueType = type(value)
     if valueType == "boolean" then
         valueType = "bool"
@@ -53,7 +46,6 @@ function RARELOAD.UpdatePlayerSetting(settingKey, value)
         return
     end
 
-    -- Send to server
     net.Start("RareloadUpdatePlayerSetting")
     net.WriteString(settingKey)
     net.WriteString(valueType)
@@ -68,7 +60,6 @@ function RARELOAD.UpdatePlayerSetting(settingKey, value)
 
     net.SendToServer()
 
-    -- Update local copy optimistically
     RARELOAD.MySettings[settingKey] = value
     RARELOAD.settings[settingKey] = value
 
@@ -77,7 +68,6 @@ function RARELOAD.UpdatePlayerSetting(settingKey, value)
     end
 end
 
--- Get a player setting value
 function RARELOAD.GetPlayerSetting(settingKey, default)
     if RARELOAD.MySettings[settingKey] ~= nil then
         return RARELOAD.MySettings[settingKey]
@@ -85,7 +75,6 @@ function RARELOAD.GetPlayerSetting(settingKey, default)
     return default
 end
 
--- Request settings from server (in case sync was missed)
 function RARELOAD.RequestPlayerSettings(options)
     options = options or {}
     local force = options.force == true

@@ -3,7 +3,6 @@ RARELOAD.settings = RARELOAD.settings or {}
 RARELOAD.Debug = RARELOAD.Debug or {}
 
 local function SafePlayerKey(steamID)
-    -- Steam IDs contain ':' which are unsafe in filenames on Windows.
     return string.gsub(steamID or "unknown", "[^%w_%-.]", "_")
 end
 
@@ -75,7 +74,6 @@ function RARELOAD.LoadPlayerPositions()
                 if istable(result.playerData) and isstring(result.steamID) and result.steamID ~= "" then
                     RARELOAD.playerPositions[mapName][result.steamID] = result.playerData
                 elseif istable(result[mapName]) then
-                    -- Backward compatibility with legacy combined file format.
                     for steamID, pdata in pairs(result[mapName]) do
                         RARELOAD.playerPositions[mapName][steamID] = pdata
                     end
@@ -86,7 +84,6 @@ function RARELOAD.LoadPlayerPositions()
         end
     end
 
-    -- One-time migration path from legacy combined map file.
     if not next(RARELOAD.playerPositions[mapName]) then
         local legacyPath = "rareload/player_positions_" .. mapName .. ".json"
         if file.Exists(legacyPath, "DATA") then
@@ -103,7 +100,6 @@ function RARELOAD.LoadPlayerPositions()
                                 SteamID64 = function() return "" end,
                             }
 
-                            -- Persist in new per-player format.
                             RARELOAD.SavePlayerPositionEntry(fakePly, pdata)
                         end
                     end
@@ -122,46 +118,4 @@ function RARELOAD.SavePlayerPositionOnDisconnect(ply)
     existing.moveType = ply:GetMoveType()
 
     RARELOAD.SavePlayerPositionEntry(ply, existing)
-end
-
-function RARELOAD.UpdateClientPhantoms(ply, pos, ang)
-    if not IsValid(ply) then return end
-
-    local steamID = ply:SteamID()
-    local currentModel = ply:GetModel()
-    local mapName = game.GetMap()
-
-    if not RARELOAD.playerPositions[mapName] then
-        RARELOAD.playerPositions[mapName] = {}
-    end
-
-    if not RARELOAD.playerPositions[mapName][steamID] then
-        RARELOAD.playerPositions[mapName][steamID] = {}
-    end
-
-    RARELOAD.playerPositions[mapName][steamID].playermodel = currentModel
-
-    local vectorPos = RARELOAD.DataUtils.ToVector(pos)
-    if not vectorPos then
-        vectorPos = ply:GetPos()
-    end
-
-    local angleObj = RARELOAD.DataUtils.ToAngle(ang)
-    if not angleObj then
-        angleObj = ply:EyeAngles()
-    end
-
-    net.Start("UpdatePhantomPosition")
-    net.WriteString(steamID)
-    net.WriteVector(vectorPos)
-    net.WriteAngle(angleObj)
-    net.WriteBool(true)
-    net.WriteString(currentModel)
-    net.Broadcast()
-
-    if RARELOAD.settings and RARELOAD.settings.debugEnabled then
-        print("[RARELOAD DEBUG] Broadcasting phantom update for " .. steamID)
-        print("[RARELOAD DEBUG] Model: " .. currentModel)
-        print("[RARELOAD DEBUG] Position: " .. tostring(vectorPos))
-    end
 end

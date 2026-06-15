@@ -1,6 +1,0 @@
-hook.Remove("GUIMousePressed", "PhantomPanelInteraction")
-hook.Remove("Think", "PhantomKeyboardNavigation")
-hook.Remove("StartCommand", "PhantomBlockMovement")
-hook.Remove("PlayerBindPress", "PhantomBlockBindings")
-hook.Remove("CalcView", "PhantomInteractionView")
-hook.Remove("KeyPress", "PhantomInteractionToggle")

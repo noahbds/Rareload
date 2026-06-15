@@ -2,10 +2,7 @@ if SERVER then
     RARELOAD = RARELOAD or {}
 
     local networkStrings = {
-        "CreatePlayerPhantom",
-        "RemovePlayerPhantom",
         "SyncData",
-        "UpdatePhantomPosition",
         "SyncPlayerPositions",
         "SyncPlayerPositionsChunk",
         "RareloadTeleportTo",

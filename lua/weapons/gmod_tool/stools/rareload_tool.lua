@@ -210,20 +210,8 @@ function TOOL:Reload()
                 local remaining = RARELOAD.GetPositionHistory(steamID, mapName)
                 ply:ChatPrint("[RARELOAD] Restored previous position data. (" .. remaining .. " positions in history)")
 
-                if RARELOAD.CheckPermission(ply, "VIEW_PHANTOM") then
-                    net.Start("CreatePlayerPhantom")
-                    net.WriteEntity(ply)
-                    local pos = RARELOAD.DataUtils.ToPositionTable(previousData.pos) or { x = 0, y = 0, z = 0 }
-                    net.WriteVector(Vector(pos.x, pos.y, pos.z))
-                    local ang = RARELOAD.DataUtils.ToAngleTable(previousData.ang) or { p = 0, y = 0, r = 0 }
-                    net.WriteAngle(Angle(ang.p, ang.y, ang.r))
-                    net.Send(ply)
-
-                    net.Start("UpdatePhantomPosition")
-                    net.WriteString(steamID)
-                    net.WriteVector(Vector(pos.x, pos.y, pos.z))
-                    net.WriteAngle(Angle(ang.p, ang.y, ang.r))
-                    net.Send(ply)
+                if SyncPlayerPositions then
+                    SyncPlayerPositions(ply)
                 end
 
                 net.Start("RareloadToolReloadState")
@@ -282,7 +270,7 @@ function TOOL.BuildCPanel(panel)
             TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         draw.SimpleText("Configuration Panel", "RareloadUI.Small", 12, h / 2 + 10, RareloadUI.Theme.Colors.Text
             .Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText("v3.4", "RareloadUI.Small", w - 12, h / 2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT,
+        draw.SimpleText("v3.5", "RareloadUI.Small", w - 12, h / 2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT,
             TEXT_ALIGN_CENTER)
     end
 
@@ -368,6 +356,17 @@ function TOOL.BuildCPanel(panel)
             Color(233, 30, 99)
         )
         actionsCategory:AddItem(adminBtn)
+
+        local paramsBtn = RareloadUI.CreateModernButton(
+            actionsCategory.Content,
+            "Configure Parameters",
+            "icon16/cog_edit.png",
+            function()
+                if RARELOAD.OpenTunablesMenu then RARELOAD.OpenTunablesMenu() end
+            end,
+            Color(255, 152, 0)
+        )
+        actionsCategory:AddItem(paramsBtn)
     end
 
     -- ═══════════════════════════════════════════════════════════════

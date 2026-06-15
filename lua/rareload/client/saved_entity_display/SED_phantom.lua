@@ -2,6 +2,7 @@ SED                     = SED or (RARELOAD and RARELOAD.SavedEntityDisplay) or {
 SED.Phantom             = SED.Phantom or {}
 SED.TrackedPhantoms     = SED.TrackedPhantoms or {}
 SED.PhantomSavedRecords = SED.PhantomSavedRecords or {}
+SED.PlayerPhantoms      = SED.PlayerPhantoms or {}
 
 local Phantom           = SED.Phantom
 if Phantom._initialized then return Phantom end
@@ -59,15 +60,6 @@ local PHANTOM_CATEGORIES      = {
 
 local CACHE_LIFETIME          = 5
 local PhantomInteractionState = SED.InteractionState
-
-local function HasViewPhantomPermission()
-    local lp = LocalPlayer()
-    if not IsValid(lp) then return false end
-    if RARELOAD and RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
-        return RARELOAD.Permissions.HasPermission(lp, "VIEW_PHANTOM")
-    end
-    return true
-end
 
 function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
     lodLevel      = lodLevel or 1
@@ -322,12 +314,93 @@ function Phantom.BuildSavedRecord(steamID, phantomData, mapName)
     return rec
 end
 
+local PLAYER_PHANTOM_CULL_SQR = 10000 * 10000
+local PLAYER_MOVED_AWAY_SQR   = 32 * 32
+
+local function EnsurePlayerPhantom(steamID, savedInfo)
+    local existing = SED.PlayerPhantoms[steamID]
+    if existing and IsValid(existing.phantom) then return existing end
+
+    local pos = SS.ToVector(savedInfo.pos)
+    if not pos then return nil end
+
+    local model = savedInfo.playermodel
+    if not model or model == "" then
+        local owner = player.GetBySteamID(steamID)
+        model = IsValid(owner) and owner:GetModel() or "models/player/kleiner.mdl"
+    end
+
+    local ang = SS.ToAngle(savedInfo.ang)
+    local phantom = SS.MakePhantomModel(model, pos, Angle(0, ang.y, 0))
+    if not phantom then return nil end
+
+    local data = { phantom = phantom, steamID = steamID, pos = pos, ang = ang, model = model }
+    SED.PlayerPhantoms[steamID] = data
+    return data
+end
+
+function Phantom.RefreshModels()
+    local mapName = game.GetMap()
+    local byMap = RARELOAD.playerPositions and RARELOAD.playerPositions[mapName]
+    local lp = LocalPlayer()
+    if not IsValid(lp) then return end
+    local origin = lp:GetPos()
+
+    if byMap then
+        for steamID, savedInfo in pairs(byMap) do
+            if istable(savedInfo) then
+                local pos = SS.ToVector(savedInfo.pos)
+                if pos and origin:DistToSqr(pos) <= PLAYER_PHANTOM_CULL_SQR then
+                    EnsurePlayerPhantom(steamID, savedInfo)
+                end
+            end
+        end
+    end
+
+    for steamID, data in pairs(SED.PlayerPhantoms) do
+        local savedInfo = byMap and byMap[steamID]
+        local keep = savedInfo and IsValid(data.phantom) and data.pos and
+            origin:DistToSqr(data.pos) <= PLAYER_PHANTOM_CULL_SQR
+        if not keep then
+            if IsValid(data.phantom) then data.phantom:Remove() end
+            SED.PlayerPhantoms[steamID] = nil
+            SED.PhantomSavedRecords[steamID] = nil
+        end
+    end
+end
+
+function Phantom.UpdateModelVisibility()
+    local reveal = SS.DebugEnabled() and SS.HasViewPhantomPerm()
+    for steamID, data in pairs(SED.PlayerPhantoms) do
+        if IsValid(data.phantom) then
+            local show = false
+            if reveal then
+                local owner = player.GetBySteamID(steamID)
+                if not IsValid(owner) then
+                    show = true
+                elseif owner:GetPos():DistToSqr(data.pos) > PLAYER_MOVED_AWAY_SQR then
+                    show = true
+                end
+            end
+            SS.SetPhantomRevealed(data.phantom, show)
+        end
+    end
+end
+
+function Phantom.RemoveAllModels()
+    for steamID, data in pairs(SED.PlayerPhantoms) do
+        if IsValid(data.phantom) then data.phantom:Remove() end
+        SED.PlayerPhantoms[steamID] = nil
+    end
+    table.Empty(SED.TrackedPhantoms)
+end
+
 function Phantom.InjectTracked(mapName)
-    if not HasViewPhantomPermission() then
-        for ent in pairs(SED.TrackedPhantoms) do SED.TrackedPhantoms[ent] = nil end
+    if not SS.HasViewPhantomPerm() then
+        Phantom.RemoveAllModels()
+        if SED.PhantomSavedRecords then table.Empty(SED.PhantomSavedRecords) end
         return
     end
-    if not RARELOAD.Phantom then return end
 
     mapName = mapName or game.GetMap()
 
@@ -338,13 +411,54 @@ function Phantom.InjectTracked(mapName)
         end
     end
 
-    for steamID, data in pairs(RARELOAD.Phantom) do
+    for steamID, data in pairs(SED.PlayerPhantoms) do
         if IsValid(data.phantom) then
-            SED.PhantomSavedRecords[steamID] = Phantom.BuildSavedRecord(steamID, data, mapName)
+            local owner = player.GetBySteamID(steamID)
+            SED.PhantomSavedRecords[steamID] = Phantom.BuildSavedRecord(steamID, { ply = owner }, mapName)
             SED.TrackedPhantoms[data.phantom] = steamID
         end
     end
 end
+
+local nextModelRefresh, nextModelVis = 0, 0
+
+hook.Add("Think", "RARELOAD_PlayerPhantom_Tick", function()
+    if not SS.DebugEnabled() then
+        if next(SED.PlayerPhantoms) then Phantom.RemoveAllModels() end
+        return
+    end
+
+    local now = CurTime()
+    if now >= nextModelRefresh then
+        Phantom.RefreshModels()
+        nextModelRefresh = now + 1.0
+    end
+    if now >= nextModelVis then
+        Phantom.UpdateModelVisibility()
+        nextModelVis = now + 0.5
+    end
+end)
+
+hook.Add("RareloadPlayerPositionsUpdated", "RARELOAD_PlayerPhantom_Reset", function(mapName)
+    if mapName ~= game.GetMap() then return end
+    Phantom.RemoveAllModels()
+    if SED.PhantomSavedRecords then table.Empty(SED.PhantomSavedRecords) end
+    nextModelRefresh = 0
+end)
+
+hook.Add("PlayerDisconnected", "RARELOAD_PlayerPhantom_Cleanup", function(ply)
+    if not IsValid(ply) then return end
+    local steamID = ply:SteamID()
+    local data = SED.PlayerPhantoms[steamID]
+    if data then
+        if IsValid(data.phantom) then data.phantom:Remove() end
+        SED.PlayerPhantoms[steamID] = nil
+    end
+    for ent, sid in pairs(SED.TrackedPhantoms) do
+        if sid == steamID then SED.TrackedPhantoms[ent] = nil end
+    end
+    SED.PhantomSavedRecords[steamID] = nil
+end)
 
 hook.Add("CreateMove", "RARELOAD_PhantomPanels_CamLock", function(cmd)
     if PhantomInteractionState.active or CurTime() - (SED.LeaveTime or 0) < 0.5 then
@@ -365,11 +479,6 @@ hook.Add("CreateMove", "RARELOAD_PhantomPanels_CamLock", function(cmd)
     cmd:SetViewAngles(ang)
 end)
 
-Phantom._initialized         = true
-Phantom.moveTypeNames        = moveTypeNames
-Phantom.CATEGORIES           = PHANTOM_CATEGORIES
-Phantom.BuildPhantomInfoData = Phantom.BuildPhantomInfoData
-Phantom.BuildSavedRecord     = Phantom.BuildSavedRecord
-Phantom.InjectTracked        = Phantom.InjectTracked
+Phantom._initialized = true
 
 return Phantom

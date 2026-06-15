@@ -153,15 +153,7 @@ function SED.QueueAllSavedPanels()
 
     local listCount = 0
 
-    -- Reverse map saved id -> live world object, so each phantom-anchored panel can show
-    -- live-drift data for its counterpart (if one currently exists in the world).
-    local liveByID = {}
-    for ent, id in pairs(SED.TrackedEntities) do
-        if IsValid(ent) then liveByID[id] = ent end
-    end
-    for npc, id in pairs(SED.TrackedNPCs) do
-        if IsValid(npc) then liveByID[id] = npc end
-    end
+    local liveByID = SS.BuildLiveByID()
 
     listCount = CollectObjectPhantoms(eyePos, eyeForward, listCount, liveByID)
 

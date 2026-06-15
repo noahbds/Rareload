@@ -1,9 +1,7 @@
-local function IsClientDebugEnabled()
-    if RARELOAD and RARELOAD.GetClientDebugEnabled then
-        local ok, enabled = pcall(RARELOAD.GetClientDebugEnabled)
-        if ok then return enabled == true end
-    end
-    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled == true
+local SS = SED.Shared
+if not (SS and SS._initialized) then
+    include("rareload/client/saved_entity_display/SED_shared.lua")
+    SS = SED.Shared
 end
 
 hook.Add("OnEntityCreated", "RARELOAD_TrackSavedEntities", function(ent)
@@ -83,7 +81,7 @@ hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", func
     if bDrawingDepth or bDrawingSkybox then return end
     if render.GetRenderTarget() ~= nil then return end
 
-    if not IsClientDebugEnabled() then return end
+    if not SS.DebugEnabled() then return end
 
     local hasViewSEDPerm = true
     local lp = LocalPlayer()

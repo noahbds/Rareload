@@ -3,7 +3,6 @@ SED = SED or {}
 SED.Shared = SED.Shared or {}
 
 local SS = SED.Shared
-if SS._initialized then return SS end
 
 local RS = SED.RenderShared
 if not (RS and RS._initialized) then
@@ -136,6 +135,76 @@ function SS.CleanCaches(now, maxSize, ...)
         SS.PurgeExpired(tbl, now)
         SS.PruneOldest(tbl, maxSize, now)
     end
+end
+
+-- ── Phantom / common helpers (shared by the object- and player-phantom systems) ──
+
+function SS.DebugEnabled()
+    if RARELOAD and RARELOAD.GetClientDebugEnabled then
+        local ok, enabled = pcall(RARELOAD.GetClientDebugEnabled)
+        if ok then return enabled == true end
+    end
+    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled == true
+end
+
+function SS.HasViewPhantomPerm()
+    local lp = LocalPlayer()
+    if IsValid(lp) and RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
+        return RARELOAD.Permissions.HasPermission(lp, "VIEW_PHANTOM")
+    end
+    return true
+end
+
+function SS.ToVector(p)
+    if not p then return nil end
+    if isvector(p) then return p end
+    if p.x and p.y and p.z then return Vector(p.x, p.y, p.z) end
+    if p[1] and p[2] and p[3] then return Vector(p[1], p[2], p[3]) end
+    return nil
+end
+
+function SS.ToAngle(a)
+    if not a then return Angle(0, 0, 0) end
+    if isangle(a) then return a end
+    if a.p and a.y and a.r then return Angle(a.p, a.y, a.r) end
+    if a[1] and a[2] and a[3] then return Angle(a[1], a[2], a[3]) end
+    return Angle(0, 0, 0)
+end
+
+function SS.MakePhantomModel(model, pos, ang)
+    if not model or model == "" then return nil end
+    local phantom = ClientsideModel(model)
+    if not IsValid(phantom) then return nil end
+    phantom:SetPos(pos)
+    phantom:SetAngles(ang or Angle(0, 0, 0))
+    phantom:SetRenderMode(RENDERMODE_TRANSALPHA)
+    phantom:SetMoveType(MOVETYPE_NONE)
+    phantom:SetSolid(SOLID_NONE)
+    phantom:SetNoDraw(true)
+    phantom:SetColor(Color(0, 0, 0, 0))
+    return phantom
+end
+
+function SS.SetPhantomRevealed(phantom, show)
+    if not IsValid(phantom) then return end
+    if show then
+        phantom:SetColor(Color(255, 255, 255, 150))
+        phantom:SetNoDraw(false)
+    else
+        phantom:SetColor(Color(0, 0, 0, 0))
+        phantom:SetNoDraw(true)
+    end
+end
+
+function SS.BuildLiveByID()
+    local liveByID = {}
+    for ent, id in pairs(SED.TrackedEntities or {}) do
+        if IsValid(ent) then liveByID[id] = ent end
+    end
+    for npc, id in pairs(SED.TrackedNPCs or {}) do
+        if IsValid(npc) then liveByID[id] = npc end
+    end
+    return liveByID
 end
 
 SS._initialized = true

@@ -1,11 +1,13 @@
 -- RARELOAD Addon Initialization
 
 RARELOAD = RARELOAD or {}
-RARELOAD.version = "3.4"
+RARELOAD.version = "3.5"
 
 if SERVER then
     AddCSLuaFile("rareload/shared/permissions_def.lua")
     AddCSLuaFile("rareload/shared/rareload_convars.lua")
+    AddCSLuaFile("rareload/shared/rareload_tunables.lua")
+    AddCSLuaFile("rareload/client/cl_tunables_menu.lua")
     AddCSLuaFile("rareload/core/save_helpers/rareload_duplicator_utils.lua")
     AddCSLuaFile("rareload/shared/rareload_snapshot_utils.lua")
     AddCSLuaFile("rareload/utils/rareload_fonts.lua")
@@ -22,8 +24,7 @@ if SERVER then
     AddCSLuaFile("rareload/client/admin/admin_player_list.lua")
     AddCSLuaFile("rareload/client/admin/admin_permissions.lua")
     AddCSLuaFile("rareload/client/admin/admin_panel_main.lua")
-    AddCSLuaFile("rareload/client/phantom/cl_phantom_core.lua")
-    AddCSLuaFile("rareload/client/phantom/cl_phantom_hook.lua")
+    AddCSLuaFile("rareload/client/cl_data_sync.lua")
     AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_info_panel.lua")
     AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_json_editor.lua")
     AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_main.lua")
@@ -52,6 +53,7 @@ end
 
 include("rareload/shared/permissions_def.lua")
 include("rareload/shared/rareload_convars.lua")
+include("rareload/shared/rareload_tunables.lua")
 include("rareload/utils/rareload_data_utils.lua")
 
 if SERVER then
@@ -125,8 +127,8 @@ elseif CLIENT then
     include("rareload/ui/rareload_ui.lua")
     include("rareload/ui/rareload_toolscreen.lua")
     include("rareload/client/admin/admin_panel.lua")
-    include("rareload/client/phantom/cl_phantom_core.lua")
-    include("rareload/client/phantom/cl_phantom_hook.lua")
+    include("rareload/client/cl_data_sync.lua")
+    include("rareload/client/cl_tunables_menu.lua")
     include("rareload/client/entity_viewer/cl_entity_viewer_info_panel.lua")
     include("rareload/client/entity_viewer/cl_entity_viewer_json_editor.lua")
     include("rareload/client/entity_viewer/cl_entity_viewer_main.lua")
