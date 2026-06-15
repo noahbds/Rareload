@@ -1,17 +1,91 @@
 {
-    "Lua.workspace.library": [
-        "${addons}/garrysmod/module/library"
-    ],
+    // Open .lua with the built-in Lua grammar instead of the "glua" language: the
+    // glua grammar mis-tokenizes `--` comments (so they render like code) and
+    // sumneko/LuaLS only activates on language "lua". GLua operators are handled
+    // by Lua.runtime.nonstandardSymbol below.
+    "files.associations": {
+        "*.lua": "lua"
+    },
+
+    // ── Lua Language Server (sumneko.lua / LuaLS) ────────────────────────────
     "Lua.runtime.version": "LuaJIT",
-    "Lua.runtime.nonstandardSymbol": [
-        "continue"
-    ],
-    "Lua.diagnostics.disable": [
-        "duplicate-set-field"
-    ],
-    "Lua.workspace.checkThirdParty": false,
+    // Treat GLua's include/IncludeCS like dofile so their return values resolve.
     "Lua.runtime.special": {
         "include": "dofile",
         "IncludeCS": "dofile"
-    }
+    },
+    // Accept GLua-only syntax so it isn't reported as an error.
+    "Lua.runtime.nonstandardSymbol": [
+        "continue",
+        "//",
+        "/**/",
+        "&&",
+        "||",
+        "!",
+        "!="
+    ],
+    // GMod API definitions (glua-api-snippets / GLua extension stubs).
+    "Lua.workspace.library": [
+        "${addons}/garrysmod/module/library"
+    ],
+    "Lua.workspace.checkThirdParty": false,
+    // Globals this addon defines and reuses across files.
+    "Lua.diagnostics.globals": [
+        "RARELOAD",
+        "SED",
+        "RareloadUI",
+        "TOOL",
+        "SWEP",
+        "ENT",
+        "EFFECT",
+        "GM"
+    ],
+    "Lua.diagnostics.disable": [
+        "duplicate-set-field",
+        "lowercase-global",
+        "redefined-local",
+        "trailing-space"
+    ],
+    // Used only if you run the LuaLS formatter; matches this codebase's style.
+    "Lua.format.defaultConfig": {
+        "indent_style": "space",
+        "indent_size": "4",
+        "quote_style": "double",
+        "continuation_indent": "4"
+    },
+
+    // ── Editor ───────────────────────────────────────────────────────────────
+    "[lua]": {
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "editor.defaultFormatter": "sumneko.lua",
+        // Off by default: this code uses manual table alignment that an autoformat
+        // pass would churn. Flip to true once you're happy with the formatter.
+        "editor.formatOnSave": false,
+        "editor.rulers": [120]
+    },
+    // Force comments to a distinct, muted/italic style. Some themes (or a GLua
+    // grammar) render comments too close to code; this covers both the `--`/`//`
+    // punctuation and the comment body across every theme.
+    "editor.tokenColorCustomizations": {
+        "textMateRules": [
+            {
+                "scope": [
+                    "comment",
+                    "comment.line",
+                    "comment.block",
+                    "comment.line.double-dash.lua",
+                    "comment.block.lua",
+                    "punctuation.definition.comment.lua"
+                ],
+                "settings": {
+                    "foreground": "#6A9955",
+                    "fontStyle": "italic"
+                }
+            }
+        ]
+    },
+    "files.eol": "\n",
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true
 }

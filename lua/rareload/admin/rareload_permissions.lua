@@ -42,6 +42,7 @@ if SERVER then
 
             local offlineData = RARELOAD.Permissions.GetOfflinePlayerData()
             net.Start("RareloadSendOfflinePlayerData")
+            -- jsjsjsj
             net.WriteTable(offlineData)
             net.Send(ply)
         end)
