@@ -2,6 +2,7 @@ RARELOAD = RARELOAD or {}
 RARELOAD.playerPositions = RARELOAD.playerPositions or {}
 RARELOAD.SavedEntityDisplay = RARELOAD.SavedEntityDisplay or {}
 
+-- The SavedEntityDisplay (SED) module is responsible for managing and displaying information about saved entities and NPCs in the game. It maintains a cache of tracked entities, their properties, and handles user interactions with the display panel.
 SED = RARELOAD.SavedEntityDisplay
 SED.SAVED_ENTITIES_BY_ID = {}
 SED.SAVED_NPCS_BY_ID = {}

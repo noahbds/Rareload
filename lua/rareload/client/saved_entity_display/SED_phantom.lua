@@ -203,7 +203,8 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         local sorted = {}
         for class, count in pairs(counts) do sorted[#sorted + 1] = { class = class, count = count } end
         table.sort(sorted, function(a, b)
-            return a.count ~= b.count and a.count > b.count or a.class < b.class
+            if a.count ~= b.count then return a.count > b.count end
+            return a.class < b.class
         end)
 
         local showCount = math.min(#sorted, lodLevel == 1 and 10 or 5)

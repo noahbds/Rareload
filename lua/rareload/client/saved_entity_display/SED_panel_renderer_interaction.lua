@@ -68,7 +68,8 @@ function SED.PanelRendererHandleInteraction(ctx)
         cam_Start3D2D(hintPos, ang, scale * 0.8)
         if isFocused then
             SS.DrawHint("INTERACT MODE", 0, 0, HINT_INTERACT, HINT_INTERACT_BG)
-            SS.DrawHint("Up/Down Tabs | Left/Right/MWheel Scroll | Shift+E Exit", 0, 24, HINT_CONTROLS, HINT_CONTROLS_BG)
+            SS.DrawHint("Up/Down Tabs | Scroll Wheel | Shift+E Exit", 0, 24, HINT_CONTROLS, HINT_CONTROLS_BG)
+            SS.DrawHint("H Highlight | L Link Phantom", 0, 48, HINT_CONTROLS, HINT_CONTROLS_BG)
         elseif isCandidate then
             SS.DrawHint("Shift + E to Inspect", 0, 0, HINT_CANDIDATE, HINT_CANDIDATE_BG)
         end

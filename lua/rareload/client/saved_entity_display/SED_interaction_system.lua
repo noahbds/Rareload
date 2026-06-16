@@ -230,6 +230,26 @@ function SED.HandleInteractionInput()
                 end
                 SED.ScrollDelta = 0
             end
+
+            -- Highlight toggles for the panel currently being inspected.
+            if SED.Highlight then
+                local isPhantom = savedRec._isPhantom
+                local ownerID = savedRec._ownerSteamID or interactionID
+                if SED.KeyPressed(KEY_H) then
+                    if isPhantom then
+                        SED.Highlight.TogglePlayerToPhantom(ownerID)
+                    else
+                        SED.Highlight.ToggleSaved(interactionID, isNPC)
+                    end
+                end
+                if SED.KeyPressed(KEY_L) then
+                    if isPhantom then
+                        SED.Highlight.TogglePlayerToPhantom(ownerID)
+                    else
+                        SED.Highlight.ToggleLiveToPhantom(interactionID, isNPC)
+                    end
+                end
+            end
         end
     else
         if SED.CandidateEnt and SED.KeyPressed(SED.INTERACT_KEY) and SED.InteractModifierDown() and not SED.PlayerIsHoldingSomething() then

@@ -329,6 +329,36 @@ function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
         tabY = tabY + 54
     end
 
+    -- Highlight + phantom-link toggles for this saved object (in-world tracers).
+    local function MakeToggleButton(label, icon, accent, isActiveFn, onClick)
+        local btn = vgui.Create("DButton", frame)
+        btn:SetText("")
+        btn:SetSize(SIDEBAR_W - 16, 38)
+        btn.hov = 0
+        btn.Paint = function(self, w, h)
+            self.hov = Lerp(FrameTime() * 10, self.hov, self:IsHovered() and 1 or 0)
+            local active = isActiveFn()
+            draw.RoundedBox(8, 0, 0, w, h, active and ColorAlpha(accent, 235) or ColorAlpha(accent, 18 + 130 * self.hov))
+            local fg = active and color_white or THEME:LerpColor(self.hov, PAL.muted, PAL.text)
+            surface.SetDrawColor(fg)
+            surface.SetMaterial(Material(icon))
+            surface.DrawTexturedRect(14, h / 2 - 8, 16, 16)
+            draw.SimpleText(label, "RareloadBody", 38, h / 2, fg, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        end
+        btn.DoClick = onClick
+        return btn
+    end
+
+    local function HL() return SED and SED.Highlight end
+
+    local highlightBtn = MakeToggleButton("Highlight", "icon16/flag_yellow.png", PAL.accent,
+        function() return HL() and SED.Highlight.IsActive("saved", data.id) or false end,
+        function() if HL() then SED.Highlight.ToggleSaved(data.id, isNPCEntity) end end)
+
+    local linkBtn = MakeToggleButton("Link to Phantom", "icon16/connect.png", Color(0, 188, 212),
+        function() return HL() and SED.Highlight.IsActive("live2phantom", data.id) or false end,
+        function() if HL() then SED.Highlight.ToggleLiveToPhantom(data.id, isNPCEntity) end end)
+
     local deleteBtn = vgui.Create("DButton", frame)
     deleteBtn:SetText("")
     deleteBtn:SetPos(8, FRAME_H - 52)
@@ -339,6 +369,8 @@ function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
         contentArea:SetPos(SIDEBAR_W + 1, HEADER_H + 1)
         contentArea:SetSize(w - SIDEBAR_W - 1, h - HEADER_H - 1)
         closeBtn:SetPos(w - 44, (HEADER_H - 32) / 2)
+        highlightBtn:SetPos(8, h - 52 - 86)
+        linkBtn:SetPos(8, h - 52 - 43)
         deleteBtn:SetPos(8, h - 52)
     end
 

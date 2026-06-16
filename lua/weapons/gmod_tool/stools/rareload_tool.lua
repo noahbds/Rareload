@@ -372,6 +372,19 @@ function TOOL.BuildCPanel(panel)
     end
 
     -- ═══════════════════════════════════════════════════════════════
+    -- HIGHLIGHT & TRACERS CATEGORY
+    -- ═══════════════════════════════════════════════════════════════
+    local highlightCategory = RareloadUI.CreateCategory(panel, "Highlight & Tracers", "icon16/eye.png", false)
+    local function addHighlightButton(label, icon, cmd, color)
+        highlightCategory:AddItem(RareloadUI.CreateModernButton(
+            highlightCategory.Content, label, icon, function() RunConsoleCommand(cmd) end, color))
+    end
+    addHighlightButton("Highlight All Saved", "icon16/flag_yellow.png", "rareload_highlight_all", Color(255, 193, 7))
+    addHighlightButton("Link All Live to Phantom", "icon16/connect.png", "rareload_highlight_link_all", Color(0, 188, 212))
+    addHighlightButton("Highlight Player Phantoms", "icon16/user_green.png", "rareload_highlight_players", Color(76, 175, 80))
+    addHighlightButton("Clear Highlights", "icon16/cross.png", "rareload_highlight_clear", Color(158, 158, 158))
+
+    -- ═══════════════════════════════════════════════════════════════
     -- DEBUG TOOLS CATEGORY
     -- ═══════════════════════════════════════════════════════════════
     if RARELOAD.CheckPermission(LocalPlayer(), "DEBUG_MENU") then
