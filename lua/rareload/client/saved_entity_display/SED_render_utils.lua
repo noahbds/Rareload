@@ -1,12 +1,5 @@
 -- Rendering utilities and entity bounds calculation
 
-function SED.GetNearestDistanceSqr(ent, eyePos, renderParams)
-    if (not IsValid(ent)) or (not renderParams) then return math.huge, ent and ent:GetPos() or eyePos end
-    local centerLocal = (renderParams.obbMin + renderParams.obbMax) * 0.5
-    local centerWorld = ent.LocalToWorld and ent:LocalToWorld(centerLocal) or ent:GetPos()
-    return eyePos:DistToSqr(centerWorld), centerWorld
-end
-
 function SED.CalculateEntityRenderParams(ent)
     if not IsValid(ent) then return nil end
 
@@ -41,62 +34,23 @@ function SED.CalculateEntityRenderParams(ent)
             local mins, maxs = ent:GetModelBounds()
             if mins and maxs then
                 obbMin, obbMax = mins, maxs
-                boundsValid = true
             end
         end
     end
 
     local size = obbMax - obbMin
     local maxDimension = math.max(size.x, size.y, size.z)
-    local volume = size.x * size.y * size.z
-    local isLarge = maxDimension > SED.LARGE_ENTITY_THRESHOLD
-    local isMassive = maxDimension > SED.MASSIVE_ENTITY_THRESHOLD
-    local baseDrawDist
 
-    if isMassive then
-        baseDrawDist = math.Clamp(SED.LARGE_ENTITY_DRAW_DISTANCE + maxDimension * 1.2, SED.LARGE_ENTITY_DRAW_DISTANCE,
-            8000)
-    elseif isLarge then
-        baseDrawDist = SED.LARGE_ENTITY_DRAW_DISTANCE
-    else
-        baseDrawDist = SED.BASE_DRAW_DISTANCE
-    end
-
-    local drawDistanceSqr = baseDrawDist * baseDrawDist
     local sizeMultiplier = math.Clamp(1 + (maxDimension - 100) / 1000, 0.5, 3.0)
-    local baseScale = SED.BASE_SCALE / math.sqrt(sizeMultiplier)
-    baseScale = math.Clamp(baseScale, SED.MIN_SCALE, SED.MAX_SCALE)
-
-    local entityHeight = math.max(30, size.z)
-    local buffer = math.max(15, entityHeight * 0.15)
-
-    if isMassive then
-        buffer = math.max(50, entityHeight * 0.25)
-    end
-
-    local worldTopZ
-    if ent.LocalToWorld then
-        local centerLocal = (obbMin + obbMax) * 0.5
-        local topLocal = Vector(centerLocal.x, centerLocal.y, obbMax.z)
-        worldTopZ = ent:LocalToWorld(topLocal).z
-    else
-        worldTopZ = ent:GetPos().z + size.z
-    end
+    local baseScale = math.Clamp(SED.BASE_SCALE / math.sqrt(sizeMultiplier), SED.MIN_SCALE, SED.MAX_SCALE)
 
     local cache_entry = {
         obbMin = obbMin,
         obbMax = obbMax,
         size = size,
         maxDimension = maxDimension,
-        volume = volume,
-        isLarge = isLarge,
-        isMassive = isMassive,
-        drawDistanceSqr = drawDistanceSqr,
+        drawDistanceSqr = SED.DRAW_DISTANCE_SQR,
         baseScale = baseScale,
-        entityHeight = entityHeight,
-        buffer = buffer,
-        boundsValid = boundsValid,
-        worldTopZ = worldTopZ,
         expires = now + 2.0,
         lastPos = ent:GetPos()
     }

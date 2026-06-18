@@ -1,22 +1,21 @@
--- RARELOAD Addon Initialization
-
-RARELOAD = RARELOAD or {}
-RARELOAD.version = "3.5"
+RARELOAD         = RARELOAD or {}
+RARELOAD.version = "3.6"
 
 if SERVER then
     AddCSLuaFile("rareload/shared/permissions_def.lua")
     AddCSLuaFile("rareload/shared/rareload_convars.lua")
     AddCSLuaFile("rareload/shared/rareload_tunables.lua")
-    AddCSLuaFile("rareload/client/cl_tunables_menu.lua")
-    AddCSLuaFile("rareload/core/save_helpers/rareload_duplicator_utils.lua")
     AddCSLuaFile("rareload/shared/rareload_snapshot_utils.lua")
-    AddCSLuaFile("rareload/utils/rareload_fonts.lua")
+    AddCSLuaFile("rareload/core/save_helpers/rareload_duplicator_utils.lua")
     AddCSLuaFile("rareload/utils/rareload_data_utils.lua")
+    AddCSLuaFile("rareload/utils/rareload_fonts.lua")
     AddCSLuaFile("rareload/client/shared/theme_utils.lua")
     AddCSLuaFile("rareload/client/shared/depth_sorted_renderer.lua")
-    AddCSLuaFile("rareload/client/cl_player_settings.lua")
     AddCSLuaFile("rareload/ui/rareload_ui.lua")
     AddCSLuaFile("rareload/ui/rareload_toolscreen.lua")
+    AddCSLuaFile("rareload/client/cl_tunables_menu.lua")
+    AddCSLuaFile("rareload/client/cl_player_settings.lua")
+    AddCSLuaFile("rareload/client/cl_data_sync.lua")
     AddCSLuaFile("rareload/client/admin/admin_panel.lua")
     AddCSLuaFile("rareload/client/admin/admin_theme.lua")
     AddCSLuaFile("rareload/client/admin/admin_networking.lua")
@@ -24,16 +23,14 @@ if SERVER then
     AddCSLuaFile("rareload/client/admin/admin_player_list.lua")
     AddCSLuaFile("rareload/client/admin/admin_permissions.lua")
     AddCSLuaFile("rareload/client/admin/admin_panel_main.lua")
-    AddCSLuaFile("rareload/client/cl_data_sync.lua")
-    AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_info_panel.lua")
-    AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_json_editor.lua")
-    AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_main.lua")
     AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_theme.lua")
     AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_utils.lua")
+    AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_main.lua")
+    AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_info_panel.lua")
+    AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_json_editor.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_init.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_shared.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_entity_tracking.lua")
-    AddCSLuaFile("rareload/client/saved_entity_display/SED_render_utils.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_panel_builder_utils.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_panel_builder_collectors.lua")
@@ -42,6 +39,7 @@ if SERVER then
     AddCSLuaFile("rareload/client/saved_entity_display/SED_panel_renderer_draw.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_panel_renderer_interaction.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_panel_renderer.lua")
+    AddCSLuaFile("rareload/client/saved_entity_display/SED_render_utils.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_panel_rtt.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_panel_queue.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_interaction_system.lua")
@@ -49,7 +47,6 @@ if SERVER then
     AddCSLuaFile("rareload/client/saved_entity_display/SED_object_phantom.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_highlight.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_hooks.lua")
-    AddCSLuaFile("rareload/client/saved_entity_display/SED_loader.lua")
 end
 
 include("rareload/shared/permissions_def.lua")
@@ -64,14 +61,15 @@ if SERVER then
     include("rareload/core/sv_rareload.lua")
     include("rareload/core/sv_player_settings.lua")
     include("rareload/core/sv_rareload_hooks.lua")
-    include("rareload/core/sv_sed_npc_freeze.lua")
+    include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
     include("rareload/core/save_helpers/rareload_save_ammo.lua")
-    include("rareload/core/save_helpers/rareload_save_entities.lua")
     include("rareload/core/save_helpers/rareload_save_inventory.lua")
-    include("rareload/core/save_helpers/rareload_save_npcs.lua")
     include("rareload/core/save_helpers/rareload_save_vehicle_state.lua")
     include("rareload/core/save_helpers/rareload_save_vehicles.lua")
+    include("rareload/core/save_helpers/rareload_save_entities.lua")
+    include("rareload/core/save_helpers/rareload_save_npcs.lua")
     include("rareload/core/save_helpers/rareload_position_history.lua")
+    include("rareload/core/save_helpers/rareload_save_point.lua")
     include("rareload/core/respawn_handlers/sv_rareload_handler_entities.lua")
     include("rareload/core/respawn_handlers/sv_rareload_handler_global_inventory.lua")
     include("rareload/core/respawn_handlers/sv_rareload_handler_inventory.lua")
@@ -109,18 +107,12 @@ if SERVER then
     include("rareload/anti_stuck/sv_anti_stuck_methods_loader.lua")
     include("rareload/anti_stuck/sv_anti_stuck_core.lua")
     include("rareload/anti_stuck/sv_anti_stuck_resolver.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_commands.lua")
     include("rareload/anti_stuck/sv_anti_stuck_system.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_init.lua")
     include("rareload/core/sv_entity_viewer.lua")
-    include("weapons/gmod_tool/stools/rareload_tool.lua")
-    print("[RARELOAD] Server-side files loaded successfully!")
+
 elseif CLIENT then
     include("rareload/utils/rareload_fonts.lua")
-
-    if RARELOAD.RegisterFonts then
-        RARELOAD.RegisterFonts()
-    end
+    if RARELOAD.RegisterFonts then RARELOAD.RegisterFonts() end
 
     include("rareload/client/shared/theme_utils.lua")
     include("rareload/client/shared/depth_sorted_renderer.lua")
@@ -133,15 +125,29 @@ elseif CLIENT then
     include("rareload/client/entity_viewer/cl_entity_viewer_info_panel.lua")
     include("rareload/client/entity_viewer/cl_entity_viewer_json_editor.lua")
     include("rareload/client/entity_viewer/cl_entity_viewer_main.lua")
-    include("rareload/client/entity_viewer/cl_entity_viewer_theme.lua")
-    include("rareload/client/entity_viewer/cl_entity_viewer_utils.lua")
-    include("rareload/client/saved_entity_display/SED_loader.lua")
+    include("rareload/client/saved_entity_display/SED_init.lua")
+    include("rareload/client/saved_entity_display/SED_shared.lua")
+    include("rareload/client/saved_entity_display/SED_entity_tracking.lua")
+    include("rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
+    include("rareload/client/saved_entity_display/SED_panel_builder_utils.lua")
+    include("rareload/client/saved_entity_display/SED_panel_builder_collectors.lua")
+    include("rareload/client/saved_entity_display/SED_panel_builder.lua")
+    include("rareload/client/saved_entity_display/SED_panel_renderer_context.lua")
+    include("rareload/client/saved_entity_display/SED_panel_renderer_draw.lua")
+    include("rareload/client/saved_entity_display/SED_panel_renderer_interaction.lua")
+    include("rareload/client/saved_entity_display/SED_panel_renderer.lua")
+    include("rareload/client/saved_entity_display/SED_render_utils.lua")
+    include("rareload/client/saved_entity_display/SED_panel_rtt.lua")
+    include("rareload/client/saved_entity_display/SED_panel_queue.lua")
+    include("rareload/client/saved_entity_display/SED_interaction_system.lua")
     include("rareload/client/saved_entity_display/SED_phantom.lua")
+    include("rareload/client/saved_entity_display/SED_object_phantom.lua")
+    include("rareload/client/saved_entity_display/SED_highlight.lua")
+    include("rareload/client/saved_entity_display/SED_hooks.lua")
+
     net.Receive("RareloadDebugMessage", function()
         print(net.ReadString())
     end)
-
-    print("[RARELOAD] Client-side files loaded successfully!")
 end
 
 if SERVER then
@@ -158,4 +164,4 @@ if SERVER then
     end)
 end
 
-print("[RARELOAD] Initialization complete - Version " .. RARELOAD.version)
+print("[RARELOAD] Initialization complete - v" .. RARELOAD.version)

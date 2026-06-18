@@ -1,8 +1,4 @@
-local SS = SED.Shared
-if not (SS and SS._initialized) then
-    include("rareload/client/saved_entity_display/SED_shared.lua")
-    SS = SED.Shared
-end
+local SS = SED.Require("Shared", "rareload/client/saved_entity_display/SED_shared.lua")
 
 local queueItemPool     = {}
 local queueItemPoolSize = 0
@@ -41,7 +37,8 @@ local function GetRenderData()
     else
         rdata = {}
         rdata.fn = function()
-            SED.DrawSavedPanel(rdata.ent, rdata.saved, rdata.isNPC, rdata.renderParams, rdata.distSqr, rdata.liveEnt)
+            SED.DrawSavedPanel(rdata.ent, rdata.saved, rdata.isNPC, rdata.renderParams, rdata.distSqr,
+                rdata.liveEnt, rdata.stackIndex)
         end
     end
     return rdata
@@ -54,6 +51,7 @@ local function RecycleRenderData()
         rdata.saved                      = nil
         rdata.renderParams               = nil
         rdata.liveEnt                    = nil
+        rdata.stackIndex                 = nil
         sedRenderPoolSize                = sedRenderPoolSize + 1
         sedRenderPool[sedRenderPoolSize] = rdata
         sedActiveRender[i]               = nil
@@ -63,7 +61,6 @@ end
 
 local BOOTSTRAP_W = 520
 local BOOTSTRAP_H = 280
-local BOOTSTRAP_W_LARGE = 620
 
 local math_sqrt = math.sqrt
 
@@ -74,14 +71,11 @@ local function SortQueue(a, b)
     return a.priority < b.priority
 end
 
-local function PanelAnchorZ(rp, posZ)
-    local topZ = (rp and rp.worldTopZ) or (posZ + 40)
-    local buf  = (rp and rp.buffer) or 20
-    local mult = 0.45
-    if rp then
-        if rp.isMassive then mult = 1.0 elseif rp.isLarge then mult = 0.7 end
-    end
-    return topZ + buf * mult
+local function PanelAnchorZ(rp, posZ, eyeZ)
+    local sizeZ  = (rp and rp.size and rp.size.z) or 80
+    local band   = math.max(SED.PANEL_EYE_BAND or 150, sizeZ)
+    local center = posZ + sizeZ * 0.5
+    return math.Clamp(eyeZ, center - band, center + band)
 end
 
 local function IsAimingEstimatedPanel(ent, renderParams, eyePos, eyeForward)
@@ -95,7 +89,7 @@ local function IsAimingEstimatedPanel(ent, renderParams, eyePos, eyeForward)
     local distance = math.sqrt(panelDistSqr)
     local scale    = SS.PanelScale(renderParams, distance)
     local ang      = SS.FacingAngle(toPanel)
-    local estW     = (renderParams and renderParams.isLarge) and BOOTSTRAP_W_LARGE or BOOTSTRAP_W
+    local estW     = BOOTSTRAP_W
 
     local hit      = SS.PanelHitTest(panelCenter, ang, scale, estW, BOOTSTRAP_H, eyePos, eyeForward)
     return hit, panelDistSqr
@@ -190,7 +184,7 @@ function SED.QueueAllSavedPanels()
     if listCount == 0 then return end
 
     if not SED.InteractionState.active then
-        local distThresholdSqr = 250000
+        local distThresholdSqr = SED.INTERACT_DIST_SQR
         local efx, efy, efz = eyeForward.x, eyeForward.y, eyeForward.z
         local epx, epy, epz = eyePos.x, eyePos.y, eyePos.z
 
@@ -201,7 +195,7 @@ function SED.QueueAllSavedPanels()
                 local p = item.pos
                 local dx = p.x - epx
                 local dy = p.y - epy
-                local dz = PanelAnchorZ(item.renderParams, p.z) - epz
+                local dz = PanelAnchorZ(item.renderParams, p.z, epz) - epz
                 local len2 = dx * dx + dy * dy + dz * dz
                 if len2 > 1 then
                     local d = dx * efx + dy * efy + dz * efz
@@ -233,6 +227,22 @@ function SED.QueueAllSavedPanels()
 
     local maxQueue = math.min(listCount, SED.MAX_DRAW_PER_FRAME)
 
+    local clusterSqr = (SED.PANEL_CLUSTER_DIST or 150) ^ 2
+    for i = 1, maxQueue do
+        local item = queueList[i]
+        local stack = 0
+        local p = item.pos
+        for j = 1, i - 1 do
+            local b = queueList[j]
+            local dx, dy = p.x - b.pos.x, p.y - b.pos.y
+            if (dx * dx + dy * dy) < clusterSqr then
+                local bs = (b.stackIndex or 0) + 1
+                if bs > stack then stack = bs end
+            end
+        end
+        item.stackIndex = stack
+    end
+
     for i = 1, maxQueue do
         local item = queueList[i]
         if item then
@@ -243,6 +253,7 @@ function SED.QueueAllSavedPanels()
             rdata.renderParams              = item.renderParams
             rdata.distSqr                   = item.distSqr
             rdata.liveEnt                   = item.liveEnt
+            rdata.stackIndex                = item.stackIndex
             rdata.opts                      = rdata.opts or { skipCull = true, distSqr = 0 }
             rdata.opts.distSqr              = item.distSqr
 

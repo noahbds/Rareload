@@ -1,7 +1,5 @@
 local AntiStuck = RARELOAD.AntiStuck
 
-include("rareload/anti_stuck/sv_anti_stuck_map.lua")
-
 function AntiStuck.TryMapEntities(pos, ply)
     if not IsValid(ply) then return nil end
     pos = AntiStuck.ToVector and AntiStuck.ToVector(pos or ply:GetPos()) or (pos or ply:GetPos())

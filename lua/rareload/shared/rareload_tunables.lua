@@ -72,10 +72,15 @@ RARELOAD.TunableDefs = {
         end,
     },
     {
-        key = "sed_large_draw_distance", label = "Large Panel Draw Distance", category = "Saved Display",
-        type = "int", min = 500, max = 6000, default = 2500, suffix = "u",
-        desc = "Draw distance for large/massive entities.",
-        apply = function(v) if CLIENT and SED then SED.LARGE_ENTITY_DRAW_DISTANCE = v end end,
+        key = "sed_interact_distance", label = "Panel Interact Distance", category = "Saved Display",
+        type = "int", min = 80, max = 600, default = 200, suffix = "u",
+        desc = "How close you must be to a saved-entity panel to open interaction mode.",
+        apply = function(v)
+            if CLIENT and SED then
+                SED.INTERACT_DIST = v
+                SED.INTERACT_DIST_SQR = v * v
+            end
+        end,
     },
 }
 

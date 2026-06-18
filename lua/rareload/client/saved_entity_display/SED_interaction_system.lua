@@ -68,20 +68,9 @@ function SED.EnterInteraction(ent, isNPC, id, options)
         SED.lpCache:DrawViewModel(false)
     end
 
-    if isNPC and IsValid(ent) and ent:IsNPC() then
-        net.Start("SED_FreezeNPC")
-        net.WriteUInt(ent:EntIndex(), 16)
-        net.SendToServer()
-    end
 end
 
 function SED.LeaveInteraction()
-    if SED.InteractionState.isNPC and IsValid(SED.InteractionState.ent) and SED.InteractionState.ent:IsNPC() then
-        net.Start("SED_UnfreezeNPC")
-        net.WriteUInt(SED.InteractionState.ent:EntIndex(), 16)
-        net.SendToServer()
-    end
-
     SED.InteractionState.active = false
     SED.InteractionState.ent = nil
     SED.InteractionState.id = nil
@@ -107,23 +96,7 @@ function SED.HandleInteractionInput()
             return
         end
 
-        if SED.InteractionState.kind == "phantom" then
-            local eyePos = SED.lpCache:EyePos()
-            local maxInteractDistSqr = SED.InteractionState.maxInteractDistSqr or (SED.DRAW_DISTANCE_SQR * 1.1)
-            return
-        end
-
-        local eyePos = SED.lpCache:EyePos()
-        local renderParams = SED.CalculateEntityRenderParams(ent)
-        local distSqr
-        if renderParams and (renderParams.isLarge or renderParams.isMassive) then
-            distSqr = select(1, SED.GetNearestDistanceSqr(ent, eyePos, renderParams))
-        else
-            distSqr = eyePos:DistToSqr(ent:GetPos())
-        end
-        local maxInteractDistSqr = renderParams and (renderParams.drawDistanceSqr * 1.25) or
-            (SED.DRAW_DISTANCE_SQR * 1.1)
-        if distSqr > maxInteractDistSqr then
+        if SED.lpCache:EyePos():DistToSqr(ent:GetPos()) > SED.DRAW_DISTANCE_SQR then
             SED.LeaveInteraction()
             return
         end

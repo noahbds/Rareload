@@ -1,7 +1,5 @@
 if not SERVER then return end
 
-include("sv_deepcopy_utils.lua")
-
 RARELOAD = RARELOAD or {}
 RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 local AntiStuck = RARELOAD.AntiStuck

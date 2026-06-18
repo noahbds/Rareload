@@ -1,23 +1,7 @@
--- In-world highlight / tracer system for saved objects.
---
--- Three highlight kinds, all toggled per-target:
---   saved          : a beam from the player to a saved entity/NPC's saved location (find it on the map)
---   live2phantom   : a beam from a live entity/NPC to its phantom (visualise how far it has drifted)
---   player2phantom : a beam from a player to their saved respawn phantom
---
--- Active highlights are resolved ONCE per frame into a cache (rebuilding the live-entity lookup a
--- single time), and the halo / 3D / HUD passes all consume that cache -- so cost scales with the
--- number of highlights, not with the number of render passes. Everything resolves fresh from the
--- live lookups each frame, so highlights follow moving objects and never hold stale references.
-
 SED = (RARELOAD and RARELOAD.SavedEntityDisplay) or SED
 if not SED then return end
 
-local SS = SED.Shared
-if not (SS and SS._initialized) then
-    include("rareload/client/saved_entity_display/SED_shared.lua")
-    SS = SED.Shared
-end
+local SS = SED.Require("Shared", "rareload/client/saved_entity_display/SED_shared.lua")
 
 local Highlight = SED.Highlight or {}
 SED.Highlight   = Highlight
@@ -25,7 +9,7 @@ SED.Highlights  = SED.Highlights or {}
 
 local BEAM_MAT  = Material("trails/laser")
 local GLOW_MAT  = Material("sprites/light_glow02_add")
-local MAX_LABELS = 16 -- cap on-screen labels/arrows so "highlight all" doesn't bury the HUD
+local MAX_LABELS = 16
 
 local KIND_SAVED = "saved"
 local KIND_L2P   = "live2phantom"
@@ -40,12 +24,11 @@ local COLORS = {
 local math_floor, math_sqrt, math_Clamp = math.floor, math.sqrt, math.Clamp
 local IsValid = IsValid
 
--- Reusable render scratch objects (avoid per-beam/per-orb allocations each frame).
 local _beamCol = Color(255, 255, 255, 255)
 local _orbCol  = Color(255, 255, 255, 255)
 local _orbPos  = Vector(0, 0, 0)
 
-local HALO_CAP = 24 -- halos are the costliest pass; cap to the nearest few on a big "highlight all"
+local HALO_CAP = 24
 local function ByDistAsc(a, b) return a.dist < b.dist end
 
 local function Key(kind, id) return kind .. "\1" .. tostring(id) end
@@ -53,8 +36,6 @@ local function SavedRecord(id, isNPC)
     local lookup = isNPC and SED.SAVED_NPCS_BY_ID or SED.SAVED_ENTITIES_BY_ID
     return lookup and lookup[id] or nil
 end
-
--- ── Public API ────────────────────────────────────────────────────────────────
 
 function Highlight.IsActive(kind, id)
     return SED.Highlights[Key(kind, id)] ~= nil
@@ -122,15 +103,11 @@ function Highlight.Count()
     return n
 end
 
--- ── Per-frame resolution cache ──────────────────────────────────────────────
-
 local resolved   = {}
 local resolvedN  = 0
 local frameNum   = -1
 local frameEyePos
 
--- Fills a pooled slot table `s` for highlight `e`. Returns true if it should be drawn this frame.
--- Field assignments happen only after the early-out checks, so a returning-false slot is never read.
 local function FillResolved(s, e, liveByID, eyePos, byMap)
     if e.kind == KIND_SAVED then
         local rec = SavedRecord(e.id, e.isNPC)
@@ -205,8 +182,6 @@ local function GetResolved()
     return resolved, resolvedN
 end
 
--- ── Cleanup ───────────────────────────────────────────────────────────────────
-
 hook.Add("RareloadPlayerPositionsUpdated", "RARELOAD_Highlight_Prune", function(mapName)
     if mapName ~= game.GetMap() then return end
     for k, e in pairs(SED.Highlights) do
@@ -221,13 +196,10 @@ hook.Add("RareloadPlayerPositionsUpdated", "RARELOAD_Highlight_Prune", function(
     end
 end)
 
--- ── Rendering ─────────────────────────────────────────────────────────────────
-
 hook.Add("PreDrawHalos", "RARELOAD_Highlight_Halos", function()
     local list, n = GetResolved()
     if n == 0 then return end
 
-    -- On a large "highlight all", outline only the nearest HALO_CAP entities.
     local src = list
     if n > HALO_CAP then
         src = {}
@@ -258,7 +230,6 @@ hook.Add("PostDrawTranslucentRenderables", "RARELOAD_Highlight_Beams", function(
 
     local pulse = 0.65 + math.sin(CurTime() * 4) * 0.35
 
-    -- Draw through walls so a tracer can always be followed to an occluded / off-screen target.
     render.OverrideDepthEnable(true, false)
 
     local beamA = 220 * pulse
@@ -307,7 +278,6 @@ hook.Add("HUDPaint", "RARELOAD_Highlight_HUD", function()
     local sw, sh = ScrW(), ScrH()
     local cx, cy = sw * 0.5, sh * 0.5
 
-    -- Label only the nearest MAX_LABELS so a big "highlight all" doesn't smother the screen.
     local labelList = list
     if n > MAX_LABELS then
         labelList = {}
@@ -348,8 +318,6 @@ hook.Add("HUDPaint", "RARELOAD_Highlight_HUD", function()
         DrawLabel(n .. (n == 1 and " tracer" or " tracers"), cx, 26, COLORS[KIND_SAVED])
     end
 end)
-
--- ── Console commands (also used by the tool-menu buttons) ────────────────────
 
 concommand.Add("rareload_highlight_all", function() Highlight.HighlightAllSaved() end)
 concommand.Add("rareload_highlight_link_all", function() Highlight.LinkAllLiveToPhantom() end)

@@ -4,11 +4,7 @@ SED.Shared = SED.Shared or {}
 
 local SS = SED.Shared
 
-local RS = SED.RenderShared
-if not (RS and RS._initialized) then
-    include("rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
-    RS = SED.RenderShared
-end
+local RS = SED.Require("RenderShared", "rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
 
 function SS.DrawHint(text, x, y, textColor, bgColor)
     RS.surface_SetFont("Trebuchet18")
@@ -32,12 +28,8 @@ end
 function SS.PanelScale(renderParams, distance, minScale, maxScale)
     minScale        = minScale or SED.MIN_SCALE
     maxScale        = maxScale or SED.MAX_SCALE
-    local baseScale = renderParams and renderParams.baseScale or SED.BASE_SCALE
-    local farDist   = (renderParams and (renderParams.isLarge or renderParams.isMassive)) and 3000 or 2000
-    local distScale = math.Clamp(1 - distance / farDist, 0.3, 1.5)
-    local scale     = baseScale * distScale
-    if renderParams and renderParams.isMassive then scale = scale * 0.6 end
-    return math.Clamp(scale, minScale, maxScale)
+    local baseScale = (renderParams and renderParams.baseScale) or SED.BASE_SCALE
+    return math.Clamp(baseScale, minScale, maxScale)
 end
 
 function SS.CullFOV(worldPos, eyePos, eyeForward, distSqr, nearbyDistSqr, fovCosSqr)
@@ -61,27 +53,16 @@ function SS.PanelAimPos(ent, renderParams, eyePos)
 
     local obbCenterLocal = (renderParams.obbMin + renderParams.obbMax) * 0.5
     local worldCenter    = ent.LocalToWorld and ent:LocalToWorld(obbCenterLocal) or ent:GetPos()
-    local worldTopZ      = renderParams.worldTopZ
-    if not worldTopZ then
-        worldTopZ = worldCenter.z + ((renderParams.size and renderParams.size.z) or 40)
-    end
 
-    local buf = renderParams.buffer or 20
-    local baseZ
-    if renderParams.isMassive then
-        baseZ = worldTopZ + buf
-    elseif renderParams.isLarge then
-        baseZ = worldTopZ + buf * 0.7
-    else
-        baseZ = worldTopZ + buf * 0.45
-    end
+    local band  = math.max(SED.PANEL_EYE_BAND or 150, (renderParams.size and renderParams.size.z) or 80)
+    local baseZ = math.Clamp(eyePos.z, worldCenter.z - band, worldCenter.z + band)
 
     local basePos = Vector(worldCenter.x, worldCenter.y, baseZ)
     local horiz   = Vector(worldCenter.x - eyePos.x, worldCenter.y - eyePos.y, 0)
     if horiz:LengthSqr() < 1e-4 then return basePos end
 
     horiz:Normalize()
-    local outward = math.Clamp((renderParams.maxDimension or 40) * 0.35, 30, 600)
+    local outward = math.Clamp((renderParams.maxDimension or 40) * 0.35, 24, 400)
     return basePos - horiz * outward
 end
 
@@ -118,15 +99,21 @@ function SS.PurgeExpired(cache, now)
 end
 
 function SS.PruneOldest(cache, maxSize, now)
-    if not cache or table.Count(cache) <= maxSize then return end
-    local oldestTime, oldestKey = now, nil
+    if not cache then return end
+    local count = table.Count(cache)
+    if count <= maxSize then return end
+    local entries = {}
     for key, entry in pairs(cache) do
-        if entry and entry.expires and entry.expires < oldestTime then
-            oldestTime = entry.expires
-            oldestKey  = key
+        if entry and entry.expires then
+            entries[#entries + 1] = { key = key, expires = entry.expires }
         end
     end
-    if oldestKey then cache[oldestKey] = nil end
+    table.sort(entries, function(a, b) return a.expires < b.expires end)
+    for _, e in ipairs(entries) do
+        if count <= maxSize then break end
+        cache[e.key] = nil
+        count = count - 1
+    end
 end
 
 function SS.CleanCaches(now, maxSize, ...)
@@ -139,12 +126,19 @@ end
 
 -- ── Phantom / common helpers (shared by the object- and player-phantom systems) ──
 
+local _debugVal  = false
+local _debugTime = -1
+
 function SS.DebugEnabled()
+    local now = CurTime()
+    if now - _debugTime < 0.5 then return _debugVal end
+    _debugTime = now
     if RARELOAD and RARELOAD.GetClientDebugEnabled then
-        local ok, enabled = pcall(RARELOAD.GetClientDebugEnabled)
-        if ok then return enabled == true end
+        local ok, v = pcall(RARELOAD.GetClientDebugEnabled)
+        if ok then _debugVal = v == true; return _debugVal end
     end
-    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled == true
+    _debugVal = RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled == true
+    return _debugVal
 end
 
 function SS.HasViewPhantomPerm()

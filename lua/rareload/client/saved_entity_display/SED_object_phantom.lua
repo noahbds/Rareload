@@ -1,11 +1,7 @@
 SED = (RARELOAD and RARELOAD.SavedEntityDisplay) or SED
 if not SED then return end
 
-local SS = SED.Shared
-if not (SS and SS._initialized) then
-    include("rareload/client/saved_entity_display/SED_shared.lua")
-    SS = SED.Shared
-end
+local SS = SED.Require("Shared", "rareload/client/saved_entity_display/SED_shared.lua")
 
 SED.ObjectPhantoms = SED.ObjectPhantoms or {}
 
@@ -18,8 +14,7 @@ local VISIBILITY_INTERVAL = 0.5
 local MOVED_AWAY_DIST_SQR = 8 * 8
 
 local function CullDistanceSqr()
-    local large = SED.LARGE_ENTITY_DRAW_DISTANCE or 2500
-    return math.max(SED.DRAW_DISTANCE_SQR or (500 * 500), large * large)
+    return SED.PHANTOM_CULL_DIST_SQR
 end
 
 local function EnsurePhantom(id, rec, isNPC)

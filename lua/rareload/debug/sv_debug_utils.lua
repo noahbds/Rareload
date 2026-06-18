@@ -15,11 +15,6 @@ MoveTypeNames = {
     [11] = "MOVETYPE_CUSTOM",
 }
 
--- REMOVED: GetTimestamp() - use DEBUG_CONFIG.GetTimestamp() instead
--- REMOVED: FormatValue() - use RARELOAD.DataUtils.FormatValue() directly
--- REMOVED: AngleToDetailedString() - use RARELOAD.DataUtils.FormatAngleDetailed() directly
--- REMOVED: VectorToDetailedString() - use RARELOAD.DataUtils.FormatVectorDetailed() directly
-
 function TableToString(tbl, indent)
     if not tbl then return "nil" end
 
@@ -44,12 +39,6 @@ end
 function MoveTypeToString(moveType)
     return MoveTypeNames[moveType] or ("MOVETYPE_UNKNOWN (" .. tostring(moveType) .. ")")
 end
-
--- REMOVED: Old rate limiting system
--- - messageRateLimits table
--- - ShouldLimitMessage() function
--- - RARELOAD_CleanupRateLimits timer
--- Use DEBUG_CONFIG.CheckRateLimit() instead for new code
 
 function RARELOAD.Debug.GetPlayerInfoString(ply)
     if not IsValid(ply) then return "Invalid Player" end
@@ -151,10 +140,6 @@ function RARELOAD.Debug.ValidateJsonFile(filePath)
     end
     return true, result
 end
-
--- REMOVED: LogNetworkMessage() - use RARELOAD.Debug.Write() for network logging
--- REMOVED: SafeCall() - deprecated error wrapper, not used
--- REMOVED: DumpPlayerData() - use RARELOAD.Debug.Write() or LogMemoryUsage() instead
 
 function RARELOAD.Debug.SystemHealthCheck()
     if not DEBUG_CONFIG.ENABLED() then return end

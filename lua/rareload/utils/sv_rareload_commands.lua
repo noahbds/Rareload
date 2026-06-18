@@ -10,8 +10,6 @@ local function load_command(path)
 end
 
 concommand.Add("save_position", load_command("save_position"))
-concommand.Add("save_bot_position", load_command("save_bot_position"))
-concommand.Add("bot_spawn_entity", load_command("bot_spawn_entity"))
 concommand.Add("check_admin_status", load_command("check_admin_status"))
 
 concommand.Add("rareload_test_antistuck", function(ply, cmd, args)
@@ -38,7 +36,6 @@ concommand.Add("rareload_test_antistuck", function(ply, cmd, args)
     end
 end)
 
-util.AddNetworkString("RareloadEntityViewer_Teleport")
 util.AddNetworkString("RareloadEntityViewer_Delete")
 util.AddNetworkString("RareloadEntityViewer_DeleteMany")
 util.AddNetworkString("RareloadEntityViewer_DeleteResult")

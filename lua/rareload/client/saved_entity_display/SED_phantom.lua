@@ -7,21 +7,13 @@ SED.PlayerPhantoms      = SED.PlayerPhantoms or {}
 local Phantom           = SED.Phantom
 if Phantom._initialized then return Phantom end
 
-local RS = SED.RenderShared
-if not (RS and RS._initialized) then
-    include("rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
-    RS = SED.RenderShared
-end
+local RS = SED.Require("RenderShared", "rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
 if not (RS and RS._initialized) then
     ErrorNoHalt("[Rareload] Missing shared renderer state in SED_phantom.lua\n")
     return Phantom
 end
 
-local SS = SED.Shared
-if not (SS and SS._initialized) then
-    include("rareload/client/saved_entity_display/SED_shared.lua")
-    SS = SED.Shared
-end
+local SS = SED.Require("Shared", "rareload/client/saved_entity_display/SED_shared.lua")
 if not (SS and SS._initialized) then
     ErrorNoHalt("[Rareload] Missing SED.Shared in SED_phantom.lua\n")
     return Phantom
@@ -58,8 +50,7 @@ local PHANTOM_CATEGORIES      = {
     { "stats",     "Stats",     Color(147, 112, 219) }
 }
 
-local CACHE_LIFETIME          = 5
-local PhantomInteractionState = SED.InteractionState
+local CACHE_LIFETIME = 5
 
 function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
     lodLevel      = lodLevel or 1
@@ -459,25 +450,6 @@ hook.Add("PlayerDisconnected", "RARELOAD_PlayerPhantom_Cleanup", function(ply)
         if sid == steamID then SED.TrackedPhantoms[ent] = nil end
     end
     SED.PhantomSavedRecords[steamID] = nil
-end)
-
-hook.Add("CreateMove", "RARELOAD_PhantomPanels_CamLock", function(cmd)
-    if PhantomInteractionState.active or CurTime() - (SED.LeaveTime or 0) < 0.5 then
-        cmd:RemoveKey(IN_USE)
-    end
-    if not PhantomInteractionState.active then return end
-
-    if not IsValid(PhantomInteractionState.phantom) then return end
-
-    local lp = SED.lpCache or LocalPlayer()
-    if not IsValid(lp) then return end
-
-    local ang = PhantomInteractionState.lockAng
-    if not ang then
-        ang = lp:EyeAngles()
-        PhantomInteractionState.lockAng = ang
-    end
-    cmd:SetViewAngles(ang)
 end)
 
 Phantom._initialized = true

@@ -1,13 +1,4 @@
 if SERVER then
-    include("sv_deepcopy_utils.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_config.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_map.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_nav.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_cache.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_validation.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_methods_loader.lua")
-    include("rareload/anti_stuck/sv_anti_stuck_commands.lua")
-
     RARELOAD = RARELOAD or {}
     RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
     local AntiStuck = RARELOAD.AntiStuck

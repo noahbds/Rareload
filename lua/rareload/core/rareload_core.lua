@@ -54,8 +54,8 @@ function RARELOAD.SavePlayerPositionEntry(ply, playerData)
     return true
 end
 
-function RARELOAD.LoadPlayerPositions()
-    local mapName = game.GetMap()
+function RARELOAD.LoadPlayerPositions(mapName)
+    if not mapName then mapName = game.GetMap() end
     EnsurePlayerPositionsDirs(mapName)
 
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}

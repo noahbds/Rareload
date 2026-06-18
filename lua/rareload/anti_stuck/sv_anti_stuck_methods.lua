@@ -13,6 +13,10 @@ AntiStuck.UNSTUCK_METHODS = {
     FAILED = 3
 }
 
+local function newStats()
+    return { calls = 0, successes = 0, failures = 0, totalTime = 0, avgTime = 0, lastUsed = 0 }
+end
+
 local function ValidateMethodInterface(func)
     if type(func) ~= "function" then return false, "Not a function" end
 
@@ -71,14 +75,7 @@ function AntiStuck.RegisterMethod(name, func, config)
         registeredAt = os.time()
     }
 
-    AntiStuck.methodStats[name] = {
-        calls = 0,
-        successes = 0,
-        failures = 0,
-        totalTime = 0,
-        avgTime = 0,
-        lastUsed = 0
-    }
+    AntiStuck.methodStats[name] = newStats()
 
     if RARELOAD.Debug and RARELOAD.Debug.Write then
         RARELOAD.Debug.Write("anti_stuck", "INFO", 0, "Registered method: " .. name)
@@ -86,15 +83,6 @@ function AntiStuck.RegisterMethod(name, func, config)
         print("[RARELOAD ANTI-STUCK] Registered method: " .. name)
     end
     return true
-end
-
-function AntiStuck.GetMethod(name)
-    if not name then return nil end
-    local methodObj = AntiStuck.methodRegistry[name]
-    if methodObj then
-        return methodObj.func, methodObj
-    end
-    return nil
 end
 
 function AntiStuck.ExecuteMethod(methodName, originalPos, ply)
@@ -137,14 +125,7 @@ end
 
 function AntiStuck.ResetMethodStats(methodName)
     if methodName then
-        AntiStuck.methodStats[methodName] = {
-            calls = 0,
-            successes = 0,
-            failures = 0,
-            totalTime = 0,
-            avgTime = 0,
-            lastUsed = 0
-        }
+        AntiStuck.methodStats[methodName] = newStats()
     else
         for name in pairs(AntiStuck.methodStats) do
             AntiStuck.ResetMethodStats(name)

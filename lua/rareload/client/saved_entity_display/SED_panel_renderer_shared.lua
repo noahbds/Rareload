@@ -78,40 +78,44 @@ function RS.safeTextColor(value, fallback)
     return fallback
 end
 
-RS._clipCache = {}
+RS._clipCache     = {}
+RS._clipCacheSize = 0
+local CLIP_CACHE_MAX = 512
 
 function RS.clipTextToWidth(text, maxWidth)
     local t = tostring(text or "")
     if t == "" or maxWidth <= 0 then return "" end
 
     local cacheKey = t .. "_" .. maxWidth
-    if RS._clipCache[cacheKey] then return RS._clipCache[cacheKey] end
+    local cached = RS._clipCache[cacheKey]
+    if cached then return cached end
+
+    local function store(v)
+        if RS._clipCacheSize >= CLIP_CACHE_MAX then
+            RS._clipCache     = {}
+            RS._clipCacheSize = 0
+        end
+        RS._clipCache[cacheKey] = v
+        RS._clipCacheSize = RS._clipCacheSize + 1
+        return v
+    end
 
     local w = RS.surface_GetTextSize(t) or 0
-    if w <= maxWidth then
-        RS._clipCache[cacheKey] = t
-        return t
-    end
+    if w <= maxWidth then return store(t) end
 
-    local ellipsis = "..."
+    local ellipsis  = "..."
     local ellipsisW = RS.surface_GetTextSize(ellipsis) or 0
-    if ellipsisW >= maxWidth then
-        RS._clipCache[cacheKey] = ellipsis
-        return ellipsis
-    end
+    if ellipsisW >= maxWidth then return store(ellipsis) end
 
     local result = t
     while #result > 0 do
         result = string.sub(result, 1, #result - 1)
         if (RS.surface_GetTextSize(result) or 0) + ellipsisW <= maxWidth then
-            local finalRes = result .. ellipsis
-            RS._clipCache[cacheKey] = finalRes
-            return finalRes
+            return store(result .. ellipsis)
         end
     end
 
-    RS._clipCache[cacheKey] = ellipsis
-    return ellipsis
+    return store(ellipsis)
 end
 
 RS._initialized = true

@@ -3,11 +3,7 @@ if SED then
     SED.NPCPanelCache = {}
 end
 
-local RS = SED and SED.RenderShared
-if not (RS and RS._initialized) then
-    include("rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
-    RS = SED and SED.RenderShared
-end
+local RS = SED.Require("RenderShared", "rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
 
 include("rareload/client/saved_entity_display/SED_panel_builder_utils.lua")
 include("rareload/client/saved_entity_display/SED_panel_builder_collectors.lua")

@@ -10,9 +10,6 @@ if not PB then
     return
 end
 
--- Declarative spec for plain "first non-empty value" rows: { category, label, { source keys... } }.
--- These have no guards/transforms (add() already skips nil/""), and every label has an explicit
--- priority in CATEGORY_LABEL_ORDER, so batching them here never changes the final sort order.
 local SIMPLE_FIELDS = {
     { "ownership", "OwnerID",        { "ownerSteamID", "RareloadOwnerSteamID" } },
     { "ownership", "OwnerID64",      { "ownerSteamID64", "RareloadOwnerSteamID64" } },

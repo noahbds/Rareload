@@ -1,8 +1,4 @@
-local SS = SED.Shared
-if not (SS and SS._initialized) then
-    include("rareload/client/saved_entity_display/SED_shared.lua")
-    SS = SED.Shared
-end
+local SS = SED.Require("Shared", "rareload/client/saved_entity_display/SED_shared.lua")
 
 hook.Add("OnEntityCreated", "RARELOAD_TrackSavedEntities", function(ent)
     timer.Simple(0, function()
@@ -106,8 +102,3 @@ hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", func
     SED.HandleInteractionInput()
 end)
 
-hook.Add("OnPlayerChat", "SED_CleanupOnDisconnect", function()
-    if SED.InteractionState.active then
-        SED.LeaveInteraction()
-    end
-end)

@@ -1,20 +1,10 @@
-local RS = SED and SED.RenderShared
-if not (RS and RS._initialized) then
-    include("rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
-    RS = SED and SED.RenderShared
-end
-
+local RS = SED.Require("RenderShared", "rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
 if not (RS and RS._initialized) then
     ErrorNoHalt("[Rareload] Missing shared renderer state in SED_panel_renderer_context.lua\n")
     return
 end
 
-local SS = SED.Shared
-if not (SS and SS._initialized) then
-    include("rareload/client/saved_entity_display/SED_shared.lua")
-    SS = SED.Shared
-end
-
+local SS = SED.Require("Shared", "rareload/client/saved_entity_display/SED_shared.lua")
 if not (SS and SS._initialized) then
     ErrorNoHalt("[Rareload] Missing SED.Shared in SED_panel_renderer_context.lua\n")
     return
@@ -109,7 +99,7 @@ local function wrapText(cache, activeCat, text, maxWidth)
     return result
 end
 
-local function RebuildLayout(cache, lines, categories, activeCat, scrollTable, scrollKey, isLarge)
+local function RebuildLayout(cache, lines, categories, activeCat, scrollTable, scrollKey)
     local maxVisibleLines = SED.MAX_VISIBLE_LINES
 
     local width = cache.widths[activeCat]
@@ -128,7 +118,7 @@ local function RebuildLayout(cache, lines, categories, activeCat, scrollTable, s
                 if w2 > 500 then maxContentWidth = math_min(maxContentWidth, 700) end
             end
         end
-        width = math_Clamp(math_max(width, maxContentWidth) + SIDEBAR_WIDTH, 450, isLarge and 1000 or 850)
+        width = math_Clamp(math_max(width, maxContentWidth) + SIDEBAR_WIDTH, 450, 850)
         maxLabelW = math_min(maxLabelW, 230)
         cache.widths[activeCat] = width
         cache.maxLabelWidths = cache.maxLabelWidths or {}
@@ -219,7 +209,7 @@ local function RebuildLayout(cache, lines, categories, activeCat, scrollTable, s
     }
 end
 
-function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, precomputedDistSqr, liveEnt)
+function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, precomputedDistSqr, liveEnt, stackIndex)
     if not (IsValid(ent) and saved) then return nil end
 
     SED.lpCache = SED.lpCache or LocalPlayer()
@@ -324,7 +314,7 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
         and cache._ctxLive == liveTag
 
     if not staticValid then
-        RebuildLayout(cache, lines, categories, activeCat, scrollTable, cache._scrollKey, renderParams.isLarge)
+        RebuildLayout(cache, lines, categories, activeCat, scrollTable, cache._scrollKey)
         local layout = cache._layout
         local width = layout.width
         local panelHeight = layout.panelHeight
@@ -374,42 +364,19 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
 
     local panelHeight = ctx.panelHeight
     local distance = math_sqrt(distSqr)
-    local isLarge, isMassive = renderParams.isLarge, renderParams.isMassive
-
-    local distanceScale = math_Clamp(1 - (distance / (isLarge and 3000 or 2000)), 0.3, 1.5)
-    local scale = renderParams.baseScale * distanceScale
-    if isMassive then scale = scale * 0.6 end
-    scale = math_Clamp(scale, SED.MIN_SCALE, SED.MAX_SCALE)
-
+    local scale = SS.PanelScale(renderParams, distance)
+    local frameHeightWorldUnits = panelHeight * scale
     local obbCenterLocal = (renderParams.obbMin + renderParams.obbMax) * 0.5
     local worldCenter = ent.LocalToWorld and ent:LocalToWorld(obbCenterLocal) or pos
-    local worldTopZ = renderParams.worldTopZ or (pos.z + renderParams.size.z)
-    local frameHeightWorldUnits = panelHeight * scale
-
-    local baseZ
-    if isMassive then
-        baseZ = worldTopZ + renderParams.buffer + frameHeightWorldUnits * 0.5
-    elseif isLarge then
-        baseZ = worldTopZ + renderParams.buffer * 0.6 + frameHeightWorldUnits * 0.5
-    else
-        baseZ = worldTopZ + renderParams.buffer * 0.4 + frameHeightWorldUnits * 0.5
-    end
+    local band = math_max(SED.PANEL_EYE_BAND or 150, (renderParams.size and renderParams.size.z) or 80)
+    local baseZ = math_Clamp(eyePos.z, worldCenter.z - band, worldCenter.z + band)
+    baseZ = baseZ + (stackIndex or 0) * (frameHeightWorldUnits + 6)
 
     local horiz = Vector(worldCenter.x - eyePos.x, worldCenter.y - eyePos.y, 0)
     if horiz:LengthSqr() < 1e-4 then horiz = Vector(1, 0, 0) end
     horiz:Normalize()
-    local outwardAmount = math_Clamp(renderParams.maxDimension * 0.35, 30, 600)
+    local outwardAmount = math_Clamp(renderParams.maxDimension * 0.35, 24, 400)
     local drawPos = Vector(worldCenter.x, worldCenter.y, baseZ) - horiz * outwardAmount
-
-    if isLarge or isMassive then
-        local now = CurTime()
-        if not renderParams._traceTime or (now - renderParams._traceTime) > 0.15 then
-            renderParams._traceTime = now
-            local ok, tr = pcall(util.TraceLine, { start = eyePos, endpos = drawPos, filter = SED.lpCache })
-            renderParams._traceBlocked = ok and tr and tr.Hit and tr.Entity == ent
-        end
-        if renderParams._traceBlocked then drawPos = drawPos - horiz * (outwardAmount * 0.5) end
-    end
 
     local toPanel = drawPos - eyePos
     if toPanel:Length() < 10 then drawPos = eyePos + toPanel:GetNormalized() * 50 end

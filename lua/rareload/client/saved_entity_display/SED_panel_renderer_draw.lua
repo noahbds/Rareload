@@ -1,9 +1,4 @@
-local RS = SED and SED.RenderShared
-if not (RS and RS._initialized) then
-    include("rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
-    RS = SED and SED.RenderShared
-end
-
+local RS = SED.Require("RenderShared", "rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
 if not (RS and RS._initialized) then
     ErrorNoHalt("[Rareload] Missing shared renderer state in SED_panel_renderer_draw.lua\n")
     return

@@ -4,6 +4,16 @@ RARELOAD.SavedEntityDisplay = RARELOAD.SavedEntityDisplay or {}
 
 -- The SavedEntityDisplay (SED) module is responsible for managing and displaying information about saved entities and NPCs in the game. It maintains a cache of tracked entities, their properties, and handles user interactions with the display panel.
 SED = RARELOAD.SavedEntityDisplay
+
+function SED.Require(key, path)
+    local mod = SED[key]
+    if not (mod and mod._initialized) then
+        include(path)
+        mod = SED[key]
+    end
+    return mod
+end
+
 SED.SAVED_ENTITIES_BY_ID = {}
 SED.SAVED_NPCS_BY_ID = {}
 SED.TrackedEntities = {}
@@ -15,15 +25,18 @@ SED.RESCAN_INTERVAL = 0.5
 SED.INFO_CACHE_LIFETIME = 5.0
 SED.MAX_DRAW_PER_FRAME = 16
 SED.BASE_DRAW_DISTANCE = 500
-SED.LARGE_ENTITY_DRAW_DISTANCE = 2500
 SED.DRAW_DISTANCE_SQR = SED.BASE_DRAW_DISTANCE * SED.BASE_DRAW_DISTANCE
+SED.INTERACT_DIST = 200
+SED.INTERACT_DIST_SQR = SED.INTERACT_DIST * SED.INTERACT_DIST
+SED.PHANTOM_CULL_DIST = 10000
+SED.PHANTOM_CULL_DIST_SQR = SED.PHANTOM_CULL_DIST * SED.PHANTOM_CULL_DIST
 SED.BASE_SCALE = 0.11
 SED.MIN_SCALE = 0.05
 SED.MAX_SCALE = 0.25
+SED.PANEL_CLUSTER_DIST = 150
+SED.PANEL_EYE_BAND = 150
 SED.MAX_VISIBLE_LINES = 7
 SED.SCROLL_SPEED = 3
-SED.LARGE_ENTITY_THRESHOLD = 200
-SED.MASSIVE_ENTITY_THRESHOLD = 800
 SED.CULL_VIEW_CONE = true
 SED.FOV_COS_THRESHOLD = math.cos(math.rad(50))
 SED.FOV_COS_THRESHOLD_SQR = SED.FOV_COS_THRESHOLD * SED.FOV_COS_THRESHOLD

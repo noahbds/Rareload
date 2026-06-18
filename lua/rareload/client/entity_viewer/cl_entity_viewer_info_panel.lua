@@ -82,7 +82,7 @@ local function AddSectionLabel(parent, text)
     end
 end
 
-local function BuildInfoTab(contentPanel, data)
+local function BuildInfoTab(contentPanel, data, isNPC)
     contentPanel:Clear()
 
     local scroll = vgui.Create("DScrollPanel", contentPanel)
@@ -123,7 +123,7 @@ local function BuildInfoTab(contentPanel, data)
         end
     end
 
-    AddSectionLabel(scroll, "Transform")
+    AddSectionLabel(scroll, "Position & Orientation")
     if data.pos then
         local p = data.pos
         local px = (isvector(p) and p.x) or (istable(p) and p.x) or 0
@@ -137,6 +137,93 @@ local function BuildInfoTab(contentPanel, data)
         local ay = (isangle(a) and a.y) or (istable(a) and (a.y or a.yaw)) or 0
         local ar = (isangle(a) and a.r) or (istable(a) and (a.r or a.roll)) or 0
         AddDataRow(scroll, "Angles", string.format("%.2f, %.2f, %.2f", ap, ay, ar))
+    end
+
+    if data.ang or data.pos then
+        AddSectionLabel(scroll, "Actions")
+
+        local function CreateActionCheckbox(label, iconOn, iconOff, initialState, onClick)
+            local btn = vgui.Create("DButton", scroll)
+            btn:SetText("")
+            btn:Dock(TOP)
+            btn:SetTall(44)
+            btn:DockMargin(0, 0, 0, 6)
+            btn.isActive = initialState
+            btn.hov = 0
+
+            btn.Paint = function(self, w, h)
+                self.hov = Lerp(FrameTime() * 10, self.hov, self:IsHovered() and 1 or 0)
+                draw.RoundedBox(7, 0, 0, w, h, THEME:LerpColor(self.hov * 0.4, PAL.row, PAL.rowHover))
+
+                local boxSize = 18
+                local bx, by = w - 34, h / 2 - boxSize / 2
+                draw.RoundedBox(4, bx, by, boxSize, boxSize, PAL.sidebar)
+                if self.isActive then
+                    draw.RoundedBox(4, bx + 3, by + 3, boxSize - 6, boxSize - 6, PAL.accent)
+                end
+
+                surface.SetDrawColor(self.isActive and PAL.accent or PAL.muted)
+                surface.SetMaterial(Material(self.isActive and iconOn or iconOff))
+                surface.DrawTexturedRect(16, h / 2 - 8, 16, 16)
+                draw.SimpleText(label, "RareloadBody", 44, h / 2, PAL.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+            end
+
+            btn.DoClick = function(self)
+                self.isActive = not self.isActive
+                onClick(self.isActive)
+                surface.PlaySound("ui/buttonclick.wav")
+            end
+            return btn
+        end
+
+        local targetId = data.id
+            or data.RareloadEntityID
+            or data.RareloadNPCID
+            or (data.rawData and (data.rawData.RareloadEntityID or data.rawData.RareloadNPCID))
+            or ""
+
+        local ownerID = data.RareloadOwnerSteamID
+            or (data.rawData and data.rawData.RareloadOwnerSteamID)
+            or data.ownerSteamID
+            or ""
+
+        -- Read current physics flags from saved data
+        local isFrozen        = false
+        local isGravDisabled  = false
+
+        local function ReadPhysicsFlags(src)
+            if src.frozen ~= nil          then isFrozen       = src.frozen == true end
+            if src.gravity_disabled ~= nil then isGravDisabled = src.gravity_disabled == true end
+            if istable(src.PhysicsObjects) then
+                for _, physObj in pairs(src.PhysicsObjects) do
+                    if istable(physObj) then
+                        if physObj.Frozen ~= nil       then isFrozen      = physObj.Frozen == true end
+                        if physObj.GravityEnabled ~= nil then isGravDisabled = physObj.GravityEnabled == false end
+                        break
+                    end
+                end
+            end
+        end
+
+        ReadPhysicsFlags(data)
+        if data.rawData then ReadPhysicsFlags(data.rawData) end
+
+        local function SendFlag(flagName, value)
+            net.Start("RareloadEntityViewer_SetFlag")
+                net.WriteString(tostring(targetId))
+                net.WriteBool(isNPC or false)
+                net.WriteString(flagName)
+                net.WriteBool(value)
+                net.WriteString(tostring(ownerID))
+            net.SendToServer()
+        end
+
+        CreateActionCheckbox("Freeze Entity Position", "icon16/lock.png", "icon16/lock_open.png",
+            isFrozen, function(newState) SendFlag("freeze", newState) end)
+
+        CreateActionCheckbox("Disable Gravity", "icon16/arrow_down.png", "icon16/arrow_up.png",
+            isGravDisabled, function(newState) SendFlag("gravity_disabled", newState) end)
+
     end
 
     local shown = {
@@ -257,12 +344,6 @@ function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
     contentArea:SetSize(FRAME_W - SIDEBAR_W - 1, FRAME_H - HEADER_H - 1)
     contentArea.Paint   = function() end
 
-    frame.PerformLayout = function(self, w, h)
-        contentArea:SetPos(SIDEBAR_W + 1, HEADER_H + 1)
-        contentArea:SetSize(w - SIDEBAR_W - 1, h - HEADER_H - 1)
-        closeBtn:SetPos(w - 44, (HEADER_H - 32) / 2)
-    end
-
     local tabs          = {
         { id = "info",   label = "Information", icon = "icon16/information.png" },
         { id = "editor", label = "Data Editor", icon = "icon16/pencil.png" },
@@ -280,7 +361,7 @@ function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
         end
 
         if id == "info" then
-            BuildInfoTab(contentArea, data)
+            BuildInfoTab(contentArea, data, isNPCEntity)
         elseif id == "editor" then
             BuildEditorTab(contentArea, data, isNPCEntity, function(newData)
                 timer.Simple(0.6, function()
@@ -329,7 +410,6 @@ function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
         tabY = tabY + 54
     end
 
-    -- Highlight + phantom-link toggles for this saved object (in-world tracers).
     local function MakeToggleButton(label, icon, accent, isActiveFn, onClick)
         local btn = vgui.Create("DButton", frame)
         btn:SetText("")

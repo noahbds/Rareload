@@ -1,8 +1,3 @@
-AddCSLuaFile("rareload/shared/permissions_def.lua")
-AddCSLuaFile("rareload/client/admin/admin_panel.lua")
-include("rareload/shared/permissions_def.lua")
-
----@class RARELOAD
 RARELOAD = RARELOAD or {}
 RARELOAD.Permissions = RARELOAD.Permissions or {}
 RARELOAD.AdminSecurity = RARELOAD.AdminSecurity or {}

@@ -1,10 +1,6 @@
 -- Shared helpers for SED panel data building.
 
-local RS = SED and SED.RenderShared
-if not (RS and RS._initialized) then
-    include("rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
-    RS = SED and SED.RenderShared
-end
+local RS = SED.Require("RenderShared", "rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
 
 SED = SED or {}
 SED.PanelBuilder = SED.PanelBuilder or {}

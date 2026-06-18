@@ -1,11 +1,6 @@
 -- SED panel rendering entry point.
 
-local RS = SED and SED.RenderShared
-if not (RS and RS._initialized) then
-    include("rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
-    RS = SED and SED.RenderShared
-end
-
+local RS = SED.Require("RenderShared", "rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
 if not (RS and RS._initialized) then
     ErrorNoHalt("[Rareload] Missing shared renderer state in SED_panel_renderer.lua\n")
     return
@@ -30,8 +25,9 @@ if not SED.PanelRendererHandleInteraction then
     return
 end
 
-function SED.DrawSavedPanel(ent, saved, isNPC, precomputedParams, precomputedDistSqr, liveEnt)
-    local ctx = SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, precomputedDistSqr, liveEnt)
+function SED.DrawSavedPanel(ent, saved, isNPC, precomputedParams, precomputedDistSqr, liveEnt, stackIndex)
+    local ctx = SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, precomputedDistSqr, liveEnt,
+        stackIndex)
     if not ctx then return end
 
     SED.PanelRendererDraw(ctx)

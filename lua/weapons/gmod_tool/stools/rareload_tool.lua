@@ -20,9 +20,6 @@ TOOL.Information            = {
 TOOL.ConfigName             = ""
 
 if SERVER then
-    AddCSLuaFile("rareload/ui/rareload_ui.lua")
-    AddCSLuaFile("rareload/ui/rareload_toolscreen.lua")
-
     -- Tool-specific network strings
     util.AddNetworkString("RareloadToolReloadState")
     util.AddNetworkString("RareloadToolPermissionDenied")
@@ -272,7 +269,7 @@ function TOOL.BuildCPanel(panel)
             TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         draw.SimpleText("Configuration Panel", "RareloadUI.Small", 12, h / 2 + 10, RareloadUI.Theme.Colors.Text
             .Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText("v3.5", "RareloadUI.Small", w - 12, h / 2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT,
+        draw.SimpleText("v3.6", "RareloadUI.Small", w - 12, h / 2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT,
             TEXT_ALIGN_CENTER)
     end
 
