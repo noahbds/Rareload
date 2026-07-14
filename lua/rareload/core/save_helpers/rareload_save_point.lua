@@ -214,7 +214,8 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         success, err = RARELOAD.SavePlayerPositionEntry(ply, playerData)
     else
         success, err = pcall(function()
-            file.Write("rareload/player_positions_" .. mapName .. ".json",
+            local saveMap = game.SinglePlayer() and (mapName .. "_sp") or mapName
+            file.Write("rareload/player_positions_" .. saveMap .. ".json",
                 util.TableToJSON(RARELOAD.playerPositions, true))
         end)
     end

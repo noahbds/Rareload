@@ -6,6 +6,13 @@ local function SafePlayerKey(steamID)
     return string.gsub(steamID or "unknown", "[^%w_%-.]", "_")
 end
 
+local function GetSaveMapName(mapName)
+    if game.SinglePlayer() then
+        return mapName .. "_sp"
+    end
+    return mapName
+end
+
 local function EnsurePlayerPositionsDirs(mapName)
     if not file.Exists("rareload", "DATA") then
         file.CreateDir("rareload")
@@ -13,14 +20,14 @@ local function EnsurePlayerPositionsDirs(mapName)
     if not file.Exists("rareload/player_positions", "DATA") then
         file.CreateDir("rareload/player_positions")
     end
-    local mapDir = "rareload/player_positions/" .. mapName
+    local mapDir = "rareload/player_positions/" .. GetSaveMapName(mapName)
     if not file.Exists(mapDir, "DATA") then
         file.CreateDir(mapDir)
     end
 end
 
 function RARELOAD.GetPlayerPositionFilePath(mapName, steamID)
-    return "rareload/player_positions/" .. mapName .. "/" .. SafePlayerKey(steamID) .. ".json"
+    return "rareload/player_positions/" .. GetSaveMapName(mapName) .. "/" .. SafePlayerKey(steamID) .. ".json"
 end
 
 function RARELOAD.SavePlayerPositionEntry(ply, playerData)
@@ -61,7 +68,7 @@ function RARELOAD.LoadPlayerPositions(mapName)
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
     RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
 
-    local mapDir = "rareload/player_positions/" .. mapName
+    local mapDir = "rareload/player_positions/" .. GetSaveMapName(mapName)
     local files = file.Find(mapDir .. "/*.json", "DATA") or {}
 
     for _, filename in ipairs(files) do
@@ -85,7 +92,7 @@ function RARELOAD.LoadPlayerPositions(mapName)
     end
 
     if not next(RARELOAD.playerPositions[mapName]) then
-        local legacyPath = "rareload/player_positions_" .. mapName .. ".json"
+        local legacyPath = "rareload/player_positions_" .. GetSaveMapName(mapName) .. ".json"
         if file.Exists(legacyPath, "DATA") then
             local raw = file.Read(legacyPath, "DATA")
             if raw and raw ~= "" then
