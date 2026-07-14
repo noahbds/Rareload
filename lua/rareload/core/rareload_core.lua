@@ -6,6 +6,8 @@ local function SafePlayerKey(steamID)
     return string.gsub(steamID or "unknown", "[^%w_%-.]", "_")
 end
 
+
+
 local function EnsurePlayerPositionsDirs(mapName)
     if not file.Exists("rareload", "DATA") then
         file.CreateDir("rareload")
