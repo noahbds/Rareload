@@ -58,11 +58,20 @@ function SS.PanelAimPos(ent, renderParams, eyePos)
     local baseZ = math.Clamp(eyePos.z, worldCenter.z - band, worldCenter.z + band)
 
     local basePos = Vector(worldCenter.x, worldCenter.y, baseZ)
-    local horiz   = Vector(worldCenter.x - eyePos.x, worldCenter.y - eyePos.y, 0)
+    local rayDir = (basePos - eyePos):GetNormalized()
+    local hitPos = util.IntersectRayWithOBB(eyePos, rayDir, ent:GetPos(), ent:GetAngles(), renderParams.obbMin, renderParams.obbMax)
+
+    if hitPos then
+        -- Place the panel slightly off the surface towards the player
+        return hitPos - rayDir * 12
+    end
+
+    -- Fallback if the ray doesn't hit (e.g. player is inside the entity)
+    local horiz = Vector(worldCenter.x - eyePos.x, worldCenter.y - eyePos.y, 0)
     if horiz:LengthSqr() < 1e-4 then return basePos end
 
     horiz:Normalize()
-    local outward = math.Clamp((renderParams.maxDimension or 40) * 0.35, 24, 15000)
+    local outward = math.Clamp((renderParams.maxDimension or 40) * 0.5, 24, 15000)
     return basePos - horiz * outward
 end
 

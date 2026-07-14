@@ -9,6 +9,7 @@ end
 
 RARELOAD.AdminPanel.Theme.COLORS = RARELOAD.Theme.BuildAdminColors()
 
+RARELOAD.Admin = RARELOAD.Admin or {}
 function RARELOAD.Admin.InvalidateTheme()
     if IsValid(RARELOAD.Admin.ActivePanel) then
         -- Let's just recreate it to ensure everything takes the new theme
