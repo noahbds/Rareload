@@ -15,6 +15,11 @@ if SERVER then
     local METHODS_CACHE_TTL = 45
     local positionMemory = {}
 
+    AntiStuck._invalidateResolverCache = function()
+        methodsCache = {}
+        lastMethodsLoad = 0
+    end
+
     local function GetOptimizedMethods()
         local currentTime = CurTime()
 

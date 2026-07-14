@@ -62,6 +62,43 @@ function AntiStuck.GetConfig(key)
     return AntiStuck.DefaultSettings[key]
 end
 
+function AntiStuck.InvalidateMethodCache()
+    if AntiStuck._invalidateResolverCache then
+        AntiStuck._invalidateResolverCache()
+    end
+end
+
+function AntiStuck.SetMethodEnabled(funcName, enabled)
+    if not AntiStuck.methods then return false, "Methods not loaded" end
+
+    for _, method in ipairs(AntiStuck.methods) do
+        if method.func == funcName then
+            method.enabled = enabled
+            AntiStuck.InvalidateMethodCache()
+            AntiStuck.LogDebug(
+                string.format("Method %s %s", funcName, enabled and "enabled" or "disabled"),
+                { methodName = "SetMethodEnabled", func = funcName, enabled = enabled })
+            return true
+        end
+    end
+
+    return false, "Method '" .. tostring(funcName) .. "' not found"
+end
+
+function AntiStuck.GetMethodList()
+    local result = {}
+    for _, method in ipairs(AntiStuck.methods or {}) do
+        result[#result + 1] = {
+            name = method.name,
+            func = method.func,
+            enabled = method.enabled,
+            priority = method.priority,
+            timeout = method.timeout
+        }
+    end
+    return result
+end
+
 function AntiStuck.DebugEnabled(ply)
     if RARELOAD and RARELOAD.GetPlayerSetting and IsValid(ply) then
         return RARELOAD.GetPlayerSetting(ply, "debugEnabled", false)

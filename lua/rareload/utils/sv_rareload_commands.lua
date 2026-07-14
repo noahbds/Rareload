@@ -36,6 +36,77 @@ concommand.Add("rareload_test_antistuck", function(ply, cmd, args)
     end
 end)
 
+concommand.Add("rareload_antistuck_method", function(ply, cmd, args)
+    if IsValid(ply) and (not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "ANTI_STUCK_CONFIG")) then
+        ply:ChatPrint("[RARELOAD] You don't have permission to manage anti-stuck methods.")
+        return
+    end
+
+    local AntiStuck = RARELOAD and RARELOAD.AntiStuck
+    if not AntiStuck then return end
+
+    local function reply(msg)
+        print(msg)
+        if IsValid(ply) then ply:ChatPrint(msg) end
+    end
+
+    local action = args[1] and string.lower(args[1]) or "list"
+
+    if action == "list" then
+        reply("[RARELOAD] Anti-stuck methods:")
+        for _, m in ipairs(AntiStuck.GetMethodList()) do
+            local status = m.enabled and "ON" or "OFF"
+            reply(string.format("  [%s] %s (%s) priority:%d timeout:%.1fs",
+                status, m.name, m.func, m.priority, m.timeout))
+        end
+        reply("Usage: rareload_antistuck_method <enable|disable|only> <MethodFunc>")
+
+    elseif action == "enable" or action == "disable" then
+        local funcName = args[2]
+        if not funcName then
+            reply("[RARELOAD] Usage: rareload_antistuck_method " .. action .. " <MethodFunc>")
+            return
+        end
+        local ok, err = AntiStuck.SetMethodEnabled(funcName, action == "enable")
+        if ok then
+            reply("[RARELOAD] " .. funcName .. " " .. action .. "d.")
+        else
+            reply("[RARELOAD] Error: " .. tostring(err))
+        end
+
+    elseif action == "only" then
+        local funcName = args[2]
+        if not funcName then
+            reply("[RARELOAD] Usage: rareload_antistuck_method only <MethodFunc>")
+            return
+        end
+        local found = false
+        for _, m in ipairs(AntiStuck.methods or {}) do
+            if m.func == funcName then found = true end
+        end
+        if not found then
+            reply("[RARELOAD] Error: Method '" .. funcName .. "' not found")
+            return
+        end
+        for _, m in ipairs(AntiStuck.methods or {}) do
+            m.enabled = (m.func == funcName)
+        end
+        AntiStuck.InvalidateMethodCache()
+        reply("[RARELOAD] Only " .. funcName .. " is now enabled.")
+
+    elseif action == "reset" then
+        for _, m in ipairs(AntiStuck.methods or {}) do
+            m.enabled = true
+        end
+        AntiStuck.InvalidateMethodCache()
+        reply("[RARELOAD] All methods re-enabled.")
+
+    else
+        reply("[RARELOAD] Unknown action: " .. action)
+        reply("Usage: rareload_antistuck_method <list|enable|disable|only|reset> [MethodFunc]")
+    end
+end)
+
 util.AddNetworkString("RareloadEntityViewer_Delete")
 util.AddNetworkString("RareloadEntityViewer_DeleteMany")
 util.AddNetworkString("RareloadEntityViewer_DeleteResult")
