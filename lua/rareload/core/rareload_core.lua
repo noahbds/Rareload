@@ -62,8 +62,9 @@ function RARELOAD.SavePlayerPositionEntry(ply, playerData)
         payload.mp_data = playerData
     end
 
-    -- Note: We intentionally do NOT overwrite payload.playerData here.
-    -- payload.playerData remains strictly as a read-only legacy fallback.
+    -- Clear out the legacy data so it doesn't artificially bloat the file
+    -- and doesn't accidentally bleed over to the other game mode.
+    payload.playerData = nil
 
     local ok, err = pcall(function()
         file.Write(filePath, util.TableToJSON(payload, true))
