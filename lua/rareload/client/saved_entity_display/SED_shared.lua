@@ -49,33 +49,34 @@ end
 
 function SS.PanelAimPos(ent, renderParams, eyePos)
     if not IsValid(ent) then return eyePos end
-    if not renderParams or not renderParams.obbMin or not renderParams.obbMax then 
-        return ent:GetPos() 
-    end
+    if not renderParams then return ent:GetPos() end
 
-    -- Transform eye position to the entity's local space
-    local localEye = ent:WorldToLocal(eyePos)
+    local obbCenterLocal = (renderParams.obbMin + renderParams.obbMax) * 0.5
+    local worldCenter    = ent.LocalToWorld and ent:LocalToWorld(obbCenterLocal) or ent:GetPos()
 
-    -- Clamp to the OBB to find the nearest point on the surface
-    local closestLocal = Vector(
-        math.Clamp(localEye.x, renderParams.obbMin.x, renderParams.obbMax.x),
-        math.Clamp(localEye.y, renderParams.obbMin.y, renderParams.obbMax.y),
-        math.Clamp(localEye.z, renderParams.obbMin.z, renderParams.obbMax.z)
-    )
+    local band  = math.max(SED.PANEL_EYE_BAND or 150, (renderParams.size and renderParams.size.z) or 80)
+    local baseZ = math.Clamp(eyePos.z, worldCenter.z - band, worldCenter.z + band)
 
-    -- Transform back to world space
-    local hitPos = ent:LocalToWorld(closestLocal)
-
-    -- If player is essentially inside the entity's collision bounds
-    if hitPos:DistToSqr(eyePos) < 1 then
-        return ent:GetPos()
-    end
-
-    -- The direction from the surface to the player
-    local rayDir = (eyePos - hitPos):GetNormalized()
+    local basePos = Vector(worldCenter.x, worldCenter.y, baseZ)
+    local rayDir = (basePos - eyePos):GetNormalized()
     
-    -- Place the panel 12 units off the surface towards the player
-    return hitPos + rayDir * 12
+    -- We must use a large rayDelta because IntersectRayWithOBB tests the finite segment.
+    -- We cannot use ent:NearestPoint because phantoms have no physics model.
+    local rayDelta = rayDir * 50000
+    local hitPos = util.IntersectRayWithOBB(eyePos, rayDelta, ent:GetPos(), ent:GetAngles(), renderParams.obbMin, renderParams.obbMax)
+
+    if hitPos then
+        -- Place the panel slightly off the surface towards the player
+        return hitPos - rayDir * 12
+    end
+
+    -- Fallback if the ray doesn't hit (e.g. player is inside the entity)
+    local horiz = Vector(worldCenter.x - eyePos.x, worldCenter.y - eyePos.y, 0)
+    if horiz:LengthSqr() < 1e-4 then return basePos end
+
+    horiz:Normalize()
+    local outward = math.Clamp((renderParams.maxDimension or 40) * 0.5, 24, 15000)
+    return basePos - horiz * outward
 end
 
 function SS.PanelHitTest(panelCenter, ang, scale, panelW, panelH, eyePos, eyeForward)
