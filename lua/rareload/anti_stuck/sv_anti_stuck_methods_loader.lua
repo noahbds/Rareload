@@ -14,6 +14,11 @@ function AntiStuck.LoadMethods(forceReload)
     local validMethods = {}
     for idx, method in ipairs(defaultMethods) do
         method.enabled = method.enabled ~= false
+        
+        if RARELOAD.settings and RARELOAD.settings.antiStuckMethods and RARELOAD.settings.antiStuckMethods[method.func] ~= nil then
+            method.enabled = RARELOAD.settings.antiStuckMethods[method.func]
+        end
+        
         method.priority = method.priority or (idx * 10)
         if method.func and method.name and AntiStuck.methodRegistry and AntiStuck.methodRegistry[method.func] then
             table.insert(validMethods, method)

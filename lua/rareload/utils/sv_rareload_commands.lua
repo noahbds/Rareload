@@ -88,16 +88,24 @@ concommand.Add("rareload_antistuck_method", function(ply, cmd, args)
             reply("[RARELOAD] Error: Method '" .. funcName .. "' not found")
             return
         end
+        RARELOAD.settings = RARELOAD.settings or {}
+        RARELOAD.settings.antiStuckMethods = RARELOAD.settings.antiStuckMethods or {}
         for _, m in ipairs(AntiStuck.methods or {}) do
             m.enabled = (m.func == funcName)
+            RARELOAD.settings.antiStuckMethods[m.func] = m.enabled
         end
+        if RARELOAD.SaveAddonState then RARELOAD.SaveAddonState() end
         AntiStuck.InvalidateMethodCache()
         reply("[RARELOAD] Only " .. funcName .. " is now enabled.")
 
     elseif action == "reset" then
+        RARELOAD.settings = RARELOAD.settings or {}
+        RARELOAD.settings.antiStuckMethods = RARELOAD.settings.antiStuckMethods or {}
         for _, m in ipairs(AntiStuck.methods or {}) do
             m.enabled = true
+            RARELOAD.settings.antiStuckMethods[m.func] = true
         end
+        if RARELOAD.SaveAddonState then RARELOAD.SaveAddonState() end
         AntiStuck.InvalidateMethodCache()
         reply("[RARELOAD] All methods re-enabled.")
 

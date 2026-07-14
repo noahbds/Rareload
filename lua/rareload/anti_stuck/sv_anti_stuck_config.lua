@@ -74,6 +74,14 @@ function AntiStuck.SetMethodEnabled(funcName, enabled)
     for _, method in ipairs(AntiStuck.methods) do
         if method.func == funcName then
             method.enabled = enabled
+            
+            RARELOAD.settings = RARELOAD.settings or {}
+            RARELOAD.settings.antiStuckMethods = RARELOAD.settings.antiStuckMethods or {}
+            RARELOAD.settings.antiStuckMethods[funcName] = enabled
+            if RARELOAD.SaveAddonState then
+                RARELOAD.SaveAddonState()
+            end
+            
             AntiStuck.InvalidateMethodCache()
             AntiStuck.LogDebug(
                 string.format("Method %s %s", funcName, enabled and "enabled" or "disabled"),
