@@ -39,9 +39,29 @@ function RARELOAD.SavePlayerPositionEntry(ply, playerData)
     local payload = {
         map = mapName,
         steamID = steamID,
-        steamID64 = (IsValid(ply) and ply:SteamID64()) or (istable(ply) and ply.SteamID64 and ply:SteamID64()) or "",
-        playerData = playerData
+        steamID64 = (IsValid(ply) and ply:SteamID64()) or (istable(ply) and ply.SteamID64 and ply:SteamID64()) or ""
     }
+
+    if file.Exists(filePath, "DATA") then
+        local raw = file.Read(filePath, "DATA")
+        if raw and raw ~= "" then
+            local ok, existing = pcall(util.JSONToTable, raw)
+            if ok and istable(existing) then
+                payload = existing
+                -- Update baseline identifiers
+                payload.steamID64 = payload.steamID64 or ((IsValid(ply) and ply:SteamID64()) or "")
+            end
+        end
+    end
+
+    if game.SinglePlayer() then
+        payload.sp_data = playerData
+    else
+        payload.mp_data = playerData
+    end
+
+    -- Note: We intentionally do NOT overwrite payload.playerData here.
+    -- payload.playerData remains strictly as a read-only legacy fallback.
 
     local ok, err = pcall(function()
         file.Write(filePath, util.TableToJSON(payload, true))
@@ -71,8 +91,15 @@ function RARELOAD.LoadPlayerPositions(mapName)
         if data and data ~= "" then
             local status, result = pcall(util.JSONToTable, data)
             if status and istable(result) then
-                if istable(result.playerData) and isstring(result.steamID) and result.steamID ~= "" then
-                    RARELOAD.playerPositions[mapName][result.steamID] = result.playerData
+                local targetedData
+                if game.SinglePlayer() then
+                    targetedData = result.sp_data or result.playerData
+                else
+                    targetedData = result.mp_data or result.playerData
+                end
+
+                if istable(targetedData) and isstring(result.steamID) and result.steamID ~= "" then
+                    RARELOAD.playerPositions[mapName][result.steamID] = targetedData
                 elseif istable(result[mapName]) then
                     for steamID, pdata in pairs(result[mapName]) do
                         RARELOAD.playerPositions[mapName][steamID] = pdata
