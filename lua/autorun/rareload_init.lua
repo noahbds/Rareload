@@ -1,5 +1,5 @@
 RARELOAD         = RARELOAD or {}
-RARELOAD.version = "3.6"
+RARELOAD.version = "3.7"
 
 if SERVER then
     AddCSLuaFile("rareload/shared/permissions_def.lua")

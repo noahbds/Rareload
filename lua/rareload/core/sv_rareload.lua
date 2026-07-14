@@ -33,7 +33,7 @@ if SERVER then
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
     RARELOAD.globalInventory = RARELOAD.globalInventory or {}
     RARELOAD.lastSavedTime = 0
-    RARELOAD.version = "3.6"
+    RARELOAD.version = "3.7"
     ADDON_STATE_FILE_PATH = "rareload/addon_state.json"
 
     util.AddNetworkString("RareloadAntiStuckPriorities")
