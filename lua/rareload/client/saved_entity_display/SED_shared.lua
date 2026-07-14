@@ -25,58 +25,62 @@ function SS.FacingAngle(dir)
     return ang
 end
 
+-- Fixed: now properly scales based on distance (reference distance = SED.REFERENCE_DIST or 512)
 function SS.PanelScale(renderParams, distance, minScale, maxScale)
-    minScale        = minScale or SED.MIN_SCALE
-    maxScale        = maxScale or SED.MAX_SCALE
+    minScale = minScale or SED.MIN_SCALE
+    maxScale = maxScale or SED.MAX_SCALE
     local baseScale = (renderParams and renderParams.baseScale) or SED.BASE_SCALE
-    return math.Clamp(baseScale, minScale, maxScale)
+    local refDist   = SED.REFERENCE_DIST or 512
+    local dist      = math.max(distance or refDist, 1)  -- avoid division by zero
+
+    local scale = (refDist / dist) * baseScale
+    return math.Clamp(scale, minScale, maxScale)
 end
 
-function SS.CullFOV(worldPos, eyePos, eyeForward, distSqr, nearbyDistSqr, fovCosSqr)
-    nearbyDistSqr = nearbyDistSqr or (SED.NEARBY_DIST_SQR or (150 * 150))
-    fovCosSqr     = fovCosSqr or (SED.FOV_COS_THRESHOLD_SQR or (math.cos(math.rad(50)) ^ 2))
-
-    if distSqr <= nearbyDistSqr then return true end
-
+-- Cleaned up: recomputes distSqr internally, avoids parameter confusion
+function SS.CullFOV(worldPos, eyePos, eyeForward, distSqr_ignored)
     local dx = worldPos.x - eyePos.x
     local dy = worldPos.y - eyePos.y
     local dz = worldPos.z - eyePos.z
-    if distSqr <= 0 then return true end
+    local distSqr = dx * dx + dy * dy + dz * dz
+
+    local nearbyDistSqr = SED.NEARBY_DIST_SQR or (150 * 150)
+    if distSqr <= nearbyDistSqr then return true end
+
+    local fovCosSqr = SED.FOV_COS_THRESHOLD_SQR or (math.cos(math.rad(50)) ^ 2)
 
     local dot = dx * eyeForward.x + dy * eyeForward.y + dz * eyeForward.z
     return dot > 0 and (dot * dot) >= (fovCosSqr * distSqr)
 end
 
+-- NEW: uses closest point on OBB to the camera – works perfectly for any entity size
 function SS.PanelAimPos(ent, renderParams, eyePos)
     if not IsValid(ent) then return eyePos end
     if not renderParams then return ent:GetPos() end
 
-    local obbCenterLocal = (renderParams.obbMin + renderParams.obbMax) * 0.5
-    local worldCenter    = ent.LocalToWorld and ent:LocalToWorld(obbCenterLocal) or ent:GetPos()
+    local pos = ent:GetPos()
+    local ang = ent:GetAngles()
 
-    local band  = math.max(SED.PANEL_EYE_BAND or 150, (renderParams.size and renderParams.size.z) or 80)
-    local baseZ = math.Clamp(eyePos.z, worldCenter.z - band, worldCenter.z + band)
+    -- Convert eye position into entity local space
+    local localEye = WorldToLocal(eyePos, Angle(0, 0, 0), pos, ang)
 
-    local basePos = Vector(worldCenter.x, worldCenter.y, baseZ)
-    local rayDir = (basePos - eyePos):GetNormalized()
-    
-    -- We must use a large rayDelta because IntersectRayWithOBB tests the finite segment.
-    -- We cannot use ent:NearestPoint because phantoms have no physics model.
-    local rayDelta = rayDir * 50000
-    local hitPos = util.IntersectRayWithOBB(eyePos, rayDelta, ent:GetPos(), ent:GetAngles(), renderParams.obbMin, renderParams.obbMax)
+    -- Clamp to the OBB extents -> closest point on the box surface
+    local clamped = Vector(
+        math.Clamp(localEye.x, renderParams.obbMin.x, renderParams.obbMax.x),
+        math.Clamp(localEye.y, renderParams.obbMin.y, renderParams.obbMax.y),
+        math.Clamp(localEye.z, renderParams.obbMin.z, renderParams.obbMax.z)
+    )
 
-    if hitPos then
-        -- Place the panel slightly off the surface towards the player
-        return hitPos - rayDir * 12
+    local closestWorld = LocalToWorld(clamped, Angle(0, 0, 0), pos, ang)
+
+    -- Direction from surface towards the player (outward)
+    local dirToEye = (eyePos - closestWorld):GetNormalized()
+    if dirToEye:LengthSqr() < 1e-8 then
+        dirToEye = (ang:Forward() * -1)
     end
 
-    -- Fallback if the ray doesn't hit (e.g. player is inside the entity)
-    local horiz = Vector(worldCenter.x - eyePos.x, worldCenter.y - eyePos.y, 0)
-    if horiz:LengthSqr() < 1e-4 then return basePos end
-
-    horiz:Normalize()
-    local outward = math.Clamp((renderParams.maxDimension or 40) * 0.5, 24, 15000)
-    return basePos - horiz * outward
+    -- Offset slightly outward to avoid z‑fighting and ensure readability
+    return closestWorld + dirToEye * 12
 end
 
 function SS.PanelHitTest(panelCenter, ang, scale, panelW, panelH, eyePos, eyeForward)
@@ -137,7 +141,7 @@ function SS.CleanCaches(now, maxSize, ...)
     end
 end
 
--- ── Phantom / common helpers (shared by the object- and player-phantom systems) ──
+-- ── Phantom / common helpers ──
 
 local _debugVal  = false
 local _debugTime = -1
