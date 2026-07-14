@@ -29,24 +29,13 @@ end
 
 function SED.PlayerIsHoldingSomething()
     SED.lpCache = SED.lpCache or LocalPlayer()
-    if not IsValid(SED.lpCache) then return false end
-    if SED.lpCache:KeyDown(IN_USE) then
-        local tr = SED.lpCache:GetEyeTrace()
-        if tr and IsValid(tr.Entity) and tr.Entity.IsPlayerHolding and tr.Entity:IsPlayerHolding() then
-            return true
-        end
+    local ply = SED.lpCache
+    if not IsValid(ply) then return false end
+    local wep = ply:GetActiveWeapon()
+    if IsValid(wep) and wep:GetClass() == "weapon_physgun" and ply:KeyDown(IN_ATTACK) then
+        return true
     end
-    local scanCount = 0
-    for ent, _ in pairs(SED.TrackedEntities) do
-        if IsValid(ent) and ent.IsPlayerHolding and ent:IsPlayerHolding() then return true end
-        scanCount = scanCount + 1
-        if scanCount > 50 then break end
-    end
-    for ent, _ in pairs(SED.TrackedNPCs) do
-        if IsValid(ent) and ent.IsPlayerHolding and ent:IsPlayerHolding() then return true end
-        scanCount = scanCount + 1
-        if scanCount > 80 then break end
-    end
+
     return false
 end
 

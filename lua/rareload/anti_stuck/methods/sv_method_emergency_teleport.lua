@@ -2,7 +2,7 @@ local AntiStuck = RARELOAD.AntiStuck
 
 function AntiStuck.TryEmergencyTeleport(pos, ply)
     if not pos or not IsValid(ply) then
-        return nil, AntiStuck.UNSTUCK_METHODS and AntiStuck.UNSTUCK_METHODS.NONE or 0
+        return nil, AntiStuck.UNSTUCK_METHODS.NONE
     end
     
     local testPositions = {}
@@ -23,7 +23,7 @@ function AntiStuck.TryEmergencyTeleport(pos, ply)
                 if util.IsInWorld(randomPos) then
                     local isStuck, reason = AntiStuck.IsPositionStuck(randomPos, ply, false)
                     if not isStuck then
-                        return randomPos, AntiStuck.UNSTUCK_METHODS.EMERGENCY_TELEPORT
+                        return randomPos, AntiStuck.UNSTUCK_METHODS.SUCCESS
                     end
 
                     ---@diagnostic disable-next-line: missing-fields
@@ -39,7 +39,7 @@ function AntiStuck.TryEmergencyTeleport(pos, ply)
                         if util.IsInWorld(groundPos) then
                             local isStuck, reason = AntiStuck.IsPositionStuck(groundPos, ply)
                             if not isStuck then
-                                return groundPos, AntiStuck.UNSTUCK_METHODS.EMERGENCY_TELEPORT
+                                return groundPos, AntiStuck.UNSTUCK_METHODS.SUCCESS
                             end
                         end
                     end
@@ -82,7 +82,7 @@ function AntiStuck.TryEmergencyTeleport(pos, ply)
         if util.IsInWorld(testPos) then
             local isStuck, reason = AntiStuck.IsPositionStuck(testPos, ply)
             if not isStuck then
-                return testPos, AntiStuck.UNSTUCK_METHODS.EMERGENCY_TELEPORT
+                return testPos, AntiStuck.UNSTUCK_METHODS.SUCCESS
             end
 
             ---@diagnostic disable-next-line: missing-fields
@@ -98,7 +98,7 @@ function AntiStuck.TryEmergencyTeleport(pos, ply)
                 if util.IsInWorld(groundPos) then
                     local isStuck, reason = AntiStuck.IsPositionStuck(groundPos, ply)
                     if not isStuck then
-                        return groundPos, AntiStuck.UNSTUCK_METHODS.EMERGENCY_TELEPORT
+                        return groundPos, AntiStuck.UNSTUCK_METHODS.SUCCESS
                     end
                 end
             end
@@ -117,7 +117,7 @@ function AntiStuck.TryEmergencyTeleport(pos, ply)
     if not util.IsInWorld(grounded) then
         grounded = Vector(0, 0, 64)
     end
-    return grounded, AntiStuck.UNSTUCK_METHODS.EMERGENCY_TELEPORT
+    return grounded, AntiStuck.UNSTUCK_METHODS.SUCCESS
 end
 
 if AntiStuck.RegisterMethod then

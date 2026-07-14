@@ -9,48 +9,18 @@ local SETTINGS_SYNC_COOLDOWN = 0.75
 local DebugHelpers = include("rareload/debug/sv_debug_helpers.lua")
 
 local function GetServerDefaultSettings()
+    ---@type table<string, boolean|number>
     local defaults = {}
 
-    if RARELOAD.ConVars then
-        for convarName, settingKey in pairs(RARELOAD.ConVarToSetting or {}) do
-            local cv = RARELOAD.ConVars[convarName]
-            if cv then
-                local defaultValue = cv:GetDefault()
-                if defaultValue == "0" or defaultValue == "1" then
-                    defaults[settingKey] = cv:GetBool()
-                else
-                    defaults[settingKey] = cv:GetFloat()
-                end
+    for convarName, settingKey in pairs(RARELOAD.ConVarToSetting or {}) do
+        local cv = RARELOAD.ConVars[convarName]
+        if cv then
+            if RARELOAD.ConVarIsBool[convarName] then
+                defaults[settingKey] = cv:GetBool()
+            else
+                defaults[settingKey] = cv:GetFloat()
             end
         end
-    end
-
-    if table.Count(defaults) == 0 then
-        defaults = {
-            addonEnabled = true,
-            spawnModeEnabled = true,
-            autoSaveEnabled = false,
-            retainInventory = true,
-            retainGlobalInventory = false,
-            retainHealthArmor = true,
-            retainPlayerStates = true,
-            retainAmmo = true,
-            retainVehicleState = false,
-            retainMapEntities = true,
-            retainMapNPCs = true,
-            autoOverwriteModified = false,
-            cleanupMapAfterDeath = false,
-            cleanupOnlyOwnedEntitiesOnDeath = false,
-            cleanupOnlySavedEntitiesOnDeath = false,
-            cleanupOwnedEntitiesOnDisconnect = false,
-            retainVehicles = false,
-            nocustomrespawnatdeath = false,
-            debugEnabled = false,
-            maxHistorySize = 125,
-            autoSaveInterval = 5,
-            angleTolerance = 100,
-            maxDistance = 50
-        }
     end
 
     return defaults

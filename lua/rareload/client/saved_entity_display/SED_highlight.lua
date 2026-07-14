@@ -255,7 +255,7 @@ hook.Add("PostDrawTranslucentRenderables", "RARELOAD_Highlight_Beams", function(
         end
     end
 
-    render.OverrideDepthEnable(false)
+    render.OverrideDepthEnable(false, false)
 end)
 
 surface.CreateFont("RareloadHighlightLabel", { font = "Roboto", size = 19, weight = 700, antialias = true })

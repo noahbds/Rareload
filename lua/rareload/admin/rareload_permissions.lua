@@ -42,16 +42,35 @@ if SERVER then
 
             local offlineData = RARELOAD.Permissions.GetOfflinePlayerData()
             net.Start("RareloadSendOfflinePlayerData")
-            -- jsjsjsj
             net.WriteTable(offlineData)
             net.Send(ply)
         end)
 
         net.Receive("RareloadUpdatePermissions", function(len, ply)
+            local sessionToken = net.ReadString()
+
             if not RARELOAD.Permissions.HasPermission(ply, "ADMIN_PANEL") then
                 print("[Rareload] Permission update rejected: " ..
                     ply:Nick() .. " doesn't have ADMIN_PANEL permission")
                 return
+            end
+
+            local AdminSecurity = RARELOAD.AdminSecurity
+            if AdminSecurity and AdminSecurity.ValidateSession then
+                local valid, reason = AdminSecurity.ValidateSession(ply, sessionToken)
+                if not valid then
+                    print("[Rareload] Permission update rejected for " ..
+                        ply:Nick() .. ": " .. tostring(reason))
+                    if AdminSecurity.AddAuditEntry then
+                        AdminSecurity.AddAuditEntry("SECURITY_VIOLATION", ply,
+                            { action = "RareloadUpdatePermissions", reason = reason })
+                    end
+                    if IsValid(ply) then
+                        ply:ChatPrint(
+                            "[RARELOAD] Your admin session is invalid or expired. Please reopen the admin panel.")
+                    end
+                    return
+                end
             end
 
             local targetSteamID = net.ReadString()
@@ -200,7 +219,7 @@ if SERVER then
             RARELOAD.Permissions.CreateBackup()
             return true
         else
-            sql.Rollback()
+            sql.Query("ROLLBACK")
             print("[Rareload] Some errors occurred while saving permissions. Changes rolled back.")
             return false
         end
@@ -355,7 +374,7 @@ if SERVER then
             print("[Rareload] Backup created successfully at " .. os.date("%Y-%m-%d %H:%M:%S", backupTime))
             return true
         else
-            sql.Rollback()
+            sql.Query("ROLLBACK")
             print("[Rareload] Failed to create backup, transaction rolled back")
             return false
         end
@@ -641,4 +660,80 @@ if SERVER then
             ))
         end
     end)
+
+    local function ResolveSteamID(target)
+        if not target or target == "" then return nil end
+        if string.match(target, "^STEAM_%d:%d:%d+$") then return target end
+        for _, p in ipairs(player.GetAll()) do
+            if p:SteamID() == target or p:SteamID64() == target or p:Nick() == target then
+                return p:SteamID()
+            end
+        end
+        return nil
+    end
+
+    concommand.Add("rareload_grant_admin", function(ply, cmd, args)
+        if IsValid(ply) and not ply:IsSuperAdmin() then
+            ply:ChatPrint("[Rareload] Only the server console or a superadmin can grant admin access.")
+            return
+        end
+
+        local target = args[1]
+        local steamID = ResolveSteamID(target)
+        if not steamID then
+            print("[Rareload] Usage: rareload_grant_admin <STEAM_0:...  |  SteamID64  |  exact online name>")
+            print("[Rareload] Grants Admin Panel + Debug + all ADMIN-category permissions so you can bootstrap")
+            print("[Rareload] admin access on a dedicated server. Run this from the server console.")
+            return
+        end
+
+        local granted = {}
+        for permName, def in pairs(RARELOAD.Permissions.DEFS or {}) do
+            if def.category == "ADMIN" then
+                RARELOAD.Permissions.SetPermission(steamID, permName, true)
+                granted[#granted + 1] = permName
+            end
+        end
+
+        RARELOAD.Permissions.Save()
+        print("[Rareload] Granted admin access to " .. steamID .. ": " .. table.concat(granted, ", "))
+
+        for _, p in ipairs(player.GetAll()) do
+            if p:SteamID() == steamID then
+                RARELOAD.Permissions.SyncToPlayer(p)
+                RARELOAD.Permissions.SendDefinitions(p)
+                p:ChatPrint("[Rareload] You have been granted Rareload admin access. Reopen the tool menu.")
+                break
+            end
+        end
+    end, nil, "Grant Rareload admin access to a player (server console / superadmin only)")
+
+    concommand.Add("rareload_revoke_admin", function(ply, cmd, args)
+        if IsValid(ply) and not ply:IsSuperAdmin() then
+            ply:ChatPrint("[Rareload] Only the server console or a superadmin can revoke admin access.")
+            return
+        end
+
+        local steamID = ResolveSteamID(args[1])
+        if not steamID then
+            print("[Rareload] Usage: rareload_revoke_admin <STEAM_0:...  |  SteamID64  |  exact online name>")
+            return
+        end
+
+        for permName, def in pairs(RARELOAD.Permissions.DEFS or {}) do
+            if def.category == "ADMIN" then
+                RARELOAD.Permissions.SetPermission(steamID, permName, false)
+            end
+        end
+
+        RARELOAD.Permissions.Save()
+        print("[Rareload] Revoked ADMIN-category permissions from " .. steamID)
+
+        for _, p in ipairs(player.GetAll()) do
+            if p:SteamID() == steamID then
+                RARELOAD.Permissions.SyncToPlayer(p)
+                break
+            end
+        end
+    end, nil, "Revoke Rareload admin access from a player (server console / superadmin only)")
 end

@@ -651,16 +651,11 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
         if RARELOAD.showAutoSaveMessage then
             drawAutoSaveMessage(width, height, barY, barHeight)
         elseif autoSaveInterval <= 0 then
-            -- Instant mode: an interval of 0 saves whenever the player stops moving,
-            -- so there is no countdown -- just a steady indicator.
             RARELOAD.activeProgress = false
             state.waitingForTrigger = true
             drawWaitingForTriggerBar(width, height, state, barY, barHeight, currentTime,
                 getProgressColor(1), "Saves when you stop moving")
         else
-            -- The auto-save fires once the player has been idle for the interval, so
-            -- the bar is the idle timer: it fills while standing still and resets the
-            -- moment the player moves. Full + nothing new -> "waiting for next save".
             local timeElapsed = math.max(0, currentTime - lastMove)
             local progress = math.Clamp(timeElapsed / interval, 0, 1)
             local timeRemaining = math.max(0, interval - timeElapsed)

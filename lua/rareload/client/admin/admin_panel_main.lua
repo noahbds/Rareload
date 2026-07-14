@@ -109,6 +109,13 @@ end
 function PANEL:SavePermissions()
     if not self.selectedPlayer or not self.permissionsPanel.checkboxes then return end
 
+    local sessionToken = RARELOAD.AdminPanel.SessionToken
+    if not sessionToken or sessionToken == "" then
+        notification.AddLegacy("Admin session not established. Please reopen the admin panel.", NOTIFY_ERROR, 5)
+        surface.PlaySound("buttons/button10.wav")
+        return
+    end
+
     local changedCount = 0
     local totalCount = 0
 
@@ -120,6 +127,7 @@ function PANEL:SavePermissions()
         if currentValue ~= newValue then
             changedCount = changedCount + 1
             net.Start("RareloadUpdatePermissions")
+            net.WriteString(sessionToken)
             net.WriteString(self.selectedPlayer)
             net.WriteString(permName)
             net.WriteBool(newValue)

@@ -3,6 +3,30 @@ RARELOAD.JSONEditor = RARELOAD.JSONEditor or {}
 
 local STRIP_KEYS = { rawData = true, id = true }
 
+local CANONICAL_TWINS = {
+  pos = "Pos",
+  ang = "Angle",
+  angle = "Angle",
+  class = "Class",
+  model = "Model",
+  name = "Name",
+  skin = "Skin",
+  maxHealth = "MaxHealth",
+  health = "CurHealth",
+  owner = "RareloadOwnerSteamID",
+  originallySpawnedBy = "OriginalSpawner",
+}
+
+local function StripDisplayDuplicates(tbl)
+  if not istable(tbl) then return tbl end
+  for lower, canonical in pairs(CANONICAL_TWINS) do
+    if tbl[lower] ~= nil and tbl[canonical] ~= nil then
+      tbl[lower] = nil
+    end
+  end
+  return tbl
+end
+
 local function SanitizeTable(input)
   if not istable(input) then return input end
 
@@ -56,7 +80,7 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
   panel:Dock(FILL)
   panel.Paint = function() end
 
-  local editData = SanitizeTable(data.rawData or data)
+  local editData = StripDisplayDuplicates(SanitizeTable(data.rawData or data))
   local formattedJSON = util.TableToJSON(editData, true)
 
   local html = vgui.Create("DHTML", panel)

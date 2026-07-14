@@ -68,7 +68,7 @@ function AntiStuck.TryNodeGraph(pos, ply)
 
     local best = evalArea(start)
     if best then
-        return best, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH
+        return best, AntiStuck.UNSTUCK_METHODS.SUCCESS
     end
 
     local maxVisited = (AntiStuck.CONFIG and AntiStuck.CONFIG.NAVMESH_BFS_LIMIT) or 800
@@ -81,7 +81,7 @@ function AntiStuck.TryNodeGraph(pos, ply)
         local area = q[qi]; qi = qi + 1
         local posCandidate = evalArea(area)
         if posCandidate then
-            return posCandidate, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH
+            return posCandidate, AntiStuck.UNSTUCK_METHODS.SUCCESS
         end
         local neighbors = area.GetAdjacentAreas and area:GetAdjacentAreas() or nil
         if neighbors then
@@ -104,10 +104,10 @@ function AntiStuck.TryNodeGraph(pos, ply)
         table.sort(AntiStuck.navAreas, function(a, b) return pos:DistToSqr(a.center) < pos:DistToSqr(b.center) end)
         for _, areaData in ipairs(AntiStuck.navAreas) do
             local p = standableFrom(areaData.center)
-            if p then return p, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH end
+            if p then return p, AntiStuck.UNSTUCK_METHODS.SUCCESS end
             for _, corner in ipairs(areaData.corners) do
                 local p2 = standableFrom(corner)
-                if p2 then return p2, AntiStuck.UNSTUCK_METHODS.NODE_GRAPH end
+                if p2 then return p2, AntiStuck.UNSTUCK_METHODS.SUCCESS end
             end
         end
     end

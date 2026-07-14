@@ -198,12 +198,7 @@ function TOOL:Reload()
             RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
             RARELOAD.playerPositions[mapName][steamID] = previousData
 
-            local success, err = pcall(function()
-                file.Write("rareload/player_positions_" .. mapName .. ".json",
-                    util.TableToJSON(RARELOAD.playerPositions, true))
-            end)
-
-           local success, err = RARELOAD.SavePlayerPositionEntry(ply, previousData)
+            local success, err = RARELOAD.SavePlayerPositionEntry(ply, previousData)
 
              if success then
                  local remaining = RARELOAD.GetPositionHistory(steamID, mapName)

@@ -71,6 +71,13 @@ net.Receive("RareloadSendPermissions", function()
     end
 end)
 
+-- Admin-panel session token, issued by the server when the panel is opened.
+-- It is sent back with privileged mutating actions (e.g. permission changes) so
+-- the server can confirm the request comes from a live, non-expired admin session.
+net.Receive("RareloadAdminSessionToken", function()
+    RARELOAD.AdminPanel.SessionToken = net.ReadString()
+end)
+
 net.Receive("RareloadOpenAdminPanel", function()
     if RARELOAD.AdminPanel and RARELOAD.AdminPanel.Open then
         RARELOAD.AdminPanel.Open()

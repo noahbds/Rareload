@@ -82,10 +82,8 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         if savedInfo.vehicles and #savedInfo.vehicles > 0 then savedItems[#savedItems + 1] = "Vehicles" end
         if savedInfo.vehicleState then savedItems[#savedItems + 1] = "VehicleState" end
 
-        local entS = SnapshotUtils and SnapshotUtils.GetSummary and
-            SnapshotUtils.GetSummary(savedInfo.entities, { category = "entity" }) or {}
-        local npcS = SnapshotUtils and SnapshotUtils.GetSummary and
-            SnapshotUtils.GetSummary(savedInfo.npcs, { category = "npc" }) or {}
+        local entS = SnapshotUtils.GetSummary(savedInfo.entities, { category = "entity" }) or {}
+        local npcS = SnapshotUtils.GetSummary(savedInfo.npcs, { category = "npc" }) or {}
         if PB.countEntries(entS) > 0 then savedItems[#savedItems + 1] = "Entities" end
         if PB.countEntries(npcS) > 0 then savedItems[#savedItems + 1] = "NPCs" end
 
@@ -211,8 +209,7 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
     end
 
     processGroupedDataLOD(
-        (SnapshotUtils and SnapshotUtils.GetSummary and
-            SnapshotUtils.GetSummary(savedInfo.entities, { category = "entity" })) or {},
+        SnapshotUtils.GetSummary(savedInfo.entities, { category = "entity" }) or {},
         {
             totalLabel = "Total Entities",
             totalColor = Color(255, 180, 180),
@@ -221,8 +218,7 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         })
 
     processGroupedDataLOD(
-        (SnapshotUtils and SnapshotUtils.GetSummary and
-            SnapshotUtils.GetSummary(savedInfo.npcs, { category = "npc" })) or {},
+        SnapshotUtils.GetSummary(savedInfo.npcs, { category = "npc" }) or {},
         {
             totalLabel = "Total NPCs",
             totalColor = Color(200, 255, 200),

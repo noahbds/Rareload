@@ -1,4 +1,4 @@
--- SED_panel_renderer_interaction.lua  (refactored)
+-- SED_panel_renderer_interaction.lua
 
 
 local RS = SED.Require("RenderShared", "rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")

@@ -219,7 +219,6 @@ concommand.Add("rareload_admin", function(ply)
     local allowed, errMsg = CheckRateLimit(ply, "admin_panel", 10)
     if not allowed then
         net.Start("RareloadNoPermission")
-        net.WriteBool(false)
         net.Send(ply)
         return
     end
@@ -243,7 +242,6 @@ concommand.Add("rareload_admin", function(ply)
         AddAuditEntry("ADMIN_PANEL_OPENED", ply, {})
     else
         net.Start("RareloadNoPermission")
-        net.WriteBool(false)
         net.Send(ply)
 
         AddAuditEntry("ADMIN_PANEL_DENIED", ply, {})
@@ -367,7 +365,7 @@ concommand.Add("rareload_purge_admin_data", function(ply, cmd, args)
             end
         end
     else
-        sql.Rollback()
+        sql.Query("ROLLBACK")
         local errorMessage = "[RARELOAD] Admin data purge failed! Errors: " .. table.concat(errors, ", ")
         print(errorMessage)
 

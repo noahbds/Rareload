@@ -41,15 +41,3 @@ function RARELOAD.HandleTeleportRequest(ply)
     ply:SetVelocity(Vector(0, 0, 0))
     ply:ChatPrint("Téléporté à la position: " .. tostring(safePos))
 end
-
-if SERVER then
-    RARELOAD = RARELOAD or {}
-    if not RARELOAD._teleportNetHookAdded then
-        net.Receive("RareloadTeleportTo", function(len, ply)
-            if RARELOAD and RARELOAD.HandleTeleportRequest then
-                RARELOAD.HandleTeleportRequest(ply)
-            end
-        end)
-        RARELOAD._teleportNetHookAdded = true
-    end
-end

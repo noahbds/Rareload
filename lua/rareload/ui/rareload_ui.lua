@@ -1,8 +1,4 @@
--- DEPRACATED
-
--- THIS FILE IS VERY OLD AND ALMOST NOT USED. The UI OF THIS ADDON WILL BE CENTRALISED AND REDONE BETTER
-
--- 90% OF THIS FILE IS USED BY THE RARELOAD TOOL and the entity viewer.
+-- NEED TO REFACTOR: This file is getting too long and complex. Split into multiple files and modules.
 
 local RareloadUI = {}
 
@@ -97,12 +93,11 @@ local function SendConVarToServer(name, value)
     local settingKey = RARELOAD.ConVarToSetting[name]
     if not settingKey then return end
 
-    local cv = GetConVar(name)
-    local default = cv and cv:GetDefault() or nil
+    local isBool = RARELOAD.ConVarIsBool[name]
 
     local convertedValue
-    if default == "0" or default == "1" then
-        convertedValue = (value == "1" or value == "true")
+    if isBool then
+        convertedValue = (value == true or value == "1" or value == "true")
     else
         convertedValue = tonumber(value) or value
     end
@@ -284,8 +279,8 @@ function RareloadUI.CreateToggleSwitch(parent, label, convar, tooltip)
     container:SetTall(28)
     container:SetPaintBackground(false)
     container.ConVarName = convar
-    container.IsEnabled = GetConVarValue(convar)
-    container.SwitchFraction = container.IsEnabled and 1 or 0
+    container.Enabled = GetConVarValue(convar)
+    container.SwitchFraction = container.Enabled and 1 or 0
     container.HoverFraction = 0
 
     container.OnCursorEntered = function(self) self.Hovered = true end
@@ -293,11 +288,11 @@ function RareloadUI.CreateToggleSwitch(parent, label, convar, tooltip)
 
     container.Think = function(self)
         local current = GetConVarValue(self.ConVarName)
-        if self.IsEnabled ~= current then
-            self.IsEnabled = current
+        if self.Enabled ~= current then
+            self.Enabled = current
         end
         self.HoverFraction = AnimateLerp(self.HoverFraction, self.Hovered and 1 or 0)
-        self.SwitchFraction = AnimateLerp(self.SwitchFraction, self.IsEnabled and 1 or 0)
+        self.SwitchFraction = AnimateLerp(self.SwitchFraction, self.Enabled and 1 or 0)
     end
 
     container.Paint = function(self, w, h)
@@ -327,7 +322,7 @@ function RareloadUI.CreateToggleSwitch(parent, label, convar, tooltip)
 
     container.OnMousePressed = function(self, keyCode)
         if keyCode == MOUSE_LEFT then
-            SendConVarToServer(self.ConVarName, self.IsEnabled and "0" or "1")
+            SendConVarToServer(self.ConVarName, self.Enabled and "0" or "1")
             surface.PlaySound("ui/buttonclick.wav")
         end
     end
@@ -349,7 +344,7 @@ function RareloadUI.CreateCompactSlider(parent, label, tooltip, convarName, minV
     container.ConVarName = convarName
     container.Value = GetConVarFloat(convarName) or defaultVal or minVal
     container.DragFraction = (container.Value - minVal) / (maxVal - minVal)
-    container.IsDragging = false
+    container.Dragging = false
     container.HoverFraction = 0
 
     container.OnCursorEntered = function(self) self.Hovered = true end
@@ -358,7 +353,7 @@ function RareloadUI.CreateCompactSlider(parent, label, tooltip, convarName, minV
     container.Think = function(self)
         self.HoverFraction = AnimateLerp(self.HoverFraction, self.Hovered and 1 or 0)
 
-        if not self.IsDragging then
+        if not self.Dragging then
             local serverVal = GetConVarFloat(self.ConVarName)
             if math.abs(serverVal - self.Value) > 0.01 then
                 self.Value = serverVal
@@ -366,7 +361,7 @@ function RareloadUI.CreateCompactSlider(parent, label, tooltip, convarName, minV
             end
         end
 
-        if self.IsDragging then
+        if self.Dragging then
             local x = self:CursorPos()
             local sliderX, sliderW = 8, self:GetWide() - 16
             local frac = math.Clamp((x - sliderX) / sliderW, 0, 1)
@@ -401,14 +396,14 @@ function RareloadUI.CreateCompactSlider(parent, label, tooltip, convarName, minV
 
     container.OnMousePressed = function(self, keyCode)
         if keyCode == MOUSE_LEFT then
-            self.IsDragging = true
+            self.Dragging = true
             self:MouseCapture(true)
         end
     end
 
     container.OnMouseReleased = function(self, keyCode)
         if keyCode == MOUSE_LEFT then
-            self.IsDragging = false
+            self.Dragging = false
             self:MouseCapture(false)
             SendConVarToServer(self.ConVarName, tostring(self.Value))
         end

@@ -5,7 +5,7 @@ local AntiStuck = RARELOAD.AntiStuck
 AntiStuck.cachedPositions = AntiStuck.cachedPositions or {}
 AntiStuck._posSet = AntiStuck._posSet or {}
 local cachedPositionCount = #AntiStuck.cachedPositions
-local lastCacheLoad = lastCacheLoad or 0
+local lastCacheLoad = 0
 
 local CurTime = CurTime
 local JSONToTable = util.JSONToTable

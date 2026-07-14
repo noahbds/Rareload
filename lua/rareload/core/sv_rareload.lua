@@ -37,6 +37,9 @@ if SERVER then
     ADDON_STATE_FILE_PATH = "rareload/addon_state.json"
 
     util.AddNetworkString("RareloadAntiStuckPriorities")
+    util.AddNetworkString("SyncData")
+    util.AddNetworkString("SyncPlayerPositions")
+    util.AddNetworkString("SyncPlayerPositionsChunk")
 
     function EnsureFolderExists()
         local folderPath = "rareload"

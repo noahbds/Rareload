@@ -108,16 +108,12 @@ function DepthRenderer.AddRenderItem(pos, renderFunction, itemType, priorityOrOp
     renderQueue[queueSize] = item
 end
 
-DepthRenderer.FRAME_BUDGET = 0.005 -- 5ms hard budget per frame
+DepthRenderer.FRAME_BUDGET = 0.005
 local lastSortTime = 0
 
 function DepthRenderer.ProcessRenderQueue()
     local n = queueSize
     if n == 0 then return end
-
-    -- Avoid resorting every single frame if the camera hasn't moved much and not enough time has passed.
-    -- But since new items are inserted every frame in random order by the hooks, we MUST sort if elements were added.
-    -- However, maybe we can just do the sort unconditionally since it's only max ~80 items and fast natively.
     if n > 1 then
         tbl_sort(renderQueue, SortRenderItems)
     end

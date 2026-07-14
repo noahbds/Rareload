@@ -24,9 +24,9 @@ local groundTrace = {
 
 function AntiStuck.TryDisplacement(pos, ply)
     if not pos or not IsValid(ply) then
-        return nil, AntiStuck.UNSTUCK_METHODS and AntiStuck.UNSTUCK_METHODS.NONE or 0
+        return nil, AntiStuck.UNSTUCK_METHODS.NONE
     end
-    
+
     local maxDistance = (AntiStuck.mapBounds and math.max(AntiStuck.mapBounds.maxs.x - AntiStuck.mapBounds.mins.x, AntiStuck.mapBounds.maxs.y - AntiStuck.mapBounds.mins.y) * 0.25) or
         (AntiStuck.CONFIG and AntiStuck.CONFIG.HORIZONTAL_SEARCH_RANGE or 2048)
     local safeDistance = (AntiStuck.CONFIG and AntiStuck.CONFIG.SAFE_DISTANCE) or 64

@@ -141,7 +141,7 @@ function AntiStuck.TryMapEntities(pos, ply)
                 local test = entityPos + Vector(cs * sr, sn * sr, 0)
                 local ground = traceGround(test)
                 if isValidStand(ground) then
-                    return ground, AntiStuck.UNSTUCK_METHODS and AntiStuck.UNSTUCK_METHODS.MAP_ENTITIES or 0
+                    return ground, AntiStuck.UNSTUCK_METHODS.SUCCESS
                 end
             end
 
@@ -156,13 +156,13 @@ function AntiStuck.TryMapEntities(pos, ply)
                 local test = entityPos + offs[oi]
                 local ground = traceGround(test)
                 if isValidStand(ground) then
-                    return ground, AntiStuck.UNSTUCK_METHODS and AntiStuck.UNSTUCK_METHODS.MAP_ENTITIES or 0
+                    return ground, AntiStuck.UNSTUCK_METHODS.SUCCESS
                 end
             end
         end
     end
 
-    return nil, AntiStuck.UNSTUCK_METHODS and AntiStuck.UNSTUCK_METHODS.NONE or 0
+    return nil, AntiStuck.UNSTUCK_METHODS.NONE
 end
 
 if AntiStuck.RegisterMethod then

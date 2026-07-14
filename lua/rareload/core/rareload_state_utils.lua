@@ -2,6 +2,8 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.Util = RARELOAD.Util or {}
 
+-- Generate a hash representing the state of an entity, based on its properties.
+-- This is used to detect changes in entity state for tracking purposes.
 function RARELOAD.Util.GenerateEntityStateHash(data)
     if not data or type(data) ~= "table" then return "invalid" end
 

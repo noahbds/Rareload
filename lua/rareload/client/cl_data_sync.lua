@@ -2,12 +2,6 @@ RARELOAD                   = RARELOAD or {}
 RARELOAD.playerPositions   = RARELOAD.playerPositions or {}
 RARELOAD.settings          = RARELOAD.settings or {}
 
-local function HandleNetReceive(event, callback)
-    net.Receive(event, function(len)
-        callback()
-    end)
-end
-
 local pendingSyncChunks = {}
 local nextSyncChunkCleanup = 0
 local SYNC_CHUNK_TIMEOUT = 25
@@ -94,7 +88,7 @@ net.Receive("SyncPlayerPositionsChunk", function()
     CleanupPendingSyncChunks()
 end)
 
-HandleNetReceive("SyncData", function()
+net.Receive("SyncData", function()
     local data = net.ReadTable()
     if not data or type(data) ~= "table" then return end
 
@@ -113,7 +107,7 @@ HandleNetReceive("SyncData", function()
     end
 end)
 
-HandleNetReceive("SyncPlayerPositions", function()
+net.Receive("SyncPlayerPositions", function()
     local mapName = game.GetMap()
     local positions = net.ReadTable() or {}
     ApplySyncedPositions(mapName, positions, false)
