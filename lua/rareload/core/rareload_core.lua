@@ -62,8 +62,6 @@ function RARELOAD.SavePlayerPositionEntry(ply, playerData)
         payload.mp_data = playerData
     end
 
-    -- Clear out the legacy data so it doesn't artificially bloat the file
-    -- and doesn't accidentally bleed over to the other game mode.
     payload.playerData = nil
 
     local ok, err = pcall(function()
