@@ -49,8 +49,22 @@ end
 
 function SS.PanelAimPos(ent, renderParams, eyePos)
     if not IsValid(ent) then return eyePos end
+    if not renderParams or not renderParams.obbMin or not renderParams.obbMax then 
+        return ent:GetPos() 
+    end
 
-    local hitPos = ent:NearestPoint(eyePos)
+    -- Transform eye position to the entity's local space
+    local localEye = ent:WorldToLocal(eyePos)
+
+    -- Clamp to the OBB to find the nearest point on the surface
+    local closestLocal = Vector(
+        math.Clamp(localEye.x, renderParams.obbMin.x, renderParams.obbMax.x),
+        math.Clamp(localEye.y, renderParams.obbMin.y, renderParams.obbMax.y),
+        math.Clamp(localEye.z, renderParams.obbMin.z, renderParams.obbMax.z)
+    )
+
+    -- Transform back to world space
+    local hitPos = ent:LocalToWorld(closestLocal)
 
     -- If player is essentially inside the entity's collision bounds
     if hitPos:DistToSqr(eyePos) < 1 then
