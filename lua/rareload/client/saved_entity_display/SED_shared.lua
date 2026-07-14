@@ -62,7 +62,7 @@ function SS.PanelAimPos(ent, renderParams, eyePos)
     if horiz:LengthSqr() < 1e-4 then return basePos end
 
     horiz:Normalize()
-    local outward = math.Clamp((renderParams.maxDimension or 40) * 0.35, 24, 400)
+    local outward = math.Clamp((renderParams.maxDimension or 40) * 0.35, 24, 15000)
     return basePos - horiz * outward
 end
 

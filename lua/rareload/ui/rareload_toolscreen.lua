@@ -29,11 +29,6 @@ local TOOL_UI = {
     }
 }
 
-if RARELOAD.Theme and RARELOAD.Theme.OnChanged then
-    RARELOAD.Theme.OnChanged("toolscreen_theme", function()
-        TOOL_UI.COLORS = RARELOAD.Theme.BuildToolscreenColors()
-    end)
-end
 
 local ToolScreen = {}
 
@@ -714,28 +709,7 @@ local function _LoadAddonSettingsForFrame()
 end
 
 if CLIENT then
-    concommand.Add("rareload_toolscreen_frame", function(_, _, args)
-        local drawW = tonumber(args[1]) or 512
-        local drawH = tonumber(args[2]) or 512
 
-        local frame = vgui.Create("DFrame")
-        frame:SetTitle("")
-        frame:SetSize(drawW, drawH)
-        frame:Center()
-        frame:MakePopup()
-        frame.Paint = function(self, w, h)
-            draw.RoundedBox(0, 0, 0, w, h, Color(0, 0, 0, 150))
-        end
-
-        local canvas = vgui.Create("DPanel", frame)
-        canvas:Dock(FILL)
-        canvas:DockMargin(1, 1, 1, 1)
-        canvas.Paint = function(self, w, h)
-            local sx, sy = self:LocalToScreen(0, 0)
-            ToolScreen.Draw(self, w, h, RARELOAD, _LoadAddonSettingsForFrame, sx, sy)
-            ToolScreen.EndDraw()
-        end
-    end)
 end
 
 return ToolScreen

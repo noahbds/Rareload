@@ -5,7 +5,7 @@ RARELOAD.Theme = RARELOAD.Theme or {}
 
 local THEMES = {}
 
--- Base palettes for dark and light modes
+-- Base palettes for dark mode
 THEMES.dark = {
     -- Generic text
     textPrimary = Color(245, 245, 245),
@@ -34,46 +34,8 @@ THEMES.dark = {
     overlay = Color(15, 18, 30, 200)
 }
 
-THEMES.light = {
-    textPrimary = Color(20, 24, 28),
-    textSecondary = Color(85, 95, 105),
-    textDisabled = Color(150, 155, 160),
-    bg = Color(248, 249, 251, 245),
-    panel = Color(236, 239, 242, 255),
-    panelAlt = Color(228, 232, 238, 255),
-    separator = Color(210, 214, 220),
-    button = { normal = Color(230, 233, 238), hover = Color(222, 226, 232), active = Color(210, 214, 220) },
-    slider = { track = Color(215, 219, 225), groove = Color(65, 120, 235), knob = Color(120, 125, 135), knobHover = Color(80, 85, 95) },
-    accent = Color(65, 120, 235),
-    accentHover = Color(80, 135, 245),
-    success = Color(42, 160, 90),
-    warning = Color(210, 160, 50),
-    danger = Color(210, 60, 60),
-
-    shadow = Color(0, 0, 0, 120),
-    overlay = Color(255, 255, 255, 200)
-}
-
-local cvTheme = CreateClientConVar("rareload_ui_theme", "-1", true, false,
-    "Rareload UI theme (-1=auto, 0=dark, 1=light)")
-
-local function detectLightMode()
-    return false
-end
-
-function RARELOAD.Theme.IsLightMode()
-    local v = tonumber(cvTheme:GetString()) or -1
-    if v == 0 then return false end
-    if v == 1 then return true end
-    return detectLightMode()
-end
-
-local function choose()
-    return RARELOAD.Theme.IsLightMode() and THEMES.light or THEMES.dark
-end
-
 function RARELOAD.Theme.BuildMainTheme()
-    local t = choose()
+    local t = THEMES.dark
     return {
         Colors = {
             Background = t.bg,
@@ -113,7 +75,7 @@ function RARELOAD.Theme.BuildMainTheme()
 end
 
 function RARELOAD.Theme.BuildAdminColors()
-    local t = choose()
+    local t = THEMES.dark
     return {
         background = t.bg,
         header = t.panelAlt,
@@ -144,7 +106,7 @@ function RARELOAD.Theme.BuildAdminColors()
 end
 
 function RARELOAD.Theme.BuildAntiStuckTheme()
-    local t = choose()
+    local t = THEMES.dark
     return {
         background = t.bg,
         header = t.panelAlt,
@@ -174,32 +136,31 @@ function RARELOAD.Theme.BuildAntiStuckTheme()
 end
 
 function RARELOAD.Theme.BuildToolscreenColors()
-    local t = choose()
-    local isLight = RARELOAD.Theme.IsLightMode()
+    local t = THEMES.dark
     return {
         BG = t.bg,
         ENABLED = t.success,
         DISABLED = t.danger,
         HEADER = t.accent,
-        TEXT_LIGHT = isLight and Color(15, 15, 15) or Color(255, 255, 255),
-        TEXT_DARK = isLight and Color(255, 255, 255) or Color(15, 15, 15),
-        VERSION = isLight and Color(80, 80, 80, 180) or Color(150, 150, 150, 180),
+        TEXT_LIGHT = Color(255, 255, 255),
+        TEXT_DARK = Color(15, 15, 15),
+        VERSION = Color(150, 150, 150, 180),
         PROGRESS = {
-            BG_OUTER = isLight and Color(235, 238, 242) or Color(25, 25, 30),
-            BG_INNER = isLight and Color(245, 247, 250) or Color(35, 35, 40),
+            BG_OUTER = Color(25, 25, 30),
+            BG_INNER = Color(35, 35, 40),
             LOW = t.success,
             MEDIUM = t.warning,
             HIGH = t.danger,
-            STEP = Color(255, 255, 255, isLight and 80 or 40),
+            STEP = Color(255, 255, 255, 40),
             SHINE = Color(255, 255, 255)
         },
         TEXT = {
-            NORMAL = isLight and Color(40, 40, 45) or Color(225, 225, 225),
+            NORMAL = Color(225, 225, 225),
             WARNING = Color(255, 165, 0),
             URGENT_1 = Color(255, 100, 0),
             URGENT_2 = Color(255, 220, 0),
             SAVED = t.success,
-            SHADOW = isLight and Color(255, 255, 255, 160) or Color(0, 0, 0, 180)
+            SHADOW = Color(0, 0, 0, 180)
         },
         AUTO_SAVE_MESSAGE = t.success,
         EMOJI = {
@@ -209,20 +170,3 @@ function RARELOAD.Theme.BuildToolscreenColors()
         }
     }
 end
-
--- Optional: allow listeners to react to theme changes
-RARELOAD.Theme._listeners = RARELOAD.Theme._listeners or {}
-
-function RARELOAD.Theme.OnChanged(id, fn)
-    RARELOAD.Theme._listeners[id] = fn
-end
-
-local function notifyChanged()
-    for _, fn in pairs(RARELOAD.Theme._listeners) do
-        if isfunction(fn) then pcall(fn) end
-    end
-end
-
-cvars.AddChangeCallback("rareload_ui_theme", function()
-    notifyChanged()
-end, "rareload_theme_watch")

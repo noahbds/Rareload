@@ -9,10 +9,16 @@ end
 
 RARELOAD.AdminPanel.Theme.COLORS = RARELOAD.Theme.BuildAdminColors()
 
-if RARELOAD.Theme and RARELOAD.Theme.OnChanged then
-    RARELOAD.Theme.OnChanged("admin_theme", function()
-        RARELOAD.AdminPanel.Theme.COLORS = RARELOAD.Theme.BuildAdminColors()
-    end)
+function RARELOAD.Admin.InvalidateTheme()
+    if IsValid(RARELOAD.Admin.ActivePanel) then
+        -- Let's just recreate it to ensure everything takes the new theme
+        local wasVisible = RARELOAD.Admin.ActivePanel:IsVisible()
+        RARELOAD.Admin.ActivePanel:Remove()
+        RARELOAD.Admin.CreatePanel()
+        if not wasVisible and IsValid(RARELOAD.Admin.ActivePanel) then
+            RARELOAD.Admin.ActivePanel:SetVisible(false)
+        end
+    end
 end
 
 function RARELOAD.AdminPanel.Theme.DrawRoundedBoxEx(cornerRadius, x, y, w, h, color, topLeft, topRight, bottomLeft,
