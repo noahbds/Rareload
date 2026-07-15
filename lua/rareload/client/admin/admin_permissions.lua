@@ -2,6 +2,11 @@ RARELOAD = RARELOAD or {}
 RARELOAD.AdminPanel = RARELOAD.AdminPanel or {}
 RARELOAD.AdminPanel.Permissions = RARELOAD.AdminPanel.Permissions or {}
 
+local function L(key, ...)
+    if RARELOAD.L then return RARELOAD.L(key, ...) end
+    return key
+end
+
 function RARELOAD.AdminPanel.Permissions.Create(parent, onSavePermissions)
     local THEME = RARELOAD.AdminPanel.Theme.COLORS
     local DrawRoundedBoxEx = RARELOAD.AdminPanel.Theme.DrawRoundedBoxEx
@@ -28,11 +33,11 @@ function RARELOAD.AdminPanel.Permissions.Create(parent, onSavePermissions)
         surface.SetMaterial(Material("icon16/user.png"))
         surface.DrawTexturedRect(w / 2 - 16, boxY + boxH * 0.3 - 16, 32, 32)
 
-        draw.SimpleText("Select a player to edit permissions", "DermaLarge", w / 2, boxY + boxH * 0.6,
+        draw.SimpleText(L("admin.select_player"), "DermaLarge", w / 2, boxY + boxH * 0.6,
             Color(THEME.text.r, THEME.text.g, THEME.text.b, 180 + 75 * pulseIntensity),
             TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
-        draw.SimpleText("Players are shown in the left panel", "DermaDefault", w / 2, boxY + boxH * 0.6 + 30,
+        draw.SimpleText(L("admin.players_left_panel"), "DermaDefault", w / 2, boxY + boxH * 0.6 + 30,
             THEME.textSecondary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
         surface.SetDrawColor(THEME.textSecondary)
@@ -92,14 +97,14 @@ function RARELOAD.AdminPanel.Permissions.Create(parent, onSavePermissions)
     permHeader:DockMargin(0, 0, 0, 5)
     permHeader.Paint = function(pnl, w, h)
         DrawRoundedBoxEx(0, 0, 0, w, h, THEME.header, true, true, true, true)
-        draw.SimpleText("Permissions", "DermaLarge", 15, h / 2, THEME.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(L("admin.permissions"), "DermaLarge", 15, h / 2, THEME.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 
         local legendX = w - 190
-        draw.SimpleText("Enabled", "DermaDefault", legendX + 25, h / 2, THEME.success, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(L("admin.enabled"), "DermaDefault", legendX + 25, h / 2, THEME.success, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         draw.RoundedBoxEx(0, legendX, h / 2 - 8, 20, 16, THEME.success, true, true, true, true)
 
         legendX = w - 100
-        draw.SimpleText("Disabled", "DermaDefault", legendX + 25, h / 2, THEME.textSecondary, TEXT_ALIGN_LEFT,
+        draw.SimpleText(L("admin.disabled"), "DermaDefault", legendX + 25, h / 2, THEME.textSecondary, TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER)
         draw.RoundedBoxEx(0, legendX, h / 2 - 8, 20, 16, THEME.panel, true, true, true, true)
     end
@@ -121,7 +126,7 @@ function RARELOAD.AdminPanel.Permissions.Create(parent, onSavePermissions)
 
     -- Save button
     local saveButton = vgui.Create("DButton", permContainer)
-    saveButton:SetText("Save Changes")
+    saveButton:SetText(L("common.save_changes"))
     saveButton:SetFont("DermaDefaultBold")
     saveButton:SetTextColor(Color(255, 255, 255))
     saveButton:Dock(BOTTOM)
@@ -193,20 +198,20 @@ function RARELOAD.AdminPanel.Permissions.Create(parent, onSavePermissions)
         local adminStatus = ""
         local statusColor = THEME.player
         if playerData.isSuperAdmin then
-            adminStatus = "SuperAdmin (All permissions granted automatically)"
+            adminStatus = L("admin.superadmin_all")
             statusColor = THEME.superadmin
         elseif playerData.isAdmin then
-            adminStatus = "Admin"
+            adminStatus = L("admin.status.admin")
             statusColor = THEME.admin
         else
-            adminStatus = playerData.isBot and "Bot" or "Player"
+            adminStatus = playerData.isBot and L("admin.status.bot") or L("admin.status.player")
             statusColor = THEME.player
         end
 
         if not playerData.isOnline then
-            adminStatus = adminStatus .. " (Offline)"
+            adminStatus = adminStatus .. L("admin.suffix.offline")
             if playerData.lastSeen then
-                adminStatus = adminStatus .. " - Last seen: " .. os.date("%Y-%m-%d %H:%M", playerData.lastSeen)
+                adminStatus = adminStatus .. L("admin.superadmin_last_seen", os.date("%Y-%m-%d %H:%M", playerData.lastSeen))
             end
             statusColor = Color(statusColor.r, statusColor.g, statusColor.b, 180)
         end
@@ -248,7 +253,7 @@ function RARELOAD.AdminPanel.Permissions.Create(parent, onSavePermissions)
         self.checkboxes = {}
 
         if not RARELOAD.Permissions.DEFS then
-            self:ShowError("Error: Permission definitions not loaded!", "Attempting to load permissions from server...")
+            self:ShowError(L("admin.defs_not_loaded"), L("admin.defs_loading"))
 
             net.Start("RareloadRequestPermissions")
             net.SendToServer()
@@ -365,7 +370,7 @@ function RARELOAD.AdminPanel.Permissions.Create(parent, onSavePermissions)
 
             local superAdminHint = vgui.Create("DLabel", permissionPanel)
             superAdminHint:SetPos(10, permDesc:GetTall() + 26)
-            superAdminHint:SetText("SuperAdmin: Always granted")
+            superAdminHint:SetText(L("admin.superadmin_always"))
             superAdminHint:SetTextColor(THEME.superadmin)
             superAdminHint:SetFont("DermaDefaultBold")
             superAdminHint:SizeToContents()

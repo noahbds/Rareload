@@ -1,6 +1,11 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.JSONEditor = RARELOAD.JSONEditor or {}
 
+local function L(key, ...)
+  if RARELOAD.L then return RARELOAD.L(key, ...) end
+  return key
+end
+
 local STRIP_KEYS = { rawData = true, id = true }
 
 local CANONICAL_TWINS = {
@@ -237,7 +242,7 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
   end
 
   local fmtBtn = vgui.Create("DButton", actionBar)
-  fmtBtn:SetText("Format")
+  fmtBtn:SetText(L("json.format"))
   fmtBtn:SetFont("RareloadBody")
   fmtBtn:SetTextColor(THEME.textSecondary)
   fmtBtn:Dock(LEFT)
@@ -257,14 +262,14 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
           LoadIntoEditor(pretty)
         end
       else
-        ShowNotification("Cannot format: invalid JSON!", NOTIFY_ERROR)
+        ShowNotification(L("json.cannot_format"), NOTIFY_ERROR)
       end
     end)
     html:RunJavascript("gmod.receiveForFormat(getContent())")
   end
 
   local saveBtn = vgui.Create("DButton", actionBar)
-  saveBtn:SetText("   Save Changes")
+  saveBtn:SetText("   " .. L("common.save_changes"))
   saveBtn:SetFont("RareloadBody")
   saveBtn:SetTextColor(THEME.textPrimary)
   saveBtn:Dock(RIGHT)
@@ -282,7 +287,7 @@ function RARELOAD.JSONEditor.Create(parent, data, isNPC, onSave)
     html:AddFunction("gmod", "send", function(txt)
       local ok, tbl = pcall(util.JSONToTable, txt)
       if not ok or not istable(tbl) then
-        ShowNotification("Invalid JSON — fix errors before saving.", NOTIFY_ERROR)
+        ShowNotification(L("json.invalid"), NOTIFY_ERROR)
         return
       end
 

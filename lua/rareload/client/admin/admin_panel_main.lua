@@ -1,6 +1,11 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.AdminPanel = RARELOAD.AdminPanel or {}
 
+local function L(key, ...)
+    if RARELOAD.L then return RARELOAD.L(key, ...) end
+    return key
+end
+
 local PANEL = {}
 
 function PANEL:Init()
@@ -27,7 +32,7 @@ function PANEL:Init()
 
         DrawRoundedBoxEx(0, 0, 0, w, 40, THEME.header, true, true, false, false)
 
-        draw.SimpleText("Rareload Admin Panel", "DermaLarge", 20, 20, THEME.textHighlight, TEXT_ALIGN_LEFT,
+        draw.SimpleText(L("admin.title"), "DermaLarge", 20, 20, THEME.textHighlight, TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER)
 
         local version = RARELOAD.version or "v1.0"
@@ -35,7 +40,7 @@ function PANEL:Init()
 
         DrawRoundedBoxEx(0, 0, h - 30, w, 30, THEME.header, false, false, true, true)
 
-        draw.SimpleText("By Noahbds • Select a player to edit permissions", "DermaDefault", w / 2, h - 15,
+        draw.SimpleText(L("admin.footer"), "DermaDefault", w / 2, h - 15,
             THEME.textSecondary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
 
@@ -99,7 +104,7 @@ function PANEL:SelectPlayer(steamID)
     local playerData = RARELOAD.AdminPanel.Utils.GetPlayerData(steamID)
 
     if not playerData then
-        self.permissionsPanel:ShowError("Player not found", "The player may have been removed from records")
+        self.permissionsPanel:ShowError(L("admin.player_not_found"), L("admin.player_removed"))
         return
     end
 
@@ -111,7 +116,7 @@ function PANEL:SavePermissions()
 
     local sessionToken = RARELOAD.AdminPanel.SessionToken
     if not sessionToken or sessionToken == "" then
-        notification.AddLegacy("Admin session not established. Please reopen the admin panel.", NOTIFY_ERROR, 5)
+        notification.AddLegacy(L("admin.session_missing"), NOTIFY_ERROR, 5)
         surface.PlaySound("buttons/button10.wav")
         return
     end
@@ -150,12 +155,12 @@ function PANEL:ShowSaveMessage(changedCount, totalCount)
     local msgColor = changedCount > 0 and THEME.success or THEME.accent
     local msgIcon = changedCount > 0 and "icon16/accept.png" or "icon16/information.png"
     local msgText = changedCount > 0
-        and "Changes saved successfully!"
-        or "No changes were needed"
+        and L("admin.saved_ok")
+        or L("admin.no_changes")
 
     local detailText = changedCount > 0
-        and changedCount .. " of " .. totalCount .. " permissions updated"
-        or "All permissions were already set correctly"
+        and L("admin.updated_detail", changedCount, totalCount)
+        or L("admin.no_changes_detail")
 
     savedMsg.Paint = function(pnl, w, h)
         DrawRoundedBoxEx(0, 0, 0, w, h, THEME.panelLight, true, true, true, true)

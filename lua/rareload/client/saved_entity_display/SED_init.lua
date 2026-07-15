@@ -83,31 +83,32 @@ if RARELOAD.Theme and RARELOAD.Theme.IsLightMode and RARELOAD.Theme.IsLightMode(
 end
 
 SED.ENT_CATEGORIES = {
-    { "basic",     "Basic",      Color(64, 152, 255) },
-    { "position",  "Position",   Color(60, 179, 113) },
-    { "saved",     "Saved Data", Color(255, 140, 40) },
-    { "state",     "State",      Color(218, 165, 32) },
-    { "physics",   "Physics",    Color(255, 120, 90) },
-    { "visual",    "Visual",     Color(147, 112, 219) },
-    { "ownership", "Ownership",  Color(200, 150, 255) },
-    { "keyvalues", "KeyValues",  Color(180, 180, 180) },
-    { "meta",      "Meta",       Color(120, 200, 220) }
+    -- second element is a localization key, resolved via RARELOAD.L at draw time
+    { "basic",     "sed.cat.basic",     Color(64, 152, 255) },
+    { "position",  "sed.cat.position",  Color(60, 179, 113) },
+    { "saved",     "sed.cat.saved",     Color(255, 140, 40) },
+    { "state",     "sed.cat.state",     Color(218, 165, 32) },
+    { "physics",   "sed.cat.physics",   Color(255, 120, 90) },
+    { "visual",    "sed.cat.visual",    Color(147, 112, 219) },
+    { "ownership", "sed.cat.ownership", Color(200, 150, 255) },
+    { "keyvalues", "sed.cat.keyvalues", Color(180, 180, 180) },
+    { "meta",      "sed.cat.meta",      Color(120, 200, 220) }
 }
 
 SED.NPC_CATEGORIES = {
-    { "basic",     "Basic",      Color(64, 152, 255) },
-    { "position",  "Position",   Color(60, 179, 113) },
-    { "saved",     "Saved Data", Color(255, 140, 40) },
-    { "state",     "State",      Color(218, 165, 32) },
-    { "behavior",  "Behavior",   Color(214, 80, 80) },
-    { "combat",    "Combat",     Color(255, 90, 140) },
-    { "visual",    "Visual",     Color(147, 112, 219) },
-    { "vjbase",    "VJ Base",    Color(100, 255, 150) },
-    { "weapons",   "Weapons",    Color(255, 200, 100) },
-    { "ai",        "AI",         Color(150, 200, 255) },
-    { "sounds",    "Sounds",     Color(200, 150, 255) },
-    { "ownership", "Ownership",  Color(200, 150, 255) },
-    { "relations", "Relations",  Color(120, 200, 220) },
-    { "keyvalues", "KeyValues",  Color(180, 180, 180) },
-    { "meta",      "Meta",       Color(120, 200, 220) }
+    { "basic",     "sed.cat.basic",     Color(64, 152, 255) },
+    { "position",  "sed.cat.position",  Color(60, 179, 113) },
+    { "saved",     "sed.cat.saved",     Color(255, 140, 40) },
+    { "state",     "sed.cat.state",     Color(218, 165, 32) },
+    { "behavior",  "sed.cat.behavior",  Color(214, 80, 80) },
+    { "combat",    "sed.cat.combat",    Color(255, 90, 140) },
+    { "visual",    "sed.cat.visual",    Color(147, 112, 219) },
+    { "vjbase",    "sed.cat.vjbase",    Color(100, 255, 150) },
+    { "weapons",   "sed.cat.weapons",   Color(255, 200, 100) },
+    { "ai",        "sed.cat.ai",        Color(150, 200, 255) },
+    { "sounds",    "sed.cat.sounds",    Color(200, 150, 255) },
+    { "ownership", "sed.cat.ownership", Color(200, 150, 255) },
+    { "relations", "sed.cat.relations", Color(120, 200, 220) },
+    { "keyvalues", "sed.cat.keyvalues", Color(180, 180, 180) },
+    { "meta",      "sed.cat.meta",      Color(120, 200, 220) }
 }

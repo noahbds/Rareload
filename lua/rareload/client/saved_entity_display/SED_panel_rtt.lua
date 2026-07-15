@@ -114,3 +114,5 @@ end
 
 hook.Add("InitPostEntity", "RARELOAD_SED_RTT_MapChange", RTT.InvalidateAll)
 hook.Add("OnScreenSizeChanged", "RARELOAD_SED_RTT_Resize", RTT.InvalidateAll)
+-- Baked panels contain rendered text; rebake when the Rareload language changes.
+hook.Add("RareloadLanguageChanged", "RARELOAD_SED_RTT_Language", RTT.InvalidateAll)

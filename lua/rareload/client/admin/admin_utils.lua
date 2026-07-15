@@ -146,14 +146,15 @@ end
 
 function RARELOAD.AdminPanel.Utils.GetCategoryInfo(catName)
     local THEME = RARELOAD.AdminPanel.Theme.COLORS
+    local L = RARELOAD.L or function(key) return key end
 
     local displayNames = {
-        ["ADMIN"] = "Administration",
-        ["POSITION"] = "Position & Spawn",
-        ["INVENTORY"] = "Inventory & Stats",
-        ["ENTITIES"] = "Entities & NPCs",
-        ["TOOL"] = "Tool Access",
-        ["OTHER"] = "Other Permissions"
+        ["ADMIN"] = L("admin.cat.admin"),
+        ["POSITION"] = L("admin.cat.position"),
+        ["INVENTORY"] = L("admin.cat.inventory"),
+        ["ENTITIES"] = L("admin.cat.entities"),
+        ["TOOL"] = L("admin.cat.tool"),
+        ["OTHER"] = L("admin.cat.other")
     }
 
     local colors = {

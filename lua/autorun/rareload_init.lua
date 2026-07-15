@@ -2,6 +2,7 @@ RARELOAD         = RARELOAD or {}
 RARELOAD.version = "3.7"
 
 if SERVER then
+    AddCSLuaFile("rareload/shared/sh_lang.lua") -- locale files are AddCSLuaFile'd inside
     AddCSLuaFile("rareload/shared/permissions_def.lua")
     AddCSLuaFile("rareload/shared/rareload_convars.lua")
     AddCSLuaFile("rareload/shared/rareload_tunables.lua")
@@ -49,6 +50,7 @@ if SERVER then
     AddCSLuaFile("rareload/client/saved_entity_display/SED_hooks.lua")
 end
 
+include("rareload/shared/sh_lang.lua")
 include("rareload/shared/permissions_def.lua")
 include("rareload/shared/rareload_convars.lua")
 include("rareload/shared/rareload_tunables.lua")

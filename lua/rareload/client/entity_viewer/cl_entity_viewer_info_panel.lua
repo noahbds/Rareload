@@ -19,6 +19,11 @@ local FRAME_W   = 880
 local FRAME_H   = 600
 local HEADER_H  = 52
 
+local function L(key, ...)
+    if RARELOAD and RARELOAD.L then return RARELOAD.L(key, ...) end
+    return key
+end
+
 local function AddDataRow(parent, label, value, valueColor)
     valueColor = valueColor or PAL.text
     local strValue = tostring(value)
@@ -96,19 +101,19 @@ local function BuildInfoTab(contentPanel, data, isNPC)
     sbar.btnDown.Paint = function() end
     sbar.btnGrip.Paint = function(s, w, h) draw.RoundedBox(2, 0, 0, w, h, PAL.accent) end
 
-    AddSectionLabel(scroll, "Identity")
-    AddDataRow(scroll, "Class", data.class or "Unknown", PAL.accent)
-    if data.id then AddDataRow(scroll, "ID", data.id) end
-    if data.model then AddDataRow(scroll, "Model", data.model, PAL.muted) end
-    if data.skin then AddDataRow(scroll, "Skin", data.skin) end
+    AddSectionLabel(scroll, L("inspector.section.identity"))
+    AddDataRow(scroll, L("inspector.row.class"), data.class or L("common.unknown"), PAL.accent)
+    if data.id then AddDataRow(scroll, L("inspector.row.id"), data.id) end
+    if data.model then AddDataRow(scroll, L("inspector.row.model"), data.model, PAL.muted) end
+    if data.skin then AddDataRow(scroll, L("inspector.row.skin"), data.skin) end
 
     if data.health or data.maxHealth then
-        AddSectionLabel(scroll, "Combat")
+        AddSectionLabel(scroll, L("inspector.section.combat"))
         local hp      = tonumber(data.health) or 0
         local maxHp   = tonumber(data.maxHealth) or hp
         local hpColor = THEME:GetHealthColor(hp, maxHp)
-        AddDataRow(scroll, "Health", hp, hpColor)
-        AddDataRow(scroll, "Max Health", maxHp, PAL.muted)
+        AddDataRow(scroll, L("inspector.row.health"), hp, hpColor)
+        AddDataRow(scroll, L("inspector.row.max_health"), maxHp, PAL.muted)
 
         if maxHp > 0 then
             local barRow = vgui.Create("DPanel", scroll)
@@ -123,24 +128,24 @@ local function BuildInfoTab(contentPanel, data, isNPC)
         end
     end
 
-    AddSectionLabel(scroll, "Position & Orientation")
+    AddSectionLabel(scroll, L("inspector.section.position"))
     if data.pos then
         local p = data.pos
         local px = (isvector(p) and p.x) or (istable(p) and p.x) or 0
         local py = (isvector(p) and p.y) or (istable(p) and p.y) or 0
         local pz = (isvector(p) and p.z) or (istable(p) and p.z) or 0
-        AddDataRow(scroll, "Position", string.format("%.2f, %.2f, %.2f", px, py, pz))
+        AddDataRow(scroll, L("inspector.row.position"), string.format("%.2f, %.2f, %.2f", px, py, pz))
     end
     if data.ang then
         local a  = data.ang
         local ap = (isangle(a) and a.p) or (istable(a) and (a.p or a.pitch)) or 0
         local ay = (isangle(a) and a.y) or (istable(a) and (a.y or a.yaw)) or 0
         local ar = (isangle(a) and a.r) or (istable(a) and (a.r or a.roll)) or 0
-        AddDataRow(scroll, "Angles", string.format("%.2f, %.2f, %.2f", ap, ay, ar))
+        AddDataRow(scroll, L("inspector.row.angles"), string.format("%.2f, %.2f, %.2f", ap, ay, ar))
     end
 
     if data.ang or data.pos then
-        AddSectionLabel(scroll, "Actions")
+        AddSectionLabel(scroll, L("inspector.section.actions"))
 
         local function CreateActionCheckbox(label, iconOn, iconOff, initialState, onClick)
             local btn = vgui.Create("DButton", scroll)
@@ -218,10 +223,10 @@ local function BuildInfoTab(contentPanel, data, isNPC)
             net.SendToServer()
         end
 
-        CreateActionCheckbox("Freeze Entity Position", "icon16/lock.png", "icon16/lock_open.png",
+        CreateActionCheckbox(L("inspector.freeze"), "icon16/lock.png", "icon16/lock_open.png",
             isFrozen, function(newState) SendFlag("freeze", newState) end)
 
-        CreateActionCheckbox("Disable Gravity", "icon16/arrow_down.png", "icon16/arrow_up.png",
+        CreateActionCheckbox(L("inspector.disable_gravity"), "icon16/arrow_down.png", "icon16/arrow_up.png",
             isGravDisabled, function(newState) SendFlag("gravity_disabled", newState) end)
 
     end
@@ -248,7 +253,7 @@ local function BuildInfoTab(contentPanel, data, isNPC)
     table.sort(extras, function(a, b) return a.k < b.k end)
 
     if #extras > 0 then
-        AddSectionLabel(scroll, "Additional")
+        AddSectionLabel(scroll, L("inspector.section.additional"))
         for _, pair in ipairs(extras) do
             AddDataRow(scroll, pair.k, pair.v)
         end
@@ -261,7 +266,7 @@ local function BuildEditorTab(contentPanel, data, isNPC, onSaved)
     if not (RARELOAD.JSONEditor and RARELOAD.JSONEditor.Create) then
         local err = vgui.Create("DLabel", contentPanel)
         err:Dock(FILL)
-        err:SetText("JSON Editor component not loaded.")
+        err:SetText(L("inspector.editor_missing"))
         err:SetFont("RareloadSubheading")
         err:SetTextColor(THEME.error)
         err:SetContentAlignment(5)
@@ -281,7 +286,7 @@ local function BuildEditorTab(contentPanel, data, isNPC, onSaved)
         net.WriteTable(newData)
         net.SendToServer()
 
-        ShowNotification("Update sent to server…", NOTIFY_GENERIC)
+        ShowNotification(L("inspector.update_sent"), NOTIFY_GENERIC)
 
         if onSaved then onSaved(newData) end
     end)
@@ -316,9 +321,9 @@ function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
         surface.SetMaterial(Material(isNPCEntity and "icon16/user.png" or "icon16/bricks.png"))
         surface.DrawTexturedRect(16, HEADER_H / 2 - 8, 16, 16)
 
-        draw.SimpleText("Entity Inspector", "RareloadHeading", 40, HEADER_H / 2 - 8,
+        draw.SimpleText(L("inspector.title"), "RareloadHeading", 40, HEADER_H / 2 - 8,
             PAL.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText(data.class or "Unknown", "RareloadCaption", 40, HEADER_H / 2 + 8,
+        draw.SimpleText(data.class or L("common.unknown"), "RareloadCaption", 40, HEADER_H / 2 + 8,
             PAL.muted, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 
         surface.SetDrawColor(PAL.divider)
@@ -345,8 +350,8 @@ function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
     contentArea.Paint   = function() end
 
     local tabs          = {
-        { id = "info",   label = "Information", icon = "icon16/information.png" },
-        { id = "editor", label = "Data Editor", icon = "icon16/pencil.png" },
+        { id = "info",   label = L("inspector.tab.info"),   icon = "icon16/information.png" },
+        { id = "editor", label = L("inspector.tab.editor"), icon = "icon16/pencil.png" },
     }
 
     local activeTab     = ""
@@ -431,11 +436,11 @@ function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
 
     local function HL() return SED and SED.Highlight end
 
-    local highlightBtn = MakeToggleButton("Highlight", "icon16/flag_yellow.png", PAL.accent,
+    local highlightBtn = MakeToggleButton(L("inspector.highlight"), "icon16/flag_yellow.png", PAL.accent,
         function() return HL() and SED.Highlight.IsActive("saved", data.id) or false end,
         function() if HL() then SED.Highlight.ToggleSaved(data.id, isNPCEntity) end end)
 
-    local linkBtn = MakeToggleButton("Link to Phantom", "icon16/connect.png", Color(0, 188, 212),
+    local linkBtn = MakeToggleButton(L("inspector.link_phantom"), "icon16/connect.png", Color(0, 188, 212),
         function() return HL() and SED.Highlight.IsActive("live2phantom", data.id) or false end,
         function() if HL() then SED.Highlight.ToggleLiveToPhantom(data.id, isNPCEntity) end end)
 
@@ -463,7 +468,7 @@ function CreateDetailsPanel(data, isNPC, onDeleted, onAction)
         surface.SetMaterial(Material("icon16/cross.png"))
         surface.DrawTexturedRect(14, h / 2 - 8, 16, 16)
 
-        draw.SimpleText("Delete Entity", "RareloadBody", 38, h / 2,
+        draw.SimpleText(L("inspector.delete"), "RareloadBody", 38, h / 2,
             THEME:LerpColor(self.hov, PAL.muted, PAL.error), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
     deleteBtn.DoClick = function()

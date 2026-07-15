@@ -119,7 +119,8 @@ local function FillResolved(s, e, liveByID, eyePos, byMap)
         s.fromPos = eyePos
         s.toPos   = toPos
         s.outline = (IsValid(live) and live) or (pd and IsValid(pd.phantom) and pd.phantom) or nil
-        s.label   = (rec.class or rec.Class or "saved") .. (e.isNPC and " (NPC)" or "")
+        s.label   = (rec.class or rec.Class or RARELOAD.L("sed.highlight.saved"))
+            .. (e.isNPC and RARELOAD.L("sed.highlight.npc_suffix") or "")
         s.dual    = false
         return true
     elseif e.kind == KIND_L2P then
@@ -132,7 +133,7 @@ local function FillResolved(s, e, liveByID, eyePos, byMap)
         s.fromPos = from
         s.toPos   = toPos
         s.outline = live
-        s.label   = "drift " .. math_floor(from:Distance(toPos)) .. "u"
+        s.label   = RARELOAD.L("sed.highlight.drift", math_floor(from:Distance(toPos)))
         s.dual    = true
         return true
     elseif e.kind == KIND_P2P then
@@ -145,7 +146,7 @@ local function FillResolved(s, e, liveByID, eyePos, byMap)
         s.fromPos = from
         s.toPos   = toPos
         s.outline = IsValid(ply) and ply or nil
-        s.label   = IsValid(ply) and ply:Nick() or "player"
+        s.label   = IsValid(ply) and ply:Nick() or RARELOAD.L("sed.highlight.player")
         s.dual    = IsValid(ply)
         return true
     end
@@ -290,7 +291,7 @@ hook.Add("HUDPaint", "RARELOAD_Highlight_HUD", function()
         local r = labelList[i]
         local col = r.color
         local scr = r.toPos:ToScreen()
-        local text = string.format("%s  %du", r.label or "", math_floor(r.dist))
+        local text = RARELOAD.L("sed.highlight.label_fmt", r.label or "", math_floor(r.dist))
 
         if scr.visible and scr.x >= 0 and scr.x <= sw and scr.y >= 0 and scr.y <= sh then
             DrawLabel(text, scr.x, scr.y - 24, col)

@@ -78,7 +78,8 @@ function SED.BuildPanelData(saved, ent, isNPC)
         if #list > maxLines then
             local extra = #list - maxLines
             while #list > maxLines do table.remove(list) end
-            list[#list + 1] = { "+more", ("%d more..."):format(extra), PB.resolveTextColor(nil) }
+            local more = RARELOAD and RARELOAD.L and RARELOAD.L("sed.more", extra) or ("%d more..."):format(extra)
+            list[#list + 1] = { "+more", more, PB.resolveTextColor(nil) }
         end
     end
 

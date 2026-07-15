@@ -48,6 +48,11 @@ local safeTextColor              = RS.safeTextColor
 local surface_SetMaterial        = surface.SetMaterial
 local surface_DrawTexturedRectUV = surface.DrawTexturedRectUV
 
+local function L(key, ...)
+    if RARELOAD and RARELOAD.L then return RARELOAD.L(key, ...) end
+    return key
+end
+
 local function DrawContent(ctx, ox, oy)
     local ent                  = ctx.ent
     local saved                = ctx.saved
@@ -89,7 +94,7 @@ local function DrawContent(ctx, ox, oy)
     surface_SetDrawColor(60, 140, 220, 100)
     surface_DrawOutlinedRect(ox, oy, width, panelHeight, 1)
 
-    local title = isNPC and "Saved NPC" or "Saved Entity"
+    local title = isNPC and L("sed.saved_npc") or L("sed.saved_entity")
     if saved and saved._isPhantom and saved._phantomTitle then
         title = saved._phantomTitle
     end
@@ -97,7 +102,7 @@ local function DrawContent(ctx, ox, oy)
     draw_SimpleText(title, "Trebuchet24", ox + 12, oy + 6, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
 
     local subtitleID = saved.id or saved.RareloadNPCID or saved.RareloadEntityID or saved.RareloadID
-    local subtitle   = subtitleID and tostring(subtitleID) or "unknown"
+    local subtitle   = subtitleID and tostring(subtitleID) or L("sed.unknown_id")
 
     local maxHP = tonumber(saved.MaxHealth or saved.maxHealth or saved.StartHealth) or 0
     local hpBarReserve = 0
@@ -176,7 +181,7 @@ local function DrawContent(ctx, ox, oy)
                 surface_SetDrawColor(150, 200, 255, 40)
                 surface_DrawRect(abx + 1, aby + 1, armorBarW - 2, 4)
 
-                draw_SimpleText("Armor: " .. armor, "Trebuchet18", abx + armorBarW / 2, aby + 5, ARMOR_TEXT,
+                draw_SimpleText(L("sed.armor", armor), "Trebuchet18", abx + armorBarW / 2, aby + 5, ARMOR_TEXT,
                     TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
             end
         end
@@ -242,7 +247,7 @@ local function DrawContent(ctx, ox, oy)
             surface_DrawRect(tabX + 8, tabY + tabHeight / 2 - 1, 3, 3)
         end
 
-        draw_SimpleText(name, "Trebuchet18", tabX + 14, tabY + tabHeight / 2, textColor, TEXT_ALIGN_LEFT,
+        draw_SimpleText(L(name), "Trebuchet18", tabX + 14, tabY + tabHeight / 2, textColor, TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER)
 
         local countColor

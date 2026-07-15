@@ -233,12 +233,14 @@ function TOOL:Reload()
 end
 
 function TOOL.BuildCPanel(panel)
+    local L = RARELOAD.L or function(key) return key end
+
     local success, err = pcall(loadAddonSettings)
     if not success then
         ErrorNoHalt("Failed to load addon settings: " .. (err or "unknown error"))
 
         local errorLabel = vgui.Create("DLabel", panel)
-        errorLabel:SetText("Error loading Rareload Tool")
+        errorLabel:SetText(L("cpanel.error_loading"))
         errorLabel:SetTextColor(Color(255, 50, 50))
         errorLabel:Dock(TOP)
         errorLabel:DockMargin(5, 5, 5, 5)
@@ -262,7 +264,7 @@ function TOOL.BuildCPanel(panel)
         surface.DrawRect(0, h - 3, w, 3)
         draw.SimpleText("RARELOAD", "RareloadUI.Title", 12, h / 2 - 6, RareloadUI.Theme.Colors.Text.Primary,
             TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText("Configuration Panel", "RareloadUI.Small", 12, h / 2 + 10, RareloadUI.Theme.Colors.Text
+        draw.SimpleText(L("cpanel.subtitle"), "RareloadUI.Small", 12, h / 2 + 10, RareloadUI.Theme.Colors.Text
             .Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         draw.SimpleText("v3.7", "RareloadUI.Small", w - 12, h / 2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT,
             TEXT_ALIGN_CENTER)
@@ -280,57 +282,57 @@ function TOOL.BuildCPanel(panel)
             minV, maxV, decimals, default, suffix))
     end
 
-    local coreCategory = RareloadUI.CreateCategory(panel, "Core Settings", "icon16/cog.png", true)
-    addToggle(coreCategory, "Enable Rareload", "sv_rareload_enabled", "Master switch to enable/disable the addon")
-    addToggle(coreCategory, "Anti-Stuck System", "sv_rareload_spawn_mode", "Prevents spawning inside objects")
-    addToggle(coreCategory, "Auto Save Position", "sv_rareload_auto_save", "Automatically saves position periodically")
-    addToggle(coreCategory, "No Custom Respawn at Death", "sv_rareload_no_custom_death", "Disable custom respawn when dying")
+    local coreCategory = RareloadUI.CreateCategory(panel, L("cpanel.cat.core"), "icon16/cog.png", true)
+    addToggle(coreCategory, L("cpanel.enable_rareload"), "sv_rareload_enabled", L("cpanel.enable_rareload.tip"))
+    addToggle(coreCategory, L("cpanel.anti_stuck"), "sv_rareload_spawn_mode", L("cpanel.anti_stuck.tip"))
+    addToggle(coreCategory, L("cpanel.auto_save"), "sv_rareload_auto_save", L("cpanel.auto_save.tip"))
+    addToggle(coreCategory, L("cpanel.no_custom_death"), "sv_rareload_no_custom_death", L("cpanel.no_custom_death.tip"))
 
     -- ═══════════════════════════════════════════════════════════════
     -- PLAYER STATE CATEGORY
     -- ═══════════════════════════════════════════════════════════════
-    local playerCategory = RareloadUI.CreateCategory(panel, "Player State Retention", "icon16/user.png", true)
-    addToggle(playerCategory, "Keep Health & Armor", "sv_rareload_keep_health", "Restore health and armor on respawn")
-    addToggle(playerCategory, "Keep Player States", "sv_rareload_keep_states", "Restore godmode, notarget, noclip, frozen")
-    addToggle(playerCategory, "Keep Inventory", "sv_rareload_keep_inventory", "Restore weapons on respawn")
-    addToggle(playerCategory, "Keep Ammo", "sv_rareload_keep_ammo", "Restore ammunition on respawn")
-    addToggle(playerCategory, "Global Inventory", "sv_rareload_global_inventory", "Share inventory across all players")
+    local playerCategory = RareloadUI.CreateCategory(panel, L("cpanel.cat.player_state"), "icon16/user.png", true)
+    addToggle(playerCategory, L("cpanel.keep_health"), "sv_rareload_keep_health", L("cpanel.keep_health.tip"))
+    addToggle(playerCategory, L("cpanel.keep_states"), "sv_rareload_keep_states", L("cpanel.keep_states.tip"))
+    addToggle(playerCategory, L("cpanel.keep_inventory"), "sv_rareload_keep_inventory", L("cpanel.keep_inventory.tip"))
+    addToggle(playerCategory, L("cpanel.keep_ammo"), "sv_rareload_keep_ammo", L("cpanel.keep_ammo.tip"))
+    addToggle(playerCategory, L("cpanel.global_inventory"), "sv_rareload_global_inventory", L("cpanel.global_inventory.tip"))
 
     -- ═══════════════════════════════════════════════════════════════
     -- MAP ENTITIES CATEGORY
     -- ═══════════════════════════════════════════════════════════════
-    local mapCategory = RareloadUI.CreateCategory(panel, "Map Entities", "icon16/map.png", false)
-    addToggle(mapCategory, "Keep Map Entities", "sv_rareload_keep_map_entities", "Restore map entities on respawn")
-    addToggle(mapCategory, "Keep Map NPCs", "sv_rareload_keep_map_npcs", "Restore NPCs on respawn")
-    addToggle(mapCategory, "Overwrite Moved on Save", "sv_rareload_auto_overwrite",
-        "When you save, also update already-saved entities/NPCs you've moved or changed. Off keeps their old saved state (newly spawned ones are still added)")
-    addToggle(mapCategory, "Cleanup Map on Respawn", "sv_rareload_cleanup_map", "Clean up the map right before respawning")
-    addToggle(mapCategory, "Saved Entities Only", "sv_rareload_cleanup_only_saved",
-        "When cleanup on death is enabled, only remove entities/NPCs that were saved by Rareload instead of wiping the whole map")
-    addToggle(mapCategory, "Owned Entities Only", "sv_rareload_cleanup_owned_only",
-        "Restrict death cleanup to your own Rareload-spawned entities/NPCs (no full map wipe)")
-    addToggle(mapCategory, "Cleanup on Disconnect", "sv_rareload_cleanup_on_disconnect",
-        "Remove your owned entities and NPCs when you disconnect")
+    local mapCategory = RareloadUI.CreateCategory(panel, L("cpanel.cat.map_entities"), "icon16/map.png", false)
+    addToggle(mapCategory, L("cpanel.keep_map_entities"), "sv_rareload_keep_map_entities", L("cpanel.keep_map_entities.tip"))
+    addToggle(mapCategory, L("cpanel.keep_map_npcs"), "sv_rareload_keep_map_npcs", L("cpanel.keep_map_npcs.tip"))
+    addToggle(mapCategory, L("cpanel.auto_overwrite"), "sv_rareload_auto_overwrite",
+        L("cpanel.auto_overwrite.tip"))
+    addToggle(mapCategory, L("cpanel.cleanup_map"), "sv_rareload_cleanup_map", L("cpanel.cleanup_map.tip"))
+    addToggle(mapCategory, L("cpanel.cleanup_only_saved"), "sv_rareload_cleanup_only_saved",
+        L("cpanel.cleanup_only_saved.tip"))
+    addToggle(mapCategory, L("cpanel.cleanup_owned_only"), "sv_rareload_cleanup_owned_only",
+        L("cpanel.cleanup_owned_only.tip"))
+    addToggle(mapCategory, L("cpanel.cleanup_on_disconnect"), "sv_rareload_cleanup_on_disconnect",
+        L("cpanel.cleanup_on_disconnect.tip"))
 
     -- ═══════════════════════════════════════════════════════════════
     -- TIMING SETTINGS CATEGORY
     -- ═══════════════════════════════════════════════════════════════
-    local timingCategory = RareloadUI.CreateCategory(panel, "Timing & Limits", "icon16/time.png", false)
-    addSlider(timingCategory, "Auto Save Interval", "Idle seconds before an auto save (0 = save whenever you stop moving)",
+    local timingCategory = RareloadUI.CreateCategory(panel, L("cpanel.cat.timing"), "icon16/time.png", false)
+    addSlider(timingCategory, L("cpanel.auto_save_interval"), L("cpanel.auto_save_interval.tip"),
         "sv_rareload_auto_save_interval", 0, 60, 0, 5, "s")
-    addSlider(timingCategory, "Angle Tolerance", "Degrees of tolerance for entity restoration",
+    addSlider(timingCategory, L("cpanel.angle_tolerance"), L("cpanel.angle_tolerance.tip"),
         "sv_rareload_angle_tolerance", 1, 360, 0, 100, "°")
-    addSlider(timingCategory, "History Size", "Maximum position cache entries",
+    addSlider(timingCategory, L("cpanel.history_size"), L("cpanel.history_size.tip"),
         "sv_rareload_history_size", 1, 150, 0, 125, "")
 
     -- ═══════════════════════════════════════════════════════════════
     -- ACTIONS CATEGORY
     -- ═══════════════════════════════════════════════════════════════
-    local actionsCategory = RareloadUI.CreateCategory(panel, "Quick Actions", "icon16/lightning.png", true)
+    local actionsCategory = RareloadUI.CreateCategory(panel, L("cpanel.cat.actions"), "icon16/lightning.png", true)
 
     local saveBtn = RareloadUI.CreateModernButton(
         actionsCategory.Content,
-        "Save Current Position",
+        L("cpanel.save_position"),
         "icon16/disk.png",
         function()
             RunConsoleCommand("save_position")
@@ -342,7 +344,7 @@ function TOOL.BuildCPanel(panel)
     if RARELOAD.CheckPermission(LocalPlayer(), "ADMIN_PANEL") then
         local adminBtn = RareloadUI.CreateModernButton(
             actionsCategory.Content,
-            "Open Admin Panel",
+            L("cpanel.open_admin"),
             "icon16/shield.png",
             function()
                 RunConsoleCommand("rareload_admin")
@@ -353,7 +355,7 @@ function TOOL.BuildCPanel(panel)
 
         local paramsBtn = RareloadUI.CreateModernButton(
             actionsCategory.Content,
-            "Configure Parameters",
+            L("cpanel.configure_params"),
             "icon16/cog_edit.png",
             function()
                 if RARELOAD.OpenTunablesMenu then RARELOAD.OpenTunablesMenu() end
@@ -366,27 +368,27 @@ function TOOL.BuildCPanel(panel)
     -- ═══════════════════════════════════════════════════════════════
     -- HIGHLIGHT & TRACERS CATEGORY
     -- ═══════════════════════════════════════════════════════════════
-    local highlightCategory = RareloadUI.CreateCategory(panel, "Highlight & Tracers", "icon16/eye.png", false)
+    local highlightCategory = RareloadUI.CreateCategory(panel, L("cpanel.cat.highlight"), "icon16/eye.png", false)
     local function addHighlightButton(label, icon, cmd, color)
         highlightCategory:AddItem(RareloadUI.CreateModernButton(
             highlightCategory.Content, label, icon, function() RunConsoleCommand(cmd) end, color))
     end
-    addHighlightButton("Highlight All Saved", "icon16/flag_yellow.png", "rareload_highlight_all", Color(255, 193, 7))
-    addHighlightButton("Link All Live to Phantom", "icon16/connect.png", "rareload_highlight_link_all", Color(0, 188, 212))
-    addHighlightButton("Highlight Player Phantoms", "icon16/user_green.png", "rareload_highlight_players", Color(76, 175, 80))
-    addHighlightButton("Clear Highlights", "icon16/cross.png", "rareload_highlight_clear", Color(158, 158, 158))
+    addHighlightButton(L("cpanel.highlight_all"), "icon16/flag_yellow.png", "rareload_highlight_all", Color(255, 193, 7))
+    addHighlightButton(L("cpanel.link_all"), "icon16/connect.png", "rareload_highlight_link_all", Color(0, 188, 212))
+    addHighlightButton(L("cpanel.highlight_players"), "icon16/user_green.png", "rareload_highlight_players", Color(76, 175, 80))
+    addHighlightButton(L("cpanel.clear_highlights"), "icon16/cross.png", "rareload_highlight_clear", Color(158, 158, 158))
 
     -- ═══════════════════════════════════════════════════════════════
     -- DEBUG TOOLS CATEGORY
     -- ═══════════════════════════════════════════════════════════════
     if RARELOAD.CheckPermission(LocalPlayer(), "DEBUG_MENU") then
-        local debugCategory = RareloadUI.CreateCategory(panel, "Debug & Tools", "icon16/wrench.png", false)
+        local debugCategory = RareloadUI.CreateCategory(panel, L("cpanel.cat.debug"), "icon16/wrench.png", false)
 
-        addToggle(debugCategory, "Debug Mode", "sv_rareload_debug", "Enable debug logging in console")
+        addToggle(debugCategory, L("cpanel.debug_mode"), "sv_rareload_debug", L("cpanel.debug_mode.tip"))
 
         local entityViewerBtn = RareloadUI.CreateModernButton(
             debugCategory.Content,
-            "Entity Viewer",
+            L("cpanel.entity_viewer"),
             "icon16/application_view_list.png",
             function()
                 RunConsoleCommand("entity_viewer_open")
@@ -401,7 +403,7 @@ function TOOL.BuildCPanel(panel)
     footerPanel:DockMargin(5, 10, 5, 5)
     footerPanel:SetTall(24)
     footerPanel.Paint = function(_, w, h)
-        draw.SimpleText("Made by Noahbds", "RareloadUI.Small", w / 2, h / 2, Color(100, 105, 115), TEXT_ALIGN_CENTER,
+        draw.SimpleText(L("cpanel.made_by"), "RareloadUI.Small", w / 2, h / 2, Color(100, 105, 115), TEXT_ALIGN_CENTER,
             TEXT_ALIGN_CENTER)
     end
 end

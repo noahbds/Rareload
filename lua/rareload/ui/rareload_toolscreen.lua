@@ -32,22 +32,28 @@ local TOOL_UI = {
 
 local ToolScreen = {}
 
+local function L(key, ...)
+    if RARELOAD.L then return RARELOAD.L(key, ...) end
+    return key
+end
+
+-- name is a localization key, resolved at draw time so language changes apply live.
 local FEATURES = {
-    { name = "Anti-stuck system",       key = "spawnModeEnabled",       kind = "bool" },
-    { name = "Auto Save",               key = "autoSaveEnabled",        kind = "bool" },
-    { name = "Clean Map on Death",      key = "cleanupMapAfterDeath",   kind = "bool" },
-    { name = "No Custom Death Respawn", key = "nocustomrespawnatdeath", kind = "bool" },
-    { name = "Save Inventory",          key = "retainInventory",        kind = "bool" },
-    { name = "Save Global Inventory",   key = "retainGlobalInventory",  kind = "bool" },
-    { name = "Save Ammo",               key = "retainAmmo",             kind = "bool" },
-    { name = "Save Health and Armor",   key = "retainHealthArmor",      kind = "bool" },
-    { name = "Save Player States",      key = "retainPlayerStates",     kind = "bool" },
-    { name = "Save Entities",           key = "retainMapEntities",      kind = "bool" },
-    { name = "Save NPCs",               key = "retainMapNPCs",          kind = "bool" },
-    { name = "Debug Mode",              key = "debugEnabled",           kind = "bool" },
-    { name = "Auto Save Interval",      key = "autoSaveInterval",       kind = "value", unit = "s" },
-    { name = "Angle Tolerance",         key = "angleTolerance",         kind = "value", unit = "°" },
-    { name = "Max History Size",        key = "maxHistorySize",         kind = "value" }
+    { name = "screen.feature.anti_stuck",            key = "spawnModeEnabled",       kind = "bool" },
+    { name = "screen.feature.auto_save",             key = "autoSaveEnabled",        kind = "bool" },
+    { name = "screen.feature.clean_map",             key = "cleanupMapAfterDeath",   kind = "bool" },
+    { name = "screen.feature.no_custom_respawn",     key = "nocustomrespawnatdeath", kind = "bool" },
+    { name = "screen.feature.save_inventory",        key = "retainInventory",        kind = "bool" },
+    { name = "screen.feature.save_global_inventory", key = "retainGlobalInventory",  kind = "bool" },
+    { name = "screen.feature.save_ammo",             key = "retainAmmo",             kind = "bool" },
+    { name = "screen.feature.save_health",           key = "retainHealthArmor",      kind = "bool" },
+    { name = "screen.feature.save_states",           key = "retainPlayerStates",     kind = "bool" },
+    { name = "screen.feature.save_entities",         key = "retainMapEntities",      kind = "bool" },
+    { name = "screen.feature.save_npcs",             key = "retainMapNPCs",          kind = "bool" },
+    { name = "screen.feature.debug",                 key = "debugEnabled",           kind = "bool" },
+    { name = "screen.feature.auto_save_interval",    key = "autoSaveInterval",       kind = "value", unit = "s" },
+    { name = "screen.feature.angle_tolerance",       key = "angleTolerance",         kind = "value", unit = "°" },
+    { name = "screen.feature.max_history",           key = "maxHistorySize",         kind = "value" }
 }
 
 local function initAnimState(RARELOAD)
@@ -66,7 +72,7 @@ local function initAnimState(RARELOAD)
         scrollPauseTime = 5,
         scrollSpeed = 15,
         lastRemainingSecond = -1,
-        cachedCountdownText = "Saving in: 0s"
+        cachedCountdownText = L("screen.saving_in", 0)
     }
     return RARELOAD.AnimState
 end
@@ -94,7 +100,7 @@ local function drawWaitingForTriggerBar(width, height, state, barY, barHeight, c
     end
 
     local textY = barY + barHeight / 2
-    local infoText = text or "Ready for next save..."
+    local infoText = text or L("screen.ready_next")
     local textColor = TOOL_UI.COLORS.TEXT.NORMAL
 
     draw.SimpleText(infoText, "CTNV", width / 2 + 1, textY + 1, TOOL_UI.COLORS.TEXT.SHADOW, TEXT_ALIGN_CENTER,
@@ -111,8 +117,9 @@ local function drawAutoSaveMessage(width, height, barY, barHeight)
         TOOL_UI.COLORS.AUTO_SAVE_MESSAGE.b, opacity)
     local shadowColor = Color(0, 0, 0, opacity * 0.7)
 
-    draw.SimpleText("Auto Saved!", "CTNV", width / 2 + 1, textY + 1, shadowColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    draw.SimpleText("Auto Saved!", "CTNV", width / 2, textY, messageColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    local autoSavedText = L("screen.auto_saved")
+    draw.SimpleText(autoSavedText, "CTNV", width / 2 + 1, textY + 1, shadowColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    draw.SimpleText(autoSavedText, "CTNV", width / 2, textY, messageColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
     if elapsed > duration then
         RARELOAD.showAutoSaveMessage = false
@@ -152,7 +159,7 @@ local function drawProgressBar(width, height, state, barY, barHeight, progress, 
     end
 
     local textY = barY + barHeight / 2
-    local infoText = state and state.cachedCountdownText or ("Saving in: " .. math.floor(timeRemaining) .. "s")
+    local infoText = state and state.cachedCountdownText or L("screen.saving_in", math.floor(timeRemaining))
     local textColor = TOOL_UI.COLORS.TEXT.NORMAL
 
     if timeRemaining < TOOL_UI.ANIMATION.PULSE_THRESHOLD then
@@ -395,7 +402,7 @@ local function drawReloadStateImage(width, height)
         function(cx, cy, size, alpha, animProgress)
             drawStatusEmoji(cx, cy, size, state.hasData, alpha, animProgress)
         end,
-        state.hasData and "Position Data Found" or "No Position Data")
+        state.hasData and L("screen.data_found") or L("screen.no_data"))
 end
 
 local function drawPermissionIcon(x, y, size, alpha, animProgress)
@@ -491,7 +498,7 @@ end
 
 local function drawPermissionDeniedImage(width, height)
     drawOverlay(RARELOAD.permissionDeniedState, function() RARELOAD.permissionDeniedState = nil end,
-        width, height, drawPermissionIcon, "No Permission")
+        width, height, drawPermissionIcon, L("screen.no_permission"))
 end
 
 function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offsetX, offsetY)
@@ -587,7 +594,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
         surface.DrawTexturedRect(10, 60, width - 20, 30)
     end
 
-    local statusText = isEnabled and "ENABLED" or "DISABLED"
+    local statusText = isEnabled and L("common.enabled") or L("common.disabled")
     local textColor = isEnabled and colors.TEXT_DARK or colors.TEXT_LIGHT
     draw.SimpleText(statusText, "CTNV", width / 2, 75, textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
@@ -612,7 +619,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
             if cfg.kind == "value" then
                 draw.RoundedBox(iconSize / 2, 12, y + 2, iconSize, iconSize - 4, colors.HEADER)
 
-                draw.SimpleText(cfg.name, "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT,
+                draw.SimpleText(L(cfg.name), "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT,
                     TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 
                 local valueText = value ~= nil and tostring(value) or "-"
@@ -625,9 +632,9 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
 
                 draw.RoundedBox(iconSize / 2, 12, y + 2, iconSize, iconSize - 4, dotColor)
 
-                draw.SimpleText(cfg.name, "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT,
+                draw.SimpleText(L(cfg.name), "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT,
                     TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-                draw.SimpleText(on and "ON" or "OFF", "CTNV", width - 15, y + iconSize / 2, dotColor,
+                draw.SimpleText(on and L("common.on") or L("common.off"), "CTNV", width - 15, y + iconSize / 2, dotColor,
                     TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
             end
         end
@@ -649,7 +656,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
             RARELOAD.activeProgress = false
             state.waitingForTrigger = true
             drawWaitingForTriggerBar(width, height, state, barY, barHeight, currentTime,
-                getProgressColor(1), "Saves when you stop moving")
+                getProgressColor(1), L("screen.saves_on_stop"))
         else
             local timeElapsed = math.max(0, currentTime - lastMove)
             local progress = math.Clamp(timeElapsed / interval, 0, 1)
@@ -657,7 +664,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
 
             local remainInt = math.floor(timeRemaining)
             if remainInt ~= state.lastRemainingSecond then
-                state.cachedCountdownText = "Saving in: " .. remainInt .. "s"
+                state.cachedCountdownText = L("screen.saving_in", remainInt)
                 state.lastRemainingSecond = remainInt
             end
 

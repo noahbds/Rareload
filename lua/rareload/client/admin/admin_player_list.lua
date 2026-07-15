@@ -2,6 +2,11 @@ RARELOAD = RARELOAD or {}
 RARELOAD.AdminPanel = RARELOAD.AdminPanel or {}
 RARELOAD.AdminPanel.PlayerList = RARELOAD.AdminPanel.PlayerList or {}
 
+local function L(key, ...)
+    if RARELOAD.L then return RARELOAD.L(key, ...) end
+    return key
+end
+
 -- Create the player list panel
 function RARELOAD.AdminPanel.PlayerList.Create(parent, onPlayerSelected)
     local THEME = RARELOAD.AdminPanel.Theme.COLORS
@@ -26,7 +31,7 @@ function RARELOAD.AdminPanel.PlayerList.Create(parent, onPlayerSelected)
     playerListTitle:SetTall(40)
     playerListTitle.Paint = function(pnl, w, h)
         DrawRoundedBoxEx(0, 0, 0, w, h, THEME.header, true, true, false, false)
-        draw.SimpleText("All Players", "DermaLarge", w / 2, h / 2, THEME.text, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        draw.SimpleText(L("admin.all_players"), "DermaLarge", w / 2, h / 2, THEME.text, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
 
     -- Offline toggle
@@ -78,10 +83,10 @@ function RARELOAD.AdminPanel.PlayerList.Create(parent, onPlayerSelected)
         surface.SetDrawColor(255, 255, 255, 100)
         surface.DrawRect(knobX + 1, switchY + 4, knobSize - 2, 2)
 
-        draw.SimpleText("Show Offline Players", "DermaDefaultBold", 10, h / 2, THEME.text, TEXT_ALIGN_LEFT,
+        draw.SimpleText(L("admin.show_offline"), "DermaDefaultBold", 10, h / 2, THEME.text, TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER)
 
-        local statusText = pnl.showOffline and "ON" or "OFF"
+        local statusText = pnl.showOffline and L("common.on") or L("common.off")
         local statusColor = pnl.showOffline and THEME.success or THEME.textSecondary
         draw.SimpleText(statusText, "DermaDefaultBold", switchX - 30, h / 2, statusColor, TEXT_ALIGN_RIGHT,
             TEXT_ALIGN_CENTER)
@@ -106,7 +111,7 @@ function RARELOAD.AdminPanel.PlayerList.Create(parent, onPlayerSelected)
 
     local searchBox = vgui.Create("DTextEntry", searchContainer)
     searchBox:Dock(FILL)
-    searchBox:SetPlaceholderText("Search players...")
+    searchBox:SetPlaceholderText(L("admin.search_players"))
     searchBox:SetFont("DermaDefault")
     searchBox.Paint = function(pnl, w, h)
         DrawRoundedBoxEx(0, 0, 0, w, h, THEME.panelLight, true, true, true, true)
@@ -238,21 +243,21 @@ function RARELOAD.AdminPanel.PlayerList.Create(parent, onPlayerSelected)
 
             local statusText, statusColor
             if playerData.isSuperAdmin then
-                statusText = "SuperAdmin"
+                statusText = L("admin.status.superadmin")
                 statusColor = THEME.superadmin
             elseif playerData.isAdmin then
-                statusText = "Admin"
+                statusText = L("admin.status.admin")
                 statusColor = THEME.admin
             else
-                statusText = playerData.isBot and "Bot" or "Player"
+                statusText = playerData.isBot and L("admin.status.bot") or L("admin.status.player")
                 statusColor = THEME.player
             end
 
             if not playerData.isOnline then
-                statusText = statusText .. " (Offline)"
+                statusText = statusText .. L("admin.suffix.offline")
                 statusColor = Color(statusColor.r, statusColor.g, statusColor.b, 150)
             elseif playerData.isBot then
-                statusText = statusText .. " (Bot)"
+                statusText = statusText .. L("admin.suffix.bot")
             end
 
             draw.SimpleText(statusText, "DermaDefaultBold", 55, 30, statusColor, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
@@ -260,7 +265,7 @@ function RARELOAD.AdminPanel.PlayerList.Create(parent, onPlayerSelected)
             if self.hoverFrac > 0 or self.isSelected then
                 local rightText = playerData.steamid
                 if not playerData.isOnline and playerData.lastSeen then
-                    rightText = "Last seen: " .. os.date("%m/%d/%y", playerData.lastSeen)
+                    rightText = L("admin.last_seen", os.date("%m/%d/%y", playerData.lastSeen))
                 end
 
                 draw.SimpleText(rightText, "DermaDefault", w - 10, 25,

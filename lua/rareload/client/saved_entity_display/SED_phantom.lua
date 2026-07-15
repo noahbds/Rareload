@@ -27,6 +27,11 @@ end
 
 local SnapshotUtils           = include("rareload/shared/rareload_snapshot_utils.lua")
 
+local function L(key, ...)
+    if RARELOAD and RARELOAD.L then return RARELOAD.L(key, ...) end
+    return key
+end
+
 local moveTypeNames           = {
     [0] = "MOVETYPE_NONE",
     [1] = "MOVETYPE_ISOMETRIC",
@@ -42,12 +47,13 @@ local moveTypeNames           = {
     [11] = "MOVETYPE_CUSTOM"
 }
 
+-- second element is a localization key, resolved via RARELOAD.L at draw time
 local PHANTOM_CATEGORIES      = {
-    { "basic",     "Basic",     Color(70, 130, 180) },
-    { "position",  "Position",  Color(60, 179, 113) },
-    { "equipment", "Equipment", Color(218, 165, 32) },
-    { "entities",  "Entities",  Color(178, 34, 34) },
-    { "stats",     "Stats",     Color(147, 112, 219) }
+    { "basic",     "sed.cat.basic",     Color(70, 130, 180) },
+    { "position",  "sed.cat.position",  Color(60, 179, 113) },
+    { "equipment", "sed.cat.equipment", Color(218, 165, 32) },
+    { "entities",  "sed.cat.entities",  Color(178, 34, 34) },
+    { "stats",     "sed.cat.stats",     Color(147, 112, 219) }
 }
 
 local CACHE_LIFETIME = 5
@@ -56,39 +62,39 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
     lodLevel      = lodLevel or 1
     local data    = { basic = {}, position = {}, equipment = {}, entities = {}, stats = {} }
 
-    local name    = IsValid(ply) and ply:Nick() or "Unknown"
-    local steamID = IsValid(ply) and ply:SteamID() or "Unknown"
+    local name    = IsValid(ply) and ply:Nick() or L("common.unknown")
+    local steamID = IsValid(ply) and ply:SteamID() or L("common.unknown")
 
-    PB.addLine(data.basic, "Player", name, Color(255, 255, 255))
-    PB.addLine(data.basic, "SteamID", steamID, Color(200, 200, 200))
-    PB.addLine(data.basic, "Map", mapName or game.GetMap(), Color(180, 180, 200))
+    PB.addLine(data.basic, L("sed.phantom.player"), name, Color(255, 255, 255))
+    PB.addLine(data.basic, L("sed.phantom.steamid"), steamID, Color(200, 200, 200))
+    PB.addLine(data.basic, L("sed.phantom.map"), mapName or game.GetMap(), Color(180, 180, 200))
 
     if not savedInfo then
-        PB.addLine(data.basic, "Status", "No saved data", Color(255, 100, 100))
+        PB.addLine(data.basic, L("sed.phantom.status"), L("sed.phantom.no_saved_data"), Color(255, 100, 100))
         return data
     end
 
     if savedInfo.playermodel then
-        PB.addLine(data.basic, "Model", savedInfo.playermodel, Color(200, 200, 200))
+        PB.addLine(data.basic, L("sed.phantom.model"), savedInfo.playermodel, Color(200, 200, 200))
     end
 
     if lodLevel <= 2 then
         local savedItems = {}
-        if savedInfo.health then savedItems[#savedItems + 1] = "Health" end
-        if savedInfo.armor then savedItems[#savedItems + 1] = "Armor" end
-        if savedInfo.inventory and #savedInfo.inventory > 0 then savedItems[#savedItems + 1] = "Inventory" end
-        if savedInfo.ammo then savedItems[#savedItems + 1] = "Ammo" end
-        if savedInfo.playerStates then savedItems[#savedItems + 1] = "States" end
-        if savedInfo.vehicles and #savedInfo.vehicles > 0 then savedItems[#savedItems + 1] = "Vehicles" end
-        if savedInfo.vehicleState then savedItems[#savedItems + 1] = "VehicleState" end
+        if savedInfo.health then savedItems[#savedItems + 1] = L("sed.phantom.item.health") end
+        if savedInfo.armor then savedItems[#savedItems + 1] = L("sed.phantom.item.armor") end
+        if savedInfo.inventory and #savedInfo.inventory > 0 then savedItems[#savedItems + 1] = L("sed.phantom.item.inventory") end
+        if savedInfo.ammo then savedItems[#savedItems + 1] = L("sed.phantom.item.ammo") end
+        if savedInfo.playerStates then savedItems[#savedItems + 1] = L("sed.phantom.item.states") end
+        if savedInfo.vehicles and #savedInfo.vehicles > 0 then savedItems[#savedItems + 1] = L("sed.phantom.item.vehicles") end
+        if savedInfo.vehicleState then savedItems[#savedItems + 1] = L("sed.phantom.item.vehicle_state") end
 
         local entS = SnapshotUtils.GetSummary(savedInfo.entities, { category = "entity" }) or {}
         local npcS = SnapshotUtils.GetSummary(savedInfo.npcs, { category = "npc" }) or {}
-        if PB.countEntries(entS) > 0 then savedItems[#savedItems + 1] = "Entities" end
-        if PB.countEntries(npcS) > 0 then savedItems[#savedItems + 1] = "NPCs" end
+        if PB.countEntries(entS) > 0 then savedItems[#savedItems + 1] = L("sed.phantom.item.entities") end
+        if PB.countEntries(npcS) > 0 then savedItems[#savedItems + 1] = L("sed.phantom.item.npcs") end
 
         if #savedItems > 0 then
-            PB.addLine(data.basic, "Saved Data", table.concat(savedItems, ", "), Color(150, 255, 150))
+            PB.addLine(data.basic, L("sed.phantom.saved_data"), table.concat(savedItems, ", "), Color(150, 255, 150))
         end
     end
 
@@ -97,27 +103,27 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
             and string.format("%.1f, %.1f, %.1f", savedInfo.pos.x, savedInfo.pos.y, savedInfo.pos.z)
             or string.format("(%d, %d, %d)",
                 math.floor(savedInfo.pos.x), math.floor(savedInfo.pos.y), math.floor(savedInfo.pos.z))
-        PB.addLine(data.position, "Position", fmt, Color(255, 255, 255))
+        PB.addLine(data.position, L("sed.phantom.position"), fmt, Color(255, 255, 255))
     end
 
     if savedInfo.ang then
-        PB.addLine(data.position, "Direction",
+        PB.addLine(data.position, L("sed.phantom.direction"),
             string.format("%.1f, %.1f, %.1f", savedInfo.ang.p, savedInfo.ang.y, savedInfo.ang.r),
             Color(220, 220, 220))
     end
 
     if lodLevel <= 1 then
-        PB.addLine(data.position, "Movement Type",
-            moveTypeNames[savedInfo.moveType] or "Unknown", Color(220, 220, 220))
+        PB.addLine(data.position, L("sed.phantom.move_type"),
+            moveTypeNames[savedInfo.moveType] or L("common.unknown"), Color(220, 220, 220))
     end
 
     if savedInfo.activeWeapon then
-        PB.addLine(data.equipment, "Active Weapon",
+        PB.addLine(data.equipment, L("sed.phantom.active_weapon"),
             PB.prettyClassName(savedInfo.activeWeapon), Color(255, 200, 200))
     end
 
     local function formatWeaponAmmo(ammoData)
-        if type(ammoData) ~= "table" then return "No ammo saved" end
+        if type(ammoData) ~= "table" then return L("sed.phantom.no_ammo_saved") end
         local parts = {}
         local clip1 = math.floor(tonumber(ammoData.clip1) or -1)
         local res1  = math.floor(tonumber(ammoData.primary) or 0)
@@ -127,7 +133,7 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         if res1 > 0 then parts[#parts + 1] = "R1 " .. res1 end
         if clip2 >= 0 then parts[#parts + 1] = "C2 " .. clip2 end
         if res2 > 0 then parts[#parts + 1] = "R2 " .. res2 end
-        return #parts > 0 and table.concat(parts, " | ") or "No ammo saved"
+        return #parts > 0 and table.concat(parts, " | ") or L("sed.phantom.no_ammo_saved")
     end
 
     local inventory    = type(savedInfo.inventory) == "table" and savedInfo.inventory or {}
@@ -155,8 +161,8 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
             for _, c in ipairs(ammoOnly) do weaponOrder[#weaponOrder + 1] = c end
         end
 
-        PB.addLine(data.equipment, "Loadout",
-            string.format("%d slots | %d unique", #inventory, #weaponOrder), Color(255, 220, 150))
+        PB.addLine(data.equipment, L("sed.phantom.loadout"),
+            L("sed.phantom.loadout_fmt", #inventory, #weaponOrder), Color(255, 220, 150))
 
         for _, class in ipairs(weaponOrder) do
             local count      = invCounts[class] or 0
@@ -164,7 +170,7 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
             local isAmmoOnly = not inInventory[class]
             local label      = (isActive and ">> " or " - ") .. PB.prettyClassName(class)
             if count > 1 then label = label .. " x" .. count end
-            if isAmmoOnly then label = label .. " [ammo-only]" end
+            if isAmmoOnly then label = label .. L("sed.phantom.ammo_only_suffix") end
             local rowColor = isActive and Color(255, 230, 140)
                 or (isAmmoOnly and Color(170, 220, 255) or Color(255, 210, 150))
             PB.addLine(data.equipment, label,
@@ -203,7 +209,7 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
                 config.entryColor)
         end
         if #sorted > showCount then
-            PB.addLine(data.entities, "...", "+" .. (#sorted - showCount) .. " more types",
+            PB.addLine(data.entities, "...", L("sed.phantom.more_types", #sorted - showCount),
                 Color(150, 150, 150))
         end
     end
@@ -211,23 +217,23 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
     processGroupedDataLOD(
         SnapshotUtils.GetSummary(savedInfo.entities, { category = "entity" }) or {},
         {
-            totalLabel = "Total Entities",
+            totalLabel = L("sed.phantom.total_entities"),
             totalColor = Color(255, 180, 180),
-            labelPrefix = "Entity",
+            labelPrefix = L("sed.phantom.entity_prefix"),
             entryColor = Color(255, 180, 180)
         })
 
     processGroupedDataLOD(
         SnapshotUtils.GetSummary(savedInfo.npcs, { category = "npc" }) or {},
         {
-            totalLabel = "Total NPCs",
+            totalLabel = L("sed.phantom.total_npcs"),
             totalColor = Color(200, 255, 200),
-            labelPrefix = "NPC",
+            labelPrefix = L("sed.phantom.npc_prefix"),
             entryColor = Color(200, 255, 200)
         })
 
-    PB.addLine(data.stats, "Health", math.floor(savedInfo.health or 0), Color(255, 180, 180))
-    PB.addLine(data.stats, "Armor", math.floor(savedInfo.armor or 0), Color(180, 180, 255))
+    PB.addLine(data.stats, L("sed.phantom.item.health"), math.floor(savedInfo.health or 0), Color(255, 180, 180))
+    PB.addLine(data.stats, L("sed.phantom.item.armor"), math.floor(savedInfo.armor or 0), Color(180, 180, 255))
 
     if savedInfo.playerStates and type(savedInfo.playerStates) == "table" then
         local states = {}
@@ -236,7 +242,7 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         if savedInfo.playerStates.frozen then states[#states + 1] = "Frozen" end
         if savedInfo.playerStates.noclip then states[#states + 1] = "Noclip" end
         if #states > 0 then
-            PB.addLine(data.stats, "Player States", table.concat(states, ", "), Color(255, 215, 0))
+            PB.addLine(data.stats, L("sed.phantom.player_states"), table.concat(states, ", "), Color(255, 215, 0))
         end
     end
 
@@ -252,17 +258,17 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
             end
         end
         if totalAmmo > 0 then
-            PB.addLine(data.stats, "Ammo Reserve",
-                totalAmmo .. " across " .. ammoWeapons .. " weapons", Color(255, 200, 100))
+            PB.addLine(data.stats, L("sed.phantom.ammo_reserve"),
+                L("sed.phantom.ammo_reserve_fmt", totalAmmo, ammoWeapons), Color(255, 200, 100))
         end
     end
 
     if savedInfo.vehicles and type(savedInfo.vehicles) == "table" and #savedInfo.vehicles > 0 then
-        PB.addLine(data.stats, "Saved Vehicles", #savedInfo.vehicles, Color(200, 200, 255))
+        PB.addLine(data.stats, L("sed.phantom.saved_vehicles"), #savedInfo.vehicles, Color(200, 200, 255))
     end
     if savedInfo.vehicleState and type(savedInfo.vehicleState) == "table" then
-        PB.addLine(data.stats, "In Vehicle",
-            savedInfo.vehicleState.class or "Unknown", Color(200, 200, 255))
+        PB.addLine(data.stats, L("sed.phantom.in_vehicle"),
+            savedInfo.vehicleState.class or L("common.unknown"), Color(200, 200, 255))
     end
 
     return data
@@ -275,7 +281,7 @@ function Phantom.BuildSavedRecord(steamID, phantomData, mapName)
 
     local ply                        = phantomData.ply
     local savedInfo                  = SED.GetPhantomSavedInfo(mapName, steamID)
-    local name                       = IsValid(ply) and ply:Nick() or ("Player " .. steamID)
+    local name                       = IsValid(ply) and ply:Nick() or L("sed.phantom.player_fallback", steamID)
 
     local infoTarget                 = IsValid(ply) and ply or {
         Nick    = function() return name end,
@@ -286,7 +292,7 @@ function Phantom.BuildSavedRecord(steamID, phantomData, mapName)
     local rec                        = {
         id                 = "phantom_" .. steamID,
         class              = name,
-        _phantomTitle      = string.format("Saved Position of '%s'", name),
+        _phantomTitle      = L("sed.phantom_title", name),
         _isPhantom         = true,
         _ownerSteamID      = steamID,
         MaxHealth          = savedInfo and savedInfo.health or 100,

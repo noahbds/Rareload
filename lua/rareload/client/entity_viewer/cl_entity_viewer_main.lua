@@ -9,6 +9,10 @@ include("cl_entity_viewer_utils.lua")
 local SnapshotUtils       = include("rareload/shared/rareload_snapshot_utils.lua")
 
 EV_THEME                  = THEME
+local function L(key, ...)
+    if RARELOAD and RARELOAD.L then return RARELOAD.L(key, ...) end
+    return key
+end
 local EntityViewer        = {}
 EntityViewer.Frame        = nil
 EntityViewer.Data         = {}
@@ -231,19 +235,20 @@ function EntityViewer:ReloadDataAndRefresh()
 end
 
 local function ShowBulkConfirmation(title, message, onConfirm)
-    Derma_Query(message, title, "Proceed", function()
+    Derma_Query(message, title, L("common.proceed"), function()
         if onConfirm then
             onConfirm()
         end
-    end, "Cancel")
+    end, L("common.cancel"))
 end
 
-local function CreateSidebarButton(parent, text, yPos, onClick, viewer)
+-- category is the internal token ("All", "NPCs", ...); displayText is localized.
+local function CreateSidebarButton(parent, category, displayText, yPos, onClick, viewer)
     local btn = vgui.Create("DButton", parent)
     btn:SetText("")
     btn:SetPos(12, yPos)
     btn:SetSize(196, 44)
-    btn.Category  = text
+    btn.Category  = category
     btn.HoverAnim = 0
 
     btn.Paint     = function(self, w, h)
@@ -260,7 +265,7 @@ local function CreateSidebarButton(parent, text, yPos, onClick, viewer)
 
         local textCol = isSelected and EV_THEME.primary
             or THEME:LerpColor(self.HoverAnim, EV_THEME.textSecondary, EV_THEME.textPrimary)
-        draw.SimpleText(text, "RareloadBody", 20, h / 2, textCol, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(displayText, "RareloadBody", 20, h / 2, textCol, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
 
     btn.DoClick   = onClick
@@ -330,7 +335,7 @@ local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails, o
         end
     end
 
-    local name = data.class or "Unknown"
+    local name = data.class or L("common.unknown")
     if #name > 20 then name = string.sub(name, 1, 18) .. "..." end
 
     local lblName = vgui.Create("DLabel", card)
@@ -362,7 +367,7 @@ local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails, o
     if data.pos and IsValid(LocalPlayer()) then
         local dist      = math.Round(LocalPlayer():GetPos():Distance(data.pos))
         local distLabel = vgui.Create("DLabel", card)
-        distLabel:SetText(dist .. " units")
+        distLabel:SetText(L("ev.units", dist))
         distLabel:SetFont("RareloadCaption")
         distLabel:SetTextColor(EV_THEME.textSecondary)
         distLabel:SetPos(8, yOffset)
@@ -394,13 +399,13 @@ local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails, o
         return btn
     end
 
-    CreateSmallButton(0, 40, "icon16/arrow_right.png", "Teleport to entity", EV_THEME.success,
+    CreateSmallButton(0, 40, "icon16/arrow_right.png", L("ev.card.teleport"), EV_THEME.success,
         function() if onTeleport then onTeleport(data) end end)
-    CreateSmallButton(43, 40, "icon16/arrow_refresh.png", "Respawn in world", EV_THEME.info,
+    CreateSmallButton(43, 40, "icon16/arrow_refresh.png", L("ev.card.respawn"), EV_THEME.info,
         function() if onRespawn then onRespawn(data) end end)
-    CreateSmallButton(86, 40, "icon16/cross.png", "Delete from saved data", EV_THEME.error,
+    CreateSmallButton(86, 40, "icon16/cross.png", L("ev.card.delete"), EV_THEME.error,
         function() if onDelete then onDelete(data) end end)
-    CreateSmallButton(129, 40, "icon16/information.png", "View details", EV_THEME.info,
+    CreateSmallButton(129, 40, "icon16/information.png", L("ev.card.details"), EV_THEME.info,
         function() if onDetails then onDetails(data) end end)
 
     card.DoClick = function()
@@ -457,14 +462,21 @@ function EntityViewer:Open()
     sidebarHeader:SetSize(200, 70)
     sidebarHeader.Paint = function(self, w, h)
         draw.SimpleText("Rareload", "RareloadHeading", 16, 18, EV_THEME.primary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText("Entity Viewer", "RareloadCaption", 16, 42, EV_THEME.textSecondary, TEXT_ALIGN_LEFT,
+        draw.SimpleText(L("ev.title"), "RareloadCaption", 16, 42, EV_THEME.textSecondary, TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER)
     end
 
-    local categories = { "All", "NPCs", "Weapons", "Vehicles", "Props" }
+    -- First element is the internal filter token, second the localization key.
+    local categories = {
+        { "All",      "ev.cat.all" },
+        { "NPCs",     "ev.cat.npcs" },
+        { "Weapons",  "ev.cat.weapons" },
+        { "Vehicles", "ev.cat.vehicles" },
+        { "Props",    "ev.cat.props" },
+    }
     for i, cat in ipairs(categories) do
-        CreateSidebarButton(frame, cat, 70 + (i - 1) * 48, function()
-            EntityViewer.Category = cat
+        CreateSidebarButton(frame, cat[1], L(cat[2]), 70 + (i - 1) * 48, function()
+            EntityViewer.Category = cat[1]
             EntityViewer:RefreshList()
         end, self)
     end
@@ -476,12 +488,12 @@ function EntityViewer:Open()
         draw.RoundedBox(8, 0, 0, w, h, EV_THEME.surface)
         local total    = #EntityViewer.Data
         local filtered = #EntityViewer.FilteredData
-        draw.SimpleText("Statistics", "RareloadLabel", 12, 10, EV_THEME.textSecondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText("Total: " .. total, "RareloadCaption", 12, 32, EV_THEME.textPrimary, TEXT_ALIGN_LEFT,
+        draw.SimpleText(L("ev.stats"), "RareloadLabel", 12, 10, EV_THEME.textSecondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(L("ev.stats.total", total), "RareloadCaption", 12, 32, EV_THEME.textPrimary, TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER)
-        draw.SimpleText("Showing: " .. filtered, "RareloadCaption", 12, 50, EV_THEME.primary, TEXT_ALIGN_LEFT,
+        draw.SimpleText(L("ev.stats.showing", filtered), "RareloadCaption", 12, 50, EV_THEME.primary, TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER)
-        draw.SimpleText("Map: " .. game.GetMap(), "RareloadCaption", 12, 68, EV_THEME.textTertiary, TEXT_ALIGN_LEFT,
+        draw.SimpleText(L("ev.stats.map", game.GetMap()), "RareloadCaption", 12, 68, EV_THEME.textTertiary, TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER)
     end
 
@@ -512,11 +524,11 @@ function EntityViewer:Open()
     searchEntry:SetFont("RareloadBody")
     searchEntry:SetTextColor(EV_THEME.textPrimary)
     searchEntry:SetDrawBackground(false)
-    searchEntry:SetPlaceholderText("Search entities...")
+    searchEntry:SetPlaceholderText(L("ev.search_placeholder"))
     searchEntry.Paint = function(self, w, h)
         self:DrawTextEntryText(EV_THEME.textPrimary, EV_THEME.primary, EV_THEME.textPrimary)
         if self:GetValue() == "" then
-            draw.SimpleText("Search entities...", "RareloadBody", 0, h / 2,
+            draw.SimpleText(L("ev.search_placeholder"), "RareloadBody", 0, h / 2,
                 EV_THEME.textTertiary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         end
     end
@@ -534,7 +546,7 @@ function EntityViewer:Open()
         self.HoverAnim = Lerp(FrameTime() * 10, self.HoverAnim, self:IsHovered() and 1 or 0)
         local bgCol = THEME:LerpColor(self.HoverAnim * 0.3, EV_THEME.surface, EV_THEME.primary)
         draw.RoundedBox(8, 0, 0, w, h, bgCol)
-        draw.SimpleText("Sort: " .. EntityViewer.SortMode, "RareloadBody", w / 2, h / 2,
+        draw.SimpleText(L("ev.sort", L("ev.sort." .. string.lower(EntityViewer.SortMode))), "RareloadBody", w / 2, h / 2,
             EV_THEME.textPrimary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
     sortBtn.DoClick = function()
@@ -552,7 +564,7 @@ function EntityViewer:Open()
     refreshBtn:SetPos(660, 10)
     refreshBtn:SetSize(36, 36)
     refreshBtn:SetText("")
-    refreshBtn:SetTooltip("Refresh data")
+    refreshBtn:SetTooltip(L("ev.refresh_tip"))
     refreshBtn.HoverAnim = 0
     refreshBtn.Paint = function(self, w, h)
         self.HoverAnim = Lerp(FrameTime() * 10, self.HoverAnim, self:IsHovered() and 1 or 0)
@@ -564,31 +576,31 @@ function EntityViewer:Open()
     end
     refreshBtn.DoClick = function()
         EntityViewer:ReloadDataAndRefresh()
-        ShowNotification("Data refreshed!", NOTIFY_GENERIC)
+        ShowNotification(L("ev.data_refreshed"), NOTIFY_GENERIC)
     end
 
     local respawnAllBtn = vgui.Create("DButton", topBar)
     respawnAllBtn:SetPos(396, 10)
     respawnAllBtn:SetSize(116, 36)
     respawnAllBtn:SetText("")
-    respawnAllBtn:SetTooltip("Respawn all filtered entities")
+    respawnAllBtn:SetTooltip(L("ev.respawn_all_tip"))
     respawnAllBtn.HoverAnim = 0
     respawnAllBtn.Paint = function(self, w, h)
         self.HoverAnim = Lerp(FrameTime() * 10, self.HoverAnim, self:IsHovered() and 1 or 0)
         local bgCol = THEME:LerpColor(self.HoverAnim * 0.4, EV_THEME.surface, EV_THEME.info)
         draw.RoundedBox(8, 0, 0, w, h, bgCol)
-        draw.SimpleText("Respawn All", "RareloadBody", w / 2, h / 2,
+        draw.SimpleText(L("ev.respawn_all"), "RareloadBody", w / 2, h / 2,
             EV_THEME.textPrimary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
     respawnAllBtn.DoClick = function()
         local items = EntityViewer.FilteredData or {}
         local total = #items
         if total == 0 then
-            ShowNotification("No entities match the current filters.", NOTIFY_ERROR)
+            ShowNotification(L("ev.no_match_filters"), NOTIFY_ERROR)
             return
         end
 
-        ShowBulkConfirmation("Respawn All", string.format("Respawn %d filtered entities?", total), function()
+        ShowBulkConfirmation(L("ev.respawn_all"), L("ev.respawn_confirm", total), function()
             local respawned = 0
             for _, data in ipairs(items) do
                 if SendRespawnRequest(data) then
@@ -596,7 +608,7 @@ function EntityViewer:Open()
                 end
             end
 
-            ShowNotification(string.format("Respawned %d entities.", respawned),
+            ShowNotification(L("ev.respawned_n", respawned),
                 respawned > 0 and NOTIFY_GENERIC or NOTIFY_ERROR)
         end)
     end
@@ -605,26 +617,26 @@ function EntityViewer:Open()
     deleteAllBtn:SetPos(520, 10)
     deleteAllBtn:SetSize(116, 36)
     deleteAllBtn:SetText("")
-    deleteAllBtn:SetTooltip("Delete all filtered entities")
+    deleteAllBtn:SetTooltip(L("ev.delete_all_tip"))
     deleteAllBtn.HoverAnim = 0
     deleteAllBtn.Paint = function(self, w, h)
         self.HoverAnim = Lerp(FrameTime() * 10, self.HoverAnim, self:IsHovered() and 1 or 0)
         local bgCol = THEME:LerpColor(self.HoverAnim * 0.4, EV_THEME.surface, EV_THEME.error)
         draw.RoundedBox(8, 0, 0, w, h, bgCol)
-        draw.SimpleText("Delete All", "RareloadBody", w / 2, h / 2,
+        draw.SimpleText(L("ev.delete_all"), "RareloadBody", w / 2, h / 2,
             EV_THEME.textPrimary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
     deleteAllBtn.DoClick = function()
         local items = EntityViewer.FilteredData or {}
         local total = #items
         if total == 0 then
-            ShowNotification("No entities match the current filters.", NOTIFY_ERROR)
+            ShowNotification(L("ev.no_match_filters"), NOTIFY_ERROR)
             return
         end
 
-        ShowBulkConfirmation("Delete All", string.format("Permanently delete %d filtered entities?", total), function()
+        ShowBulkConfirmation(L("ev.delete_all"), L("ev.delete_confirm", total), function()
             if SendDeleteManyRequest(items) then
-                ShowNotification(string.format("Deleting %d entities...", total), NOTIFY_GENERIC)
+                ShowNotification(L("ev.deleting_n", total), NOTIFY_GENERIC)
             end
         end)
     end
@@ -662,9 +674,9 @@ function EntityViewer:RefreshList()
         local emptyLabel = vgui.Create("DPanel", self.Grid)
         emptyLabel:SetSize(660, 180)
         emptyLabel.Paint = function(self, w, h)
-            draw.SimpleText("No entities found", "RareloadSubheading", w / 2, h / 2 - 12,
+            draw.SimpleText(L("ev.no_entities"), "RareloadSubheading", w / 2, h / 2 - 12,
                 EV_THEME.textSecondary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-            draw.SimpleText("Try adjusting your search or category filter", "RareloadCaption",
+            draw.SimpleText(L("ev.no_entities_hint"), "RareloadCaption",
                 w / 2, h / 2 + 12, EV_THEME.textTertiary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
         return
@@ -678,7 +690,7 @@ function EntityViewer:RefreshList()
             function(data)
                 if data.pos then
                     RunConsoleCommand("rareload_teleport_to", data.pos.x, data.pos.y, data.pos.z)
-                    ShowNotification("Teleporting...", NOTIFY_GENERIC)
+                    ShowNotification(L("ev.teleporting"), NOTIFY_GENERIC)
                 end
             end,
             function(data)
@@ -691,7 +703,7 @@ function EntityViewer:RefreshList()
             end,
             function(data)
                 if SendRespawnRequest(data) then
-                    ShowNotification("Respawning " .. (data.class or "entity") .. "...", NOTIFY_GENERIC)
+                    ShowNotification(L("ev.respawning", data.class or L("ev.entity_fallback")), NOTIFY_GENERIC)
                 end
             end
         )

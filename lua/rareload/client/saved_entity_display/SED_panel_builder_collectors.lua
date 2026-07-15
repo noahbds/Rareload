@@ -58,7 +58,9 @@ function PB.populateCategories(ctx)
         end
 
         if #rows > shown then
-            add(cat, "+more", ("%d more..."):format(#rows - shown), Color(150, 150, 150))
+            local more = RARELOAD and RARELOAD.L and RARELOAD.L("sed.more", #rows - shown)
+                or ("%d more..."):format(#rows - shown)
+            add(cat, "+more", more, Color(150, 150, 150))
         end
     end
 

@@ -413,13 +413,19 @@ function RareloadUI.CreateModernButton(parent, text, icon, onClick, accentColor)
 end
 
 function RareloadUI.RegisterLanguage()
-    language.Add("tool.rareload_tool.name", "Rareload Configuration")
-    language.Add("tool.rareload_tool.desc", "Configure the Rareload addon settings.")
-    language.Add("tool.rareload_tool.0", "By Noahbds")
-    language.Add("tool.rareload_tool.left", "Click to save a respawn position at target location.")
-    language.Add("tool.rareload_tool.right", "Click to save a respawn position at your location")
-    language.Add("tool.rareload_tool.reload",
-        "Reload with the Rareload tool in hand to restore your previous saved position")
+    local L = RARELOAD.L or function(key) return key end
+    language.Add("tool.rareload_tool.name", L("tool.name"))
+    language.Add("tool.rareload_tool.desc", L("tool.desc"))
+    language.Add("tool.rareload_tool.0", L("tool.info"))
+    language.Add("tool.rareload_tool.left", L("tool.left"))
+    language.Add("tool.rareload_tool.right", L("tool.right"))
+    language.Add("tool.rareload_tool.reload", L("tool.reload"))
 end
+
+-- GMod's language.Add stores plain strings, so re-register when the Rareload
+-- language changes to keep the native toolgun tooltips in sync.
+hook.Add("RareloadLanguageChanged", "RareloadUI_RegisterToolLanguage", function()
+    RareloadUI.RegisterLanguage()
+end)
 
 return RareloadUI

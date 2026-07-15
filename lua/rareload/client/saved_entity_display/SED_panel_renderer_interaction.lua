@@ -56,13 +56,14 @@ function SED.PanelRendererHandleInteraction(ctx)
         local hintY   = drawPos.z + (panelHeight * scale) * 0.5 + 10
         local hintPos = Vector(drawPos.x, drawPos.y, hintY)
 
+        local L = RARELOAD.L or function(key) return key end
         cam_Start3D2D(hintPos, ang, scale * 0.8)
         if isFocused then
-            SS.DrawHint("INTERACT MODE", 0, 0, HINT_INTERACT, HINT_INTERACT_BG)
-            SS.DrawHint("Up/Down Tabs | Scroll Wheel | Shift+E Exit", 0, 24, HINT_CONTROLS, HINT_CONTROLS_BG)
-            SS.DrawHint("H Highlight | L Link Phantom", 0, 48, HINT_CONTROLS, HINT_CONTROLS_BG)
+            SS.DrawHint(L("sed.interact_mode"), 0, 0, HINT_INTERACT, HINT_INTERACT_BG)
+            SS.DrawHint(L("sed.interact_controls"), 0, 24, HINT_CONTROLS, HINT_CONTROLS_BG)
+            SS.DrawHint(L("sed.interact_highlight"), 0, 48, HINT_CONTROLS, HINT_CONTROLS_BG)
         elseif isCandidate then
-            SS.DrawHint("Shift + E to Inspect", 0, 0, HINT_CANDIDATE, HINT_CANDIDATE_BG)
+            SS.DrawHint(L("sed.inspect_hint"), 0, 0, HINT_CANDIDATE, HINT_CANDIDATE_BG)
         end
         cam_End3D2D()
     end

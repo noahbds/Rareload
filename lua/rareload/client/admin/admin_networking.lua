@@ -85,7 +85,8 @@ net.Receive("RareloadOpenAdminPanel", function()
 end)
 
 net.Receive("RareloadNoPermission", function()
-    chat.AddText(Color(255, 50, 50), "You don't have permission to open the Rareload admin panel.")
+    local L = RARELOAD.L or function(key) return key end
+    chat.AddText(Color(255, 50, 50), L("admin.no_permission_open"))
 end)
 
 net.Receive("RareloadAdminPanelAvailable", function()
