@@ -87,5 +87,6 @@
     },
     "files.eol": "\n",
     "files.trimTrailingWhitespace": true,
-    "files.insertFinalNewline": true
+    "files.insertFinalNewline": true,
+    "gluals.gmod.debugRealm": "shared"
 }

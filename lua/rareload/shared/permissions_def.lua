@@ -130,7 +130,7 @@ RARELOAD.Permissions.DEFS = {
     },
     ANTI_STUCK_CONFIG = {
         name = "Anti-Stuck Configuration",
-        desc = "Can configure anti-stuck settings, methods, and profiles on the server",
+        desc = "Can configure anti-stuck settings and methods on the server",
         default = false,
         category = "ENTITIES"
     },

@@ -37,6 +37,32 @@ local function L(key, ...)
     return key
 end
 
+-- Draw a left-aligned label anchored at (x, y). Feature names vary a lot in
+-- width between languages, so if the text would exceed maxWidth it is uniformly
+-- scaled down to fit (keeping the whole label readable instead of clipping it),
+-- preventing overlap with the right-aligned status/value on the same row.
+local function drawFittedLabel(text, font, x, y, maxWidth, color)
+    surface.SetFont(font)
+    local tw = surface.GetTextSize(text) or 0
+    if maxWidth <= 0 or tw <= maxWidth or tw <= 0 then
+        draw.SimpleText(text, font, x, y, color, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        return
+    end
+
+    local scale = maxWidth / tw
+    local m = Matrix()
+    m:Translate(Vector(x, y, 0))
+    m:Scale(Vector(scale, scale, 1))
+    m:Translate(Vector(-x, -y, 0))
+    cam.PushModelMatrix(m, true)
+    draw.SimpleText(text, font, x, y, color, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    cam.PopModelMatrix()
+end
+
+-- Horizontal gap kept between the feature label and the row's status/value text.
+local FEATURE_LABEL_X = 40
+local FEATURE_ROW_PAD = 8
+
 -- name is a localization key, resolved at draw time so language changes apply live.
 local FEATURES = {
     { name = "screen.feature.anti_stuck",            key = "spawnModeEnabled",       kind = "bool" },
@@ -56,7 +82,7 @@ local FEATURES = {
     { name = "screen.feature.max_history",           key = "maxHistorySize",         kind = "value" }
 }
 
-local function initAnimState(RARELOAD)
+local function initAnimState()
     RARELOAD.AnimState = RARELOAD.AnimState or {
         lastSaveTime = 0,
         pulsePhase = 0,
@@ -501,7 +527,7 @@ local function drawPermissionDeniedImage(width, height)
         width, height, drawPermissionIcon, L("screen.no_permission"))
 end
 
-function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offsetX, offsetY)
+function ToolScreen.Draw(width, height, loadAddonSettings, offsetX, offsetY)
     cam.Start2D()
     width = width or 256
     height = height or 256
@@ -516,11 +542,9 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
         pushed = true
     end
 
-    assert(RARELOAD, "RARELOAD table required")
-    assert(loadAddonSettings, "loadAddonSettings function required")
-
     if not RARELOAD.settings or not next(RARELOAD.settings) then
-        local success, err = pcall(loadAddonSettings)
+        local loader = loadAddonSettings or RARELOAD.LoadSettingsFromConVars
+        local success, err = pcall(loader)
         if not success then
             ErrorNoHalt("Failed to load addon state: " .. tostring(err))
             return
@@ -534,7 +558,7 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
     local colors = TOOL_UI.COLORS
     local layout = TOOL_UI.LAYOUT
 
-    local state = initAnimState(RARELOAD)
+    local state = initAnimState()
     local currentTime = CurTime()
     local ft = FrameTime()
 
@@ -616,15 +640,21 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
                 surface.DrawRect(8, y - 2, width - 16, layout.FEATURE_SPACING)
             end
 
+            local labelY = y + iconSize / 2
+
             if cfg.kind == "value" then
                 draw.RoundedBox(iconSize / 2, 12, y + 2, iconSize, iconSize - 4, colors.HEADER)
 
-                draw.SimpleText(L(cfg.name), "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT,
-                    TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-
                 local valueText = value ~= nil and tostring(value) or "-"
                 if cfg.unit and valueText ~= "-" then valueText = valueText .. (cfg.unit or "") end
-                draw.SimpleText(valueText, "CTNV", width - 15, y + iconSize / 2, colors.TEXT_LIGHT,
+
+                -- Fit the label into the space left of the (localized) value text.
+                surface.SetFont("CTNV")
+                local statusW = surface.GetTextSize(valueText) or 0
+                local labelMaxW = (width - 15 - statusW - FEATURE_ROW_PAD) - FEATURE_LABEL_X
+                drawFittedLabel(L(cfg.name), "CTNV", FEATURE_LABEL_X, labelY, labelMaxW, colors.TEXT_LIGHT)
+
+                draw.SimpleText(valueText, "CTNV", width - 15, labelY, colors.TEXT_LIGHT,
                     TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
             else
                 local on = value and true or false
@@ -632,9 +662,15 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
 
                 draw.RoundedBox(iconSize / 2, 12, y + 2, iconSize, iconSize - 4, dotColor)
 
-                draw.SimpleText(L(cfg.name), "CTNV", 40, y + iconSize / 2, colors.TEXT_LIGHT,
-                    TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-                draw.SimpleText(on and L("common.on") or L("common.off"), "CTNV", width - 15, y + iconSize / 2, dotColor,
+                local statusText = on and L("common.on") or L("common.off")
+
+                -- Fit the label into the space left of the (localized) status text.
+                surface.SetFont("CTNV")
+                local statusW = surface.GetTextSize(statusText) or 0
+                local labelMaxW = (width - 15 - statusW - FEATURE_ROW_PAD) - FEATURE_LABEL_X
+                drawFittedLabel(L(cfg.name), "CTNV", FEATURE_LABEL_X, labelY, labelMaxW, colors.TEXT_LIGHT)
+
+                draw.SimpleText(statusText, "CTNV", width - 15, labelY, dotColor,
                     TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
             end
         end
@@ -688,8 +724,8 @@ function ToolScreen.Draw(self, width, height, RARELOAD, loadAddonSettings, offse
     end
 
     if not RARELOAD.reloadImageState and not RARELOAD.permissionDeniedState then
-        draw.SimpleText("v3.7", "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION, TEXT_ALIGN_RIGHT,
-            TEXT_ALIGN_BOTTOM)
+        draw.SimpleText("v" .. (RARELOAD.version or ""), "CTNV", width - 10, height - 5, TOOL_UI.COLORS.VERSION,
+            TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
     elseif RARELOAD.permissionDeniedState then
         drawPermissionDeniedImage(width, height)
     else
@@ -706,17 +742,13 @@ function ToolScreen.EndDraw()
     cam.End2D()
 end
 
-local function _LoadAddonSettingsForFrame()
-    if RARELOAD.LoadSettingsFromConVars then
-        RARELOAD.LoadSettingsFromConVars()
-        return true
-    end
-
-    return false, "Settings not available"
-end
-
-if CLIENT then
-
-end
+-- The countdown text is cached per second; flush it when the language changes
+-- so the bar doesn't keep showing the old language until the next tick.
+hook.Add("RareloadLanguageChanged", "RareloadToolScreen_FlushCache", function()
+    local state = RARELOAD.AnimState
+    if not state then return end
+    state.lastRemainingSecond = -1
+    state.cachedCountdownText = L("screen.saving_in", 0)
+end)
 
 return ToolScreen

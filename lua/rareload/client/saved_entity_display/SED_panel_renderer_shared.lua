@@ -118,4 +118,13 @@ function RS.clipTextToWidth(text, maxWidth)
     return store(ellipsis)
 end
 
+function RS.LField(label)
+    local s = tostring(label or "")
+    if s == "" then return "" end
+    if RARELOAD and RARELOAD.Lang and RARELOAD.Lang.Get then
+        return RARELOAD.Lang.Get("sed.field." .. s) or s
+    end
+    return s
+end
+
 RS._initialized = true

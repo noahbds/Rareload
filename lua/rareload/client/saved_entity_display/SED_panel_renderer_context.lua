@@ -21,14 +21,34 @@ local math_floor = RS.math_floor
 local math_abs = math.abs
 local string_Explode = RS.string_Explode
 
-local CONTENT_FONT  = "Trebuchet18"
-local LINE_HEIGHT   = 24
-local TITLE_HEIGHT  = 52
-local TAB_HEIGHT    = 32
-local SIDEBAR_WIDTH = 120
+local CONTENT_FONT   = "Trebuchet18"
+local TAB_FONT       = "Trebuchet18"
+local LINE_HEIGHT    = 24
+local TITLE_HEIGHT   = 52
+local TAB_HEIGHT     = 32
+local SIDEBAR_MIN    = 120
+local SIDEBAR_MAX    = 260
+local TAB_LABEL_PAD  = 14
+local TAB_COUNT_PAD  = 34
 
-local MOVE_EPS_SQR  = 0.25
-local ANG_EPS       = 0.5
+local MOVE_EPS_SQR   = 0.25
+local ANG_EPS        = 0.5
+
+local langGen = 0
+hook.Add("RareloadLanguageChanged", "RARELOAD_SED_Context_Language", function()
+    langGen = langGen + 1
+end)
+local function ComputeSidebarWidth(categories)
+    surface_SetFont(TAB_FONT)
+    local maxW = 0
+    for _, cat in ipairs(categories) do
+        local name = cat[2]
+        if RARELOAD and RARELOAD.L then name = RARELOAD.L(name) end
+        local w = surface_GetTextSize(tostring(name)) or 0
+        if w > maxW then maxW = w end
+    end
+    return math_Clamp(maxW + TAB_LABEL_PAD + TAB_COUNT_PAD, SIDEBAR_MIN, SIDEBAR_MAX)
+end
 
 local function wrapText(cache, activeCat, text, maxWidth)
     if not text or text == "" then return { text } end
@@ -102,6 +122,20 @@ end
 local function RebuildLayout(cache, lines, categories, activeCat, scrollTable, scrollKey)
     local maxVisibleLines = SED.MAX_VISIBLE_LINES
 
+    if cache._widthsLang ~= langGen then
+        cache._widthsLang = langGen
+        cache.widths = {}
+        cache.maxLabelWidths = {}
+        cache._wrap = {}
+        cache._sidebarWidth = nil
+    end
+
+    local sidebarWidth = cache._sidebarWidth
+    if not sidebarWidth then
+        sidebarWidth = ComputeSidebarWidth(categories)
+        cache._sidebarWidth = sidebarWidth
+    end
+
     local width = cache.widths[activeCat]
     if not width then
         surface_SetFont(CONTENT_FONT)
@@ -110,7 +144,7 @@ local function RebuildLayout(cache, lines, categories, activeCat, scrollTable, s
         for i = 1, math_min(#lines, 15) do
             local l = lines[i]
             if l and l[1] and l[2] then
-                local w1 = surface_GetTextSize((l[1] or "") .. ":") or 0
+                local w1 = surface_GetTextSize(RS.LField(l[1]) .. ":") or 0
                 local w2 = surface_GetTextSize(l[2] or "") or 0
                 maxLabelW = math_max(maxLabelW, w1)
                 local lineContentWidth = w1 + w2 + 170
@@ -118,7 +152,7 @@ local function RebuildLayout(cache, lines, categories, activeCat, scrollTable, s
                 if w2 > 500 then maxContentWidth = math_min(maxContentWidth, 700) end
             end
         end
-        width = math_Clamp(math_max(width, maxContentWidth) + SIDEBAR_WIDTH, 450, 850)
+        width = math_Clamp(math_max(width, maxContentWidth) + sidebarWidth, 450, 850)
         maxLabelW = math_min(maxLabelW, 230)
         cache.widths[activeCat] = width
         cache.maxLabelWidths = cache.maxLabelWidths or {}
@@ -128,7 +162,7 @@ local function RebuildLayout(cache, lines, categories, activeCat, scrollTable, s
     end
 
     local maxLabelW = cache.maxLabelWidths and cache.maxLabelWidths[activeCat] or 100
-    local maxValueWidthEstimate = math_max(90, width - SIDEBAR_WIDTH - maxLabelW - 40)
+    local maxValueWidthEstimate = math_max(90, width - sidebarWidth - maxLabelW - 40)
 
     local truePhysicalLinesTotal = 0
     for _, l in ipairs(lines) do
@@ -312,6 +346,7 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
         and cache._ctxCat == activeCat
         and cache._ctxScroll == scroll
         and cache._ctxLive == liveTag
+        and cache._ctxLang == langGen
 
     if not staticValid then
         RebuildLayout(cache, lines, categories, activeCat, scrollTable, cache._scrollKey)
@@ -335,7 +370,7 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
         ctx.lineHeight           = LINE_HEIGHT
         ctx.titleHeight          = TITLE_HEIGHT
         ctx.tabHeight            = TAB_HEIGHT
-        ctx.sidebarWidth         = SIDEBAR_WIDTH
+        ctx.sidebarWidth         = cache._sidebarWidth or SIDEBAR_MIN
         ctx.contentFont          = CONTENT_FONT
         ctx.width                = width
         ctx.panelHeight          = panelHeight
@@ -356,6 +391,7 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
         cache._ctxCat    = activeCat
         cache._ctxScroll = scroll
         cache._ctxLive   = liveTag
+        cache._ctxLang   = langGen
     end
 
     ctx.ent    = ent

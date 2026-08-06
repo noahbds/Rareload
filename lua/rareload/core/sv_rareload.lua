@@ -33,8 +33,7 @@ if SERVER then
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
     RARELOAD.globalInventory = RARELOAD.globalInventory or {}
     RARELOAD.lastSavedTime = 0
-    RARELOAD.version = "3.7"
-    ADDON_STATE_FILE_PATH = "rareload/addon_state.json"
+    RARELOAD.version = "3.8"
 
     util.AddNetworkString("RareloadAntiStuckPriorities")
     util.AddNetworkString("SyncData")
@@ -48,36 +47,18 @@ if SERVER then
         end
     end
 
+    -- DEPRECATED:
+    -- SaveAddonState is kept as a harmless stub so existing callers
+    -- (e.g. anti-stuck method toggles) don't need to guard every call site.
     function SaveAddonState()
-        local json = util.TableToJSON(RARELOAD.settings, true)
-        local success, err = pcall(file.Write, ADDON_STATE_FILE_PATH, json)
-        if not success then
-            print("[RARELOAD] Failed to save addon state: " .. err)
-        end
     end
 
     RARELOAD.SaveAddonState = SaveAddonState
 
     function LoadAddonState()
-        if file.Exists(ADDON_STATE_FILE_PATH, "DATA") then
-            local json = file.Read(ADDON_STATE_FILE_PATH, "DATA")
-            local success, settings = pcall(util.JSONToTable, json)
-            if success then
-                RARELOAD.settings = settings
-                if RARELOAD.settings.debugEnabled then
-                    if RARELOAD.Debug and RARELOAD.Debug.Write then
-                        RARELOAD.Debug.Write("system", "VERBOSE", 0, "Loaded addon state")
-                    end
-                end
-            else
-                print("[RARELOAD] Failed to save addon state: " .. settings)
-                RARELOAD.settings = GetDefaultSettings()
-                SaveAddonState()
-            end
-        else
-            RARELOAD.settings = GetDefaultSettings()
-            EnsureFolderExists()
-            SaveAddonState()
+        RARELOAD.settings = GetDefaultSettings()
+        if RARELOAD.SyncSettingsFromConVars then
+            RARELOAD.SyncSettingsFromConVars()
         end
 
         hook.Run("RareloadSettingsLoaded")

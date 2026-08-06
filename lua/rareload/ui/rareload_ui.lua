@@ -1,4 +1,5 @@
--- NEED TO REFACTOR: This file is getting too long and complex. Split into multiple files and modules.
+-- Rareload VGUI widget library (client). Widgets avoid per-frame Color/Matrix
+-- allocations: paint hooks write into shared scratch colors instead.
 
 local RareloadUI = {}
 
@@ -17,8 +18,6 @@ end
 
 RareloadUI.Theme = RARELOAD.Theme.BuildMainTheme()
 
-RareloadUI.CreatedDynamicFonts = {}
-
 function RARELOAD.CheckPermission(ply, permName)
     if ply:IsSuperAdmin() then return true end
     if RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
@@ -35,8 +34,46 @@ local function AnimateLerp(current, target, speed)
     return Lerp(FrameTime() * (speed or 10), current, target)
 end
 
+-- Shared scratch color for paint hooks: set + use immediately, never stored.
+local scratchColor = Color(0, 0, 0, 255)
+local function SetCol(r, g, b, a)
+    scratchColor.r, scratchColor.g, scratchColor.b, scratchColor.a = r, g, b, a or 255
+    return scratchColor
+end
+
+local COL_WHITE     = Color(255, 255, 255)
+local COL_TRACK_OFF = Color(50, 55, 65)
+
+-- GetConVar does a name lookup each call; cache the userdata per name.
+local convarCache = {}
+local function CachedConVar(name)
+    local cv = convarCache[name]
+    if cv == nil then
+        cv = GetConVar(name) or false
+        convarCache[name] = cv
+    end
+    return cv or nil
+end
+
+-- Filled triangle arrow centered on (x, y), rotated by `rot` degrees
+-- (0 = pointing down). Cheaper than a model matrix push per frame.
+local arrowPoly = { {}, {}, {} }
+local function DrawArrow(x, y, size, rot, color)
+    local a = math.rad(rot)
+    local c, s = math.cos(a), math.sin(a)
+    local px = { -size, size, 0 }
+    local py = { -size * 0.5, -size * 0.5, size * 0.6 }
+    for i = 1, 3 do
+        arrowPoly[i].x = x + px[i] * c - py[i] * s
+        arrowPoly[i].y = y + px[i] * s + py[i] * c
+    end
+    surface.SetDrawColor(color)
+    draw.NoTexture()
+    surface.DrawPoly(arrowPoly)
+end
+
 local function SendConVarToServer(name, value)
-    if not (RARELOAD and RARELOAD.UpdatePlayerSetting and RARELOAD.ConVarToSetting) then return end
+    if not (RARELOAD.UpdatePlayerSetting and RARELOAD.ConVarToSetting) then return end
 
     local settingKey = RARELOAD.ConVarToSetting[name]
     if not settingKey then return end
@@ -54,8 +91,8 @@ local function SendConVarToServer(name, value)
 end
 
 local function GetConVarValue(name)
-    -- Use player settings if available (CLIENT only)
-    if CLIENT and RARELOAD and RARELOAD.MySettings and RARELOAD.ConVarToSetting then
+    -- Player-synced settings win over the raw convar when available.
+    if RARELOAD.MySettings and RARELOAD.ConVarToSetting then
         local settingKey = RARELOAD.ConVarToSetting[name]
         if settingKey and RARELOAD.MySettings[settingKey] ~= nil then
             return RARELOAD.MySettings[settingKey]
@@ -63,13 +100,13 @@ local function GetConVarValue(name)
     end
 
     -- Fallback to ConVar
-    local cv = GetConVar(name)
+    local cv = CachedConVar(name)
     return cv and cv:GetBool() or false
 end
 
 local function GetConVarFloat(name)
-    -- Use player settings if available (CLIENT only)
-    if CLIENT and RARELOAD and RARELOAD.MySettings and RARELOAD.ConVarToSetting then
+    -- Player-synced settings win over the raw convar when available.
+    if RARELOAD.MySettings and RARELOAD.ConVarToSetting then
         local settingKey = RARELOAD.ConVarToSetting[name]
         if settingKey and RARELOAD.MySettings[settingKey] ~= nil then
             return tonumber(RARELOAD.MySettings[settingKey]) or 0
@@ -77,7 +114,7 @@ local function GetConVarFloat(name)
     end
 
     -- Fallback to ConVar
-    local cv = GetConVar(name)
+    local cv = CachedConVar(name)
     return cv and cv:GetFloat() or 0
 end
 
@@ -96,23 +133,13 @@ function RareloadUI.DrawCircle(x, y, radius, segments, color)
     end
 
     if color then
-        if istable(color) and color.r then
-            surface.SetDrawColor(color.r, color.g, color.b, color.a or 255)
-        elseif isnumber(color) then
-            surface.SetDrawColor(color, color, color, 255)
-        else
-            surface.SetDrawColor(255, 255, 255, 255)
-        end
+        surface.SetDrawColor(color.r, color.g, color.b, color.a or 255)
     else
         surface.SetDrawColor(255, 255, 255, 255)
     end
 
     draw.NoTexture()
     surface.DrawPoly(points)
-end
-
-function RareloadUI.Lerp(t, a, b)
-    return a + (b - a) * t
 end
 
 function RareloadUI.CreateCategory(parent, title, icon, defaultExpanded)
@@ -139,9 +166,10 @@ function RareloadUI.CreateCategory(parent, title, icon, defaultExpanded)
         self.HoverFraction = AnimateLerp(self.HoverFraction, self:IsHovered() and 1 or 0)
         self.ArrowRotation = AnimateLerp(self.ArrowRotation, container.IsExpanded and 0 or -90, 12)
 
-        local bgColor = Color(45 + 10 * self.HoverFraction, 50 + 10 * self.HoverFraction, 60 + 10 * self.HoverFraction,
-            255)
-        RareloadUI.DrawRoundedBox(0, 0, w, h, 6, bgColor)
+        RareloadUI.DrawRoundedBox(0, 0, w, h, 6, SetCol(
+            45 + 10 * self.HoverFraction,
+            50 + 10 * self.HoverFraction,
+            60 + 10 * self.HoverFraction))
 
         surface.SetDrawColor(theme.Colors.Accent.r, theme.Colors.Accent.g, theme.Colors.Accent.b, 200)
         surface.DrawRect(0, 4, 3, h - 8)
@@ -157,15 +185,7 @@ function RareloadUI.CreateCategory(parent, title, icon, defaultExpanded)
         draw.SimpleText(title, "RareloadUI.Text", textOffset, h / 2, theme.Colors.Text.Primary, TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER)
 
-        local arrowX, arrowY = w - 20, h / 2
-        local matrix = Matrix()
-        matrix:Translate(Vector(arrowX, arrowY, 0))
-        matrix:Rotate(Angle(0, self.ArrowRotation, 0))
-        matrix:Translate(Vector(-arrowX, -arrowY, 0))
-        cam.PushModelMatrix(matrix)
-        draw.SimpleText("▼", "RareloadUI.Small", arrowX, arrowY, theme.Colors.Text.Secondary, TEXT_ALIGN_CENTER,
-            TEXT_ALIGN_CENTER)
-        cam.PopModelMatrix()
+        DrawArrow(w - 20, h / 2, 5, self.ArrowRotation, theme.Colors.Text.Secondary)
     end
 
     local content = vgui.Create("DPanel", container)
@@ -231,21 +251,15 @@ function RareloadUI.CreateToggleSwitch(parent, label, convar, tooltip)
     container.SwitchFraction = container.Enabled and 1 or 0
     container.HoverFraction = 0
 
-    container.OnCursorEntered = function(self) self.Hovered = true end
-    container.OnCursorExited = function(self) self.Hovered = false end
-
     container.Think = function(self)
-        local current = GetConVarValue(self.ConVarName)
-        if self.Enabled ~= current then
-            self.Enabled = current
-        end
-        self.HoverFraction = AnimateLerp(self.HoverFraction, self.Hovered and 1 or 0)
+        self.Enabled = GetConVarValue(self.ConVarName)
+        self.HoverFraction = AnimateLerp(self.HoverFraction, self:IsHovered() and 1 or 0)
         self.SwitchFraction = AnimateLerp(self.SwitchFraction, self.Enabled and 1 or 0)
     end
 
     container.Paint = function(self, w, h)
         if self.HoverFraction > 0.01 then
-            RareloadUI.DrawRoundedBox(0, 0, w, h, 4, Color(255, 255, 255, 10 * self.HoverFraction))
+            RareloadUI.DrawRoundedBox(0, 0, w, h, 4, SetCol(255, 255, 255, 10 * self.HoverFraction))
         end
 
         draw.SimpleText(label, "RareloadUI.Small", 8, h / 2, theme.Colors.Text.Primary, TEXT_ALIGN_LEFT,
@@ -255,17 +269,14 @@ function RareloadUI.CreateToggleSwitch(parent, label, convar, tooltip)
         local switchX = w - switchW - 8
         local switchY = (h - switchH) / 2
 
-        local trackColor = Color(
+        RareloadUI.DrawRoundedBox(switchX, switchY, switchW, switchH, switchH / 2, SetCol(
             Lerp(self.SwitchFraction, 60, theme.Colors.Accent.r),
             Lerp(self.SwitchFraction, 65, theme.Colors.Accent.g),
-            Lerp(self.SwitchFraction, 75, theme.Colors.Accent.b),
-            255
-        )
-        RareloadUI.DrawRoundedBox(switchX, switchY, switchW, switchH, switchH / 2, trackColor)
+            Lerp(self.SwitchFraction, 75, theme.Colors.Accent.b)))
 
         local knobSize = switchH - 4
         local knobX = switchX + 2 + (switchW - knobSize - 4) * self.SwitchFraction
-        RareloadUI.DrawRoundedBox(knobX, switchY + 2, knobSize, knobSize, knobSize / 2, Color(255, 255, 255))
+        RareloadUI.DrawRoundedBox(knobX, switchY + 2, knobSize, knobSize, knobSize / 2, COL_WHITE)
     end
 
     container.OnMousePressed = function(self, keyCode)
@@ -295,11 +306,8 @@ function RareloadUI.CreateCompactSlider(parent, label, tooltip, convarName, minV
     container.Dragging = false
     container.HoverFraction = 0
 
-    container.OnCursorEntered = function(self) self.Hovered = true end
-    container.OnCursorExited = function(self) self.Hovered = false end
-
     container.Think = function(self)
-        self.HoverFraction = AnimateLerp(self.HoverFraction, self.Hovered and 1 or 0)
+        self.HoverFraction = AnimateLerp(self.HoverFraction, self:IsHovered() and 1 or 0)
 
         if not self.Dragging then
             local serverVal = GetConVarFloat(self.ConVarName)
@@ -322,7 +330,7 @@ function RareloadUI.CreateCompactSlider(parent, label, tooltip, convarName, minV
 
     container.Paint = function(self, w, h)
         if self.HoverFraction > 0.01 then
-            RareloadUI.DrawRoundedBox(0, 0, w, h, 4, Color(255, 255, 255, 8 * self.HoverFraction))
+            RareloadUI.DrawRoundedBox(0, 0, w, h, 4, SetCol(255, 255, 255, 8 * self.HoverFraction))
         end
 
         draw.SimpleText(label, "RareloadUI.Small", 8, 10, theme.Colors.Text.Primary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
@@ -330,7 +338,7 @@ function RareloadUI.CreateCompactSlider(parent, label, tooltip, convarName, minV
             TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
 
         local trackH, trackY, trackX, trackW = 6, h - 14, 8, w - 16
-        RareloadUI.DrawRoundedBox(trackX, trackY, trackW, trackH, 3, Color(50, 55, 65))
+        RareloadUI.DrawRoundedBox(trackX, trackY, trackW, trackH, 3, COL_TRACK_OFF)
 
         local fillW = trackW * self.DragFraction
         if fillW > 0 then
@@ -339,7 +347,7 @@ function RareloadUI.CreateCompactSlider(parent, label, tooltip, convarName, minV
 
         local knobSize = 12
         RareloadUI.DrawRoundedBox(trackX + fillW - knobSize / 2, trackY + trackH / 2 - knobSize / 2, knobSize, knobSize,
-            knobSize / 2, Color(255, 255, 255))
+            knobSize / 2, COL_WHITE)
     end
 
     container.OnMousePressed = function(self, keyCode)
@@ -378,14 +386,12 @@ function RareloadUI.CreateModernButton(parent, text, icon, onClick, accentColor)
         self.HoverFraction = AnimateLerp(self.HoverFraction, self:IsHovered() and 1 or 0)
         self.PressFraction = AnimateLerp(self.PressFraction, self:IsDown() and 1 or 0, 15)
 
-        local bgColor = Color(
-            accentColor.r - 30 + 20 * self.HoverFraction - 10 * self.PressFraction,
-            accentColor.g - 30 + 20 * self.HoverFraction - 10 * self.PressFraction,
-            accentColor.b - 30 + 20 * self.HoverFraction - 10 * self.PressFraction,
-            200 + 55 * self.HoverFraction
-        )
-
-        RareloadUI.DrawRoundedBox(0, 0, w, h, 6, bgColor)
+        local shade = -30 + 20 * self.HoverFraction - 10 * self.PressFraction
+        RareloadUI.DrawRoundedBox(0, 0, w, h, 6, SetCol(
+            accentColor.r + shade,
+            accentColor.g + shade,
+            accentColor.b + shade,
+            200 + 55 * self.HoverFraction))
 
         if self.HoverFraction > 0.01 then
             surface.SetDrawColor(accentColor.r, accentColor.g, accentColor.b, 100 * self.HoverFraction)
@@ -412,6 +418,55 @@ function RareloadUI.CreateModernButton(parent, text, icon, onClick, accentColor)
     return btn
 end
 
+-- Labeled dropdown row. choices = { { value = ..., text = ... }, ... };
+-- onSelect(value) fires when the user picks an entry.
+function RareloadUI.CreateDropdown(parent, label, tooltip, choices, activeValue, onSelect)
+    local theme = RareloadUI.Theme
+
+    local container = vgui.Create("DPanel", parent)
+    container:Dock(TOP)
+    container:DockMargin(0, 2, 0, 2)
+    container:SetTall(30)
+    container:SetPaintBackground(false)
+
+    container.Paint = function(_, w, h)
+        draw.SimpleText(label, "RareloadUI.Small", 8, h / 2, theme.Colors.Text.Primary,
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    end
+
+    local combo = vgui.Create("DComboBox", container)
+    combo:Dock(RIGHT)
+    combo:SetWide(140)
+    combo:DockMargin(0, 3, 8, 3)
+    combo:SetSortItems(false)
+    combo:SetTextColor(theme.Colors.Text.Primary)
+
+    local found = false
+    for _, choice in ipairs(choices) do
+        local selected = choice.value == activeValue
+        found = found or selected
+        combo:AddChoice(choice.text, choice.value, selected)
+    end
+    if not found then
+        combo:SetValue(tostring(activeValue or ""))
+    end
+
+    combo.Paint = function(self, w, h)
+        RareloadUI.DrawRoundedBox(0, 0, w, h, 4, COL_TRACK_OFF)
+        if self:IsHovered() then
+            RareloadUI.DrawRoundedBox(0, 0, w, h, 4, SetCol(255, 255, 255, 12))
+        end
+    end
+
+    combo.OnSelect = function(_, _, _, value)
+        surface.PlaySound("ui/buttonclick.wav")
+        if onSelect then onSelect(value) end
+    end
+
+    if tooltip then container:SetTooltip(tooltip) end
+    return container
+end
+
 function RareloadUI.RegisterLanguage()
     local L = RARELOAD.L or function(key) return key end
     language.Add("tool.rareload_tool.name", L("tool.name"))
@@ -427,5 +482,7 @@ end
 hook.Add("RareloadLanguageChanged", "RareloadUI_RegisterToolLanguage", function()
     RareloadUI.RegisterLanguage()
 end)
+
+RareloadUI.RegisterLanguage()
 
 return RareloadUI

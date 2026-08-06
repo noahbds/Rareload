@@ -1,5 +1,5 @@
 RARELOAD         = RARELOAD or {}
-RARELOAD.version = "3.7"
+RARELOAD.version = "3.8"
 
 if SERVER then
     AddCSLuaFile("rareload/shared/sh_lang.lua") -- locale files are AddCSLuaFile'd inside

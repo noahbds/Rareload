@@ -1,46 +1,31 @@
-local RARELOAD              = RARELOAD or {}
-RARELOAD.settings           = RARELOAD.settings or {}
-RARELOAD.playerPositions    = RARELOAD.playerPositions or {}
-RARELOAD.lastMoveTime       = RARELOAD.lastMoveTime or 0
+-- Rareload toolgun tool: save/restore respawn positions and configure the addon.
 
-UI                          = include("rareload/ui/rareload_ui.lua")
-RareloadUI                  = UI
+RARELOAD                 = RARELOAD or {}
+RARELOAD.settings        = RARELOAD.settings or {}
+RARELOAD.playerPositions = RARELOAD.playerPositions or {}
 
-local TOOL                  = TOOL or {}
-TOOL.Category               = "Rareload"
-TOOL.Name                   = "Position Saver Tool"
-TOOL.Command                = nil
-TOOL.Information            = {
-    { name = "left",   stage = 0, "Click to save a respawn position at target location" },
-    { name = "right",  stage = 0, "Click to save a respawn position at your location" },
-    { name = "reload", stage = 0, "Reload with the Rareload tool in hand to restore your previous saved position" },
-    { name = "info",   stage = 0, "By Noahbds" }
-
+local TOOL               = TOOL or {}
+TOOL.Category            = "Rareload"
+TOOL.Name                = "#tool.rareload_tool.name"
+TOOL.Information         = {
+    { name = "left" },
+    { name = "right" },
+    { name = "reload" },
+    { name = "info" },
 }
-TOOL.ConfigName             = ""
+
+local RareloadUI, ToolScreen
+if CLIENT then
+    RareloadUI = include("rareload/ui/rareload_ui.lua")
+    ToolScreen = include("rareload/ui/rareload_toolscreen.lua")
+end
 
 if SERVER then
-    -- Tool-specific network strings
     util.AddNetworkString("RareloadToolReloadState")
     util.AddNetworkString("RareloadToolPermissionDenied")
-    util.AddNetworkString("RareloadUpdateAntiStuckConfig")
-
-    RARELOAD.save_inventory = include("rareload/core/save_helpers/rareload_save_inventory.lua")
-    RARELOAD.save_vehicles = include("rareload/core/save_helpers/rareload_save_vehicles.lua")
-    RARELOAD.save_entities = include("rareload/core/save_helpers/rareload_save_entities.lua")
-    RARELOAD.save_npcs = include("rareload/core/save_helpers/rareload_save_npcs.lua")
-    RARELOAD.save_ammo = include("rareload/core/save_helpers/rareload_save_ammo.lua")
-    RARELOAD.save_vehicle_state = include("rareload/core/save_helpers/rareload_save_vehicle_state.lua")
-    RARELOAD.position_history = include("rareload/core/save_helpers/rareload_position_history.lua")
-    include("rareload/core/save_helpers/rareload_save_point.lua")
-    include("rareload/utils/rareload_data_utils.lua")
 end
 
 if CLIENT then
-    include("rareload/utils/rareload_data_utils.lua")
-    include("rareload/utils/rareload_fonts.lua")
-    RARELOAD.RegisterFonts()
-    UI.RegisterLanguage()
     net.Receive("RareloadPlayerMoved", function()
         RARELOAD.lastMoveTime = net.ReadFloat()
         RARELOAD.showAutoSaveMessage = false
@@ -53,9 +38,8 @@ if CLIENT then
     end)
 
     net.Receive("RareloadToolReloadState", function()
-        local hasData = net.ReadBool()
         RARELOAD.reloadImageState = {
-            hasData = hasData,
+            hasData = net.ReadBool(),
             showTime = CurTime(),
             duration = 3
         }
@@ -69,159 +53,100 @@ if CLIENT then
     end)
 end
 
+-- Loads addon settings into RARELOAD.settings from the (archived) convars,
+-- on both realms. Global settings are no longer stored in a separate JSON file.
 local function loadAddonSettings()
     if CLIENT then
         if RARELOAD.LoadSettingsFromConVars then
             RARELOAD.LoadSettingsFromConVars()
-            return true, nil
+            return true
         end
         return false, "Settings not available"
     end
 
-    local addonStateFilePath = "rareload/addon_state.json"
-
-    if file.Exists(addonStateFilePath, "DATA") then
-        local json = file.Read(addonStateFilePath, "DATA")
-        if json and json ~= "" then
-            local settings = util.JSONToTable(json)
-            if settings then
-                RARELOAD.settings = settings
-                return true, nil
-            end
-        end
+    if RARELOAD.SyncSettingsFromConVars then
+        RARELOAD.SyncSettingsFromConVars()
+        return true
     end
 
     return false, "Settings not available"
 end
 
-function TOOL:LeftClick(trace, ply)
+---------------------------------------------------------------------------
+-- Permissions
+---------------------------------------------------------------------------
+
+local PERM_USE     = { "USE_TOOL", "You don't have permission to use the Rareload tool." }
+local PERM_CMDS    = { "EXECUTE_RARELOAD_COMMANDS", "You don't have permission to use Rareload commands." }
+local PERM_LOAD    = { "LOAD_POSITION", "You don't have permission to load saved positions." }
+
+local SAVE_PERMS   = { PERM_USE, PERM_CMDS }
+local RELOAD_PERMS = { PERM_USE, PERM_CMDS, PERM_LOAD }
+
+-- Server-side gate shared by every tool action: addon enabled + required permissions.
+local function CanUseTool(ply, perms)
+    if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then
+        ply:ChatPrint("[RARELOAD] The Rareload addon is disabled.")
+        return false
+    end
+
+    for _, perm in ipairs(perms) do
+        if not RARELOAD.CheckPermission(ply, perm[1]) then
+            ply:ChatPrint("[RARELOAD] " .. perm[2])
+            ply:EmitSound("buttons/button10.wav")
+            net.Start("RareloadToolPermissionDenied")
+            net.Send(ply)
+            return false
+        end
+    end
+
+    return true
+end
+
+---------------------------------------------------------------------------
+-- Tool actions
+---------------------------------------------------------------------------
+
+function TOOL:LeftClick(trace)
     local ply = self:GetOwner()
 
     if CLIENT then
-        return RARELOAD.CheckPermission(ply, "USE_TOOL") and RARELOAD.CheckPermission(ply, "EXECUTE_RARELOAD_COMMANDS")
+        return RARELOAD.CheckPermission(ply, "USE_TOOL")
+            and RARELOAD.CheckPermission(ply, "EXECUTE_RARELOAD_COMMANDS")
     end
 
-    if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then
-        ply:ChatPrint("[RARELOAD] The Rareload addon is disabled.")
-        return
-    end
+    if not CanUseTool(ply, SAVE_PERMS) then return false end
 
-    if not RARELOAD.CheckPermission(ply, "USE_TOOL") then
-        ply:ChatPrint("[RARELOAD] You don't have permission to use the Rareload tool.")
-        ply:EmitSound("buttons/button10.wav")
-        net.Start("RareloadToolPermissionDenied")
-        net.Send(ply)
-        return false
-    end
-    if not RARELOAD.CheckPermission(ply, "EXECUTE_RARELOAD_COMMANDS") then
-        ply:ChatPrint("[RARELOAD] You don't have permission to use Rareload commands.")
-        ply:EmitSound("buttons/button10.wav")
-        net.Start("RareloadToolPermissionDenied")
-        net.Send(ply)
-        return false
-    end
     local hitPos = (trace and trace.HitPos) or ply:GetPos()
     local ok = RARELOAD.SaveRespawnPoint(ply, hitPos, ply:EyeAngles(), { whereMsg = "targeted location" })
     return ok and true or false
 end
 
 function TOOL:RightClick()
-    local ply = self:GetOwner()
-
     if CLIENT then return false end
 
-    if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then
-        ply:ChatPrint("[RARELOAD] The Rareload addon is disabled.")
-        return
-    end
-
-    if not RARELOAD.CheckPermission(ply, "USE_TOOL") then
-        ply:ChatPrint("[RARELOAD] You don't have permission to use the Rareload tool.")
-        ply:EmitSound("buttons/button10.wav")
-        net.Start("RareloadToolPermissionDenied")
-        net.Send(ply)
-        return false
-    end
-    if not RARELOAD.CheckPermission(ply, "EXECUTE_RARELOAD_COMMANDS") then
-        ply:ChatPrint("[RARELOAD] You don't have permission to use Rareload commands.")
-        ply:EmitSound("buttons/button10.wav")
-        net.Start("RareloadToolPermissionDenied")
-        net.Send(ply)
-        return false
-    end
+    local ply = self:GetOwner()
+    if not CanUseTool(ply, SAVE_PERMS) then return false end
 
     RARELOAD.SaveRespawnPoint(ply, ply:GetPos(), ply:EyeAngles(), { whereMsg = "your location" })
     ply:EmitSound("buttons/button15.wav")
 end
 
 function TOOL:Reload()
+    if CLIENT then return false end
+
     local ply = self:GetOwner()
-
-    if CLIENT then return false end -- dont shoot plz
-
-    if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then
-        ply:ChatPrint("[RARELOAD] The Rareload addon is disabled.")
-        return false
-    end
-
-    if not RARELOAD.CheckPermission(ply, "USE_TOOL") then
-        ply:ChatPrint("[RARELOAD] You don't have permission to use the Rareload tool.")
-        ply:EmitSound("buttons/button10.wav")
-        net.Start("RareloadToolPermissionDenied")
-        net.Send(ply)
-        return false
-    end
-    if not RARELOAD.CheckPermission(ply, "EXECUTE_RARELOAD_COMMANDS") then
-        ply:ChatPrint("[RARELOAD] You don't have permission to use Rareload commands.")
-        ply:EmitSound("buttons/button10.wav")
-        net.Start("RareloadToolPermissionDenied")
-        net.Send(ply)
-        return false
-    end
-    if not RARELOAD.CheckPermission(ply, "LOAD_POSITION") then
-        ply:ChatPrint("[RARELOAD] You don't have permission to load saved positions.")
-        ply:EmitSound("buttons/button10.wav")
-        net.Start("RareloadToolPermissionDenied")
-        net.Send(ply)
-        return false
-    end
+    if not CanUseTool(ply, RELOAD_PERMS) then return false end
 
     local steamID = ply:SteamID()
     local mapName = game.GetMap()
 
-    local historySize = RARELOAD.GetPositionHistory(steamID, mapName)
+    local previousData
+    if RARELOAD.GetPositionHistory(steamID, mapName) > 0 then
+        previousData = RARELOAD.GetPreviousPositionData(steamID, mapName)
+    end
 
-    if historySize > 0 then
-
-    local previousData = RARELOAD.GetPreviousPositionData(steamID, mapName)
-         if previousData then
-            RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
-            RARELOAD.playerPositions[mapName][steamID] = previousData
-
-            local success, err = RARELOAD.SavePlayerPositionEntry(ply, previousData)
-
-             if success then
-                 local remaining = RARELOAD.GetPositionHistory(steamID, mapName)
-                ply:ChatPrint("[RARELOAD] Restored previous position data. (" .. remaining .. " positions in history)")
-
-                if SyncPlayerPositions then
-                    SyncPlayerPositions(ply)
-                end
-
-                net.Start("RareloadToolReloadState")
-                net.WriteBool(true)
-                net.Send(ply)
-
-                ply:EmitSound("buttons/button14.wav")
-                --  return true (commented - we don't want laser pew pew)
-            else
-                ply:ChatPrint("[RARELOAD] Failed to restore previous position data.")
-                ply:EmitSound("buttons/button10.wav")
-                print("[RARELOAD] Error: " .. err)
-                return false
-            end
-        end
-    else
+    if not previousData then
         net.Start("RareloadToolReloadState")
         net.WriteBool(false)
         net.Send(ply)
@@ -230,16 +155,168 @@ function TOOL:Reload()
         ply:EmitSound("buttons/button8.wav")
         return false
     end
+
+    RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
+    RARELOAD.playerPositions[mapName][steamID] = previousData
+
+    local success, err = RARELOAD.SavePlayerPositionEntry(ply, previousData)
+    if not success then
+        ply:ChatPrint("[RARELOAD] Failed to restore previous position data.")
+        ply:EmitSound("buttons/button10.wav")
+        print("[RARELOAD] Error: " .. tostring(err))
+        return false
+    end
+
+    local remaining = RARELOAD.GetPositionHistory(steamID, mapName)
+    ply:ChatPrint(("[RARELOAD] Restored previous position data. (%d positions in history)"):format(remaining))
+
+    if SyncPlayerPositions then SyncPlayerPositions(ply) end
+
+    net.Start("RareloadToolReloadState")
+    net.WriteBool(true)
+    net.Send(ply)
+
+    ply:EmitSound("buttons/button14.wav")
+    -- No `return true`: that would fire the toolgun beam effect.
+end
+
+---------------------------------------------------------------------------
+-- Control panel (spawnmenu)
+---------------------------------------------------------------------------
+
+-- Every category/control of the panel, declared as data so BuildCPanel stays
+-- trivial and the whole panel can be rebuilt for a new language in one call.
+-- Labels are locale keys; tooltips use the "<label>.tip" convention.
+local CPANEL_LAYOUT = {
+    {
+        title = "cpanel.cat.core",
+        icon = "icon16/cog.png",
+        expanded = true,
+        items = {
+            { toggle = "cpanel.enable_rareload", convar = "sv_rareload_enabled" },
+            { toggle = "cpanel.anti_stuck", convar = "sv_rareload_spawn_mode" },
+            { toggle = "cpanel.auto_save", convar = "sv_rareload_auto_save" },
+            { toggle = "cpanel.no_custom_death", convar = "sv_rareload_no_custom_death" },
+            { language = true },
+        },
+    },
+    {
+        title = "cpanel.cat.player_state",
+        icon = "icon16/user.png",
+        expanded = true,
+        items = {
+            { toggle = "cpanel.keep_health", convar = "sv_rareload_keep_health" },
+            { toggle = "cpanel.keep_states", convar = "sv_rareload_keep_states" },
+            { toggle = "cpanel.keep_inventory", convar = "sv_rareload_keep_inventory" },
+            { toggle = "cpanel.keep_ammo", convar = "sv_rareload_keep_ammo" },
+            { toggle = "cpanel.global_inventory", convar = "sv_rareload_global_inventory" },
+        },
+    },
+    {
+        title = "cpanel.cat.map_entities",
+        icon = "icon16/map.png",
+        items = {
+            { toggle = "cpanel.keep_map_entities", convar = "sv_rareload_keep_map_entities" },
+            { toggle = "cpanel.keep_map_npcs", convar = "sv_rareload_keep_map_npcs" },
+            { toggle = "cpanel.auto_overwrite", convar = "sv_rareload_auto_overwrite" },
+            { toggle = "cpanel.cleanup_map", convar = "sv_rareload_cleanup_map" },
+            { toggle = "cpanel.cleanup_only_saved", convar = "sv_rareload_cleanup_only_saved" },
+            { toggle = "cpanel.cleanup_owned_only", convar = "sv_rareload_cleanup_owned_only" },
+            { toggle = "cpanel.cleanup_on_disconnect", convar = "sv_rareload_cleanup_on_disconnect" },
+        },
+    },
+    {
+        title = "cpanel.cat.timing",
+        icon = "icon16/time.png",
+        items = {
+            { slider = "cpanel.auto_save_interval", convar = "sv_rareload_auto_save_interval", min = 0, max = 60, default = 5, suffix = "s" },
+            { slider = "cpanel.angle_tolerance", convar = "sv_rareload_angle_tolerance", min = 1, max = 360, default = 100, suffix = "°" },
+            { slider = "cpanel.history_size", convar = "sv_rareload_history_size", min = 1, max = 150, default = 125 },
+        },
+    },
+    {
+        title = "cpanel.cat.actions",
+        icon = "icon16/lightning.png",
+        expanded = true,
+        items = {
+            { button = "cpanel.save_position", icon = "icon16/disk.png", cmd = "save_position", color = Color(76, 175, 80) },
+            { button = "cpanel.open_admin", icon = "icon16/shield.png", cmd = "rareload_admin", color = Color(233, 30, 99), perm = "ADMIN_PANEL" },
+            {
+                button = "cpanel.configure_params",
+                icon = "icon16/cog_edit.png",
+                color = Color(255, 152, 0),
+                perm = "ADMIN_PANEL",
+                fn = function() if RARELOAD.OpenTunablesMenu then RARELOAD.OpenTunablesMenu() end end,
+            },
+        },
+    },
+    {
+        title = "cpanel.cat.highlight",
+        icon = "icon16/eye.png",
+        items = {
+            { button = "cpanel.highlight_all", icon = "icon16/flag_yellow.png", cmd = "rareload_highlight_all", color = Color(255, 193, 7) },
+            { button = "cpanel.link_all", icon = "icon16/connect.png", cmd = "rareload_highlight_link_all", color = Color(0, 188, 212) },
+            { button = "cpanel.highlight_players", icon = "icon16/user_green.png", cmd = "rareload_highlight_players", color = Color(76, 175, 80) },
+            { button = "cpanel.clear_highlights", icon = "icon16/cross.png", cmd = "rareload_highlight_clear", color = Color(158, 158, 158) },
+        },
+    },
+    {
+        title = "cpanel.cat.debug",
+        icon = "icon16/wrench.png",
+        perm = "DEBUG_MENU",
+        items = {
+            { toggle = "cpanel.debug_mode", convar = "sv_rareload_debug" },
+            { button = "cpanel.entity_viewer", icon = "icon16/application_view_list.png", cmd = "entity_viewer_open", color = Color(33, 150, 243) },
+        },
+    },
+}
+
+local COL_PANEL_BG  = Color(35, 39, 47, 255)
+local COL_HEADER_BG = Color(45, 50, 60, 255)
+local COL_FOOTER    = Color(100, 105, 115)
+
+-- Language dropdown: "auto" (follow gmod_language) plus every installed locale.
+local function AddLanguageDropdown(content, L)
+    local Lang = RARELOAD.Lang
+    if not Lang then return end
+
+    local cv = GetConVar("rareload_language")
+    local current = string.lower(cv and cv:GetString() or "auto")
+    if current == "" then current = "auto" end
+
+    local choices = { { value = "auto", text = L("cpanel.language.auto") } }
+    for _, code in ipairs(Lang.GetAvailable()) do
+        choices[#choices + 1] = { value = code, text = Lang.GetName(code) }
+    end
+
+    return RareloadUI.CreateDropdown(content, L("cpanel.language"), L("cpanel.language.tip"),
+        choices, current, function(value)
+            RunConsoleCommand("rareload_language", value)
+        end)
 end
 
 function TOOL.BuildCPanel(panel)
     local L = RARELOAD.L or function(key) return key end
 
-    local success, err = pcall(loadAddonSettings)
-    if not success then
-        ErrorNoHalt("Failed to load addon settings: " .. (err or "unknown error"))
+    -- Drop everything from a previous build so language changes and lua
+    -- auto-refresh can rebuild the panel in place.
+    if panel._rareloadItems then
+        for _, old in ipairs(panel._rareloadItems) do
+            if IsValid(old) then old:Remove() end
+        end
+    end
+    local built = {}
+    panel._rareloadItems = built
+    RARELOAD.ToolCPanel = panel
 
-        local errorLabel = vgui.Create("DLabel", panel)
+    local function track(pnl)
+        built[#built + 1] = pnl
+        return pnl
+    end
+
+    local ok = pcall(loadAddonSettings)
+    if not ok then
+        local errorLabel = track(vgui.Create("DLabel", panel))
         errorLabel:SetText(L("cpanel.error_loading"))
         errorLabel:SetTextColor(Color(255, 50, 50))
         errorLabel:Dock(TOP)
@@ -247,170 +324,114 @@ function TOOL.BuildCPanel(panel)
         return
     end
 
-    RARELOAD.playerPositions = RARELOAD.playerPositions or {}
-
-    panel.Paint = function(self, w, h)
-        surface.SetDrawColor(35, 39, 47, 255)
+    panel.Paint = function(_, w, h)
+        surface.SetDrawColor(COL_PANEL_BG)
         surface.DrawRect(0, 0, w, h)
     end
 
-    local headerPanel = vgui.Create("DPanel", panel)
+    local versionText = "v" .. (RARELOAD.version or "")
+    local headerPanel = track(vgui.Create("DPanel", panel))
     headerPanel:Dock(TOP)
     headerPanel:DockMargin(5, 5, 5, 8)
     headerPanel:SetTall(50)
-    headerPanel.Paint = function(self, w, h)
-        RareloadUI.DrawRoundedBox(0, 0, w, h, 8, Color(45, 50, 60, 255))
+    headerPanel.Paint = function(_, w, h)
+        RareloadUI.DrawRoundedBox(0, 0, w, h, 8, COL_HEADER_BG)
         surface.SetDrawColor(RareloadUI.Theme.Colors.Accent)
         surface.DrawRect(0, h - 3, w, 3)
         draw.SimpleText("RARELOAD", "RareloadUI.Title", 12, h / 2 - 6, RareloadUI.Theme.Colors.Text.Primary,
             TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText(L("cpanel.subtitle"), "RareloadUI.Small", 12, h / 2 + 10, RareloadUI.Theme.Colors.Text
-            .Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText("v3.7", "RareloadUI.Small", w - 12, h / 2, RareloadUI.Theme.Colors.Accent, TEXT_ALIGN_RIGHT,
-            TEXT_ALIGN_CENTER)
+        draw.SimpleText(L("cpanel.subtitle"), "RareloadUI.Small", 12, h / 2 + 10,
+            RareloadUI.Theme.Colors.Text.Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(versionText, "RareloadUI.Small", w - 12, h / 2, RareloadUI.Theme.Colors.Accent,
+            TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
     end
 
-    -- ═══════════════════════════════════════════════════════════════
-    -- CORE SETTINGS CATEGORY
-    -- ═══════════════════════════════════════════════════════════════
-    local function addToggle(category, label, convar, tooltip)
-        category:AddItem(RareloadUI.CreateToggleSwitch(category.Content, label, convar, tooltip))
+    local ply = LocalPlayer()
+    for _, catDef in ipairs(CPANEL_LAYOUT) do
+        if not catDef.perm or RARELOAD.CheckPermission(ply, catDef.perm) then
+            local category = track(RareloadUI.CreateCategory(panel, L(catDef.title), catDef.icon,
+                catDef.expanded == true))
+
+            for _, item in ipairs(catDef.items) do
+                if item.perm and not RARELOAD.CheckPermission(ply, item.perm) then
+                    -- skipped: player lacks the required permission
+                elseif item.toggle then
+                    category:AddItem(RareloadUI.CreateToggleSwitch(category.Content,
+                        L(item.toggle), item.convar, L(item.toggle .. ".tip")))
+                elseif item.slider then
+                    category:AddItem(RareloadUI.CreateCompactSlider(category.Content,
+                        L(item.slider), L(item.slider .. ".tip"), item.convar,
+                        item.min, item.max, item.decimals or 0, item.default, item.suffix or ""))
+                elseif item.button then
+                    local onClick = item.fn or function() RunConsoleCommand(item.cmd) end
+                    category:AddItem(RareloadUI.CreateModernButton(category.Content,
+                        L(item.button), item.icon, onClick, item.color))
+                elseif item.language then
+                    local dropdown = AddLanguageDropdown(category.Content, L)
+                    if dropdown then category:AddItem(dropdown) end
+                end
+            end
+        end
     end
 
-    local function addSlider(category, label, tooltip, convar, minV, maxV, decimals, default, suffix)
-        category:AddItem(RareloadUI.CreateCompactSlider(category.Content, label, tooltip, convar,
-            minV, maxV, decimals, default, suffix))
-    end
-
-    local coreCategory = RareloadUI.CreateCategory(panel, L("cpanel.cat.core"), "icon16/cog.png", true)
-    addToggle(coreCategory, L("cpanel.enable_rareload"), "sv_rareload_enabled", L("cpanel.enable_rareload.tip"))
-    addToggle(coreCategory, L("cpanel.anti_stuck"), "sv_rareload_spawn_mode", L("cpanel.anti_stuck.tip"))
-    addToggle(coreCategory, L("cpanel.auto_save"), "sv_rareload_auto_save", L("cpanel.auto_save.tip"))
-    addToggle(coreCategory, L("cpanel.no_custom_death"), "sv_rareload_no_custom_death", L("cpanel.no_custom_death.tip"))
-
-    -- ═══════════════════════════════════════════════════════════════
-    -- PLAYER STATE CATEGORY
-    -- ═══════════════════════════════════════════════════════════════
-    local playerCategory = RareloadUI.CreateCategory(panel, L("cpanel.cat.player_state"), "icon16/user.png", true)
-    addToggle(playerCategory, L("cpanel.keep_health"), "sv_rareload_keep_health", L("cpanel.keep_health.tip"))
-    addToggle(playerCategory, L("cpanel.keep_states"), "sv_rareload_keep_states", L("cpanel.keep_states.tip"))
-    addToggle(playerCategory, L("cpanel.keep_inventory"), "sv_rareload_keep_inventory", L("cpanel.keep_inventory.tip"))
-    addToggle(playerCategory, L("cpanel.keep_ammo"), "sv_rareload_keep_ammo", L("cpanel.keep_ammo.tip"))
-    addToggle(playerCategory, L("cpanel.global_inventory"), "sv_rareload_global_inventory", L("cpanel.global_inventory.tip"))
-
-    -- ═══════════════════════════════════════════════════════════════
-    -- MAP ENTITIES CATEGORY
-    -- ═══════════════════════════════════════════════════════════════
-    local mapCategory = RareloadUI.CreateCategory(panel, L("cpanel.cat.map_entities"), "icon16/map.png", false)
-    addToggle(mapCategory, L("cpanel.keep_map_entities"), "sv_rareload_keep_map_entities", L("cpanel.keep_map_entities.tip"))
-    addToggle(mapCategory, L("cpanel.keep_map_npcs"), "sv_rareload_keep_map_npcs", L("cpanel.keep_map_npcs.tip"))
-    addToggle(mapCategory, L("cpanel.auto_overwrite"), "sv_rareload_auto_overwrite",
-        L("cpanel.auto_overwrite.tip"))
-    addToggle(mapCategory, L("cpanel.cleanup_map"), "sv_rareload_cleanup_map", L("cpanel.cleanup_map.tip"))
-    addToggle(mapCategory, L("cpanel.cleanup_only_saved"), "sv_rareload_cleanup_only_saved",
-        L("cpanel.cleanup_only_saved.tip"))
-    addToggle(mapCategory, L("cpanel.cleanup_owned_only"), "sv_rareload_cleanup_owned_only",
-        L("cpanel.cleanup_owned_only.tip"))
-    addToggle(mapCategory, L("cpanel.cleanup_on_disconnect"), "sv_rareload_cleanup_on_disconnect",
-        L("cpanel.cleanup_on_disconnect.tip"))
-
-    -- ═══════════════════════════════════════════════════════════════
-    -- TIMING SETTINGS CATEGORY
-    -- ═══════════════════════════════════════════════════════════════
-    local timingCategory = RareloadUI.CreateCategory(panel, L("cpanel.cat.timing"), "icon16/time.png", false)
-    addSlider(timingCategory, L("cpanel.auto_save_interval"), L("cpanel.auto_save_interval.tip"),
-        "sv_rareload_auto_save_interval", 0, 60, 0, 5, "s")
-    addSlider(timingCategory, L("cpanel.angle_tolerance"), L("cpanel.angle_tolerance.tip"),
-        "sv_rareload_angle_tolerance", 1, 360, 0, 100, "°")
-    addSlider(timingCategory, L("cpanel.history_size"), L("cpanel.history_size.tip"),
-        "sv_rareload_history_size", 1, 150, 0, 125, "")
-
-    -- ═══════════════════════════════════════════════════════════════
-    -- ACTIONS CATEGORY
-    -- ═══════════════════════════════════════════════════════════════
-    local actionsCategory = RareloadUI.CreateCategory(panel, L("cpanel.cat.actions"), "icon16/lightning.png", true)
-
-    local saveBtn = RareloadUI.CreateModernButton(
-        actionsCategory.Content,
-        L("cpanel.save_position"),
-        "icon16/disk.png",
-        function()
-            RunConsoleCommand("save_position")
-        end,
-        Color(76, 175, 80)
-    )
-    actionsCategory:AddItem(saveBtn)
-
-    if RARELOAD.CheckPermission(LocalPlayer(), "ADMIN_PANEL") then
-        local adminBtn = RareloadUI.CreateModernButton(
-            actionsCategory.Content,
-            L("cpanel.open_admin"),
-            "icon16/shield.png",
-            function()
-                RunConsoleCommand("rareload_admin")
-            end,
-            Color(233, 30, 99)
-        )
-        actionsCategory:AddItem(adminBtn)
-
-        local paramsBtn = RareloadUI.CreateModernButton(
-            actionsCategory.Content,
-            L("cpanel.configure_params"),
-            "icon16/cog_edit.png",
-            function()
-                if RARELOAD.OpenTunablesMenu then RARELOAD.OpenTunablesMenu() end
-            end,
-            Color(255, 152, 0)
-        )
-        actionsCategory:AddItem(paramsBtn)
-    end
-
-    -- ═══════════════════════════════════════════════════════════════
-    -- HIGHLIGHT & TRACERS CATEGORY
-    -- ═══════════════════════════════════════════════════════════════
-    local highlightCategory = RareloadUI.CreateCategory(panel, L("cpanel.cat.highlight"), "icon16/eye.png", false)
-    local function addHighlightButton(label, icon, cmd, color)
-        highlightCategory:AddItem(RareloadUI.CreateModernButton(
-            highlightCategory.Content, label, icon, function() RunConsoleCommand(cmd) end, color))
-    end
-    addHighlightButton(L("cpanel.highlight_all"), "icon16/flag_yellow.png", "rareload_highlight_all", Color(255, 193, 7))
-    addHighlightButton(L("cpanel.link_all"), "icon16/connect.png", "rareload_highlight_link_all", Color(0, 188, 212))
-    addHighlightButton(L("cpanel.highlight_players"), "icon16/user_green.png", "rareload_highlight_players", Color(76, 175, 80))
-    addHighlightButton(L("cpanel.clear_highlights"), "icon16/cross.png", "rareload_highlight_clear", Color(158, 158, 158))
-
-    -- ═══════════════════════════════════════════════════════════════
-    -- DEBUG TOOLS CATEGORY
-    -- ═══════════════════════════════════════════════════════════════
-    if RARELOAD.CheckPermission(LocalPlayer(), "DEBUG_MENU") then
-        local debugCategory = RareloadUI.CreateCategory(panel, L("cpanel.cat.debug"), "icon16/wrench.png", false)
-
-        addToggle(debugCategory, L("cpanel.debug_mode"), "sv_rareload_debug", L("cpanel.debug_mode.tip"))
-
-        local entityViewerBtn = RareloadUI.CreateModernButton(
-            debugCategory.Content,
-            L("cpanel.entity_viewer"),
-            "icon16/application_view_list.png",
-            function()
-                RunConsoleCommand("entity_viewer_open")
-            end,
-            Color(33, 150, 243)
-        )
-        debugCategory:AddItem(entityViewerBtn)
-    end
-
-    local footerPanel = vgui.Create("DPanel", panel)
+    local footerPanel = track(vgui.Create("DPanel", panel))
     footerPanel:Dock(TOP)
     footerPanel:DockMargin(5, 10, 5, 5)
     footerPanel:SetTall(24)
     footerPanel.Paint = function(_, w, h)
-        draw.SimpleText(L("cpanel.made_by"), "RareloadUI.Small", w / 2, h / 2, Color(100, 105, 115), TEXT_ALIGN_CENTER,
-            TEXT_ALIGN_CENTER)
+        draw.SimpleText(L("cpanel.made_by"), "RareloadUI.Small", w / 2, h / 2, COL_FOOTER,
+            TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
+
+    panel:InvalidateLayout(true)
 end
 
-local screenTool = include("rareload/ui/rareload_toolscreen.lua")
+if CLIENT then
+    -- The spawnmenu resolves "#tool.rareload_tool.name" to a plain string once:
+    -- the sidebar list item at creation and the control panel header (DForm name)
+    -- on first activation. Re-resolve both after a language change.
+    local function UpdateToolNameLabels()
+        local label = language.GetPhrase("tool.rareload_tool.name")
 
-function TOOL:DrawToolScreen()
-    screenTool:Draw(256, 256, RARELOAD, loadAddonSettings)
-    screenTool.EndDraw()
+        local panel = RARELOAD.ToolCPanel
+        if IsValid(panel) and panel.SetName then
+            panel:SetName(label)
+        end
+
+        if not IsValid(g_SpawnMenu) then return end
+        local function walk(pnl)
+            for _, child in ipairs(pnl:GetChildren()) do
+                -- The tools sidebar stores the tool mode on the list item as .Name
+                if child.Name == "rareload_tool" and isfunction(child.SetText) then
+                    child:SetText(label)
+                    child:InvalidateLayout()
+                else
+                    walk(child)
+                end
+            end
+        end
+        walk(g_SpawnMenu)
+    end
+
+    local function RebuildCPanel()
+        UpdateToolNameLabels()
+        local panel = RARELOAD.ToolCPanel
+        if not IsValid(panel) then return end
+        TOOL.BuildCPanel(panel)
+    end
+
+    -- Fired by sh_lang.lua whenever rareload_language / gmod_language changes.
+    -- Deferred a tick so the language dropdown's menu finishes closing first and
+    -- RareloadUI has re-registered the language.Add phrases.
+    hook.Add("RareloadLanguageChanged", "RareloadTool_RebuildCPanel", function()
+        timer.Simple(0, RebuildCPanel)
+    end)
+
+    -- Lua auto-refresh of this file: rebuild an already-open panel with the new code.
+    timer.Simple(0, RebuildCPanel)
+
+    function TOOL:DrawToolScreen(width, height)
+        ToolScreen.Draw(width or 256, height or 256, loadAddonSettings)
+        ToolScreen.EndDraw()
+    end
 end

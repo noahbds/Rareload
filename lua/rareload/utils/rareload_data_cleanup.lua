@@ -138,12 +138,6 @@ function DataCleanup.VerifyDataIntegrity()
         table.insert(issues, "Created missing player_positions folder")
     end
 
-    -- Check anti_stuck_profiles folder exists
-    if not file.Exists("rareload/anti_stuck_profiles", "DATA") then
-        file.CreateDir("rareload/anti_stuck_profiles")
-        table.insert(issues, "Created missing anti_stuck_profiles folder")
-    end
-
     -- Check player_settings folder exists
     if not file.Exists("rareload/player_settings", "DATA") then
         file.CreateDir("rareload/player_settings")

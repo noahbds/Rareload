@@ -45,6 +45,7 @@ local math_floor                 = RS.math_floor
 local math_ceil                  = RS.math_ceil
 local clipTextToWidth            = RS.clipTextToWidth
 local safeTextColor              = RS.safeTextColor
+local LField                     = RS.LField
 local surface_SetMaterial        = surface.SetMaterial
 local surface_DrawTexturedRectUV = surface.DrawTexturedRectUV
 
@@ -247,8 +248,12 @@ local function DrawContent(ctx, ox, oy)
             surface_DrawRect(tabX + 8, tabY + tabHeight / 2 - 1, 3, 3)
         end
 
-        draw_SimpleText(L(name), "Trebuchet18", tabX + 14, tabY + tabHeight / 2, textColor, TEXT_ALIGN_LEFT,
-            TEXT_ALIGN_CENTER)
+        surface_SetFont("Trebuchet18")
+        local countStr = tostring(lineCount)
+        local countW = surface_GetTextSize(countStr) or 0
+        local nameMaxW = math_max(20, sidebarWidth - 14 - countW - 12)
+        draw_SimpleText(clipTextToWidth(L(name), nameMaxW), "Trebuchet18", tabX + 14, tabY + tabHeight / 2, textColor,
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 
         local countColor
         if active then
@@ -256,7 +261,7 @@ local function DrawContent(ctx, ox, oy)
         else
             countColor = hasData and TAB_COUNT_INACTIVE or TAB_COUNT_EMPTY
         end
-        draw_SimpleText(tostring(lineCount), "Trebuchet18", tabX + sidebarWidth - 8, tabY + tabHeight / 2, countColor,
+        draw_SimpleText(countStr, "Trebuchet18", tabX + sidebarWidth - 8, tabY + tabHeight / 2, countColor,
             TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
     end
 
@@ -294,7 +299,7 @@ local function DrawContent(ctx, ox, oy)
         end
 
         if not drawInfo.isPartialStart then
-            local labelText = clipTextToWidth((l[1] or "") .. ":", labelMaxW)
+            local labelText = clipTextToWidth(LField(l[1]) .. ":", labelMaxW)
             draw_SimpleText(labelText, ctx.contentFont, labelX, currentY + 3, WHITE, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
         end
 

@@ -6,26 +6,23 @@ RARELOAD.Permissions.DEFS = RARELOAD.Permissions.DEFS or {}
 RARELOAD.Permissions.MyPermissions = RARELOAD.Permissions.MyPermissions or {}
 RARELOAD.OfflinePlayerData = RARELOAD.OfflinePlayerData or {}
 
--- Client-side permission check that uses server-synced permissions
+-- Check if a player has a specific permission. Returns true if the player is a superadmin.
 function RARELOAD.Permissions.HasPermission(ply, permName)
     if not IsValid(ply) then return false end
     if ply:IsSuperAdmin() then return true end
 
-    -- For the local player, use the resolved permissions synced from the server
     if ply == LocalPlayer() then
         if RARELOAD.Permissions.MyPermissions[permName] ~= nil then
             return RARELOAD.Permissions.MyPermissions[permName]
         end
     end
 
-    -- For other players (admin panel view), use the full permissions table
     local steamID = ply:SteamID()
     if RARELOAD.Permissions.PlayerPerms[steamID] and
         RARELOAD.Permissions.PlayerPerms[steamID][permName] ~= nil then
         return RARELOAD.Permissions.PlayerPerms[steamID][permName]
     end
 
-    -- Fall back to permission defaults
     if RARELOAD.Permissions.DEFS[permName] then
         return RARELOAD.Permissions.DEFS[permName].default
     end
@@ -33,7 +30,6 @@ function RARELOAD.Permissions.HasPermission(ply, permName)
     return false
 end
 
--- Receive own resolved permissions from server (sent on join + permission changes)
 net.Receive("RareloadSyncOwnPermissions", function()
     local perms = net.ReadTable()
     if perms then
@@ -71,9 +67,6 @@ net.Receive("RareloadSendPermissions", function()
     end
 end)
 
--- Admin-panel session token, issued by the server when the panel is opened.
--- It is sent back with privileged mutating actions (e.g. permission changes) so
--- the server can confirm the request comes from a live, non-expired admin session.
 net.Receive("RareloadAdminSessionToken", function()
     RARELOAD.AdminPanel.SessionToken = net.ReadString()
 end)

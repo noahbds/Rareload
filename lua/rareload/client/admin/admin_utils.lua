@@ -144,6 +144,18 @@ function RARELOAD.AdminPanel.Utils.CategorizePermissions()
     return permCategories
 end
 
+function RARELOAD.AdminPanel.Utils.GetPermissionName(permName, permData)
+    local get = RARELOAD.Lang and RARELOAD.Lang.Get
+    local translated = get and get("perm." .. permName .. ".name")
+    return translated or (permData and permData.name) or permName
+end
+
+function RARELOAD.AdminPanel.Utils.GetPermissionDesc(permName, permData)
+    local get = RARELOAD.Lang and RARELOAD.Lang.Get
+    local translated = get and get("perm." .. permName .. ".desc")
+    return translated or (permData and permData.desc) or ""
+end
+
 function RARELOAD.AdminPanel.Utils.GetCategoryInfo(catName)
     local THEME = RARELOAD.AdminPanel.Theme.COLORS
     local L = RARELOAD.L or function(key) return key end

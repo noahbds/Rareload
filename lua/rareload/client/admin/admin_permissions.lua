@@ -303,14 +303,14 @@ function RARELOAD.AdminPanel.Permissions.Create(parent, onSavePermissions)
         end
 
         local permTitle = vgui.Create("DLabel", permissionPanel)
-        permTitle:SetText(permData.name)
+        permTitle:SetText(RARELOAD.AdminPanel.Utils.GetPermissionName(permName, permData))
         permTitle:SetFont("DermaDefaultBold")
         permTitle:SetTextColor(THEME.text)
         permTitle:SetPos(10, 8)
         permTitle:SizeToContents()
 
         local permDesc = vgui.Create("DLabel", permissionPanel)
-        permDesc:SetText(permData.desc)
+        permDesc:SetText(RARELOAD.AdminPanel.Utils.GetPermissionDesc(permName, permData))
         permDesc:SetFont("DermaDefault")
         permDesc:SetTextColor(THEME.textSecondary)
         permDesc:SetPos(10, 27)
