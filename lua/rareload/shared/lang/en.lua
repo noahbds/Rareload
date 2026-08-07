@@ -319,7 +319,7 @@ return {
     ["sed.highlight.npc_suffix"] = " (NPC)",
     ["sed.highlight.drift"] = "drift %du",
     ["sed.highlight.player"] = "player",
-    ["sed.highlight.label_fmt"] = "%s  %du",
+    ["sed.highlight.label_fmt"] = "Saved Position of '%s'  %du",
 
     -- SED row labels (info panel field names). These map the internal English
     -- label (which also serves as sort/live-update key) to a display string.

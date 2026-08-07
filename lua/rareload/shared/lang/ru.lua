@@ -318,7 +318,7 @@ return {
     ["sed.highlight.npc_suffix"] = " (NPC)",
     ["sed.highlight.drift"] = "смещение %d ед.",
     ["sed.highlight.player"] = "игрок",
-    ["sed.highlight.label_fmt"] = "%s  %d ед.",
+    ["sed.highlight.label_fmt"] = "Сохранённая позиция '%s'  %dед.",
 
     -- SED row labels (info panel field names)
     ["sed.field.NPC ID"] = "ID NPC",

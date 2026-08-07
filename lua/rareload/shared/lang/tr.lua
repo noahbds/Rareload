@@ -314,7 +314,7 @@ return {
     ["sed.highlight.npc_suffix"] = " (NPC)",
     ["sed.highlight.drift"] = "sapma %du",
     ["sed.highlight.player"] = "oyuncu",
-    ["sed.highlight.label_fmt"] = "%s  %du",
+    ["sed.highlight.label_fmt"] = "'%s' için Kaydedilmiş Konum  %db",
 
     -- SED row labels (info panel field names)
     ["sed.field.NPC ID"] = "NPC ID",

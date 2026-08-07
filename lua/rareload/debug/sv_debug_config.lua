@@ -1,8 +1,4 @@
 -- Debug system configuration
-local function IsGlobalDebugEnabled()
-    return RARELOAD and RARELOAD.IsGlobalDebugEnabled and RARELOAD.IsGlobalDebugEnabled() or false
-end
-
 
 local function IsPlayerDebugEnabled(ply)
     if not IsValid(ply) or not ply:IsPlayer() then return false end
@@ -32,7 +28,8 @@ end
 
 DEBUG_CONFIG = {
     ENABLED = function(context)
-        if IsGlobalDebugEnabled() then
+        -- Safe execution check prevents nil calls if order of inclusion varies
+        if RARELOAD and RARELOAD.IsGlobalDebugEnabled and RARELOAD.IsGlobalDebugEnabled() then
             return true
         end
 
@@ -69,19 +66,15 @@ DEBUG_CONFIG = {
     MAX_LOG_LINE_LENGTH = 1000,
     ROTATE_LOGS_BY_SIZE = true,
     LOG_FILE_PREFIX = "rareload_",
-    -- Rate limiting configuration (per-module message suppression)
     RateLimiters = {
-        -- Format: moduleName = { maxMessages, timeWindow }
-        -- Example: anti_stuck = { 10, 60 } means max 10 messages per 60 seconds
-        anti_stuck = { 20, 30 },    -- 20 msgs per 30 seconds
-        respawn = { 15, 60 },       -- 15 msgs per 60 seconds
-        commands = { 25, 30 },      -- 25 msgs per 30 seconds
-        position_save = { 10, 60 }, -- 10 msgs per 60 seconds
-        inventory = { 10, 60 },     -- 10 msgs per 60 seconds
-        admin_panel = { 20, 30 },   -- 20 msgs per 30 seconds
-        default = { 50, 60 }        -- 50 msgs per 60 seconds (fallback)
+        anti_stuck = { 20, 30 },
+        respawn = { 15, 60 },
+        commands = { 25, 30 },
+        position_save = { 10, 60 },
+        inventory = { 10, 60 },
+        admin_panel = { 20, 30 },
+        default = { 50, 60 }
     },
-    -- Category mapping for hierarchical organization
     ModuleCategories = {
         anti_stuck = "ANTI-STUCK",
         respawn = "RESPAWN",
@@ -97,12 +90,11 @@ DEBUG_CONFIG = {
 }
 
 local currentDebugLevel = 3
-local rateLimitHistory = {} -- Tracks { [moduleKey] = { [msgKey] = { count, firstTime } } }
+local rateLimitHistory = {}
 local logBuffer = {}
-local logFileCache = {}     -- Cache for log file paths per category: { [category] = { path, size } }
+local logFileCache = {}
 local lastFlush = os.time()
 local currentLogFile = nil
-local currentLogSize = 0
 
 local function UpdateDebugLevel()
     local levelName = DEBUG_CONFIG.MIN_LEVEL_TO_LOG()
@@ -126,19 +118,16 @@ function DEBUG_CONFIG.GetCurrentLevel()
     return DEBUG_CONFIG.DEFAULT_LEVEL
 end
 
--- Get timestamp in specified format (defaults to console format for brevity)
 function DEBUG_CONFIG.GetTimestamp(format)
-    format = format or "%H:%M:%S" -- Console: HH:MM:SS
+    format = format or "%H:%M:%S"
     return os.date(format)
 end
 
--- Check if a message from a module should be rate-limited
--- Returns: shouldLog (bool), nextLogTime (number)
 function DEBUG_CONFIG.CheckRateLimit(moduleName, messageKey)
     if not DEBUG_CONFIG.ENABLED() then return true, 0 end
 
     local limits = DEBUG_CONFIG.RateLimiters[moduleName] or DEBUG_CONFIG.RateLimiters.default
-    if not limits then return true, 0 end -- No limit configured
+    if not limits then return true, 0 end
 
     local maxMessages, timeWindow = limits[1], limits[2]
     local now = os.time()
@@ -146,31 +135,26 @@ function DEBUG_CONFIG.CheckRateLimit(moduleName, messageKey)
     rateLimitHistory[moduleName] = rateLimitHistory[moduleName] or {}
     local moduleHistory = rateLimitHistory[moduleName]
 
-    -- Clean up old entries outside the time window
     for key, record in pairs(moduleHistory) do
         if now - record.firstTime > timeWindow then
             moduleHistory[key] = nil
         end
     end
 
-    -- Check if message key is in history
     if moduleHistory[messageKey] then
         local record = moduleHistory[messageKey]
         if record.count < maxMessages then
             record.count = record.count + 1
             return true, 0
         else
-            -- Rate limit exceeded
             return false, record.firstTime + timeWindow
         end
     else
-        -- First occurrence of this message
         moduleHistory[messageKey] = { count = 1, firstTime = now }
         return true, 0
     end
 end
 
--- Clear rate limit history for a specific module (or all if nil)
 function DEBUG_CONFIG.ClearRateLimitHistory(moduleName)
     if moduleName then
         rateLimitHistory[moduleName] = nil
@@ -254,13 +238,10 @@ end
 local function GetLogFilePath(category)
     category = category or "system"
 
-    -- Check cache first
     if logFileCache[category] then
         return logFileCache[category].path
     end
 
-    -- Build new log file path with session ID and category
-    -- Format: rareload_SESSION-ID_CATEGORY_DATE.log
     local categoryName = tostring(category):lower():gsub("[^%w]", "_")
     local logFile = DEBUG_CONFIG.LOG_FOLDER ..
         DEBUG_CONFIG.LOG_FILE_PREFIX ..
@@ -307,7 +288,7 @@ local function CheckLogRotation(category)
             end
         end
 
-        logFileCache[category] = nil -- Clear cache to generate new file on next write
+        logFileCache[category] = nil
         return true
     end
 
@@ -317,7 +298,6 @@ end
 local function FlushLogBuffer()
     if #logBuffer == 0 then return end
 
-    -- Group buffer entries by category
     local entriesByCategory = {}
     for _, entry in ipairs(logBuffer) do
         local category = entry.category or "system"
@@ -327,16 +307,15 @@ local function FlushLogBuffer()
         table.insert(entriesByCategory[category], entry)
     end
 
-    -- Flush each category to its own file
     for category, entries in pairs(entriesByCategory) do
         local logFilePath = GetLogFilePath(category)
         local content = ""
 
-        for _, entry in ipairs(entries) do
+        for idx, entry in ipairs(entries) do
             local formattedEntry = FormatLogEntry(entry)
             content = content .. formattedEntry
 
-            if DEBUG_CONFIG.LOG_FORMAT == "JSON" and _ < #entries then
+            if DEBUG_CONFIG.LOG_FORMAT == "JSON" and idx < #entries then
                 content = content .. ",\n"
             end
         end
@@ -381,7 +360,8 @@ function DEBUG_CONFIG.AddToLogBuffer(level, category, message)
             end
             processedMessage = table.concat(entries, ", ")
         else
-            processedMessage = TableToString(message)
+            -- Replaced non-existent global TableToString with standard GLua table.ToString
+            processedMessage = table.ToString(message, "LogData", false)
         end
     else
         processedMessage = tostring(message)
@@ -409,15 +389,22 @@ timer.Create("RARELOAD_FlushLogBuffer", DEBUG_CONFIG.LOG_BUFFER_FLUSH_INTERVAL, 
     end
 end)
 
+local function CloseAllJSONLogs()
+    if DEBUG_CONFIG.LOG_FORMAT ~= "JSON" then return end
+    for category, info in pairs(logFileCache) do
+        if info.path and file.Exists(info.path, "DATA") then
+            file.Append(info.path, "\n]")
+        end
+    end
+end
+
 hook.Add("ShutDown", "RARELOAD_FlushLogsOnShutdown", function()
     if #logBuffer > 0 then
         print("[RARELOAD DEBUG] Flushing " .. #logBuffer .. " log entries before shutdown")
         FlushLogBuffer()
     end
 
-    if DEBUG_CONFIG.LOG_FORMAT == "JSON" and currentLogFile then
-        file.Append(currentLogFile, "\n]")
-    end
+    CloseAllJSONLogs()
 end)
 
 local function InitDebugSystem()
@@ -453,6 +440,7 @@ end
 concommand.Add("rareload_debug_toggle", function(ply, cmd, args)
     if IsValid(ply) and (not RARELOAD.Permissions or not RARELOAD.Permissions.HasPermission(ply, "DEBUG_MENU")) then return end
 
+    RARELOAD.settings = RARELOAD.settings or {}
     RARELOAD.settings.debugEnabled = not RARELOAD.settings.debugEnabled
     local status = RARELOAD.settings.debugEnabled and "enabled" or "disabled"
     print("[RARELOAD DEBUG] Debug system " .. status)
@@ -467,6 +455,7 @@ concommand.Add("rareload_debug_level", function(ply, cmd, args)
 
     local level = args[1] and string.upper(args[1])
     if level and DEBUG_CONFIG.LEVELS[level] then
+        RARELOAD.settings = RARELOAD.settings or {}
         RARELOAD.settings.debugLevel = level
         UpdateDebugLevel()
 
@@ -527,13 +516,9 @@ concommand.Add("rareload_debug_format", function(ply, cmd, args)
 
     if table.HasValue(validFormats, format) then
         FlushLogBuffer()
-
-        if DEBUG_CONFIG.LOG_FORMAT == "JSON" and currentLogFile then
-            file.Append(currentLogFile, "\n]")
-        end
+        CloseAllJSONLogs()
 
         DEBUG_CONFIG.LOG_FORMAT = format
-        currentLogFile = nil
 
         print("[RARELOAD DEBUG] Log format set to: " .. format)
         if IsValid(ply) then

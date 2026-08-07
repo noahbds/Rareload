@@ -55,6 +55,29 @@ local PHANTOM_CATEGORIES      = {
 }
 
 local CACHE_LIFETIME = 5
+local PLAYER_MOVED_AWAY_SQR   = 32 * 32
+
+local function HasHighlightRevealTarget()
+    local highlights = SED.Highlights
+    if not highlights or not (SED.Highlight and SED.Highlight.IsActive) then return false end
+
+    for _, entry in pairs(highlights) do
+        if entry and entry.kind == "player2phantom" and entry.id ~= nil then
+            if SED.Highlight.IsActive(entry.kind, entry.id) then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+local function ShouldRevealForHighlight(steamID, owner, savedPos)
+    if not (SED.Highlight and SED.Highlight.IsActive) then return false end
+    if not SED.Highlight.IsActive("player2phantom", steamID) then return false end
+    if not IsValid(owner) or not savedPos then return true end
+    return owner:GetPos():DistToSqr(savedPos) > PLAYER_MOVED_AWAY_SQR
+end
 
 function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
     lodLevel      = lodLevel or 1
@@ -307,7 +330,6 @@ function Phantom.BuildSavedRecord(steamID, phantomData, mapName)
 end
 
 local PLAYER_PHANTOM_CULL_SQR = 10000 * 10000
-local PLAYER_MOVED_AWAY_SQR   = 32 * 32
 
 local function EnsurePlayerPhantom(steamID, savedInfo)
     local existing = SED.PlayerPhantoms[steamID]
@@ -362,17 +384,22 @@ function Phantom.RefreshModels()
 end
 
 function Phantom.UpdateModelVisibility()
-    local reveal = SS.DebugEnabled() and SS.HasViewPhantomPerm()
+    local canView = SS.HasViewPhantomPerm()
+    local reveal = SS.DebugEnabled() and canView
+    local liveByID = (reveal or canView) and SS.BuildLiveByID() or nil
+
     for steamID, data in pairs(SED.PlayerPhantoms) do
         if IsValid(data.phantom) then
             local show = false
+            local owner = player.GetBySteamID(steamID)
             if reveal then
-                local owner = player.GetBySteamID(steamID)
                 if not IsValid(owner) then
                     show = true
                 elseif owner:GetPos():DistToSqr(data.pos) > PLAYER_MOVED_AWAY_SQR then
                     show = true
                 end
+            elseif canView and ShouldRevealForHighlight(steamID, owner, data.pos) then
+                show = true
             end
             SS.SetPhantomRevealed(data.phantom, show)
         end
@@ -415,7 +442,11 @@ end
 local nextModelRefresh, nextModelVis = 0, 0
 
 hook.Add("Think", "RARELOAD_PlayerPhantom_Tick", function()
-    if not SS.DebugEnabled() then
+    local canView = SS.HasViewPhantomPerm()
+    local reveal = SS.DebugEnabled() and canView
+    local highlightReveal = canView and HasHighlightRevealTarget()
+
+    if not reveal and not highlightReveal then
         if next(SED.PlayerPhantoms) then Phantom.RemoveAllModels() end
         return
     end

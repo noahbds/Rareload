@@ -314,7 +314,7 @@ return {
     ["sed.highlight.npc_suffix"] = " (PNJ)",
     ["sed.highlight.drift"] = "dérive %du",
     ["sed.highlight.player"] = "joueur",
-    ["sed.highlight.label_fmt"] = "%s  %du",
+    ["sed.highlight.label_fmt"] = "Position sauvegardée de '%s'  %du",
 
     -- SED row labels (info panel field names)
     ["sed.field.NPC ID"] = "ID PNJ",

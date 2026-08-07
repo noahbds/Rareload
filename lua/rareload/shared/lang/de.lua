@@ -314,7 +314,7 @@ return {
     ["sed.highlight.npc_suffix"] = " (NPC)",
     ["sed.highlight.drift"] = "Drift %du",
     ["sed.highlight.player"] = "Spieler",
-    ["sed.highlight.label_fmt"] = "%s  %du",
+    ["sed.highlight.label_fmt"] = "Gespeicherte Position von '%s'  %dE",
 
     -- SED row labels (info panel field names)
     ["sed.field.NPC ID"] = "NPC-ID",

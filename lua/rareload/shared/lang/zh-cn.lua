@@ -314,7 +314,7 @@ return {
     ["sed.highlight.npc_suffix"] = "（NPC）",
     ["sed.highlight.drift"] = "偏移 %du",
     ["sed.highlight.player"] = "玩家",
-    ["sed.highlight.label_fmt"] = "%s  %du",
+    ["sed.highlight.label_fmt"] = "'%s' 的已保存位置  %d单位",
 
     -- SED row labels (info panel field names)
     ["sed.field.NPC ID"] = "NPC ID",

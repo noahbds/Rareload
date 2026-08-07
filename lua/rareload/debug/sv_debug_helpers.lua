@@ -11,11 +11,6 @@ local DebugState = include("rareload/debug/sv_debug_state.lua")
 local DebugHelpers = RARELOAD.DebugHelpers or {}
 RARELOAD.DebugHelpers = DebugHelpers
 
-local function IsGlobalDebugEnabled()
-    return RARELOAD and RARELOAD.IsGlobalDebugEnabled and RARELOAD.IsGlobalDebugEnabled() or false
-end
-
-
 function DebugHelpers.IsEnabledForPlayer(ply)
     if DebugState and DebugState.IsEnabledForPlayer then
         return DebugState.IsEnabledForPlayer(ply)
@@ -35,7 +30,11 @@ function DebugHelpers.IsEnabledForPlayer(ply)
         end
     end
 
-    return IsGlobalDebugEnabled()
+    if RARELOAD and RARELOAD.IsGlobalDebugEnabled then
+        return RARELOAD.IsGlobalDebugEnabled()
+    end
+
+    return false
 end
 
 local function WriteDetails(category, logLevel, details, context, detailsAsPairs)

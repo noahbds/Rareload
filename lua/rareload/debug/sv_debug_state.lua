@@ -5,6 +5,7 @@ RARELOAD.DebugState = RARELOAD.DebugState or {}
 
 local DebugState = RARELOAD.DebugState
 
+-- Fixed declaration syntax
 function DebugState.IsGlobalDebugEnabled()
     return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled == true
 end
@@ -27,7 +28,7 @@ function DebugState.IsEnabledForPlayer(ply)
         end
     end
 
-    return IsGlobalDebugEnabled()
+    return DebugState.IsGlobalDebugEnabled()
 end
 
 function DebugState.IsAnyEnabled()
@@ -49,7 +50,7 @@ function DebugState.IsAnyEnabled()
         end
     end
 
-    return IsGlobalDebugEnabled()
+    return DebugState.IsGlobalDebugEnabled()
 end
 
 return DebugState
