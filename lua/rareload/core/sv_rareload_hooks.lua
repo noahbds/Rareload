@@ -14,11 +14,6 @@ if SERVER then
         util.AddNetworkString(str)
     end
 
-    local function EnsureFolderExists()
-        if not file.Exists("rareload", "DATA") then
-            file.CreateDir("rareload")
-        end
-    end
 
     hook.Add("PlayerInitialSpawn", "SyncDataOnJoin", function(ply)
         if not IsValid(ply) then return end

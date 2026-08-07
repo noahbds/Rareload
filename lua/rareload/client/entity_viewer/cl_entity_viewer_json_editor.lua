@@ -1,10 +1,8 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.JSONEditor = RARELOAD.JSONEditor or {}
 
-local function L(key, ...)
-  if RARELOAD.L then return RARELOAD.L(key, ...) end
-  return key
-end
+local L = RARELOAD.L
+
 
 local STRIP_KEYS = { rawData = true, id = true }
 

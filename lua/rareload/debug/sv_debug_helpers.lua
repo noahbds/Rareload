@@ -12,8 +12,9 @@ local DebugHelpers = RARELOAD.DebugHelpers or {}
 RARELOAD.DebugHelpers = DebugHelpers
 
 local function IsGlobalDebugEnabled()
-    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled == true
+    return RARELOAD and RARELOAD.IsGlobalDebugEnabled and RARELOAD.IsGlobalDebugEnabled() or false
 end
+
 
 function DebugHelpers.IsEnabledForPlayer(ply)
     if DebugState and DebugState.IsEnabledForPlayer then

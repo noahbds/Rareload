@@ -1,7 +1,8 @@
 -- Debug system configuration
 local function IsGlobalDebugEnabled()
-    return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled == true
+    return RARELOAD and RARELOAD.IsGlobalDebugEnabled and RARELOAD.IsGlobalDebugEnabled() or false
 end
+
 
 local function IsPlayerDebugEnabled(ply)
     if not IsValid(ply) or not ply:IsPlayer() then return false end

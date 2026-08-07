@@ -170,3 +170,15 @@ function RARELOAD.Theme.BuildToolscreenColors()
         }
     }
 end
+
+function RARELOAD.Theme.LerpColor(frac, from, to)
+    if not isnumber(frac) or not from or not to then return from or Color(255, 255, 255) end
+    frac = math.Clamp(frac, 0, 1)
+    return Color(
+        Lerp(frac, from.r, to.r),
+        Lerp(frac, from.g, to.g),
+        Lerp(frac, from.b, to.b),
+        Lerp(frac, from.a or 255, to.a or 255)
+    )
+end
+

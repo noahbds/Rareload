@@ -108,6 +108,9 @@ function THEME:GetEntityTypeColor(class)
 end
 
 function THEME:LerpColor(fraction, from, to)
+    if RARELOAD and RARELOAD.Theme and RARELOAD.Theme.LerpColor then
+        return RARELOAD.Theme.LerpColor(fraction, from, to)
+    end
     if not isnumber(fraction) or not from or not to then return from or Color(255, 255, 255) end
     fraction = math.Clamp(fraction, 0, 1)
     return Color(

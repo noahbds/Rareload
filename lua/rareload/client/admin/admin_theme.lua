@@ -39,6 +39,9 @@ function RARELOAD.AdminPanel.Theme.DrawGlow(x, y, w, h, color, intensity)
 end
 
 function RARELOAD.AdminPanel.Theme.LerpColor(frac, from, to)
+    if RARELOAD and RARELOAD.Theme and RARELOAD.Theme.LerpColor then
+        return RARELOAD.Theme.LerpColor(frac, from, to)
+    end
     return Color(
         Lerp(frac, from.r, to.r),
         Lerp(frac, from.g, to.g),

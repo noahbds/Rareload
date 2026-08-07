@@ -2,10 +2,8 @@ RARELOAD = RARELOAD or {}
 RARELOAD.AdminPanel = RARELOAD.AdminPanel or {}
 RARELOAD.AdminPanel.Permissions = RARELOAD.AdminPanel.Permissions or {}
 
-local function L(key, ...)
-    if RARELOAD.L then return RARELOAD.L(key, ...) end
-    return key
-end
+local L = RARELOAD.L
+
 
 function RARELOAD.AdminPanel.Permissions.Create(parent, onSavePermissions)
     local THEME = RARELOAD.AdminPanel.Theme.COLORS

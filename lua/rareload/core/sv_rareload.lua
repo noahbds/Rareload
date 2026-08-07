@@ -40,13 +40,6 @@ if SERVER then
     util.AddNetworkString("SyncPlayerPositions")
     util.AddNetworkString("SyncPlayerPositionsChunk")
 
-    -- Ensure the "rareload" folder exists in the data directory
-    function EnsureFolderExists()
-        local folderPath = "rareload"
-        if not file.Exists(folderPath, "DATA") then
-            file.CreateDir(folderPath)
-        end
-    end
 
     -- DEPRECATED:
     -- SaveAddonState is kept as a harmless stub so existing callers
@@ -112,23 +105,9 @@ if SERVER then
             RARELOAD.globalInventory = {}
             SaveGlobalInventory()
         end
+        SaveGlobalInventory()
     end
 
-    function RARELOAD.CheckPermission(ply, permName)
-        if ply:IsSuperAdmin() then
-            return true
-        end
-
-        if RARELOAD.Permissions.HasPermission then
-            return RARELOAD.Permissions.HasPermission(ply, permName)
-        end
-
-        if RARELOAD.Permissions.DEFS and RARELOAD.Permissions.DEFS[permName] then
-            return RARELOAD.Permissions.DEFS[permName].default
-        end
-
-        return false
-    end
 
     function SyncData(ply)
         net.Start("SyncData")

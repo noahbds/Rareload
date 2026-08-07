@@ -3,6 +3,9 @@ RARELOAD.settings = RARELOAD.settings or {}
 RARELOAD.Debug = RARELOAD.Debug or {}
 
 local function SafePlayerKey(steamID)
+    if RARELOAD.DataUtils and RARELOAD.DataUtils.SanitizeSteamID then
+        return RARELOAD.DataUtils.SanitizeSteamID(steamID)
+    end
     return string.gsub(steamID or "unknown", "[^%w_%-.]", "_")
 end
 

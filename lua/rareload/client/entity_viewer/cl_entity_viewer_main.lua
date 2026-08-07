@@ -9,10 +9,8 @@ include("cl_entity_viewer_utils.lua")
 local SnapshotUtils       = include("rareload/shared/rareload_snapshot_utils.lua")
 
 EV_THEME                  = THEME
-local function L(key, ...)
-    if RARELOAD and RARELOAD.L then return RARELOAD.L(key, ...) end
-    return key
-end
+local L = RARELOAD.L
+
 local EntityViewer        = {}
 EntityViewer.Frame        = nil
 EntityViewer.Data         = {}

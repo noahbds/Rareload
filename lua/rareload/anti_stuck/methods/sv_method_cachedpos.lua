@@ -78,7 +78,13 @@ function AntiStuck.LoadCachedPositions()
     return cachedPositionCount > 0
 end
 
+local originalCacheSafePosition = AntiStuck.CacheSafePosition
+
 function AntiStuck.CacheSafePosition(pos)
+    if originalCacheSafePosition then
+        originalCacheSafePosition(pos)
+    end
+
     if not pos then return end
     if AntiStuck.CONFIG and AntiStuck.CONFIG.ENABLE_CACHE == false then return end
 
@@ -86,14 +92,13 @@ function AntiStuck.CacheSafePosition(pos)
     if not v then return end
     local k = vkey(v)
 
+    AntiStuck._posSet = AntiStuck._posSet or {}
+    AntiStuck.cachedPositions = AntiStuck.cachedPositions or {}
+
     if not AntiStuck._posSet[k] then
         AntiStuck.cachedPositions[#AntiStuck.cachedPositions + 1] = v
         AntiStuck._posSet[k] = true
         cachedPositionCount = cachedPositionCount + 1
-    end
-
-    if RARELOAD.SavePositionToCache then
-        RARELOAD.SavePositionToCache(v)
     end
 end
 

@@ -2,10 +2,8 @@ RARELOAD = RARELOAD or {}
 RARELOAD.AdminPanel = RARELOAD.AdminPanel or {}
 RARELOAD.AdminPanel.PlayerList = RARELOAD.AdminPanel.PlayerList or {}
 
-local function L(key, ...)
-    if RARELOAD.L then return RARELOAD.L(key, ...) end
-    return key
-end
+local L = RARELOAD.L
+
 
 -- Create the player list panel
 function RARELOAD.AdminPanel.PlayerList.Create(parent, onPlayerSelected)

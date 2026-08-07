@@ -5,9 +5,12 @@ RARELOAD.DebugState = RARELOAD.DebugState or {}
 
 local DebugState = RARELOAD.DebugState
 
-local function IsGlobalDebugEnabled()
+function DebugState.IsGlobalDebugEnabled()
     return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled == true
 end
+
+RARELOAD.IsGlobalDebugEnabled = DebugState.IsGlobalDebugEnabled
+
 
 function DebugState.IsEnabledForPlayer(ply)
     if IsValid(ply) and RARELOAD and RARELOAD.GetPlayerSetting then

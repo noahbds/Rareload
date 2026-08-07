@@ -378,3 +378,22 @@ function RARELOAD.DataUtils.FormatValue(val)
     end
     return tostring(val)
 end
+
+function RARELOAD.EnsureFolderExists(folderPath)
+    folderPath = folderPath or "rareload"
+    if not file.Exists(folderPath, "DATA") then
+        file.CreateDir(folderPath)
+    end
+end
+
+function RARELOAD.DataUtils.SanitizeSteamID(steamID)
+    return string.gsub(steamID or "unknown", "[^%w_%-.]", "_")
+end
+
+RARELOAD.DataUtils.SafePlayerKey = RARELOAD.DataUtils.SanitizeSteamID
+
+if SERVER then
+    _G.EnsureFolderExists = RARELOAD.EnsureFolderExists
+end
+
+

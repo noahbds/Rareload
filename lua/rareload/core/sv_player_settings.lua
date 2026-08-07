@@ -27,6 +27,9 @@ local function GetServerDefaultSettings()
 end
 
 local function SafePlayerSettingsKey(steamID)
+    if RARELOAD.DataUtils and RARELOAD.DataUtils.SanitizeSteamID then
+        return RARELOAD.DataUtils.SanitizeSteamID(steamID)
+    end
     return string.gsub(steamID or "unknown", "[^%w_%-.]", "_")
 end
 

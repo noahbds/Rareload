@@ -18,17 +18,6 @@ end
 
 RareloadUI.Theme = RARELOAD.Theme.BuildMainTheme()
 
-function RARELOAD.CheckPermission(ply, permName)
-    if ply:IsSuperAdmin() then return true end
-    if RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
-        return RARELOAD.Permissions.HasPermission(ply, permName)
-    end
-    -- Fallback to permission defaults if HasPermission is not loaded yet
-    if RARELOAD.Permissions and RARELOAD.Permissions.DEFS and RARELOAD.Permissions.DEFS[permName] then
-        return RARELOAD.Permissions.DEFS[permName].default
-    end
-    return false
-end
 
 local function AnimateLerp(current, target, speed)
     return Lerp(FrameTime() * (speed or 10), current, target)

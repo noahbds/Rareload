@@ -49,10 +49,8 @@ local LField                     = RS.LField
 local surface_SetMaterial        = surface.SetMaterial
 local surface_DrawTexturedRectUV = surface.DrawTexturedRectUV
 
-local function L(key, ...)
-    if RARELOAD and RARELOAD.L then return RARELOAD.L(key, ...) end
-    return key
-end
+local L = RARELOAD.L
+
 
 local function DrawContent(ctx, ox, oy)
     local ent                  = ctx.ent

@@ -179,3 +179,19 @@ RARELOAD.Permissions.DEFS = {
         category = "ADMIN"
     },
 }
+
+function RARELOAD.CheckPermission(ply, permName)
+    if not IsValid(ply) then return false end
+    if ply:IsSuperAdmin() then return true end
+
+    if RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
+        return RARELOAD.Permissions.HasPermission(ply, permName)
+    end
+
+    if RARELOAD.Permissions and RARELOAD.Permissions.DEFS and RARELOAD.Permissions.DEFS[permName] then
+        return RARELOAD.Permissions.DEFS[permName].default
+    end
+
+    return false
+end
+

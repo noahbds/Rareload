@@ -1,10 +1,8 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.AdminPanel = RARELOAD.AdminPanel or {}
 
-local function L(key, ...)
-    if RARELOAD.L then return RARELOAD.L(key, ...) end
-    return key
-end
+local L = RARELOAD.L
+
 
 local PANEL = {}
 

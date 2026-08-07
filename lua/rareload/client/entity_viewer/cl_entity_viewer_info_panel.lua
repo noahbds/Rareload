@@ -19,10 +19,8 @@ local FRAME_W   = 880
 local FRAME_H   = 600
 local HEADER_H  = 52
 
-local function L(key, ...)
-    if RARELOAD and RARELOAD.L then return RARELOAD.L(key, ...) end
-    return key
-end
+local L = RARELOAD.L
+
 
 local function AddDataRow(parent, label, value, valueColor)
     valueColor = valueColor or PAL.text

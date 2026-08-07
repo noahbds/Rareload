@@ -32,10 +32,8 @@ local TOOL_UI = {
 
 local ToolScreen = {}
 
-local function L(key, ...)
-    if RARELOAD.L then return RARELOAD.L(key, ...) end
-    return key
-end
+local L = RARELOAD.L
+
 
 -- Draw a left-aligned label anchored at (x, y). Feature names vary a lot in
 -- width between languages, so if the text would exceed maxWidth it is uniformly

@@ -89,6 +89,9 @@ function RARELOAD.L(key, ...)
     return str
 end
 
+_G.L = _G.L or RARELOAD.L
+
+
 -- Like RARELOAD.L but returns nil instead of the key when untranslated,
 -- for call sites that have their own fallback text (e.g. tunable defs).
 function Lang.Get(key)

@@ -2,10 +2,8 @@ if not CLIENT then return end
 
 RARELOAD = RARELOAD or {}
 
-local function L(key, ...)
-    if RARELOAD.L then return RARELOAD.L(key, ...) end
-    return key
-end
+local L = RARELOAD.L
+
 
 -- Tunable defs keep English labels as their own fallback; the locale files
 -- override them via "tunables.<key>" / "tunables.<key>.tip" entries.

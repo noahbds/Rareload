@@ -27,10 +27,8 @@ end
 
 local SnapshotUtils           = include("rareload/shared/rareload_snapshot_utils.lua")
 
-local function L(key, ...)
-    if RARELOAD and RARELOAD.L then return RARELOAD.L(key, ...) end
-    return key
-end
+local L = RARELOAD.L
+
 
 local moveTypeNames           = {
     [0] = "MOVETYPE_NONE",
