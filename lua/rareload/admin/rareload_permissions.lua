@@ -655,7 +655,7 @@ if SERVER then
             print(string.format("  %s: %s (Admin: %s, Last seen: %s)",
                 steamID,
                 data.nick,
-                data.isAdmin and "Yes" or "No",
+                RARELOAD.TextUtils.BoolToYesNo(data.isAdmin),
                 data.lastSeen and os.date("%Y-%m-%d %H:%M:%S", data.lastSeen) or "Never"
             ))
         end

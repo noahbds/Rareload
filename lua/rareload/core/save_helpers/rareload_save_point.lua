@@ -15,12 +15,13 @@ local function listsEqualAsMultisets(t1, t2)
     return true
 end
 
+-- Thoses are the save helpers that handle saving different aspects of the player's state and world state.
 local save_inventory = include("rareload/core/save_helpers/rareload_save_inventory.lua")
-local save_vehicles = include("rareload/core/save_helpers/rareload_save_vehicles.lua")
+local save_vehicles = include("rareload/core/save_helpers/rareload_save_vehicles.lua") -- BROKEN
 local save_entities = include("rareload/core/save_helpers/rareload_save_entities.lua")
 local save_npcs = include("rareload/core/save_helpers/rareload_save_npcs.lua")
 local save_ammo = include("rareload/core/save_helpers/rareload_save_ammo.lua")
-local save_vehicle_state = include("rareload/core/save_helpers/rareload_save_vehicle_state.lua")
+local save_vehicle_state = include("rareload/core/save_helpers/rareload_save_vehicle_state.lua") -- BROKEN
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 
 local function NeedsDuplicatorUpgrade(bucket)
@@ -69,7 +70,6 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     local newPos = RARELOAD.DataUtils.ToPositionTable(worldPos or ply:GetPos()) or { x = 0, y = 0, z = 0 }
     local newAng = RARELOAD.DataUtils.ToAngleTable(viewAng or ply:EyeAngles()) or { p = 0, y = 0, r = 0 }
     local newActiveWeapon = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or "None"
-
     local newInventory = save_inventory(ply)
 
     if RARELOAD.GetPlayerSetting(ply, "retainGlobalInventory") then
@@ -144,8 +144,10 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
             notarget = ply:IsFlagSet(FL_NOTARGET),
             frozen = ply:IsFrozen(),
             noclip = ply:GetMoveType() == MOVETYPE_NOCLIP,
+            -- additional states can be added here as needed
         }
 
+        -- TODO : Rename to flags to avoid confusion with the "player states" terminology
         if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
             local states = {}
             if playerData.playerStates.godmode then table.insert(states, "godmode") end

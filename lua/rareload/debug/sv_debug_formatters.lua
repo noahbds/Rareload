@@ -3,13 +3,11 @@ RARELOAD.Debug = RARELOAD.Debug or {}
 RARELOAD.Debug.Formatters = RARELOAD.Debug.Formatters or {}
 
 function RARELOAD.Debug.Formatters.Vector(vec)
-    if not vec or not isvector(vec) then return "nil" end
-    return string.format("[%.2f, %.2f, %.2f]", vec.x, vec.y, vec.z)
+    return RARELOAD.DataUtils.FormatVectorCompact(vec)
 end
 
 function RARELOAD.Debug.Formatters.Angle(ang)
-    if not ang or not isangle(ang) then return "nil" end
-    return string.format("[%.2f, %.2f, %.2f]", ang.p, ang.y, ang.r)
+    return RARELOAD.DataUtils.FormatAngleCompact(ang)
 end
 
 function RARELOAD.Debug.Formatters.Player(ply)

@@ -111,7 +111,7 @@ local frameEyePos
 local function FillResolved(s, e, liveByID, eyePos, byMap)
     if e.kind == KIND_SAVED then
         local rec = SavedRecord(e.id, e.isNPC)
-        local toPos = rec and SS.ToVector(rec.pos)
+        local toPos = rec and RARELOAD.DataUtils.ToVector(rec.pos)
         if not toPos then return false end
         local live = liveByID[e.id]
         local pd = (SED.ObjectPhantoms or {})[e.id]
@@ -125,7 +125,7 @@ local function FillResolved(s, e, liveByID, eyePos, byMap)
         return true
     elseif e.kind == KIND_L2P then
         local rec = SavedRecord(e.id, e.isNPC)
-        local toPos = rec and SS.ToVector(rec.pos)
+        local toPos = rec and RARELOAD.DataUtils.ToVector(rec.pos)
         local live = liveByID[e.id]
         if not (toPos and IsValid(live)) then return false end
         local from = live:GetPos()
@@ -138,7 +138,7 @@ local function FillResolved(s, e, liveByID, eyePos, byMap)
         return true
     elseif e.kind == KIND_P2P then
         local pdata = byMap and byMap[e.id]
-        local toPos = pdata and SS.ToVector(pdata.pos)
+        local toPos = pdata and RARELOAD.DataUtils.ToVector(pdata.pos)
         if not toPos then return false end
         local ply = player.GetBySteamID(e.id)
         local from = (IsValid(ply) and ply:EyePos()) or eyePos

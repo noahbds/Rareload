@@ -133,33 +133,3 @@ function AntiStuck.ResetMethodStats(methodName)
     end
 end
 
-function AntiStuck.ToVector(input)
-    if not input then return nil end
-
-    if RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.ToVector then
-        local ok, vec = pcall(RARELOAD.DataUtils.ToVector, input)
-        if ok and vec and isvector and isvector(vec) then
-            return vec
-        end
-    end
-
-    if type(input) == "Vector" then return input end
-    if type(input) == "table" and input.x and input.y and input.z then
-        return Vector(input.x, input.y, input.z)
-    end
-    if IsValid(input) and input.GetPos then return input:GetPos() end
-    if type(input) == "string" then
-        local x, y, z = string.match(input, "%[([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)%]")
-        if not (x and y and z) then
-            x, y, z = string.match(input, "^([%d%-%.]+)%s+([%d%-%.]+)%s+([%d%-%.]+)$")
-        end
-        if not (x and y and z) then
-            x, y, z = string.match(input, "([%d%-%.]+),%s*([%d%-%.]+),%s*([%d%-%.]+)")
-        end
-        if x and y and z then
-            local vx, vy, vz = tonumber(x), tonumber(y), tonumber(z)
-            if vx and vy and vz then return Vector(vx, vy, vz) end
-        end
-    end
-    return nil
-end

@@ -1,6 +1,3 @@
--- Deterministic unique ID generation similar to NPC saver
----@diagnostic disable: undefined-field, inject-field, need-check-nil
-
 if not RARELOAD then RARELOAD = {} end
 
 -- Include ownership system
@@ -24,8 +21,6 @@ local function WriteEntitySaveDebug(ply, level, message, details)
         printPrefix = "[RARELOAD DEBUG] "
     })
 end
-
--- Duplicator-driven only: old per-entity save logic removed.
 
 return function(ply)
     if not IsValid(ply) then return {} end
@@ -63,7 +58,6 @@ return function(ply)
                         RARELOAD.Ownership.GetOwnerSteamIDSafe(ent))
                     or nil
                 if sid then
-                    ---@diagnostic disable-next-line: inject-field
                     ent.OriginalSpawner = sid
                 end
             end

@@ -14,7 +14,7 @@ local function LoadCachedPositions()
     if type(cachedData) == "table" and #cachedData > 0 and type(cachedData[1]) == "string" then
         local migratedData = { version = CACHE_VERSION, positions = {} }
         for _, posStr in ipairs(cachedData) do
-            local posObj = RARELOAD.DataUtils.ConvertToPositionObject(posStr)
+            local posObj = RARELOAD.DataUtils.ToPositionTable(posStr)
             if posObj then
                 table.insert(migratedData.positions, posObj)
             end
@@ -34,7 +34,7 @@ end
 
 local function SavePositionToCache(pos)
     if not pos then return false end
-    local v = RARELOAD.DataUtils.PositionObjectToVector and RARELOAD.DataUtils.PositionObjectToVector(pos) or pos
+    local v = RARELOAD.DataUtils.ToVector(pos)
     if v and v.x and not v.IsZero then v = Vector(v.x, v.y, v.z) end
     if v and v.x and v.y and v.z then
         if not util.IsInWorld(v) then
@@ -45,7 +45,7 @@ local function SavePositionToCache(pos)
         end
     end
     local cachedData = LoadCachedPositions()
-    local posObj = RARELOAD.DataUtils.ConvertToPositionObject(pos)
+    local posObj = RARELOAD.DataUtils.ToPositionTable(pos)
     if not posObj then
         if RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled then
             print("[RARELOAD] Failed to convert position to object format: " .. tostring(pos))
@@ -65,8 +65,6 @@ local function SavePositionToCache(pos)
     return true
 end
 
--- Direct access to the centralized function is already available
--- RARELOAD.PositionObjectToVector = RARELOAD.DataUtils.PositionObjectToVector
 RARELOAD.SavePositionToCache = SavePositionToCache
 
 function RARELOAD.StandardizeCachedPositions()

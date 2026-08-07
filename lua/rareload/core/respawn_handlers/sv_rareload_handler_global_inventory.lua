@@ -49,12 +49,14 @@ function RARELOAD.RestoreGlobalInventory(ply)
 
     if globalInventoryData.activeWeapon and globalInventoryData.activeWeapon ~= "None" then
         timer.Simple(0.5, function()
-            if IsValid(ply) and ply:HasWeapon(globalInventoryData.activeWeapon) then
-                ply:SelectWeapon(globalInventoryData.activeWeapon)
+            if not IsValid(ply) or not ply:HasWeapon(globalInventoryData.activeWeapon) then
+                return
+            end
 
-                if RARELOAD.GetPlayerSetting(ply, "debugEnabled", false) then
-                    print("[RARELOAD DEBUG] Selected active weapon: " .. globalInventoryData.activeWeapon)
-                end
+            ply:SelectWeapon(globalInventoryData.activeWeapon)
+
+            if RARELOAD.GetPlayerSetting(ply, "debugEnabled", false) then
+                print("[RARELOAD DEBUG] Selected active weapon: " .. globalInventoryData.activeWeapon)
             end
         end)
     end

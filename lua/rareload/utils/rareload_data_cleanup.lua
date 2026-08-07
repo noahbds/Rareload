@@ -64,13 +64,17 @@ function DataCleanup.CleanupLogFiles()
         local year, month, day = string.match(logFile, "rareload_(%d+)-(%d+)-(%d+)_")
 
         if year and month and day then
+            -- Provide full DateData fields to satisfy type expectations
             local logTime = os.time({
                 year = tonumber(year),
                 month = tonumber(month),
                 day = tonumber(day),
                 hour = 0,
                 min = 0,
-                sec = 0
+                sec = 0,
+                isdst = false,
+                wday = 0,
+                yday = 0
             })
 
             -- Delete if older than retention period

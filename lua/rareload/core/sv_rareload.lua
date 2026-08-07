@@ -40,6 +40,7 @@ if SERVER then
     util.AddNetworkString("SyncPlayerPositions")
     util.AddNetworkString("SyncPlayerPositionsChunk")
 
+    -- Ensure the "rareload" folder exists in the data directory
     function EnsureFolderExists()
         local folderPath = "rareload"
         if not file.Exists(folderPath, "DATA") then

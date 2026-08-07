@@ -90,8 +90,8 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
 
         local entS = SnapshotUtils.GetSummary(savedInfo.entities, { category = "entity" }) or {}
         local npcS = SnapshotUtils.GetSummary(savedInfo.npcs, { category = "npc" }) or {}
-        if PB.countEntries(entS) > 0 then savedItems[#savedItems + 1] = L("sed.phantom.item.entities") end
-        if PB.countEntries(npcS) > 0 then savedItems[#savedItems + 1] = L("sed.phantom.item.npcs") end
+        if RARELOAD.TextUtils.CountEntries(entS) > 0 then savedItems[#savedItems + 1] = L("sed.phantom.item.entities") end
+        if RARELOAD.TextUtils.CountEntries(npcS) > 0 then savedItems[#savedItems + 1] = L("sed.phantom.item.npcs") end
 
         if #savedItems > 0 then
             PB.addLine(data.basic, L("sed.phantom.saved_data"), table.concat(savedItems, ", "), Color(150, 255, 150))
@@ -119,7 +119,7 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
 
     if savedInfo.activeWeapon then
         PB.addLine(data.equipment, L("sed.phantom.active_weapon"),
-            PB.prettyClassName(savedInfo.activeWeapon), Color(255, 200, 200))
+            RARELOAD.TextUtils.CompactClassName(savedInfo.activeWeapon), Color(255, 200, 200))
     end
 
     local function formatWeaponAmmo(ammoData)
@@ -153,9 +153,9 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         end
         if ammoByWeapon then
             local ammoOnly = {}
-            for class in pairs(ammoByWeapon) do
-                class = tostring(class or "")
-                if class ~= "" and not inInventory[class] then ammoOnly[#ammoOnly + 1] = class end
+            for ammoClass in pairs(ammoByWeapon) do
+                local cName = tostring(ammoClass or "")
+                if cName ~= "" and not inInventory[cName] then ammoOnly[#ammoOnly + 1] = cName end
             end
             table.sort(ammoOnly)
             for _, c in ipairs(ammoOnly) do weaponOrder[#weaponOrder + 1] = c end
@@ -168,7 +168,7 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
             local count      = invCounts[class] or 0
             local isActive   = savedInfo.activeWeapon and class == savedInfo.activeWeapon
             local isAmmoOnly = not inInventory[class]
-            local label      = (isActive and ">> " or " - ") .. PB.prettyClassName(class)
+            local label      = (isActive and ">> " or " - ") .. RARELOAD.TextUtils.CompactClassName(class)
             if count > 1 then label = label .. " x" .. count end
             if isAmmoOnly then label = label .. L("sed.phantom.ammo_only_suffix") end
             local rowColor = isActive and Color(255, 230, 140)
@@ -205,7 +205,7 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         local showCount = math.min(#sorted, lodLevel == 1 and 10 or 5)
         for i = 1, showCount do
             PB.addLine(data.entities, config.labelPrefix .. " " .. i,
-                string.format("%s (%d)", PB.prettyClassName(sorted[i].class), sorted[i].count),
+                string.format("%s (%d)", RARELOAD.TextUtils.CompactClassName(sorted[i].class), sorted[i].count),
                 config.entryColor)
         end
         if #sorted > showCount then
@@ -315,7 +315,7 @@ local function EnsurePlayerPhantom(steamID, savedInfo)
     local existing = SED.PlayerPhantoms[steamID]
     if existing and IsValid(existing.phantom) then return existing end
 
-    local pos = SS.ToVector(savedInfo.pos)
+    local pos = RARELOAD.DataUtils.ToVector(savedInfo.pos)
     if not pos then return nil end
 
     local model = savedInfo.playermodel
@@ -324,7 +324,7 @@ local function EnsurePlayerPhantom(steamID, savedInfo)
         model = IsValid(owner) and owner:GetModel() or "models/player/kleiner.mdl"
     end
 
-    local ang = SS.ToAngle(savedInfo.ang)
+    local ang = RARELOAD.DataUtils.ToAngle(savedInfo.ang)
     local phantom = SS.MakePhantomModel(model, pos, Angle(0, ang.y, 0))
     if not phantom then return nil end
 
@@ -343,7 +343,7 @@ function Phantom.RefreshModels()
     if byMap then
         for steamID, savedInfo in pairs(byMap) do
             if istable(savedInfo) then
-                local pos = SS.ToVector(savedInfo.pos)
+                local pos = RARELOAD.DataUtils.ToVector(savedInfo.pos)
                 if pos and origin:DistToSqr(pos) <= PLAYER_PHANTOM_CULL_SQR then
                     EnsurePlayerPhantom(steamID, savedInfo)
                 end

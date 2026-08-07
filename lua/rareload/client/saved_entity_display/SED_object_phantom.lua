@@ -21,10 +21,10 @@ local function EnsurePhantom(id, rec, isNPC)
     local existing = SED.ObjectPhantoms[id]
     if existing and IsValid(existing.phantom) then return existing end
 
-    local pos = SS.ToVector(rec.pos)
+    local pos = RARELOAD.DataUtils.ToVector(rec.pos)
     if not pos then return nil end
 
-    local ang = SS.ToAngle(rec.ang)
+    local ang = RARELOAD.DataUtils.ToAngle(rec.ang)
     local phantom = SS.MakePhantomModel(rec.model, pos, ang)
     if not phantom then return nil end
 
@@ -52,7 +52,7 @@ function ObjectPhantom.Refresh()
 
     local function pass(lookup, isNPC)
         for id, rec in pairs(lookup or {}) do
-            local pos = SS.ToVector(rec.pos)
+            local pos = RARELOAD.DataUtils.ToVector(rec.pos)
             if pos and origin:DistToSqr(pos) <= cullSqr then
                 EnsurePhantom(id, rec, isNPC)
             end

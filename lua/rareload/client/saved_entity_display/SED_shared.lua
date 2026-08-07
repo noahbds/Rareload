@@ -6,6 +6,10 @@ local SS = SED.Shared
 
 local RS = SED.Require("RenderShared", "rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
 
+if not (RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.ToVector) then
+    include("rareload/utils/rareload_data_utils.lua")
+end
+
 function SS.DrawHint(text, x, y, textColor, bgColor)
     RS.surface_SetFont("Trebuchet18")
     local textW = RS.surface_GetTextSize(text) or 0
@@ -164,22 +168,6 @@ function SS.HasViewPhantomPerm()
         return RARELOAD.Permissions.HasPermission(lp, "VIEW_PHANTOM")
     end
     return true
-end
-
-function SS.ToVector(p)
-    if not p then return nil end
-    if isvector(p) then return p end
-    if p.x and p.y and p.z then return Vector(p.x, p.y, p.z) end
-    if p[1] and p[2] and p[3] then return Vector(p[1], p[2], p[3]) end
-    return nil
-end
-
-function SS.ToAngle(a)
-    if not a then return Angle(0, 0, 0) end
-    if isangle(a) then return a end
-    if a.p and a.y and a.r then return Angle(a.p, a.y, a.r) end
-    if a[1] and a[2] and a[3] then return Angle(a[1], a[2], a[3]) end
-    return Angle(0, 0, 0)
 end
 
 function SS.MakePhantomModel(model, pos, ang)

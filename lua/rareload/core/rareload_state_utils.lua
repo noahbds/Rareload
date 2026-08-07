@@ -1,4 +1,3 @@
----@diagnostic disable: inject-field
 RARELOAD = RARELOAD or {}
 RARELOAD.Util = RARELOAD.Util or {}
 

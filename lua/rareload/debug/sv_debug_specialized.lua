@@ -50,21 +50,11 @@ function RARELOAD.Debug.LogGroup(title, level, lines, category, ply)
 end
 
 local function FormatValue(value)
-    if RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.FormatValue then
-        return RARELOAD.DataUtils.FormatValue(value)
-    end
-    if istable(value) then
-        return TableToString(value)
-    end
-    return tostring(value)
+    return RARELOAD.DataUtils.FormatValue(value)
 end
 
 local function VectorToDetailedString(vec)
-    if not vec then return "nil" end
-    if RARELOAD and RARELOAD.DataUtils and RARELOAD.DataUtils.FormatVectorDetailed then
-        return RARELOAD.DataUtils.FormatVectorDetailed(vec)
-    end
-    return tostring(vec)
+    return RARELOAD.DataUtils.FormatVectorDetailed(vec)
 end
 
 local function DelayedDebugCheck(delay, callback)
@@ -244,7 +234,7 @@ function RARELOAD.Debug.LogAntiStuckResult(ply, originalPos, finalPos, method, s
         "Original Position: " .. tostring(originalPos),
         "Final Position: " .. tostring(finalPos),
         "Method Used: " .. (method or "Unknown"),
-        "Success: " .. (success and "Yes" or "No"),
+        "Success: " .. RARELOAD.TextUtils.BoolToYesNo(success),
         "Distance Moved: " .. string.format("%.2f units", originalPos:Distance(finalPos))
     }
 
@@ -259,7 +249,7 @@ function RARELOAD.Debug.LogPermissionCheck(ply, permission, granted, reason)
     if not granted or permission:find("ADMIN") then
         local permInfo = {
             "Permission: " .. permission,
-            "Granted: " .. (granted and "Yes" or "No"),
+            "Granted: " .. RARELOAD.TextUtils.BoolToYesNo(granted),
             "Reason: " .. (reason or "Standard check"),
             "Admin Level: " .. (ply:IsSuperAdmin() and "SuperAdmin" or (ply:IsAdmin() and "Admin" or "Player"))
         }

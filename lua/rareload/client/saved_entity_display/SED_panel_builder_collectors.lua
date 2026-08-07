@@ -50,7 +50,7 @@ function PB.populateCategories(ctx)
             if not (type(row.value) == "boolean" and row.value == false) then
                 local summary = summarizeFn and summarizeFn(row.value, row.key) or PB.summarizeValueForPanel(row.value)
                 if summary and summary ~= "{}" then
-                    local label = PB.humanizeKeyLabel(row.key:sub(#prefix + 1))
+                    local label = RARELOAD.TextUtils.HumanizeKeyLabel(row.key:sub(#prefix + 1))
                     add(cat, label, summary, col)
                     shown = shown + 1
                 end
@@ -105,9 +105,9 @@ function PB.populateCategories(ctx)
     local savedAng = PB.firstValue(saved, "ang", "Angle", "Ang")
     local savedVel = PB.firstValue(saved, "velocity", "Velocity")
 
-    local savedPosText = PB.formatVectorLike(savedPos, 1)
-    local savedAngText = PB.formatAngleLike(savedAng, 1)
-    local savedVelText = PB.formatVectorLike(savedVel, 1)
+    local savedPosText = RARELOAD.DataUtils.FormatVectorLike(savedPos, 1)
+    local savedAngText = RARELOAD.DataUtils.FormatAngleLike(savedAng, 1)
+    local savedVelText = RARELOAD.DataUtils.FormatVectorLike(savedVel, 1)
 
     if savedPosText then add("saved", "Saved Position", savedPosText, Color(100, 200, 100)) end
     if savedAngText then add("saved", "Saved Angles", savedAngText, Color(100, 200, 100)) end
@@ -127,20 +127,20 @@ function PB.populateCategories(ctx)
     if saved.creationTime then
         add("saved", "Creation Time", string.format("%.2f", saved.creationTime), Color(200, 200, 150))
     end
-    add("saved", "Saved By Rareload", PB.yesNo(saved.SavedByRareload), Color(200, 150, 200))
-    add("saved", "Saved via Duplicator", PB.yesNo(saved.SavedViaDuplicator), Color(100, 150, 255))
-    add("saved", "Spawned By Rareload", PB.yesNo(saved.SpawnedByRareload), Color(120, 180, 255))
-    add("saved", "Persistent", PB.yesNo(saved.Persistent), Color(180, 180, 240))
+    add("saved", "Saved By Rareload", RARELOAD.TextUtils.BoolToYesNo(saved.SavedByRareload), Color(200, 150, 200))
+    add("saved", "Saved via Duplicator", RARELOAD.TextUtils.BoolToYesNo(saved.SavedViaDuplicator), Color(100, 150, 255))
+    add("saved", "Spawned By Rareload", RARELOAD.TextUtils.BoolToYesNo(saved.SpawnedByRareload), Color(120, 180, 255))
+    add("saved", "Persistent", RARELOAD.TextUtils.BoolToYesNo(saved.Persistent), Color(180, 180, 240))
 
     if saved.physics and istable(saved.physics) then
         local phys = saved.physics
-        add("saved", "Physics Exists", PB.yesNo(phys.exists))
+        add("saved", "Physics Exists", RARELOAD.TextUtils.BoolToYesNo(phys.exists))
         if phys.velocity then add("saved", "Physics Velocity", phys.velocity) end
-        add("saved", "Physics Frozen", PB.yesNo(phys.frozen))
+        add("saved", "Physics Frozen", RARELOAD.TextUtils.BoolToYesNo(phys.frozen))
         if phys.mass then add("saved", "Physics Mass", phys.mass) end
         if phys.material then add("saved", "Physics Material", phys.material) end
-        add("saved", "Gravity Enabled", PB.yesNo(phys.gravityEnabled))
-        add("saved", "Motion Enabled", PB.yesNo(phys.motionEnabled))
+        add("saved", "Gravity Enabled", RARELOAD.TextUtils.BoolToYesNo(phys.gravityEnabled))
+        add("saved", "Motion Enabled", RARELOAD.TextUtils.BoolToYesNo(phys.motionEnabled))
     end
 
     if istable(saved.PhysicsObjects) then
@@ -149,17 +149,17 @@ function PB.populateCategories(ctx)
 
         local rootPhys = saved.PhysicsObjects[0] or saved.PhysicsObjects["0"] or saved.PhysicsObjects[1]
         if istable(rootPhys) then
-            local physPos = PB.formatVectorLike(rootPhys.Pos, 1)
-            local physAng = PB.formatAngleLike(rootPhys.Angle, 1)
+            local physPos = RARELOAD.DataUtils.FormatVectorLike(rootPhys.Pos, 1)
+            local physAng = RARELOAD.DataUtils.FormatAngleLike(rootPhys.Angle, 1)
             if physPos then add("physics", "Phys[0] Pos", physPos) end
             if physAng then add("physics", "Phys[0] Ang", physAng) end
-            add("physics", "Phys[0] Frozen", PB.yesNo(rootPhys.Frozen))
-            add("physics", "Phys[0] Sleep", PB.yesNo(rootPhys.Sleep))
+            add("physics", "Phys[0] Frozen", RARELOAD.TextUtils.BoolToYesNo(rootPhys.Frozen))
+            add("physics", "Phys[0] Sleep", RARELOAD.TextUtils.BoolToYesNo(rootPhys.Sleep))
         end
     end
 
-    local minsText = PB.formatVectorLike(PB.firstValue(saved, "Mins", "mins"), 0)
-    local maxsText = PB.formatVectorLike(PB.firstValue(saved, "Maxs", "maxs"), 0)
+    local minsText = RARELOAD.DataUtils.FormatVectorLike(PB.firstValue(saved, "Mins", "mins"), 0)
+    local maxsText = RARELOAD.DataUtils.FormatVectorLike(PB.firstValue(saved, "Maxs", "maxs"), 0)
     if minsText then add("physics", "Mins", minsText) end
     if maxsText then add("physics", "Maxs", maxsText) end
 
@@ -244,20 +244,20 @@ function PB.populateCategories(ctx)
                 add("ai", "Call For Help", "Enabled", Color(200, 220, 255))
             end
             if saved.CanInvestigate ~= nil then
-                add("ai", "Can Investigate", PB.yesNo(saved.CanInvestigate), Color(200, 220, 255))
+                add("ai", "Can Investigate", RARELOAD.TextUtils.BoolToYesNo(saved.CanInvestigate), Color(200, 220, 255))
             end
             if saved.CanOpenDoors ~= nil then
-                add("ai", "Can Open Doors", PB.yesNo(saved.CanOpenDoors), Color(200, 220, 255))
+                add("ai", "Can Open Doors", RARELOAD.TextUtils.BoolToYesNo(saved.CanOpenDoors), Color(200, 220, 255))
             end
             if saved.CanReceiveOrders ~= nil then
-                add("ai", "Can Receive Orders", PB.yesNo(saved.CanReceiveOrders), Color(200, 220, 255))
+                add("ai", "Can Receive Orders", RARELOAD.TextUtils.BoolToYesNo(saved.CanReceiveOrders), Color(200, 220, 255))
             end
             if saved.AIState ~= nil then
                 add("state", "AI State", tostring(saved.AIState), Color(220, 190, 130))
             end
 
             if saved.Equipment and saved.Equipment ~= "" then
-                local weaponName = saved.Equipment:gsub("weapon_", ""):gsub("_", " ")
+                local weaponName = RARELOAD.TextUtils.CompactWeaponClassName(saved.Equipment)
                 add("weapons", "Equipped", weaponName, Color(255, 220, 100))
             end
 
@@ -275,7 +275,7 @@ function PB.populateCategories(ctx)
 
                     local limit = 8
                     for i = 1, math.min(#invList, limit) do
-                        local wepName = invList[i]:gsub("weapon_", ""):gsub("_", " ")
+                        local wepName = RARELOAD.TextUtils.CompactWeaponClassName(invList[i])
                         add("weapons", "  " .. i, wepName, Color(180, 220, 255))
                     end
                     if #invList > limit then
@@ -341,8 +341,8 @@ function PB.populateCategories(ctx)
 
     local positionPos = PB.firstValue(saved, "Pos", "pos")
     local positionAng = PB.firstValue(saved, "Angle", "ang", "Ang")
-    local positionPosText = PB.formatVectorLike(positionPos, 0)
-    local positionAngText = PB.formatAngleLike(positionAng, 0)
+    local positionPosText = RARELOAD.DataUtils.FormatVectorLike(positionPos, 0)
+    local positionAngText = RARELOAD.DataUtils.FormatAngleLike(positionAng, 0)
     if positionPosText then
         add("position", "Saved Pos", positionPosText, Color(100, 255, 150))
     end
@@ -389,12 +389,12 @@ function PB.populateCategories(ctx)
         add("state", "Seq", saved.sequence)
         add("state", "Playback", saved.playbackRate)
     else
-        add("state", "Frozen", PB.yesNo(saved.frozen))
+        add("state", "Frozen", RARELOAD.TextUtils.BoolToYesNo(saved.frozen))
     end
 
     if isNPC then
         if saved.squad or saved.Squad then add("behavior", "Squad", PB.firstValue(saved, "squad", "Squad")) end
-        add("behavior", "Leader", PB.yesNo(saved.squadLeader))
+        add("behavior", "Leader", RARELOAD.TextUtils.BoolToYesNo(saved.squadLeader))
         local targetData = saved.target or saved.Target
         if targetData and targetData.type then
             add("behavior", "Target", targetData.type .. ":" .. (targetData.id or targetData.class or "?"))
@@ -535,7 +535,7 @@ function PB.populateCategories(ctx)
         if metaAdded >= metaLimit then break end
         local summary = PB.summarizeValueForPanel(saved[key])
         if summary then
-            add("meta", PB.humanizeKeyLabel(tostring(key)), summary)
+            add("meta", RARELOAD.TextUtils.HumanizeKeyLabel(tostring(key)), summary)
             metaAdded = metaAdded + 1
         end
     end

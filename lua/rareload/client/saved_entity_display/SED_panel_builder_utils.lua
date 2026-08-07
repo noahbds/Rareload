@@ -2,6 +2,10 @@
 
 local RS = SED.Require("RenderShared", "rareload/client/saved_entity_display/SED_panel_renderer_shared.lua")
 
+if not (RARELOAD and RARELOAD.TextUtils and RARELOAD.TextUtils.BoolToYesNo) then
+    include("rareload/utils/rareload_text_utils.lua")
+end
+
 SED = SED or {}
 SED.PanelBuilder = SED.PanelBuilder or {}
 
@@ -156,29 +160,6 @@ function PB.firstValue(source, ...)
     return nil
 end
 
-function PB.yesNo(value)
-    if value == nil then return nil end
-    return value and "Yes" or "No"
-end
-
-function PB.prettyClassName(className)
-    local value = tostring(className or "")
-    value = value:gsub("weapon_", ""):gsub("npc_", ""):gsub("_", " ")
-    value = value:gsub("(%a)([%w_']*)", function(first, rest)
-        return first:upper() .. rest
-    end)
-    return value
-end
-
-function PB.countEntries(tbl)
-    if type(tbl) ~= "table" then return 0 end
-    local count = 0
-    for _ in pairs(tbl) do
-        count = count + 1
-    end
-    return count
-end
-
 function PB.addLine(target, label, value, color, opts)
     if not target then return end
 
@@ -206,40 +187,6 @@ function PB.resolveTextColor(value)
     end
 
     return FALLBACK_TEXT_COLOR
-end
-
-function PB.formatVectorLike(value, precision)
-    if value == nil then return nil end
-    local fmt = "%0." .. tostring(precision or 1) .. "f"
-    if isvector and isvector(value) then
-        return string.format(fmt .. ", " .. fmt .. ", " .. fmt, value.x, value.y, value.z)
-    end
-    if istable(value) then
-        if value.x ~= nil and value.y ~= nil and value.z ~= nil then
-            return string.format(fmt .. ", " .. fmt .. ", " .. fmt, value.x, value.y, value.z)
-        end
-        if value[1] ~= nil and value[2] ~= nil and value[3] ~= nil then
-            return string.format(fmt .. ", " .. fmt .. ", " .. fmt, value[1], value[2], value[3])
-        end
-    end
-    return nil
-end
-
-function PB.formatAngleLike(value, precision)
-    if value == nil then return nil end
-    local fmt = "%0." .. tostring(precision or 1) .. "f"
-    if isangle and isangle(value) then
-        return string.format(fmt .. ", " .. fmt .. ", " .. fmt, value.p, value.y, value.r)
-    end
-    if istable(value) then
-        if value.p ~= nil and value.y ~= nil and value.r ~= nil then
-            return string.format(fmt .. ", " .. fmt .. ", " .. fmt, value.p, value.y, value.r)
-        end
-        if value[1] ~= nil and value[2] ~= nil and value[3] ~= nil then
-            return string.format(fmt .. ", " .. fmt .. ", " .. fmt, value[1], value[2], value[3])
-        end
-    end
-    return nil
 end
 
 function PB.summarizeValueForPanel(value)
@@ -350,19 +297,6 @@ function PB.summarizeSoundValueForPanel(value)
     end
 
     return string.format("%d sounds:%s", #soundItems, table.concat(preview, ""))
-end
-
-function PB.humanizeKeyLabel(label)
-    local text = tostring(label or "")
-    if text == "" then return "" end
-
-    text = text:gsub("_", " ")
-    text = text:gsub("(%l)(%u)", "%1 %2")
-    text = text:gsub("(%u)(%u%l)", "%1 %2")
-    text = text:gsub("%s+", " ")
-    text = text:gsub("^%s+", "")
-    text = text:gsub("%s+$", "")
-    return text
 end
 
 function PB.sortCategoryLines(list, orderList)

@@ -1,43 +1,24 @@
+-- rareload/shared/rareload_snapshot_utils.lua
 RARELOAD = RARELOAD or {}
 RARELOAD.SnapshotUtils = RARELOAD.SnapshotUtils or {}
 
 local SnapshotUtils = RARELOAD.SnapshotUtils
+
+-- Load dependencies
 local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
+
+-- Ensure DataUtils is available
+if not (RARELOAD.DataUtils and RARELOAD.DataUtils.ToVector) then
+    if file.Exists("rareload/utils/rareload_data_utils.lua", "LUA") then
+        include("rareload/utils/rareload_data_utils.lua")
+    end
+end
 
 local summaryCache = setmetatable({}, { __mode = "k" })
 
-local function isVectorTable(value)
-    return istable(value) and value.x ~= nil and value.y ~= nil and value.z ~= nil
-end
-
-local function isAngleTable(value)
-    return istable(value) and value.p ~= nil and value.y ~= nil and value.r ~= nil
-end
-
-local function copyVector(value)
-    if not value then return nil end
-    if isvector and isvector(value) then
-        return { x = value.x, y = value.y, z = value.z }
-    elseif isVectorTable(value) then
-        return { x = value.x, y = value.y, z = value.z }
-    elseif istable(value) and value[1] and value[2] and value[3] then
-        return { x = value[1], y = value[2], z = value[3] }
-    end
-    return nil
-end
-
-local function copyAngle(value)
-    if not value then return nil end
-    if isangle and isangle(value) then
-        return { p = value.p, y = value.y, r = value.r }
-    elseif isAngleTable(value) then
-        return { p = value.p, y = value.y, r = value.r }
-    elseif istable(value) and value[1] and value[2] and value[3] then
-        return { p = value[1], y = value[2], r = value[3] }
-    end
-    return nil
-end
-
+-----------------------------------------------------------------
+-- Serialization helpers (unchanged)
+-----------------------------------------------------------------
 local function serializePayload(payload)
     local ok, result = pcall(DuplicatorBridge.SerializePayload, payload)
     if ok then return result end
@@ -51,6 +32,9 @@ local function deserializePayload(snapshot)
     return payload
 end
 
+-----------------------------------------------------------------
+-- Public API – now uses DataUtils
+-----------------------------------------------------------------
 function SnapshotUtils.HasSnapshot(bucket)
     return istable(bucket) and istable(bucket.__duplicator) and bucket.__duplicator.payload ~= nil
 end
@@ -77,6 +61,7 @@ local function iterateSnapshot(snapshot, opts, callback)
                 id = string.format("%s_%s", idPrefix, tostring(dupIndex))
             end
 
+            -- Use DataUtils for robust position/angle extraction
             local summary = table.Copy(entityDef)
 
             summary.id = id
@@ -91,8 +76,11 @@ local function iterateSnapshot(snapshot, opts, callback)
             summary.originallySpawnedBy = entityDef.OriginalSpawner or snapshot.ownerSteamID
             summary.maxHealth = entityDef.MaxHealth
             summary.health = entityDef.CurHealth or entityDef.MaxHealth
-            summary.pos = copyVector(entityDef.Pos)
-            summary.ang = copyAngle(entityDef.Angle or entityDef.Ang)
+
+            -- Replaced old copyVector / copyAngle with DataUtils equivalents
+            summary.pos = RARELOAD.DataUtils.ToPositionTable(entityDef.Pos)
+            summary.ang = RARELOAD.DataUtils.ToAngleTable(entityDef.Angle or entityDef.Ang)
+
             summary.stateHash = entityDef.RareloadStateHash or entityDef.StateHash
 
             if category == "npc" then
@@ -118,7 +106,7 @@ local function iterateSnapshot(snapshot, opts, callback)
             summary.class = "constraint_" .. (constraintDef.Type and constraintDef.Type:lower() or "unknown")
             summary.constraintType = constraintDef.Type
 
-            -- Calculate the position halfway through the constraint for display
+            -- Position calculation for constraints – unchanged logic, but now uses DataUtils
             local pos = nil
             if constraintDef.Entity and #constraintDef.Entity >= 2 then
                 local idx1 = constraintDef.Entity[1].Index
@@ -127,15 +115,15 @@ local function iterateSnapshot(snapshot, opts, callback)
                 local ent1Def = idx1 and (payload.Entities[idx1] or payload.Entities[tostring(idx1)])
                 local ent2Def = idx2 and (payload.Entities[idx2] or payload.Entities[tostring(idx2)])
 
-                local p1 = ent1Def and ent1Def.Pos or nil
-                local p2 = ent2Def and ent2Def.Pos or nil
+                local p1 = ent1Def and RARELOAD.DataUtils.ToPositionTable(ent1Def.Pos) or nil
+                local p2 = ent2Def and RARELOAD.DataUtils.ToPositionTable(ent2Def.Pos) or nil
 
-                -- Support when attached to World (sometimes entity index is blank/zero, but there's a world position fallback in some constraint types... Wait, actually, world constraints usually just use raw vector coordinates)
+                -- World attachment fallback
                 if not p1 and constraintDef.Entity[1].World and constraintDef.Entity[1].LPos then
-                    p1 = constraintDef.Entity[1].LPos
+                    p1 = RARELOAD.DataUtils.ToPositionTable(constraintDef.Entity[1].LPos)
                 end
                 if not p2 and constraintDef.Entity[2].World and constraintDef.Entity[2].LPos then
-                    p2 = constraintDef.Entity[2].LPos
+                    p2 = RARELOAD.DataUtils.ToPositionTable(constraintDef.Entity[2].LPos)
                 end
 
                 if p1 and p2 then
@@ -145,9 +133,9 @@ local function iterateSnapshot(snapshot, opts, callback)
                         z = (p1.z + p2.z) / 2
                     }
                 elseif p1 then
-                    pos = copyVector(p1)
+                    pos = RARELOAD.DataUtils.ToPositionTable(p1)
                 elseif p2 then
-                    pos = copyVector(p2)
+                    pos = RARELOAD.DataUtils.ToPositionTable(p2)
                 end
             end
 
@@ -276,13 +264,16 @@ function SnapshotUtils.RemoveEntryByClassAndPos(bucket, className, targetPos, to
     if not payload or not payload.Entities then return false end
 
     tolSqr = tolSqr or 16
-    local tx = tonumber(targetPos.x) or 0
-    local ty = tonumber(targetPos.y) or 0
-    local tz = tonumber(targetPos.z) or 0
+
+    -- Use DataUtils to safely extract coordinates from any format
+    local posTable = RARELOAD.DataUtils.ToPositionTable(targetPos)
+    if not posTable then return false end
+
+    local tx, ty, tz = posTable.x, posTable.y, posTable.z
 
     for dupIndex, ent in pairs(payload.Entities) do
         local class = ent.Class or ent.NPCName or ent.class
-        local p = copyVector(ent.Pos)
+        local p = RARELOAD.DataUtils.ToPositionTable(ent.Pos)   -- safe extraction
         if class == className and p then
             local dx, dy, dz = (p.x or 0) - tx, (p.y or 0) - ty, (p.z or 0) - tz
             if (dx * dx + dy * dy + dz * dz) <= tolSqr then

@@ -9,6 +9,7 @@ if SERVER then
     AddCSLuaFile("rareload/shared/rareload_snapshot_utils.lua")
     AddCSLuaFile("rareload/core/save_helpers/rareload_duplicator_utils.lua")
     AddCSLuaFile("rareload/utils/rareload_data_utils.lua")
+    AddCSLuaFile("rareload/utils/rareload_text_utils.lua")
     AddCSLuaFile("rareload/utils/rareload_fonts.lua")
     AddCSLuaFile("rareload/client/shared/theme_utils.lua")
     AddCSLuaFile("rareload/client/shared/depth_sorted_renderer.lua")
@@ -55,6 +56,7 @@ include("rareload/shared/permissions_def.lua")
 include("rareload/shared/rareload_convars.lua")
 include("rareload/shared/rareload_tunables.lua")
 include("rareload/utils/rareload_data_utils.lua")
+include("rareload/utils/rareload_text_utils.lua")
 
 if SERVER then
     include("rareload/utils/rareload_ownership.lua")

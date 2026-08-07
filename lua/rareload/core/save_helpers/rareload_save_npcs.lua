@@ -1,6 +1,5 @@
 -- RareLoad Save NPCs Module
 
----@class RARELOAD
 local RARELOAD = RARELOAD or {}
 RARELOAD.NPCSaver = RARELOAD.NPCSaver or {}
 

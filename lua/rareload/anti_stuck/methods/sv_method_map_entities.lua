@@ -2,7 +2,8 @@ local AntiStuck = RARELOAD.AntiStuck
 
 function AntiStuck.TryMapEntities(pos, ply)
     if not IsValid(ply) then return nil end
-    pos = AntiStuck.ToVector and AntiStuck.ToVector(pos or ply:GetPos()) or (pos or ply:GetPos())
+    pos = RARELOAD.DataUtils.ToVector(pos or ply:GetPos())
+    if not pos then return nil end
 
     local hullMins, hullMaxs = ply:OBBMins(), ply:OBBMaxs()
     local hullSize = hullMaxs - hullMins
@@ -34,15 +35,14 @@ function AntiStuck.TryMapEntities(pos, ply)
 
     if AntiStuck.mapEntities and #AntiStuck.mapEntities > 0 then
         for i = 1, #AntiStuck.mapEntities do
-            local v = AntiStuck.ToVector and AntiStuck.ToVector(AntiStuck.mapEntities[i]) or AntiStuck.mapEntities[i]
+            local v = RARELOAD.DataUtils.ToVector(AntiStuck.mapEntities[i])
             if v then addCandidate(v, 0) end
         end
     elseif AntiStuck.CollectMapEntities then
         AntiStuck.CollectMapEntities()
         if AntiStuck.mapEntities and #AntiStuck.mapEntities > 0 then
             for i = 1, #AntiStuck.mapEntities do
-                local v = AntiStuck.ToVector and AntiStuck.ToVector(AntiStuck.mapEntities[i]) or AntiStuck.mapEntities
-                    [i]
+                local v = RARELOAD.DataUtils.ToVector(AntiStuck.mapEntities[i])
                 if v then addCandidate(v, 0) end
             end
         end
@@ -50,7 +50,7 @@ function AntiStuck.TryMapEntities(pos, ply)
 
     if AntiStuck.spawnPoints and #AntiStuck.spawnPoints > 0 then
         for i = 1, #AntiStuck.spawnPoints do
-            local v = AntiStuck.ToVector and AntiStuck.ToVector(AntiStuck.spawnPoints[i]) or AntiStuck.spawnPoints[i]
+            local v = RARELOAD.DataUtils.ToVector(AntiStuck.spawnPoints[i])
             if v then addCandidate(v, 0) end
         end
     end
