@@ -22,6 +22,7 @@ local save_entities = include("rareload/core/save_helpers/rareload_save_entities
 local save_npcs = include("rareload/core/save_helpers/rareload_save_npcs.lua")
 local save_ammo = include("rareload/core/save_helpers/rareload_save_ammo.lua")
 local save_vehicle_state = include("rareload/core/save_helpers/rareload_save_vehicle_state.lua") -- BROKEN
+local save_appearance = include("rareload/core/save_helpers/rareload_save_appearance.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 
 local function NeedsDuplicatorUpgrade(bucket)
@@ -133,7 +134,8 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         pos = newPos,
         ang = newAng,
         moveType = ply:GetMoveType(),
-        playermodel = ply:GetModel(),
+        playermodel = ply:GetModel(), -- Legacy fallback
+        appearance = save_appearance(ply),
         activeWeapon = newActiveWeapon,
         inventory = newInventory,
     }

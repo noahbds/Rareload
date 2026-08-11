@@ -1,5 +1,5 @@
 RARELOAD         = RARELOAD or {}
-RARELOAD.version = "3.8"
+RARELOAD.version = "3.9"
 
 if SERVER then
     AddCSLuaFile("rareload/shared/sh_lang.lua") -- locale files are AddCSLuaFile'd inside
@@ -78,6 +78,7 @@ if SERVER then
     include("rareload/core/respawn_handlers/sv_rareload_handler_global_inventory.lua")
     include("rareload/core/respawn_handlers/sv_rareload_handler_inventory.lua")
     include("rareload/core/respawn_handlers/sv_rareload_handler_npc.lua")
+    include("rareload/core/respawn_handlers/sv_rareload_restore_appearance.lua")
     include("rareload/core/respawn_handlers/sv_rareload_handler_player_spawn.lua")
     include("rareload/core/respawn_handlers/sv_rareload_handler_vehicles.lua")
     include("rareload/core/commands/check_admin_status.lua")

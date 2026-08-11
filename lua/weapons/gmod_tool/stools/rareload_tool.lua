@@ -52,9 +52,6 @@ if CLIENT then
         }
     end)
 end
-
--- Loads addon settings into RARELOAD.settings from the (archived) convars,
--- on both realms. Global settings are no longer stored in a separate JSON file.
 local function loadAddonSettings()
     if CLIENT then
         if RARELOAD.LoadSettingsFromConVars then
@@ -83,7 +80,6 @@ local PERM_LOAD    = { "LOAD_POSITION", "You don't have permission to load saved
 local SAVE_PERMS   = { PERM_USE, PERM_CMDS }
 local RELOAD_PERMS = { PERM_USE, PERM_CMDS, PERM_LOAD }
 
--- Server-side gate shared by every tool action: addon enabled + required permissions.
 local function CanUseTool(ply, perms)
     if not RARELOAD.GetPlayerSetting(ply, "addonEnabled", true) then
         ply:ChatPrint("[RARELOAD] The Rareload addon is disabled.")
@@ -177,16 +173,12 @@ function TOOL:Reload()
     net.Send(ply)
 
     ply:EmitSound("buttons/button14.wav")
-    -- No `return true`: that would fire the toolgun beam effect.
 end
 
 ---------------------------------------------------------------------------
 -- Control panel (spawnmenu)
 ---------------------------------------------------------------------------
 
--- Every category/control of the panel, declared as data so BuildCPanel stays
--- trivial and the whole panel can be rebuilt for a new language in one call.
--- Labels are locale keys; tooltips use the "<label>.tip" convention.
 local CPANEL_LAYOUT = {
     {
         title = "cpanel.cat.core",
@@ -207,6 +199,7 @@ local CPANEL_LAYOUT = {
         items = {
             { toggle = "cpanel.keep_health", convar = "sv_rareload_keep_health" },
             { toggle = "cpanel.keep_states", convar = "sv_rareload_keep_states" },
+            { toggle = "cpanel.keep_appearance", convar = "sv_rareload_keep_appearance" },
             { toggle = "cpanel.keep_inventory", convar = "sv_rareload_keep_inventory" },
             { toggle = "cpanel.keep_ammo", convar = "sv_rareload_keep_ammo" },
             { toggle = "cpanel.global_inventory", convar = "sv_rareload_global_inventory" },
@@ -275,7 +268,6 @@ local COL_PANEL_BG  = Color(35, 39, 47, 255)
 local COL_HEADER_BG = Color(45, 50, 60, 255)
 local COL_FOOTER    = Color(100, 105, 115)
 
--- Language dropdown: "auto" (follow gmod_language) plus every installed locale.
 local function AddLanguageDropdown(content, L)
     local Lang = RARELOAD.Lang
     if not Lang then return end
@@ -298,8 +290,6 @@ end
 function TOOL.BuildCPanel(panel)
     local L = RARELOAD.L or function(key) return key end
 
-    -- Drop everything from a previous build so language changes and lua
-    -- auto-refresh can rebuild the panel in place.
     if panel._rareloadItems then
         for _, old in ipairs(panel._rareloadItems) do
             if IsValid(old) then old:Remove() end
@@ -354,7 +344,6 @@ function TOOL.BuildCPanel(panel)
 
             for _, item in ipairs(catDef.items) do
                 if item.perm and not RARELOAD.CheckPermission(ply, item.perm) then
-                    -- skipped: player lacks the required permission
                 elseif item.toggle then
                     category:AddItem(RareloadUI.CreateToggleSwitch(category.Content,
                         L(item.toggle), item.convar, L(item.toggle .. ".tip")))
@@ -387,9 +376,6 @@ function TOOL.BuildCPanel(panel)
 end
 
 if CLIENT then
-    -- The spawnmenu resolves "#tool.rareload_tool.name" to a plain string once:
-    -- the sidebar list item at creation and the control panel header (DForm name)
-    -- on first activation. Re-resolve both after a language change.
     local function UpdateToolNameLabels()
         local label = language.GetPhrase("tool.rareload_tool.name")
 
@@ -401,7 +387,6 @@ if CLIENT then
         if not IsValid(g_SpawnMenu) then return end
         local function walk(pnl)
             for _, child in ipairs(pnl:GetChildren()) do
-                -- The tools sidebar stores the tool mode on the list item as .Name
                 if child.Name == "rareload_tool" and isfunction(child.SetText) then
                     child:SetText(label)
                     child:InvalidateLayout()
@@ -420,14 +405,10 @@ if CLIENT then
         TOOL.BuildCPanel(panel)
     end
 
-    -- Fired by sh_lang.lua whenever rareload_language / gmod_language changes.
-    -- Deferred a tick so the language dropdown's menu finishes closing first and
-    -- RareloadUI has re-registered the language.Add phrases.
     hook.Add("RareloadLanguageChanged", "RareloadTool_RebuildCPanel", function()
         timer.Simple(0, RebuildCPanel)
     end)
 
-    -- Lua auto-refresh of this file: rebuild an already-open panel with the new code.
     timer.Simple(0, RebuildCPanel)
 
     function TOOL:DrawToolScreen(width, height)

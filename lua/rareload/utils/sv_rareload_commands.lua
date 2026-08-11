@@ -200,7 +200,7 @@ net.Receive("RareloadEntityViewer_Delete", function(len, ply)
 
     local deleted = false
     local attempts = 0
-    local deletedSteamID = nil
+    local deletedSteamIDs = {}
     local deletedBucket = nil
     local resolvedDeleteID = entityId
 
@@ -229,9 +229,8 @@ net.Receive("RareloadEntityViewer_Delete", function(len, ply)
 
             if removed then
                 deleted = true
-                deletedSteamID = steamID
+                deletedSteamIDs[steamID] = true
                 deletedBucket = "entities"
-                break
             end
         end
 
@@ -248,9 +247,8 @@ net.Receive("RareloadEntityViewer_Delete", function(len, ply)
 
             if removed then
                 deleted = true
-                deletedSteamID = steamID
+                deletedSteamIDs[steamID] = true
                 deletedBucket = "npcs"
-                break
             end
         end
     end
@@ -263,23 +261,25 @@ net.Receive("RareloadEntityViewer_Delete", function(len, ply)
         return
     end
 
-    if deletedSteamID and RARELOAD.SavePlayerPositionEntry and mapData[deletedSteamID] then
-        local targetPlayer = nil
-        for _, candidate in ipairs(player.GetAll()) do
-            if IsValid(candidate) and candidate:SteamID() == deletedSteamID then
-                targetPlayer = candidate
-                break
+    for steamID in pairs(deletedSteamIDs) do
+        if RARELOAD.SavePlayerPositionEntry and mapData[steamID] then
+            local targetPlayer = nil
+            for _, candidate in ipairs(player.GetAll()) do
+                if IsValid(candidate) and candidate:SteamID() == steamID then
+                    targetPlayer = candidate
+                    break
+                end
             end
-        end
 
-        if IsValid(targetPlayer) then
-            RARELOAD.SavePlayerPositionEntry(targetPlayer, mapData[deletedSteamID])
-        else
-            local fakePly = {
-                SteamID = function() return deletedSteamID end,
-                SteamID64 = function() return "" end
-            }
-            RARELOAD.SavePlayerPositionEntry(fakePly, mapData[deletedSteamID])
+            if IsValid(targetPlayer) then
+                RARELOAD.SavePlayerPositionEntry(targetPlayer, mapData[steamID])
+            else
+                local fakePly = {
+                    SteamID = function() return steamID end,
+                    SteamID64 = function() return "" end
+                }
+                RARELOAD.SavePlayerPositionEntry(fakePly, mapData[steamID])
+            end
         end
     end
 
@@ -292,8 +292,10 @@ net.Receive("RareloadEntityViewer_Delete", function(len, ply)
     net.WriteString("Entity '" .. entityClass .. "' deleted successfully.")
     net.Send(ply)
 
+    local steamIDList = table.GetKeys(deletedSteamIDs)
+    local ownersStr = table.concat(steamIDList, ", ")
     print("[RARELOAD] Entity Viewer: " .. ply:Nick() .. " deleted " .. deletedBucket .. " entry '" ..
-        entityClass .. "' (ID: " .. tostring(resolvedDeleteID) .. ", owner: " .. tostring(deletedSteamID) .. ")")
+        entityClass .. "' (ID: " .. tostring(resolvedDeleteID) .. ", owners: " .. ownersStr .. ")")
 end)
 
 -- Bulk-delete all entity/NPC entries sent by the client.
@@ -331,6 +333,7 @@ net.Receive("RareloadEntityViewer_DeleteMany", function(len, ply)
 
     if istable(mapData) then
         for _, entry in ipairs(entries) do
+            local entryDeleted = false
             for steamID, playerData in pairs(mapData) do
                 if not istable(playerData) then continue end
 
@@ -349,9 +352,11 @@ net.Receive("RareloadEntityViewer_DeleteMany", function(len, ply)
 
                 if removed then
                     modifiedSteamIDs[steamID] = true
-                    deleted = deleted + 1
-                    break
+                    entryDeleted = true
                 end
+            end
+            if entryDeleted then
+                deleted = deleted + 1
             end
         end
 

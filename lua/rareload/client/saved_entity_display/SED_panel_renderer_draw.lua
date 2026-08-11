@@ -48,6 +48,8 @@ local safeTextColor              = RS.safeTextColor
 local LField                     = RS.LField
 local surface_SetMaterial        = surface.SetMaterial
 local surface_DrawTexturedRectUV = surface.DrawTexturedRectUV
+local surface_DrawTexturedRect   = surface.DrawTexturedRect
+local matTick                    = Material("icon16/tick.png")
 
 local L = RARELOAD.L
 
@@ -182,6 +184,51 @@ local function DrawContent(ctx, ox, oy)
 
                 draw_SimpleText(L("sed.armor", armor), "Trebuchet18", abx + armorBarW / 2, aby + 5, ARMOR_TEXT,
                     TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            end
+
+            local lp = LocalPlayer()
+            if IsValid(lp) and not saved._isPhantom then
+                local isOwned = false
+                local myID = lp:SteamID()
+                local myID64 = lp:SteamID64()
+                if saved.ownerSteamID and saved.ownerSteamID == myID then
+                    isOwned = true
+                elseif saved._ownerSteamID and saved._ownerSteamID == myID then
+                    isOwned = true
+                elseif saved.ownerSteamID64 and saved.ownerSteamID64 == myID64 then
+                    isOwned = true
+                elseif IsValid(ent) and ent.CPPIGetOwner and ent:CPPIGetOwner() == lp then
+                    isOwned = true
+                end
+
+                if isOwned then
+                    local text = string.upper(L("sed.highlight.owned"))
+                    surface_SetFont("Trebuchet18")
+                    local textW, textH = surface_GetTextSize(text)
+
+                    local iconSize = 14
+                    local spacing = 4
+                    local padX = 8
+                    local totalW = iconSize + spacing + textW + padX * 2
+                    local totalH = 18
+
+                    local tickY = by + 20
+                    if armor > 0 then tickY = tickY + 14 end
+
+                    local badgeX = bx + barW - totalW
+                    local badgeY = tickY
+
+                    -- Thin glow/border
+                    draw_RoundedBox(8, badgeX - 1, badgeY - 1, totalW + 2, totalH + 2, Color(60, 180, 80, 100))
+                    -- Dark inner pill
+                    draw_RoundedBox(8, badgeX, badgeY, totalW, totalH, Color(20, 25, 35, 255))
+
+                    surface_SetDrawColor(255, 255, 255, 255)
+                    surface_SetMaterial(matTick)
+                    surface_DrawTexturedRect(badgeX + padX, badgeY + (totalH - iconSize) / 2, iconSize, iconSize)
+
+                    draw_SimpleText(text, "Trebuchet18", badgeX + padX + iconSize + spacing, badgeY + totalH / 2, Color(170, 255, 170, 255), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                end
             end
         end
     end

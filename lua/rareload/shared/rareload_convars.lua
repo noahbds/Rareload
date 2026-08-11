@@ -10,6 +10,7 @@ local CONVAR_DEFS = {
 
     { "sv_rareload_keep_health",           "1",   "Keep health and armor on respawn",                                                                                              "retainHealthArmor",                "bool" },
     { "sv_rareload_keep_states",           "1",   "Keep player states (godmode, notarget, etc.)",                                                                                  "retainPlayerStates",               "bool" },
+    { "sv_rareload_keep_appearance",       "1",   "Keep player appearance (playermodel, color, bodygroups, etc.)",                                                                 "retainAppearance",                 "bool" },
     { "sv_rareload_keep_inventory",        "1",   "Keep inventory on respawn",                                                                                                     "retainInventory",                  "bool" },
     { "sv_rareload_keep_ammo",             "1",   "Keep ammunition on respawn",                                                                                                    "retainAmmo",                       "bool" },
     { "sv_rareload_global_inventory",      "0",   "Enable global inventory sharing",                                                                                               "retainGlobalInventory",            "bool" },

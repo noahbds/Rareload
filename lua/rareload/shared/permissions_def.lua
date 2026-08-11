@@ -58,6 +58,12 @@ RARELOAD.Permissions.DEFS = {
         default = true,
         category = "INVENTORY"
     },
+    RETAIN_APPEARANCE = {
+        name = "Appearance Restore",
+        desc = "Allows restoring player appearance (playermodel, color, bodygroups) on respawn",
+        default = true,
+        category = "INVENTORY"
+    },
     RETAIN_GLOBAL_INVENTORY = {
         name = "Global Inventory Restore",
         desc = "Allows restoring cross-map global inventory on respawn (requires master switch)",
@@ -79,7 +85,7 @@ RARELOAD.Permissions.DEFS = {
     RETAIN_PLAYER_STATES = {
         name = "Retain Player States",
         desc = "Can restore player states on respawn: god mode, notarget, noclip, frozen",
-        default = true,
+        default = false,
         category = "INVENTORY"
     },
 
@@ -101,25 +107,25 @@ RARELOAD.Permissions.DEFS = {
     SAVE_NPCS = {
         name = "Save NPCs",
         desc = "NPCs owned by this player will be included when saving their position",
-        default = true,
+        default = false,
         category = "ENTITIES"
     },
     RESTORE_NPCS = {
         name = "Restore NPCs",
         desc = "Player's saved NPCs will be restored on respawn",
-        default = true,
+        default = false,
         category = "ENTITIES"
     },
     SAVE_VEHICLES = {
         name = "Save Vehicles",
         desc = "Vehicles owned by this player will be included when saving their position",
-        default = true,
+        default = false,
         category = "ENTITIES"
     },
     RESTORE_VEHICLES = {
         name = "Restore Vehicles",
         desc = "Player's saved vehicles will be restored on respawn",
-        default = true,
+        default = false,
         category = "ENTITIES"
     },
     MANAGE_ENTITIES = {

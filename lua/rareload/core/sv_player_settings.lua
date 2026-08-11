@@ -221,6 +221,7 @@ local ALLOWED_CLIENT_SETTINGS = {
     retainGlobalInventory = "bool",
     retainHealthArmor = "bool",
     retainAmmo = "bool",
+    retainAppearance = "bool",
     retainPlayerStates = "bool",
     debugEnabled = "bool",
     nocustomrespawnatdeath = "bool",

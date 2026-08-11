@@ -24,6 +24,12 @@ if SERVER then
                 return
             end
 
+            local AdminSecurity = RARELOAD.AdminSecurity
+            if AdminSecurity and AdminSecurity.CheckRateLimit then
+                local allowed, err = AdminSecurity.CheckRateLimit(ply, "RequestPermissions", 5)
+                if not allowed then return end
+            end
+
             net.Start("RareloadSendPermissions")
             net.WriteTable(RARELOAD.Permissions.PlayerPerms)
             net.Send(ply)
@@ -38,6 +44,12 @@ if SERVER then
         net.Receive("RareloadRequestOfflinePlayerData", function(len, ply)
             if not RARELOAD.Permissions.HasPermission(ply, "ADMIN_PANEL") then
                 return
+            end
+
+            local AdminSecurity = RARELOAD.AdminSecurity
+            if AdminSecurity and AdminSecurity.CheckRateLimit then
+                local allowed, err = AdminSecurity.CheckRateLimit(ply, "RequestOfflineData", 5)
+                if not allowed then return end
             end
 
             local offlineData = RARELOAD.Permissions.GetOfflinePlayerData()
@@ -56,6 +68,11 @@ if SERVER then
             end
 
             local AdminSecurity = RARELOAD.AdminSecurity
+            if AdminSecurity and AdminSecurity.CheckRateLimit then
+                local allowed, err = AdminSecurity.CheckRateLimit(ply, "UpdatePermissions", 15)
+                if not allowed then return end
+            end
+
             if AdminSecurity and AdminSecurity.ValidateSession then
                 local valid, reason = AdminSecurity.ValidateSession(ply, sessionToken)
                 if not valid then
@@ -77,9 +94,31 @@ if SERVER then
             local permName = net.ReadString()
             local value = net.ReadBool()
 
+            if AdminSecurity and AdminSecurity.IsValidSteamID and not AdminSecurity.IsValidSteamID(targetSteamID) then
+                print("[Rareload] Invalid target SteamID: " .. tostring(targetSteamID))
+                return
+            end
+
             if not RARELOAD.Permissions.DEFS[permName] then
                 print("[Rareload] Unknown permission: " .. permName)
                 return
+            end
+
+            if permName == "ADMIN_PANEL" and not ply:IsSuperAdmin() then
+                print("[Rareload] Privilege escalation attempt: " .. ply:Nick() .. " tried to modify ADMIN_PANEL")
+                if AdminSecurity and AdminSecurity.AddAuditEntry then
+                    AdminSecurity.AddAuditEntry("SECURITY_VIOLATION", ply,
+                        { action = "PrivilegeEscalation", target = targetSteamID, perm = permName })
+                end
+                return
+            end
+
+            if not ply:IsSuperAdmin() then
+                local targetPly = player.GetBySteamID(targetSteamID)
+                if IsValid(targetPly) and targetPly:IsSuperAdmin() then
+                    print("[Rareload] Hierarchy violation: " .. ply:Nick() .. " tried to modify a SuperAdmin's permissions")
+                    return
+                end
             end
 
             print("[Rareload] Permission updated: " .. targetSteamID .. " - " .. permName .. " = " .. tostring(value))
@@ -358,7 +397,7 @@ if SERVER then
             if mainData then
                 local jsonData = util.TableToJSON({
                     metadata = {
-                        version = "3.8",
+                        version = "3.9",
                         timestamp = backupTime,
                         format = "normalized"
                     },
@@ -438,7 +477,7 @@ if SERVER then
                 if jsonData then
                     local success, dataTable = pcall(util.JSONToTable, jsonData)
                     if success and dataTable then
-                        if dataTable.metadata and dataTable.metadata.version == "2.0" then
+                        if dataTable.metadata and dataTable.data then
                             dataTable = dataTable.data
                         end
 
@@ -545,16 +584,6 @@ if SERVER then
                         playerData.isSuperAdmin = (playerInfo.is_superadmin == 1)
                         playerData.isAdmin = (playerInfo.is_admin == 1)
                         playerData.lastSeen = tonumber(playerInfo.last_seen)
-                    end
-                end
-
-                if playerData.nick == "Unknown Player" then
-                    if sql.TableExists("rareload_player_data") then
-                        local storedData = sql.QueryRow("SELECT nick FROM rareload_player_data WHERE steamid = " ..
-                            sql.SQLStr(steamID))
-                        if storedData and storedData.nick then
-                            playerData.nick = storedData.nick
-                        end
                     end
                 end
 
@@ -698,6 +727,12 @@ if SERVER then
         RARELOAD.Permissions.Save()
         print("[Rareload] Granted admin access to " .. steamID .. ": " .. table.concat(granted, ", "))
 
+        local AdminSecurity = RARELOAD.AdminSecurity
+        if AdminSecurity and AdminSecurity.AddAuditEntry then
+            AdminSecurity.AddAuditEntry("ADMIN_GRANTED", ply,
+                { target = steamID, permissions = granted })
+        end
+
         for _, p in ipairs(player.GetAll()) do
             if p:SteamID() == steamID then
                 RARELOAD.Permissions.SyncToPlayer(p)
@@ -728,6 +763,12 @@ if SERVER then
 
         RARELOAD.Permissions.Save()
         print("[Rareload] Revoked ADMIN-category permissions from " .. steamID)
+
+        local AdminSecurity = RARELOAD.AdminSecurity
+        if AdminSecurity and AdminSecurity.AddAuditEntry then
+            AdminSecurity.AddAuditEntry("ADMIN_REVOKED", ply,
+                { target = steamID })
+        end
 
         for _, p in ipairs(player.GetAll()) do
             if p:SteamID() == steamID then

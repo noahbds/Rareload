@@ -51,11 +51,13 @@ local function IsValidSteamID(steamID)
     if not SECURITY_CONFIG.VALIDATE_STEAMID_FORMAT then return true end
     if not steamID or type(steamID) ~= "string" then return false end
 
+    if steamID == "STEAM_ID_LAN" or steamID == "STEAM_ID_PENDING" or steamID == "BOT" then return true end
     if string.match(steamID, "^STEAM_%d:%d:%d+$") then return true end
     if string.match(steamID, "^7656119%d+$") and #steamID == 17 then return true end
 
     return false
 end
+RARELOAD.AdminSecurity.IsValidSteamID = IsValidSteamID
 
 local function IsValidPermissionName(permName)
     if not SECURITY_CONFIG.VALIDATE_PERMISSION_NAMES then return true end
@@ -133,6 +135,7 @@ local function CheckRateLimit(ply, action, maxRequests)
 
     return true
 end
+RARELOAD.AdminSecurity.CheckRateLimit = CheckRateLimit
 
 local function CheckCooldown(ply, action, cooldownTime)
     if not IsValid(ply) then return false end
@@ -274,10 +277,12 @@ if CAMI and CAMI.RegisterPrivilege then
 end
 
 concommand.Add("rareload_purge_admin_data", function(ply, cmd, args)
-    if IsValid(ply) and not ply:IsSuperAdmin() then
-        ply:ChatPrint("[RARELOAD] Only SuperAdmins can purge admin data.")
-        AddAuditEntry("PURGE_DENIED", ply, {})
-        return
+    if IsValid(ply) then
+        if not ply:IsSuperAdmin() and not CheckAdminSystemAccess(ply, "DATA_CLEANUP") then
+            ply:ChatPrint("[RARELOAD] You do not have permission to purge admin data.")
+            AddAuditEntry("PURGE_DENIED", ply, {})
+            return
+        end
     end
 
     if not args[1] or args[1] ~= "CONFIRM" then
@@ -376,9 +381,11 @@ concommand.Add("rareload_purge_admin_data", function(ply, cmd, args)
 end)
 
 concommand.Add("rareload_audit_log", function(ply, cmd, args)
-    if IsValid(ply) and not ply:IsSuperAdmin() then
-        ply:ChatPrint("[RARELOAD] Only SuperAdmins can view the audit log.")
-        return
+    if IsValid(ply) then
+        if not ply:IsSuperAdmin() and not CheckAdminSystemAccess(ply, "ADMIN_PANEL") then
+            ply:ChatPrint("[RARELOAD] You do not have permission to view the audit log.")
+            return
+        end
     end
 
     local count = tonumber(args[1]) or 20

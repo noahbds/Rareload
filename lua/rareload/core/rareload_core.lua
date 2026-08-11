@@ -9,6 +9,11 @@ local function SafePlayerKey(steamID)
     return string.gsub(steamID or "unknown", "[^%w_%-.]", "_")
 end
 
+function RARELOAD.GetPlayerID(ply)
+    if not IsValid(ply) then return "unknown" end
+    return ply:SteamID() or "unknown"
+end
+
 
 
 local function EnsurePlayerPositionsDirs(mapName)
@@ -32,7 +37,14 @@ function RARELOAD.SavePlayerPositionEntry(ply, playerData)
     if not istable(playerData) then return false, "invalid args" end
 
     local mapName = game.GetMap()
-    local steamID = (IsValid(ply) and ply:SteamID()) or (istable(ply) and ply.SteamID and ply:SteamID())
+    
+    local steamID
+    if IsValid(ply) then
+        steamID = RARELOAD.GetPlayerID(ply)
+    else
+        steamID = (istable(ply) and ply.SteamID and ply:SteamID()) or "unknown"
+    end
+    
     if not steamID or steamID == "" then return false, "invalid steamid" end
     EnsurePlayerPositionsDirs(mapName)
 
@@ -142,7 +154,7 @@ end
 
 function RARELOAD.SavePlayerPositionOnDisconnect(ply)
     local mapName = game.GetMap()
-    local steamID = ply:SteamID()
+    local steamID = RARELOAD.GetPlayerID(ply)
     local existing = RARELOAD.playerPositions and RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][steamID] or {}
 
     existing.pos = ply:GetPos()

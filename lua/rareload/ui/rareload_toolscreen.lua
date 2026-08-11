@@ -72,6 +72,7 @@ local FEATURES = {
     { name = "screen.feature.save_ammo",             key = "retainAmmo",             kind = "bool" },
     { name = "screen.feature.save_health",           key = "retainHealthArmor",      kind = "bool" },
     { name = "screen.feature.save_states",           key = "retainPlayerStates",     kind = "bool" },
+    { name = "screen.feature.save_appearance",       key = "retainAppearance",       kind = "bool" },
     { name = "screen.feature.save_entities",         key = "retainMapEntities",      kind = "bool" },
     { name = "screen.feature.save_npcs",             key = "retainMapNPCs",          kind = "bool" },
     { name = "screen.feature.debug",                 key = "debugEnabled",           kind = "bool" },

@@ -51,6 +51,7 @@ local PHANTOM_CATEGORIES      = {
     { "position",  "sed.cat.position",  Color(60, 179, 113) },
     { "equipment", "sed.cat.equipment", Color(218, 165, 32) },
     { "entities",  "sed.cat.entities",  Color(178, 34, 34) },
+    { "appearance","sed.cat.appearance",Color(255, 105, 180) },
     { "stats",     "sed.cat.stats",     Color(147, 112, 219) }
 }
 
@@ -81,10 +82,10 @@ end
 
 function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
     lodLevel      = lodLevel or 1
-    local data    = { basic = {}, position = {}, equipment = {}, entities = {}, stats = {} }
+    local data    = { basic = {}, position = {}, equipment = {}, entities = {}, stats = {}, appearance = {} }
 
-    local name    = IsValid(ply) and ply:Nick() or L("common.unknown")
-    local steamID = IsValid(ply) and ply:SteamID() or L("common.unknown")
+    local name    = (IsValid(ply) or type(ply) == "table") and ply.Nick and ply:Nick() or L("common.unknown")
+    local steamID = (IsValid(ply) or type(ply) == "table") and ply.SteamID and ply:SteamID() or L("common.unknown")
 
     PB.addLine(data.basic, L("sed.phantom.player"), name, Color(255, 255, 255))
     PB.addLine(data.basic, L("sed.phantom.steamid"), steamID, Color(200, 200, 200))
@@ -95,8 +96,24 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         return data
     end
 
-    if savedInfo.playermodel then
-        PB.addLine(data.basic, L("sed.phantom.model"), savedInfo.playermodel, Color(200, 200, 200))
+    if savedInfo.appearance then
+        if savedInfo.appearance.model then PB.addLine(data.appearance, L("sed.phantom.model"), savedInfo.appearance.model, Color(200, 200, 200)) end
+        if savedInfo.appearance.skin then PB.addLine(data.appearance, L("sed.phantom.skin"), tostring(savedInfo.appearance.skin), Color(200, 200, 200)) end
+        if savedInfo.appearance.material and savedInfo.appearance.material ~= "" then PB.addLine(data.appearance, L("sed.phantom.material"), savedInfo.appearance.material, Color(200, 200, 200)) end
+        if savedInfo.appearance.playerColor then
+            local pc = savedInfo.appearance.playerColor
+            PB.addLine(data.appearance, L("sed.phantom.playerColor"), string.format("%.2f, %.2f, %.2f", pc.x, pc.y, pc.z), Color(math.Clamp(pc.x*255, 0, 255), math.Clamp(pc.y*255, 0, 255), math.Clamp(pc.z*255, 0, 255)))
+        end
+        if savedInfo.appearance.weaponColor then
+            local wc = savedInfo.appearance.weaponColor
+            PB.addLine(data.appearance, L("sed.phantom.weaponColor"), string.format("%.2f, %.2f, %.2f", wc.x, wc.y, wc.z), Color(math.Clamp(wc.x*255, 0, 255), math.Clamp(wc.y*255, 0, 255), math.Clamp(wc.z*255, 0, 255)))
+        end
+        if savedInfo.appearance.color then
+            local c = savedInfo.appearance.color
+            PB.addLine(data.appearance, L("sed.phantom.color"), string.format("%d, %d, %d, %d", c.r, c.g, c.b, c.a), Color(c.r, c.g, c.b, c.a))
+        end
+    elseif savedInfo.playermodel then
+        PB.addLine(data.appearance, L("sed.phantom.model"), savedInfo.playermodel, Color(200, 200, 200))
     end
 
     if lodLevel <= 2 then
@@ -119,17 +136,19 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         end
     end
 
-    if savedInfo.pos then
+    local dispPos = RARELOAD.DataUtils.ToPositionTable(savedInfo.pos)
+    if dispPos then
         local fmt = lodLevel <= 2
-            and string.format("%.1f, %.1f, %.1f", savedInfo.pos.x, savedInfo.pos.y, savedInfo.pos.z)
+            and string.format("%.1f, %.1f, %.1f", dispPos.x, dispPos.y, dispPos.z)
             or string.format("(%d, %d, %d)",
-                math.floor(savedInfo.pos.x), math.floor(savedInfo.pos.y), math.floor(savedInfo.pos.z))
+                math.floor(dispPos.x), math.floor(dispPos.y), math.floor(dispPos.z))
         PB.addLine(data.position, L("sed.phantom.position"), fmt, Color(255, 255, 255))
     end
 
-    if savedInfo.ang then
+    local dispAng = RARELOAD.DataUtils.ToAngleTable(savedInfo.ang)
+    if dispAng then
         PB.addLine(data.position, L("sed.phantom.direction"),
-            string.format("%.1f, %.1f, %.1f", savedInfo.ang.p, savedInfo.ang.y, savedInfo.ang.r),
+            string.format("%.1f, %.1f, %.1f", dispAng.p, dispAng.y, dispAng.r),
             Color(220, 220, 220))
     end
 
@@ -338,7 +357,7 @@ local function EnsurePlayerPhantom(steamID, savedInfo)
     local pos = RARELOAD.DataUtils.ToVector(savedInfo.pos)
     if not pos then return nil end
 
-    local model = savedInfo.playermodel
+    local model = (savedInfo.appearance and savedInfo.appearance.model) or savedInfo.playermodel
     if not model or model == "" then
         local owner = player.GetBySteamID(steamID)
         model = IsValid(owner) and owner:GetModel() or "models/player/kleiner.mdl"
@@ -347,6 +366,28 @@ local function EnsurePlayerPhantom(steamID, savedInfo)
     local ang = RARELOAD.DataUtils.ToAngle(savedInfo.ang)
     local phantom = SS.MakePhantomModel(model, pos, Angle(0, ang.y, 0))
     if not phantom then return nil end
+
+    if savedInfo.appearance then
+        if savedInfo.appearance.skin then phantom:SetSkin(savedInfo.appearance.skin) end
+        if savedInfo.appearance.bodygroups then
+            for idStr, val in pairs(savedInfo.appearance.bodygroups) do
+                local id = tonumber(idStr)
+                if id then phantom:SetBodygroup(id, val) end
+            end
+        end
+        if savedInfo.appearance.material then phantom:SetMaterial(savedInfo.appearance.material) end
+        
+        -- Apply colors manually if you want them to render (playerColor requires proxy, but we can set color)
+        if savedInfo.appearance.playerColor then
+            local pc = savedInfo.appearance.playerColor
+            phantom.GetPlayerColor = function() return Vector(pc.x, pc.y, pc.z) end
+        end
+        if savedInfo.appearance.color then
+            local c = savedInfo.appearance.color
+            -- Keep alpha at 150 (from MakePhantomModel reveal) but apply RGB
+            phantom:SetColor(Color(c.r, c.g, c.b, 150))
+        end
+    end
 
     local data = { phantom = phantom, steamID = steamID, pos = pos, ang = ang, model = model }
     SED.PlayerPhantoms[steamID] = data

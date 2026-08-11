@@ -438,6 +438,37 @@ function RARELOAD.HandlePlayerSpawn(ply)
         inventoryRestored = true
     end
 
+    -- Restore advanced appearance (or fallback to legacy playermodel)
+    local permVal = hasPerm("RETAIN_APPEARANCE")
+    local setVal = RARELOAD.GetPlayerSetting(ply, "retainAppearance", true)
+    local hasData = (SavedInfo.appearance ~= nil) or (SavedInfo.playermodel ~= nil)
+    DebugLog(ply, "INFO", 0, "APPEARANCE RESTORE CHECK: hasPerm: " .. tostring(permVal) .. " | setting: " .. tostring(setVal) .. " | hasData: " .. tostring(hasData))
+    
+    if permVal and setVal then
+        if hasData then
+            timer.Simple(1, function()
+                if not IsValid(ply) then return end
+                
+                local savedModel = (SavedInfo.appearance and SavedInfo.appearance.model) or SavedInfo.playermodel
+                local beforeModel = ply:GetModel()
+                DebugLog(ply, "INFO", 0, "APPEARANCE RESTORE: Attempting to restore model: " .. tostring(savedModel) .. " | Model before restore: " .. tostring(beforeModel))
+                
+                if SavedInfo.appearance and RARELOAD.RestoreAppearance then
+                    RARELOAD.RestoreAppearance(ply, SavedInfo.appearance)
+                else
+                    ply:SetModel(SavedInfo.playermodel)
+                    ply:SetupHands()
+                end
+                
+                timer.Simple(0.1, function()
+                    if IsValid(ply) then
+                        DebugLog(ply, "INFO", 0, "APPEARANCE RESTORE RESULT: Actual model is now: " .. tostring(ply:GetModel()) .. " | Expected: " .. tostring(savedModel))
+                    end
+                end)
+            end)
+        end
+    end
+
     if hasPerm("RETAIN_HEALTH_ARMOR") and RARELOAD.GetPlayerSetting(ply, "retainHealthArmor", true) then
         timer.Simple(0.5, function()
             if not IsValid(ply) then return end

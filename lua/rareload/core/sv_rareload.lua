@@ -11,6 +11,7 @@ if SERVER then
             retainGlobalInventory = false,
             retainHealthArmor = true,
             retainPlayerStates = true,
+            retainAppearance = true,
             retainAmmo = true,
             retainVehicleState = false, -- BROKEN
             retainMapEntities = true,
@@ -33,7 +34,7 @@ if SERVER then
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
     RARELOAD.globalInventory = RARELOAD.globalInventory or {}
     RARELOAD.lastSavedTime = 0
-    RARELOAD.version = "3.8"
+    RARELOAD.version = "3.9"
 
     util.AddNetworkString("RareloadAntiStuckPriorities")
     util.AddNetworkString("SyncData")
