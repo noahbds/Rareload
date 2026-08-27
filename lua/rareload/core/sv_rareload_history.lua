@@ -25,6 +25,8 @@ end
 
 local MAX_SENT_ENTRIES = 512 -- net-size guard; the default cap is 125
 
+RARELOAD.restoreUndo = RARELOAD.restoreUndo or {} -- per-steamID pre-restore snapshot
+
 -- ── counts ─────────────────────────────────────────────────────────────────────
 
 local function CountBucket(bucket)
@@ -87,8 +89,10 @@ end
 
 local function SendData(ply)
     if not IsValid(ply) then return end
-    local summary, total = BuildSummary(ply:SteamID(), game.GetMap())
-    local json = util.TableToJSON({ entries = summary, total = total }) or "{}"
+    local steamID = ply:SteamID()
+    local summary, total = BuildSummary(steamID, game.GetMap())
+    local undo = RARELOAD.restoreUndo[steamID] ~= nil
+    local json = util.TableToJSON({ entries = summary, total = total, undo = undo }) or "{}"
     local data = util.Compress(json) or ""
 
     net.Start("RareloadHistory_Data")
@@ -204,6 +208,25 @@ function RARELOAD.ApplyHistoryComponents(ply, data, comps)
     end
 end
 
+-- Snapshot the player's current player-state so a restore can be undone.
+local function CaptureLiveSnapshot(ply)
+    local weps = {}
+    for _, w in ipairs(ply:GetWeapons()) do
+        if IsValid(w) then weps[#weps + 1] = w:GetClass() end
+    end
+    local active = ply:GetActiveWeapon()
+    return {
+        pos          = RARELOAD.DataUtils.ToPositionTable(ply:GetPos()),
+        ang          = RARELOAD.DataUtils.ToAngleTable(ply:EyeAngles()),
+        moveType     = ply:GetMoveType(),
+        health       = ply:Health(),
+        armor        = ply:Armor(),
+        inventory    = weps,
+        activeWeapon = IsValid(active) and active:GetClass() or "None",
+        playermodel  = ply:GetModel(),
+    }
+end
+
 function RARELOAD.RestoreHistoryEntry(ply, id, comps)
     if not IsValid(ply) then return false end
     local data = RARELOAD.GetHistoryEntryById(ply:SteamID(), game.GetMap(), id)
@@ -211,7 +234,22 @@ function RARELOAD.RestoreHistoryEntry(ply, id, comps)
         ply:ChatPrint("[Rareload] That saved position is no longer in your history.")
         return false
     end
+    RARELOAD.restoreUndo[ply:SteamID()] = CaptureLiveSnapshot(ply)
     RARELOAD.ApplyHistoryComponents(ply, data, comps)
+    return true
+end
+
+-- Revert the most recent restore (player-state only; spawned world objects aren't undone).
+function RARELOAD.UndoRestore(ply)
+    if not IsValid(ply) then return false end
+    local snap = RARELOAD.restoreUndo[ply:SteamID()]
+    if not snap then
+        ply:ChatPrint("[Rareload] Nothing to undo.")
+        return false
+    end
+    RARELOAD.restoreUndo[ply:SteamID()] = nil
+    RARELOAD.ApplyHistoryComponents(ply, snap, { all = true })
+    ply:ChatPrint("[Rareload] Reverted to your pre-restore state.")
     return true
 end
 
@@ -276,6 +314,8 @@ net.Receive("RareloadHistory_Action", function(_, ply)
         RARELOAD.RestoreHistoryEntry(ply, id, comps)
     elseif action == "activate" then
         mutated = RARELOAD.ActivateHistoryEntry(ply, id)
+    elseif action == "undo" then
+        RARELOAD.UndoRestore(ply)
     else
         return
     end
@@ -287,4 +327,8 @@ net.Receive("RareloadHistory_Action", function(_, ply)
         print(string.format("[RARELOAD DEBUG] %s history action '%s' on %s (%s)",
             ply:Nick(), action, id, mapName))
     end
+end)
+
+hook.Add("PlayerDisconnected", "RARELOAD_HistoryUndo_Cleanup", function(ply)
+    if IsValid(ply) then RARELOAD.restoreUndo[ply:SteamID()] = nil end
 end)

@@ -43,6 +43,7 @@ net.Receive("RareloadHistory_Data", function()
 
     RARELOAD.HistoryClient.entries = istable(tbl.entries) and tbl.entries or {}
     RARELOAD.HistoryClient.total = tonumber(tbl.total) or #RARELOAD.HistoryClient.entries
+    RARELOAD.HistoryClient.undo = tbl.undo == true
 
     if IsValid(HP.Frame) then HP:Rebuild() end
 end)
@@ -186,6 +187,7 @@ function HP:RebuildDetail()
 
     local e = self.SelectedId and FindEntry(self.SelectedId) or nil
     if not e then
+        if RARELOAD.HistoryPreview then RARELOAD.HistoryPreview.Clear() end
         local empty = vgui.Create("DPanel", host)
         empty:Dock(FILL)
         empty.Paint = function(_, w, h)
@@ -232,6 +234,25 @@ function HP:RebuildDetail()
         if e.pin then
             draw.SimpleText("★ " .. L("sth.pinned"), "RareloadCaption", 0, 52, THEME.warning, TEXT_ALIGN_LEFT,
                 TEXT_ALIGN_TOP)
+        end
+    end
+
+    -- in-world preview: spawn a phantom at the saved spot with a green/red glow
+    local previewClear = true
+    if RARELOAD.HistoryPreview then
+        RARELOAD.HistoryPreview.Show(e)
+        previewClear = RARELOAD.HistoryPreview.IsClear()
+    end
+    do
+        local status = vgui.Create("DPanel", host)
+        status:Dock(TOP)
+        status:DockMargin(4, 0, 4, 8)
+        status:SetTall(22)
+        status.Paint = function(_, w, h)
+            local clear = previewClear
+            draw.SimpleText(clear and L("sth.inworld_clear") or L("sth.inworld_blocked"),
+                "RareloadCaption", 0, h / 2, clear and THEME.success or THEME.error,
+                TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         end
     end
 
@@ -429,6 +450,9 @@ function HP:Rebuild()
     if IsValid(self.CountLabel) then
         self.CountLabel:SetText(L("sth.count", RARELOAD.HistoryClient.total or #Entries()))
     end
+    if IsValid(self.UndoBtn) then
+        self.UndoBtn:SetVisible(RARELOAD.HistoryClient.undo == true)
+    end
 end
 
 -- ── open ────────────────────────────────────────────────────────────────────────
@@ -444,6 +468,10 @@ function HP:Open()
     frame:MakePopup()
     frame:SetSizable(false)
     self.Frame = frame
+
+    frame.OnRemove = function()
+        if RARELOAD.HistoryPreview then RARELOAD.HistoryPreview.Clear() end
+    end
 
     frame.Paint = function(_, w, h)
         draw.RoundedBox(12, 0, 0, w, h, THEME.background)
@@ -472,6 +500,15 @@ function HP:Open()
     end)
     clearAll:SetPos(960 - 44 - 110 - 130, 12)
     clearAll:SetSize(124, 32)
+
+    -- Undo the last restore (shown only when an undo snapshot is available)
+    local undoBtn = ActionButton(frame, L("sth.undo"), THEME.warning, function()
+        SendAction("undo", "")
+    end)
+    undoBtn:SetPos(960 - 44 - 110 - 130 - 130, 12)
+    undoBtn:SetSize(124, 32)
+    undoBtn:SetVisible(RARELOAD.HistoryClient.undo == true)
+    self.UndoBtn = undoBtn
 
     -- search + count (sidebar)
     local search = vgui.Create("DTextEntry", frame)
