@@ -97,11 +97,19 @@ local function BuildRow(parent, e)
         self.HoverAnim = Lerp(FrameTime() * 12, self.HoverAnim, (self:IsHovered() or selected) and 1 or 0)
 
         draw.RoundedBox(8, 0, 0, w, h, THEME.surface)
+        if e.act then
+            draw.RoundedBox(8, 0, 0, w, h, ColorAlpha(THEME.success, 22))
+        end
         if self.HoverAnim > 0.01 then
             draw.RoundedBox(8, 0, 0, w, h, ColorAlpha(THEME.primary, 16 * self.HoverAnim))
         end
         if selected then
             draw.RoundedBox(8, 0, 0, w, h, ColorAlpha(THEME.primary, 30))
+        end
+        -- left accent: green marks the active respawn save, blue marks the selected row
+        if e.act then
+            draw.RoundedBox(3, 0, 8, 3, h - 16, THEME.success)
+        elseif selected then
             draw.RoundedBox(3, 0, 8, 3, h - 16, THEME.primary)
         end
 
@@ -225,6 +233,29 @@ function HP:RebuildDetail()
             draw.SimpleText("★ " .. L("sth.pinned"), "RareloadCaption", 0, 52, THEME.warning, TEXT_ALIGN_LEFT,
                 TEXT_ALIGN_TOP)
         end
+    end
+
+    -- active respawn: banner when this entry is the active save, button to make it so
+    if e.act then
+        local banner = vgui.Create("DPanel", host)
+        banner:Dock(TOP)
+        banner:DockMargin(4, 0, 4, 10)
+        banner:SetTall(34)
+        banner.Paint = function(_, w, h)
+            draw.RoundedBox(8, 0, 0, w, h, ColorAlpha(THEME.success, 40))
+            surface.SetDrawColor(THEME.success.r, THEME.success.g, THEME.success.b, 150)
+            surface.DrawOutlinedRect(0, 0, w, h, 1)
+            draw.SimpleText(L("sth.is_active"), "RareloadBody", w / 2, h / 2, THEME.success, TEXT_ALIGN_CENTER,
+                TEXT_ALIGN_CENTER)
+        end
+    else
+        local setActive = ActionButton(host, L("sth.set_active"), THEME.success, function()
+            SendAction("activate", e.id)
+            ShowNotification(L("sth.set_active_done"), NOTIFY_GENERIC)
+        end)
+        setActive:Dock(TOP)
+        setActive:DockMargin(4, 0, 4, 10)
+        setActive:SetTall(34)
     end
 
     -- fields block

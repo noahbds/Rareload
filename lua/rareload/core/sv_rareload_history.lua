@@ -49,6 +49,7 @@ end
 
 local function BuildSummary(steamID, mapName)
     local entries = RARELOAD.GetPositionHistoryEntries(steamID, mapName)
+    local activeId = RARELOAD.GetActiveHistoryId and RARELOAD.GetActiveHistoryId(steamID, mapName) or nil
     local out = {}
     local count = math.min(#entries, MAX_SENT_ENTRIES)
     for i = 1, count do
@@ -78,6 +79,7 @@ local function BuildSummary(steamID, mapName)
             st   = st,
             ec   = CountBucket(e.entities),
             nc   = CountBucket(e.npcs),
+            act  = (activeId and e.id == activeId) and 1 or nil,
         }
     end
     return out, #entries
@@ -213,6 +215,40 @@ function RARELOAD.RestoreHistoryEntry(ply, id, comps)
     return true
 end
 
+-- Promote a history entry to be the ACTIVE save — the one the tool-gun reload key and
+-- respawn restore. This is what makes an old save "current" again.
+function RARELOAD.ActivateHistoryEntry(ply, id)
+    if not IsValid(ply) then return false end
+    local steamID, mapName = ply:SteamID(), game.GetMap()
+    local entry = RARELOAD.GetHistoryEntryById(steamID, mapName, id)
+    if not entry then
+        ply:ChatPrint("[Rareload] That saved position is no longer in your history.")
+        return false
+    end
+
+    -- Clean player-state snapshot (drop history-only meta), deep-copied so the active
+    -- save is independent of the shared history entry.
+    local data = {}
+    for k, v in pairs(entry) do
+        if k ~= "id" and k ~= "timestamp" and k ~= "pinned" and k ~= "note" then
+            data[k] = istable(v) and table.Copy(v) or v
+        end
+    end
+
+    RARELOAD.playerPositions = RARELOAD.playerPositions or {}
+    RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
+    RARELOAD.playerPositions[mapName][steamID] = data
+
+    if RARELOAD.SavePlayerPositionEntry then
+        RARELOAD.SavePlayerPositionEntry(ply, data)
+    end
+    RARELOAD.SetActiveHistoryId(steamID, mapName, id)
+
+    if SyncPlayerPositions then SyncPlayerPositions(nil, steamID) end
+    ply:ChatPrint("[Rareload] This save is now your respawn point.")
+    return true
+end
+
 -- ── action dispatch ─────────────────────────────────────────────────────────────
 
 net.Receive("RareloadHistory_Action", function(_, ply)
@@ -238,6 +274,8 @@ net.Receive("RareloadHistory_Action", function(_, ply)
     elseif action == "restore" then
         local comps = net.ReadTable()
         RARELOAD.RestoreHistoryEntry(ply, id, comps)
+    elseif action == "activate" then
+        mutated = RARELOAD.ActivateHistoryEntry(ply, id)
     else
         return
     end
