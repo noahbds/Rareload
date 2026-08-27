@@ -237,11 +237,17 @@ function HP:RebuildDetail()
         end
     end
 
-    -- in-world preview: spawn a phantom at the saved spot with a green/red glow
+    -- in-world preview: a "Preview in World" toggle drops phantoms of the whole
+    -- saved snapshot (player + entities) into the map, each glowing green/red.
     local previewClear = true
     if RARELOAD.HistoryPreview then
-        RARELOAD.HistoryPreview.Show(e)
-        previewClear = RARELOAD.HistoryPreview.IsClear()
+        if RARELOAD.HistoryPreview.active and RARELOAD.HistoryPreview.showId ~= e.id then
+            RARELOAD.HistoryPreview.Clear() -- drop a stale preview from a different entry
+        end
+        if RARELOAD.HistoryPreview.TestClear and istable(e.pos) then
+            previewClear = RARELOAD.HistoryPreview.TestClear(
+                Vector(tonumber(e.pos.x) or 0, tonumber(e.pos.y) or 0, tonumber(e.pos.z) or 0))
+        end
     end
     do
         local status = vgui.Create("DPanel", host)
@@ -249,12 +255,21 @@ function HP:RebuildDetail()
         status:DockMargin(4, 0, 4, 8)
         status:SetTall(22)
         status.Paint = function(_, w, h)
-            local clear = previewClear
-            draw.SimpleText(clear and L("sth.inworld_clear") or L("sth.inworld_blocked"),
-                "RareloadCaption", 0, h / 2, clear and THEME.success or THEME.error,
+            draw.SimpleText(previewClear and L("sth.inworld_clear") or L("sth.inworld_blocked"),
+                "RareloadCaption", 0, h / 2, previewClear and THEME.success or THEME.error,
                 TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         end
     end
+
+    local showing = RARELOAD.HistoryPreview and RARELOAD.HistoryPreview.IsShowing(e.id)
+    local prevBtn = ActionButton(host, showing and L("sth.preview_hide") or L("sth.preview_show"), THEME.info,
+        function()
+            if RARELOAD.HistoryPreview then RARELOAD.HistoryPreview.Toggle(e.id) end
+            timer.Simple(0, function() if IsValid(HP.Frame) then HP:RebuildDetail() end end)
+        end)
+    prevBtn:Dock(TOP)
+    prevBtn:DockMargin(4, 0, 4, 10)
+    prevBtn:SetTall(30)
 
     -- active respawn: banner when this entry is the active save, button to make it so
     if e.act then

@@ -212,6 +212,8 @@ return {
     ["sth.inworld_clear"] = "● In-world: spot is clear",
     ["sth.inworld_blocked"] = "● In-world: blocked — restore will move you to safety",
     ["sth.undo"] = "Undo Restore",
+    ["sth.preview_show"] = "Preview in World",
+    ["sth.preview_hide"] = "Hide Preview",
     ["sth.none"] = "None",
     ["sth.note_placeholder"] = "Add a note…",
     ["sth.note_saved"] = "Note saved",

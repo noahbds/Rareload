@@ -16,6 +16,7 @@ if not SERVER then return end
 util.AddNetworkString("RareloadHistory_Request")
 util.AddNetworkString("RareloadHistory_Data")
 util.AddNetworkString("RareloadHistory_Action")
+util.AddNetworkString("RareloadHistory_Preview")
 
 local SnapshotUtils = RARELOAD.SnapshotUtils
 if not SnapshotUtils then
@@ -104,6 +105,59 @@ RARELOAD.SendHistoryToClient = SendData
 
 net.Receive("RareloadHistory_Request", function(_, ply)
     SendData(ply)
+end)
+
+-- ── in-world preview data (player + entity/NPC geometry, fetched on demand) ──────
+
+local PREVIEW_OBJ_CAP = 96
+
+local function ExtractObjects(bucket, out)
+    if not (SnapshotUtils and SnapshotUtils.GetSummary and istable(bucket)) then return end
+    local ok, list = pcall(SnapshotUtils.GetSummary, bucket, {})
+    if not (ok and istable(list)) then return end
+    for _, s in ipairs(list) do
+        if #out >= PREVIEW_OBJ_CAP then break end
+        local pos   = s.pos or s.Pos
+        local model = s.model or s.Model
+        if istable(pos) and isstring(model) and model ~= "" then
+            out[#out + 1] = {
+                c = s.class or s.Class or s.NPCName or "?",
+                m = model,
+                p = pos,
+                a = s.Angle or s.Ang or s.ang or nil,
+            }
+        end
+    end
+end
+
+local function BuildPreviewData(steamID, mapName, id)
+    local e = RARELOAD.GetHistoryEntryById(steamID, mapName, id)
+    if not e then return nil end
+    local objects = {}
+    ExtractObjects(e.entities, objects)
+    ExtractObjects(e.npcs, objects)
+    return {
+        player = {
+            m = (istable(e.appearance) and e.appearance.model) or e.playermodel,
+            p = e.pos,
+            a = e.ang,
+        },
+        objects = objects,
+    }
+end
+
+net.Receive("RareloadHistory_Preview", function(_, ply)
+    if not IsValid(ply) then return end
+    local id   = net.ReadString()
+    local data = (id ~= "") and BuildPreviewData(ply:SteamID(), game.GetMap(), id) or nil
+    local json = util.TableToJSON(data or {}) or "{}"
+    local blob = util.Compress(json) or ""
+
+    net.Start("RareloadHistory_Preview")
+    net.WriteString(id)
+    net.WriteUInt(#blob, 32)
+    net.WriteData(blob, #blob)
+    net.Send(ply)
 end)
 
 -- ── restore ─────────────────────────────────────────────────────────────────────

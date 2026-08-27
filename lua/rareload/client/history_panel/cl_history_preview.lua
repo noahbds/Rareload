@@ -1,14 +1,15 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Save Timeline — in-world preview (4.0 · Phase 4)
 --
--- When an entry is selected in the Save Timeline panel, this drops a translucent
--- phantom at the saved position with a coloured glow: GREEN when the spot is
--- clear, RED when the player hull would spawn inside a solid (a wall / the ground
--- / a prop). Restoring a red spot still lands safely — the server's anti-stuck
--- relocates on restore — so red is a heads-up, not a block.
+-- A "Preview in World" toggle drops phantoms of a saved snapshot into the map:
+-- the player model AND every saved entity/NPC, each at its saved position. Each
+-- phantom glows GREEN when its spot is clear or RED when a player-sized hull
+-- would spawn inside a solid, and carries a small in-world info card (class +
+-- clear/blocked). Restoring a red spot still lands safely (server anti-stuck
+-- relocates), so red is a heads-up, not a block.
 --
--- Fully client-side and self-contained: it owns its phantom and hooks and does not
--- touch the SED phantom system.
+-- Fully client-side and self-contained; owns its phantoms and hooks. Entity
+-- geometry is fetched on demand from the server (RareloadHistory_Preview).
 -- ─────────────────────────────────────────────────────────────────────────────
 
 if not CLIENT then return end
@@ -20,91 +21,179 @@ RARELOAD.HistoryPreview = Preview
 local COL_CLEAR = Color(64, 224, 110)
 local COL_BLOCK = Color(240, 72, 60)
 local GLOW_MAT  = Material("sprites/light_glow02_add")
+local LABEL_DIST_SQR = 2200 * 2200
+local LABEL_CAP = 24
 
-Preview.color  = Preview.color or COL_CLEAR
-Preview.clear  = true
-Preview.active = false
+Preview.items  = Preview.items or {}
+Preview.active = Preview.active or false
+Preview.showId = Preview.showId or nil
 
-local function RemovePhantom()
-    if IsValid(Preview.phantom) then Preview.phantom:Remove() end
-    Preview.phantom = nil
-end
+surface.CreateFont("RareloadHistPreview", { font = "Roboto", size = 15, weight = 600, antialias = true })
+surface.CreateFont("RareloadHistPreviewSmall", { font = "Roboto", size = 13, weight = 500, antialias = true })
 
--- Would a standing player be stuck at this position?
+-- Would a standing player be stuck here? Lift the box a few units so simply
+-- standing on the ground doesn't read as "starting in solid".
 local function HullClear(pos)
-    local lp = LocalPlayer()
-    local mins, maxs = Vector(-16, -16, 0), Vector(16, 16, 72)
-    if IsValid(lp) then
-        local mn, mx = lp:OBBMins(), lp:OBBMaxs()
-        if mn and mx then mins, maxs = mn, mx end
-    end
     local tr = util.TraceHull({
         start  = pos,
         endpos = pos,
-        mins   = mins,
-        maxs   = maxs,
+        mins   = Vector(-16, -16, 4),
+        maxs   = Vector(16, 16, 72),
         mask   = MASK_PLAYERSOLID,
-        filter = lp,
+        filter = LocalPlayer(),
     })
     return not (tr.StartSolid or tr.AllSolid)
 end
+Preview.TestClear = HullClear
 
-function Preview.Show(e)
-    if not (istable(e) and istable(e.pos)) then
-        Preview.Clear()
-        return
+local function ToVec(t)
+    return istable(t) and Vector(tonumber(t.x) or 0, tonumber(t.y) or 0, tonumber(t.z) or 0) or nil
+end
+local function ToAng(t)
+    return istable(t) and Angle(tonumber(t.p) or 0, tonumber(t.y) or 0, tonumber(t.r) or 0) or Angle(0, 0, 0)
+end
+
+local function RemoveAll()
+    for _, it in ipairs(Preview.items) do
+        if IsValid(it.phantom) then it.phantom:Remove() end
     end
-
-    local pos = Vector(tonumber(e.pos.x) or 0, tonumber(e.pos.y) or 0, tonumber(e.pos.z) or 0)
-    local ang = Angle(0, (istable(e.ang) and tonumber(e.ang.y)) or 0, 0)
-
-    Preview.clear  = HullClear(pos)
-    Preview.color  = Preview.clear and COL_CLEAR or COL_BLOCK
-    Preview.pos    = pos
-    Preview.active = true
-
-    RemovePhantom()
-    if e.mdl and util.IsValidModel(e.mdl) then
-        local p = ClientsideModel(e.mdl, RENDERGROUP_TRANSLUCENT)
-        if IsValid(p) then
-            p:SetPos(pos)
-            p:SetAngles(ang)
-            p:SetMoveType(MOVETYPE_NONE)
-            p:SetSolid(SOLID_NONE)
-            p:SetRenderMode(RENDERMODE_TRANSALPHA)
-            p:SetColor(Color(255, 255, 255, 150))
-            Preview.phantom = p
-        end
-    end
+    Preview.items = {}
 end
 
 function Preview.Clear()
     Preview.active = false
-    Preview.pos = nil
-    RemovePhantom()
+    Preview.showId = nil
+    RemoveAll()
 end
 
-function Preview.IsClear() return Preview.clear end
-function Preview.IsActive() return Preview.active end
+function Preview.IsShowing(id)
+    return Preview.active and Preview.showId == id
+end
 
+local function AddPhantom(model, pos, ang, title)
+    if not (pos and model and model ~= "" and util.IsValidModel(model)) then return end
+    local clear = HullClear(pos)
+    local it = {
+        pos   = pos,
+        clear = clear,
+        color = clear and COL_CLEAR or COL_BLOCK,
+        title = title or "?",
+    }
+    local p = ClientsideModel(model, RENDERGROUP_TRANSLUCENT)
+    if IsValid(p) then
+        p:SetPos(pos)
+        p:SetAngles(ang)
+        p:SetMoveType(MOVETYPE_NONE)
+        p:SetSolid(SOLID_NONE)
+        p:SetRenderMode(RENDERMODE_TRANSALPHA)
+        p:SetColor(Color(255, 255, 255, 150))
+        it.phantom = p
+    end
+    Preview.items[#Preview.items + 1] = it
+end
+
+local function Build(data)
+    RemoveAll()
+    if not istable(data) then return end
+    if istable(data.player) then
+        AddPhantom(data.player.m, ToVec(data.player.p), ToAng(data.player.a), "Player")
+    end
+    for _, o in ipairs(data.objects or {}) do
+        AddPhantom(o.m, ToVec(o.p), ToAng(o.a), tostring(o.c or "?"))
+    end
+end
+
+function Preview.Request(id)
+    Preview.active = true
+    Preview.showId = id
+    RemoveAll()
+    net.Start("RareloadHistory_Preview")
+    net.WriteString(id or "")
+    net.SendToServer()
+end
+
+function Preview.Toggle(id)
+    if Preview.IsShowing(id) then
+        Preview.Clear()
+    else
+        Preview.Request(id)
+    end
+end
+
+net.Receive("RareloadHistory_Preview", function()
+    local id  = net.ReadString()
+    local len = net.ReadUInt(32)
+    local raw = len > 0 and net.ReadData(len) or ""
+    -- ignore stale responses for a preview we've since turned off / changed
+    if not Preview.active or Preview.showId ~= id then return end
+    local json = util.Decompress(raw)
+    if not json then return end
+    local ok, data = pcall(util.JSONToTable, json)
+    if ok and istable(data) then Build(data) end
+end)
+
+-- coloured outline glow
 hook.Add("PreDrawHalos", "RARELOAD_HistoryPreview_Halo", function()
-    if Preview.active and IsValid(Preview.phantom) then
-        halo.Add({ Preview.phantom }, Preview.color, 6, 6, 2, true, true)
+    if not Preview.active then return end
+    local green, red = {}, {}
+    for _, it in ipairs(Preview.items) do
+        if IsValid(it.phantom) then
+            local t = it.clear and green or red
+            t[#t + 1] = it.phantom
+        end
+    end
+    if #green > 0 then halo.Add(green, COL_CLEAR, 5, 5, 2, true, true) end
+    if #red > 0 then halo.Add(red, COL_BLOCK, 5, 5, 2, true, true) end
+end)
+
+-- glow orbs + in-world info cards (SED-style), drawn in the 3D scene so they show
+-- around the panel.
+local function FaceAngle(pos, eye)
+    local n = eye - pos
+    n.z = 0
+    if n:LengthSqr() < 1 then n = Vector(1, 0, 0) end
+    n:Normalize()
+    local a = n:Angle()
+    a.y = a.y - 90
+    a.p = 0
+    a.r = 90
+    return a
+end
+
+hook.Add("PostDrawTranslucentRenderables", "RARELOAD_HistoryPreview_World", function(bDepth, bSky)
+    if bDepth or bSky or not Preview.active then return end
+    if render.GetRenderTarget() ~= nil then return end
+    local lp = LocalPlayer()
+    if not IsValid(lp) then return end
+    local eye = lp:EyePos()
+    local pulse = 0.55 + math.sin(CurTime() * 4) * 0.35
+
+    render.SetMaterial(GLOW_MAT)
+    for _, it in ipairs(Preview.items) do
+        render.DrawSprite(it.pos + Vector(0, 0, 20), 32 * pulse, 32 * pulse, it.color)
+    end
+
+    -- info cards for the nearest few phantoms
+    local shown = 0
+    for _, it in ipairs(Preview.items) do
+        if shown >= LABEL_CAP then break end
+        if eye:DistToSqr(it.pos) <= LABEL_DIST_SQR then
+            shown = shown + 1
+            local top = it.pos + Vector(0, 0, 82)
+            local ang = FaceAngle(top, eye)
+            local w, h = 190, 42
+            cam.Start3D2D(top, ang, 0.11)
+            draw.RoundedBox(6, -w / 2, -h, w, h, Color(14, 17, 22, 225))
+            surface.SetDrawColor(it.color.r, it.color.g, it.color.b, 255)
+            surface.DrawOutlinedRect(-w / 2, -h, w, h, 2)
+            draw.SimpleText(it.title, "RareloadHistPreview", 0, -h + 6, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+            draw.SimpleText(it.clear and "CLEAR" or "BLOCKED", "RareloadHistPreviewSmall", 0, -h + 24, it.color,
+                TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+            cam.End3D2D()
+        end
     end
 end)
 
-hook.Add("PostDrawTranslucentRenderables", "RARELOAD_HistoryPreview_Glow", function(bDepth, bSky)
-    if bDepth or bSky then return end
-    if not (Preview.active and Preview.pos) then return end
-    if render.GetRenderTarget() ~= nil then return end
-
-    local pulse = 0.55 + math.sin(CurTime() * 4) * 0.35
-    render.SetMaterial(GLOW_MAT)
-    render.DrawSprite(Preview.pos + Vector(0, 0, 42), 46 * pulse, 46 * pulse, Preview.color)
-    render.DrawSprite(Preview.pos + Vector(0, 0, 6), 28 * pulse, 28 * pulse, Preview.color)
-end)
-
--- Safety: drop the phantom on map cleanup.
 hook.Add("OnReloaded", "RARELOAD_HistoryPreview_Reset", Preview.Clear)
 
 return Preview
