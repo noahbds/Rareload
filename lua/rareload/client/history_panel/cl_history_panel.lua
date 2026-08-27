@@ -197,42 +197,53 @@ function HP:RebuildDetail()
         return
     end
 
-    -- header: model preview + primary facts
+    -- header: compact model preview + primary facts
     local header = vgui.Create("DPanel", host)
     header:Dock(TOP)
-    header:SetTall(150)
+    header:SetTall(98)
     header:DockMargin(0, 0, 0, 10)
     header.Paint = function(_, w, h) draw.RoundedBox(10, 0, 0, w, h, THEME.backgroundDark) end
 
     if e.mdl and util.IsValidModel(e.mdl) then
         local mp = vgui.Create("DModelPanel", header)
         mp:Dock(LEFT)
-        mp:DockMargin(8, 8, 8, 8)
-        mp:SetWide(130)
+        mp:DockMargin(7, 7, 7, 7)
+        mp:SetWide(84)
         mp:SetModel(e.mdl)
         mp:SetMouseInputEnabled(false)
+        mp.LayoutEntity = function(_, en) en:SetAngles(Angle(0, RealTime() * 24, 0)) end
         local ent = mp:GetEntity()
         if IsValid(ent) then
             local mn, mx = ent:GetRenderBounds()
             local center = (mn + mx) * 0.5
-            local size = math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z)
-            local dist = (size * 1.4) / math.tan(math.rad(36 / 2))
+            local size   = math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z)
+            local fov    = 45
+            local dist   = (size * 1.2) / math.tan(math.rad(fov / 2))
             mp:SetLookAt(center)
-            mp:SetCamPos(center + Vector(dist * 0.6, dist * 0.5, dist * 0.35))
-            mp:SetFOV(36)
-            mp.LayoutEntity = function(_, en) en:SetAngles(Angle(0, RealTime() * 24, 0)) end
+            mp:SetCamPos(center + Vector(dist * 0.6, dist * 0.5, dist * 0.4))
+            mp:SetFOV(fov)
+        end
+    else
+        local ph = vgui.Create("DPanel", header)
+        ph:Dock(LEFT)
+        ph:DockMargin(7, 7, 7, 7)
+        ph:SetWide(84)
+        ph.Paint = function(_, w, h)
+            draw.RoundedBox(8, 0, 0, w, h, THEME.surface)
+            draw.SimpleText("?", "RareloadHeading", w / 2, h / 2, THEME.textDisabled, TEXT_ALIGN_CENTER,
+                TEXT_ALIGN_CENTER)
         end
     end
 
     local facts = vgui.Create("DPanel", header)
     facts:Dock(FILL)
-    facts:DockMargin(6, 12, 12, 12)
+    facts:DockMargin(6, 12, 12, 10)
     facts.Paint = function(_, w, h)
-        draw.SimpleText(TimeAgo(e.t), "RareloadHeading", 0, 0, THEME.textPrimary, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-        draw.SimpleText(os.date("%Y-%m-%d  %H:%M:%S", tonumber(e.t) or 0), "RareloadCaption", 0, 30,
+        draw.SimpleText(TimeAgo(e.t), "RareloadHeading", 0, 2, THEME.textPrimary, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+        draw.SimpleText(os.date("%Y-%m-%d  %H:%M:%S", tonumber(e.t) or 0), "RareloadCaption", 0, 32,
             THEME.textSecondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
         if e.pin then
-            draw.SimpleText("★ " .. L("sth.pinned"), "RareloadCaption", 0, 52, THEME.warning, TEXT_ALIGN_LEFT,
+            draw.SimpleText("★ " .. L("sth.pinned"), "RareloadCaption", 0, 54, THEME.warning, TEXT_ALIGN_LEFT,
                 TEXT_ALIGN_TOP)
         end
     end
@@ -264,7 +275,7 @@ function HP:RebuildDetail()
     local showing = RARELOAD.HistoryPreview and RARELOAD.HistoryPreview.IsShowing(e.id)
     local prevBtn = ActionButton(host, showing and L("sth.preview_hide") or L("sth.preview_show"), THEME.info,
         function()
-            if RARELOAD.HistoryPreview then RARELOAD.HistoryPreview.Toggle(e.id) end
+            if RARELOAD.HistoryPreview then RARELOAD.HistoryPreview.Toggle(e) end
             timer.Simple(0, function() if IsValid(HP.Frame) then HP:RebuildDetail() end end)
         end)
     prevBtn:Dock(TOP)

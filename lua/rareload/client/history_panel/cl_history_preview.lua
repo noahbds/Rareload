@@ -79,7 +79,7 @@ local function AddPhantom(model, pos, ang, title)
         color = clear and COL_CLEAR or COL_BLOCK,
         title = title or "?",
     }
-    local p = ClientsideModel(model, RENDERGROUP_TRANSLUCENT)
+    local p = ClientsideModel(model)
     if IsValid(p) then
         p:SetPos(pos)
         p:SetAngles(ang)
@@ -92,31 +92,26 @@ local function AddPhantom(model, pos, ang, title)
     Preview.items[#Preview.items + 1] = it
 end
 
-local function Build(data)
-    RemoveAll()
-    if not istable(data) then return end
-    if istable(data.player) then
-        AddPhantom(data.player.m, ToVec(data.player.p), ToAng(data.player.a), "Player")
-    end
-    for _, o in ipairs(data.objects or {}) do
-        AddPhantom(o.m, ToVec(o.p), ToAng(o.a), tostring(o.c or "?"))
-    end
-end
-
-function Preview.Request(id)
+-- `entry` is the summary row (has id, mdl, pos, ang). The player phantom is spawned
+-- immediately from it; entity/NPC phantoms are fetched from the server and added when
+-- they arrive, so the preview never depends on a round-trip to show anything.
+function Preview.Request(entry)
+    if not istable(entry) then return end
     Preview.active = true
-    Preview.showId = id
+    Preview.showId = entry.id
     RemoveAll()
+    AddPhantom(entry.mdl, ToVec(entry.pos), ToAng(entry.ang), "Player")
     net.Start("RareloadHistory_Preview")
-    net.WriteString(id or "")
+    net.WriteString(entry.id or "")
     net.SendToServer()
 end
 
-function Preview.Toggle(id)
-    if Preview.IsShowing(id) then
+function Preview.Toggle(entry)
+    if not istable(entry) then return end
+    if Preview.IsShowing(entry.id) then
         Preview.Clear()
     else
-        Preview.Request(id)
+        Preview.Request(entry)
     end
 end
 
@@ -129,7 +124,11 @@ net.Receive("RareloadHistory_Preview", function()
     local json = util.Decompress(raw)
     if not json then return end
     local ok, data = pcall(util.JSONToTable, json)
-    if ok and istable(data) then Build(data) end
+    if ok and istable(data) and istable(data.objects) then
+        for _, o in ipairs(data.objects) do
+            AddPhantom(o.m, ToVec(o.p), ToAng(o.a), tostring(o.c or "?"))
+        end
+    end
 end)
 
 -- coloured outline glow
@@ -192,6 +191,22 @@ hook.Add("PostDrawTranslucentRenderables", "RARELOAD_HistoryPreview_World", func
             cam.End3D2D()
         end
     end
+end)
+
+-- top-screen confirmation (the panel can sit in front of the phantom)
+hook.Add("HUDPaint", "RARELOAD_HistoryPreview_Hint", function()
+    if not Preview.active then return end
+    local n = #Preview.items
+    local txt = n > 0
+        and ("●  Previewing " .. n .. (n == 1 and " object" or " objects") .. " in the world — drag the panel aside to see")
+        or "●  Loading preview…"
+    surface.SetFont("RareloadHistPreview")
+    local tw = surface.GetTextSize(txt)
+    local cx, y = ScrW() * 0.5, 22
+    draw.RoundedBox(6, cx - tw / 2 - 12, y, tw + 24, 26, Color(14, 17, 22, 225))
+    surface.SetDrawColor(64, 224, 110, 220)
+    surface.DrawOutlinedRect(cx - tw / 2 - 12, y, tw + 24, 26, 1)
+    draw.SimpleText(txt, "RareloadHistPreview", cx, y + 13, Color(150, 235, 175), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 end)
 
 hook.Add("OnReloaded", "RARELOAD_HistoryPreview_Reset", Preview.Clear)
