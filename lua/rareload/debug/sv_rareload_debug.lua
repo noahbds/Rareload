@@ -9,13 +9,13 @@ hook.Add("Initialize", "RARELOAD_DebugModuleInit", function()
                 RARELOAD.Debug.Write("system", "INFO", 1, "Version: " .. (RARELOAD.version or "Unknown"))
                 RARELOAD.Debug.Write("system", "INFO", 1, "Map: " .. game.GetMap())
                 RARELOAD.Debug.Write("system", "INFO", 1, "Date: " .. os.date("%Y-%m-%d_%H-%M"))
-                RARELOAD.Debug.Write("system", "INFO", 1, "Language: " .. (GetConVar("rareload_language"):GetString() or "auto"))
+                RARELOAD.Debug.Write("system", "INFO", 1, "Language: " .. ((RARELOAD.Lang and RARELOAD.Lang.ActiveCode) or "auto"))
             else
                 print("[RARELOAD DEBUG] Rareload Debug Module Initialized")
                 print("[RARELOAD DEBUG] Version: " .. (RARELOAD.version or "Unknown"))
                 print("[RARELOAD DEBUG] Map: " .. game.GetMap())
                 print("[RARELOAD DEBUG] Date: " .. os.date("%Y-%m-%d_%H-%M"))
-                print("[RARELOAD DEBUG] Language: " .. (GetConVar("rareload_language"):GetString() or "auto"))
+                print("[RARELOAD DEBUG] Language: " .. ((RARELOAD.Lang and RARELOAD.Lang.ActiveCode) or "auto"))
             end
         end
     end)
