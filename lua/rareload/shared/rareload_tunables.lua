@@ -82,6 +82,39 @@ RARELOAD.TunableDefs = {
             end
         end,
     },
+    {
+        key = "sed_panel_size_ratio", label = "Panel Size Ratio", category = "Saved Display",
+        type = "float", min = 0.4, max = 3.0, decimals = 2, default = 1.15,
+        desc = "Panel width relative to its entity's size. Higher = larger panels.",
+        apply = function(v)
+            if CLIENT and SED then
+                SED.PANEL_WORLD_WIDTH_FACTOR = v
+                SED.EntityBoundsCache = {}
+            end
+        end,
+    },
+    {
+        key = "sed_panel_min_width", label = "Panel Min Size", category = "Saved Display",
+        type = "int", min = 16, max = 200, default = 42, suffix = "u",
+        desc = "Smallest a panel can get, so tiny props stay readable.",
+        apply = function(v)
+            if CLIENT and SED then
+                SED.PANEL_MIN_WORLD_WIDTH = v
+                SED.EntityBoundsCache = {}
+            end
+        end,
+    },
+    {
+        key = "sed_panel_max_width", label = "Panel Max Size", category = "Saved Display",
+        type = "int", min = 40, max = 600, default = 130, suffix = "u",
+        desc = "Largest a panel can get, so huge entities don't get giant panels.",
+        apply = function(v)
+            if CLIENT and SED then
+                SED.PANEL_MAX_WORLD_WIDTH = v
+                SED.EntityBoundsCache = {}
+            end
+        end,
+    },
 }
 
 RARELOAD.Tunables = RARELOAD.Tunables or {}

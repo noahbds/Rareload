@@ -33,6 +33,14 @@ SED.PHANTOM_CULL_DIST_SQR = SED.PHANTOM_CULL_DIST * SED.PHANTOM_CULL_DIST
 SED.BASE_SCALE = 0.11
 SED.MIN_SCALE = 0.05
 SED.MAX_SCALE = 0.25
+-- Panel world sizing (4.0): the in-world panel is sized proportionally to its own entity
+-- and fixed in world space, so it no longer balloons as the camera nears it and no longer
+-- renders at the same size for a tiny prop and a huge NPC. It shrinks with distance the
+-- natural way, through perspective, like a sign attached to the object. See SS.PanelScale.
+SED.PANEL_WORLD_WIDTH_FACTOR = 1.15 -- panel world width ≈ this × the entity's max OBB dimension
+SED.PANEL_MIN_WORLD_WIDTH    = 42   -- floor (world units) so tiny props stay readable
+SED.PANEL_MAX_WORLD_WIDTH    = 130  -- ceiling (world units) so huge entities don't get giant panels
+SED.PANEL_REF_WIDTH          = 480  -- fallback panel pixel width if a caller omits it
 SED.PANEL_CLUSTER_DIST = 150
 SED.PANEL_EYE_BAND = 150
 SED.MAX_VISIBLE_LINES = 7

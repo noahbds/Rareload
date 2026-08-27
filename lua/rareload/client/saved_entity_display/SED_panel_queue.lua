@@ -87,9 +87,9 @@ local function IsAimingEstimatedPanel(ent, renderParams, eyePos, eyeForward)
     if panelDistSqr < 1 then return false, nil end
 
     local distance = math.sqrt(panelDistSqr)
-    local scale    = SS.PanelScale(renderParams, distance)
-    local ang      = SS.FacingAngle(toPanel)
     local estW     = BOOTSTRAP_W
+    local scale    = SS.PanelScale(renderParams, distance, estW)
+    local ang      = SS.FacingAngle(toPanel)
 
     local hit      = SS.PanelHitTest(panelCenter, ang, scale, estW, BOOTSTRAP_H, eyePos, eyeForward)
     return hit, panelDistSqr

@@ -29,16 +29,29 @@ function SS.FacingAngle(dir)
     return ang
 end
 
--- Fixed: now properly scales based on distance (reference distance = SED.REFERENCE_DIST or 512)
-function SS.PanelScale(renderParams, distance, minScale, maxScale)
-    minScale = minScale or SED.MIN_SCALE
-    maxScale = maxScale or SED.MAX_SCALE
+-- Panel world size is proportional to the entity (renderParams.targetWorldWidth) and fixed in
+-- world space: dividing the desired world width by the panel's pixel width yields the
+-- world-units-per-pixel scale cam_Start3D2D expects. Because it ignores camera distance, the
+-- panel no longer balloons up close and a huge NPC and a tiny prop each get a panel sized to
+-- them; it shrinks with distance naturally, through perspective.
+--
+-- `panelWidthPx` is the panel's real pixel width (ctx.width) or a caller's hit-test estimate.
+-- If it or the render params are missing we fall back to the old distance-based scale so
+-- nothing ends up rendering at zero size.
+function SS.PanelScale(renderParams, distance, panelWidthPx)
+    local targetWorldWidth = renderParams and renderParams.targetWorldWidth
+    local pixelW = panelWidthPx or SED.PANEL_REF_WIDTH or 480
+
+    if targetWorldWidth and pixelW > 0 then
+        return targetWorldWidth / pixelW
+    end
+
+    -- Legacy fallback: apparent size driven by camera distance.
     local baseScale = (renderParams and renderParams.baseScale) or SED.BASE_SCALE
     local refDist   = SED.REFERENCE_DIST or 512
-    local dist      = math.max(distance or refDist, 1)  -- avoid division by zero
-
-    local scale = (refDist / dist) * baseScale
-    return math.Clamp(scale, minScale, maxScale)
+    local dist      = math.max(distance or refDist, 1) -- avoid division by zero
+    local scale     = (refDist / dist) * baseScale
+    return math.Clamp(scale, SED.MIN_SCALE, SED.MAX_SCALE)
 end
 
 -- Cleaned up: recomputes distSqr internally, avoids parameter confusion

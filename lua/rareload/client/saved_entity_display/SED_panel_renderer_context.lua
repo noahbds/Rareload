@@ -400,7 +400,7 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
 
     local panelHeight = ctx.panelHeight
     local distance = math_sqrt(distSqr)
-    local scale = SS.PanelScale(renderParams, distance)
+    local scale = SS.PanelScale(renderParams, distance, ctx.width)
     local frameHeightWorldUnits = panelHeight * scale
     local obbCenterLocal = (renderParams.obbMin + renderParams.obbMax) * 0.5
     local worldCenter = ent.LocalToWorld and ent:LocalToWorld(obbCenterLocal) or pos
