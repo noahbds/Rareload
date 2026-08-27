@@ -204,12 +204,17 @@ function HP:RebuildDetail()
     header:DockMargin(0, 0, 0, 10)
     header.Paint = function(_, w, h) draw.RoundedBox(10, 0, 0, w, h, THEME.backgroundDark) end
 
-    if e.mdl and util.IsValidModel(e.mdl) then
+    local dispModel = (e.mdl and util.IsValidModel(e.mdl)) and e.mdl or nil
+    if not dispModel then
+        local lp = LocalPlayer()
+        if IsValid(lp) and util.IsValidModel(lp:GetModel()) then dispModel = lp:GetModel() end
+    end
+    if dispModel then
         local mp = vgui.Create("DModelPanel", header)
         mp:Dock(LEFT)
         mp:DockMargin(7, 7, 7, 7)
         mp:SetWide(84)
-        mp:SetModel(e.mdl)
+        mp:SetModel(dispModel)
         mp:SetMouseInputEnabled(false)
         mp.LayoutEntity = function(_, en) en:SetAngles(Angle(0, RealTime() * 24, 0)) end
         local ent = mp:GetEntity()
@@ -494,10 +499,6 @@ function HP:Open()
     frame:MakePopup()
     frame:SetSizable(false)
     self.Frame = frame
-
-    frame.OnRemove = function()
-        if RARELOAD.HistoryPreview then RARELOAD.HistoryPreview.Clear() end
-    end
 
     frame.Paint = function(_, w, h)
         draw.RoundedBox(12, 0, 0, w, h, THEME.background)

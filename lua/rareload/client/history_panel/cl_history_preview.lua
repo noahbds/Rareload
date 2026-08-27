@@ -100,7 +100,14 @@ function Preview.Request(entry)
     Preview.active = true
     Preview.showId = entry.id
     RemoveAll()
-    AddPhantom(entry.mdl, ToVec(entry.pos), ToAng(entry.ang), "Player")
+    -- Fall back to the local player's model when the save has no usable model, so the
+    -- player phantom always appears (otherwise the preview would sit empty forever).
+    local model = entry.mdl
+    if not (isstring(model) and util.IsValidModel(model)) then
+        local lp = LocalPlayer()
+        model = (IsValid(lp) and lp:GetModel()) or "models/player/kleiner.mdl"
+    end
+    AddPhantom(model, ToVec(entry.pos), ToAng(entry.ang), "Player")
     net.Start("RareloadHistory_Preview")
     net.WriteString(entry.id or "")
     net.SendToServer()
@@ -198,7 +205,8 @@ hook.Add("HUDPaint", "RARELOAD_HistoryPreview_Hint", function()
     if not Preview.active then return end
     local n = #Preview.items
     local txt = n > 0
-        and ("●  Previewing " .. n .. (n == 1 and " object" or " objects") .. " in the world — drag the panel aside to see")
+        and ("●  Previewing " .. n .. (n == 1 and " object" or " objects") ..
+            " — reopen the Save Timeline to hide, or type rareload_preview_off")
         or "●  Loading preview…"
     surface.SetFont("RareloadHistPreview")
     local tw = surface.GetTextSize(txt)
@@ -210,5 +218,8 @@ hook.Add("HUDPaint", "RARELOAD_HistoryPreview_Hint", function()
 end)
 
 hook.Add("OnReloaded", "RARELOAD_HistoryPreview_Reset", Preview.Clear)
+
+-- Hide the preview from anywhere (it now persists after the panel closes).
+concommand.Add("rareload_preview_off", function() Preview.Clear() end)
 
 return Preview

@@ -207,11 +207,13 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         end
     end
 
+    RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
+
+    -- Archive AFTER playerPositions holds the new snapshot, so the history captures
+    -- THIS save (with its playermodel, inventory, etc.) instead of the previous one.
     if RARELOAD.CacheCurrentPositionData then
         RARELOAD.CacheCurrentPositionData(ply:SteamID(), mapName)
     end
-
-    RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
 
     local success, err
     if RARELOAD.SavePlayerPositionEntry then
