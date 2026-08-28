@@ -17,11 +17,11 @@ end
 
 -- Thoses are the save helpers that handle saving different aspects of the player's state and world state.
 local save_inventory = include("rareload/core/save_helpers/rareload_save_inventory.lua")
-local save_vehicles = include("rareload/core/save_helpers/rareload_save_vehicles.lua") -- BROKEN
+local save_vehicles = include("rareload/core/save_helpers/rareload_save_vehicles.lua") -- off by default (retainVehicles)
 local save_entities = include("rareload/core/save_helpers/rareload_save_entities.lua")
 local save_npcs = include("rareload/core/save_helpers/rareload_save_npcs.lua")
 local save_ammo = include("rareload/core/save_helpers/rareload_save_ammo.lua")
-local save_vehicle_state = include("rareload/core/save_helpers/rareload_save_vehicle_state.lua") -- BROKEN
+local save_vehicle_state = include("rareload/core/save_helpers/rareload_save_vehicle_state.lua") -- off by default (retainVehicleState)
 local save_appearance = include("rareload/core/save_helpers/rareload_save_appearance.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 

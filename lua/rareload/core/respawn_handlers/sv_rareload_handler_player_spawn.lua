@@ -514,19 +514,27 @@ function RARELOAD.HandlePlayerSpawn(ply)
 
     if RARELOAD.GetPlayerSetting(ply, "retainVehicleState", false) and SavedInfo.vehicleState then
         local vehicleData = SavedInfo.vehicleState
-        timer.Simple(1.5, function()
-            if not IsValid(ply) then return end
-            for _, ent in ipairs(ents.FindInSphere(vehicleData.pos, 50)) do
-                if ent:GetClass() == vehicleData.class then
-                    timer.Simple(0.2, function()
-                        if IsValid(ply) and IsValid(ent) then
-                            ply:EnterVehicle(ent)
-                        end
-                    end)
-                    break
+        local seatPos = RARELOAD.DataUtils.ToVector(vehicleData.pos)
+        if seatPos then
+            -- The vehicle may still be spawning (RestoreVehicles is delayed), so keep trying to
+            -- re-seat the player for a few seconds. Fixes two bugs: pos was a raw table (FindInSphere
+            -- needs a Vector), and a single attempt raced the vehicle spawn.
+            local attempts = 0
+            local function tryReseat()
+                if not IsValid(ply) then return end
+                attempts = attempts + 1
+                for _, ent in ipairs(ents.FindInSphere(seatPos, 96)) do
+                    if IsValid(ent) and ent:GetClass() == vehicleData.class
+                        and ent.IsVehicle and ent:IsVehicle() and not IsValid(ent:GetDriver()) then
+                        ply:ExitVehicle()
+                        ply:EnterVehicle(ent)
+                        return
+                    end
                 end
+                if attempts < 10 then timer.Simple(0.5, tryReseat) end
             end
-        end)
+            timer.Simple(1.2, tryReseat)
+        end
     end
 
     if hasPerm("RESTORE_ENTITIES") and RARELOAD.GetPlayerSetting(ply, "retainMapEntities", true) and SavedInfo.entities then

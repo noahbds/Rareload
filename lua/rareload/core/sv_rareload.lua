@@ -13,11 +13,11 @@ if SERVER then
             retainPlayerStates = true,
             retainAppearance = true,
             retainAmmo = true,
-            retainVehicleState = false, -- BROKEN
+            retainVehicleState = false, -- off by default; needs in-game testing
             retainMapEntities = true,
             retainMapNPCs = true,
             cleanupMapAfterDeath = false,
-            retainVehicles = false,       -- BROKEN
+            retainVehicles = false,       -- off by default; needs in-game testing
             nocustomrespawnatdeath = false,
             debugEnabled = false,
             maxHistorySize = 125,

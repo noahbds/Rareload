@@ -75,6 +75,8 @@ local FEATURES = {
     { name = "screen.feature.save_appearance",       key = "retainAppearance",       kind = "bool" },
     { name = "screen.feature.save_entities",         key = "retainMapEntities",      kind = "bool" },
     { name = "screen.feature.save_npcs",             key = "retainMapNPCs",          kind = "bool" },
+    { name = "screen.feature.save_vehicles",         key = "retainVehicles",         kind = "bool" },
+    { name = "screen.feature.save_vehicle_state",    key = "retainVehicleState",     kind = "bool" },
     { name = "screen.feature.debug",                 key = "debugEnabled",           kind = "bool" },
     { name = "screen.feature.auto_save_interval",    key = "autoSaveInterval",       kind = "value", unit = "s" },
     { name = "screen.feature.angle_tolerance",       key = "angleTolerance",         kind = "value", unit = "°" },

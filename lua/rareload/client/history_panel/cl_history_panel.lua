@@ -476,6 +476,11 @@ function HP:RebuildList()
 end
 
 function HP:Rebuild()
+    -- auto-select the newest save so the detail pane isn't empty on open
+    local entries = Entries()
+    if entries[1] and (not self.SelectedId or not FindEntry(self.SelectedId)) then
+        self.SelectedId = entries[1].id
+    end
     self:RebuildList()
     self:RebuildDetail()
     if IsValid(self.CountLabel) then

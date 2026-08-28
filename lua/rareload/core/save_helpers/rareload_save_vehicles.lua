@@ -16,26 +16,24 @@ return function(ply)
                 RARELOAD.Ownership.GetOwnerSteamIDSafe(vehicle)
 
             if isOwnedByPlayer then
+                local c = vehicle:GetColor()
                 local vehicleData = {
                     class = vehicle:GetClass(),
                     model = vehicle:GetModel(),
+                    -- Key into list.Get("Vehicles"). Restoring from this recreates the vehicle
+                    -- with its vehiclescript so it's actually drivable (the old code omitted it).
+                    vehicleName = vehicle.VehicleName,
                     pos = { x = vehicle:GetPos().x, y = vehicle:GetPos().y, z = vehicle:GetPos().z },
                     ang = { p = vehicle:GetAngles().p, y = vehicle:GetAngles().y, r = vehicle:GetAngles().r },
                     health = vehicle:Health(),
                     skin = vehicle:GetSkin(),
                     bodygroups = {},
-                    color = vehicle:GetColor(),
+                    color = { r = c.r, g = c.g, b = c.b, a = c.a }, -- serialize Color as a plain table
                     frozen = IsValid(vehicle:GetPhysicsObject()) and not vehicle:GetPhysicsObject():IsMotionEnabled(),
                     owner = ownerSteamID
                 }
                 for i = 0, vehicle:GetNumBodyGroups() - 1 do
                     vehicleData.bodygroups[i] = vehicle:GetBodygroup(i)
-                end
-                if vehicle.GetVehicleParams then
-                    local params = vehicle:GetVehicleParams()
-                    if params then
-                        vehicleData.vehicleParams = params
-                    end
                 end
                 table.insert(vehicles, vehicleData)
             end

@@ -1,4 +1,6 @@
--- FOR NOW THIS SYSTEM DOES NOT WORK WELL, SO IT'S NOT SHOWN IN THE TOOL MENU
+-- Vehicle save/restore. Restore recreates the vehicle from list.Get("Vehicles") so its
+-- vehiclescript (handling/physics) is applied and it's actually drivable. Off by default
+-- (retainVehicles / RESTORE_VEHICLES); enable to test in-game.
 
 
 ---@class RARELOAD
@@ -18,8 +20,8 @@ local function WriteVehicleDebug(ply, level, message)
     })
 end
 
--- FIX IN PROGRESS
--- This function is called when the addon need to restore vehicles from a save file. Allow to restore vehicles, their health, color, etc.
+-- Restores saved vehicles (position, health, colour, skin, bodygroups, frozen state,
+-- ownership) — spawning each from its vehicle-list definition so it drives properly.
 function RARELOAD.RestoreVehicles(savedInfo, requestingPlayer)
     if not savedInfo or not savedInfo.vehicles then return end
     timer.Simple(1, function()
@@ -37,30 +39,47 @@ function RARELOAD.RestoreVehicles(savedInfo, requestingPlayer)
 
             if not exists then
                 local success, vehicle = pcall(function()
-                    local veh = ents.Create(vehicleData.class)
+                    -- Prefer the spawn-menu definition so the vehiclescript (handling/physics) is
+                    -- applied and the vehicle is actually drivable; fall back to a raw create.
+                    local vtable = vehicleData.vehicleName and list.Get("Vehicles")[vehicleData.vehicleName]
+
+                    local veh = ents.Create((vtable and vtable.Class) or vehicleData.class)
                     if not IsValid(veh) then return nil end
 
-                    if type(vehicleData.pos) == "table" and vehicleData.pos.x and vehicleData.pos.y and vehicleData.pos.z then
+                    veh:SetModel((vtable and vtable.Model) or vehicleData.model)
+
+                    if vtable and istable(vtable.KeyValues) then
+                        for k, v in pairs(vtable.KeyValues) do
+                            veh:SetKeyValue(k, v)
+                        end
+                        veh.VehicleName  = vehicleData.vehicleName
+                        veh.VehicleTable = vtable
+                    end
+
+                    if type(vehicleData.pos) == "table" and vehicleData.pos.x then
                         veh:SetPos(Vector(vehicleData.pos.x, vehicleData.pos.y, vehicleData.pos.z))
                     else
                         veh:SetPos(vehicleData.pos)
                     end
-                    if type(vehicleData.ang) == "table" and vehicleData.ang.p and vehicleData.ang.y and vehicleData.ang.r then
+                    if type(vehicleData.ang) == "table" and vehicleData.ang.p then
                         veh:SetAngles(Angle(vehicleData.ang.p, vehicleData.ang.y, vehicleData.ang.r))
                     else
                         veh:SetAngles(vehicleData.ang)
                     end
-                    veh:SetModel(vehicleData.model)
+
                     veh:Spawn()
                     veh:Activate()
 
                     veh:SetHealth(vehicleData.health or 100)
                     veh:SetSkin(vehicleData.skin or 0)
-                    veh:SetColor(vehicleData.color or Color(255, 255, 255, 255))
+
+                    local col = vehicleData.color
+                    if istable(col) then
+                        veh:SetColor(Color(col.r or 255, col.g or 255, col.b or 255, col.a or 255))
+                    end
 
                     if vehicleData.bodygroups then
                         for id, value in pairs(vehicleData.bodygroups) do
-                            ---@diagnostic disable-next-line: param-type-mismatch
                             veh:SetBodygroup(tonumber(id), value)
                         end
                     end
@@ -68,12 +87,6 @@ function RARELOAD.RestoreVehicles(savedInfo, requestingPlayer)
                     local phys = veh:GetPhysicsObject()
                     if IsValid(phys) and vehicleData.frozen then
                         phys:EnableMotion(false)
-                    end
-
-                    ---@diagnostic disable-next-line: undefined-field
-                    if vehicleData.vehicleParams and veh.SetVehicleParams then
-                        ---@diagnostic disable-next-line: undefined-field
-                        veh:SetVehicleParams(vehicleData.vehicleParams)
                     end
 
                     ---@diagnostic disable-next-line: inject-field
