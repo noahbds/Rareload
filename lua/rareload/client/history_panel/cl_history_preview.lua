@@ -49,16 +49,24 @@ local function ToAng(t)
     return istable(t) and Angle(tonumber(t.p) or 0, tonumber(t.y) or 0, tonumber(t.r) or 0) or Angle(0, 0, 0)
 end
 
+-- Same id SED derives for a record, so preview panel interaction can find it back.
+local function RecID(rec)
+    return rec.id or rec.RareloadNPCID or rec.RareloadEntityID or rec.RareloadID
+        or ((rec.class or rec.Class or rec.ClassName or "unknown") .. "?")
+end
+
 -- Hand SED the phantoms that have a saved record; it draws their panels + interaction.
 local function SyncSED()
     if not SED then return end
-    local out = {}
+    local out, byID = {}, {}
     for _, it in ipairs(Preview.items) do
         if it.rec and IsValid(it.phantom) then
             out[#out + 1] = { ent = it.phantom, saved = it.rec, isNPC = it.isNPC, pos = it.pos }
+            byID[RecID(it.rec)] = it.rec
         end
     end
     SED.PreviewItems = out
+    SED.PreviewRecordsByID = byID
 end
 
 local function RemoveAll()
@@ -67,7 +75,10 @@ local function RemoveAll()
     end
     Preview.items = {}
     Preview.playerItem = nil
-    if SED then SED.PreviewItems = {} end
+    if SED then
+        SED.PreviewItems = {}
+        SED.PreviewRecordsByID = {}
+    end
 end
 
 function Preview.Clear()
@@ -173,7 +184,7 @@ hook.Add("HUDPaint", "RARELOAD_HistoryPreview_Hint", function()
     local n = #Preview.items
     local txt = n > 0
         and ("●  Previewing " .. n .. (n == 1 and " object" or " objects") ..
-            " — aim at a panel and press E to inspect  ·  reopen the timeline or type rareload_preview_off to hide")
+            " — aim at a panel and press Shift+E to inspect  ·  reopen the timeline or rareload_preview_off to hide")
         or "●  Loading preview…"
     surface.SetFont("RareloadHistPreview")
     local tw = surface.GetTextSize(txt)

@@ -112,6 +112,11 @@ function SED.HandleInteractionInput()
             end
         end
 
+        -- Save Timeline preview phantoms keep their records in a dedicated lookup.
+        if not savedRec and SED.PreviewRecordsByID then
+            savedRec = SED.PreviewRecordsByID[interactionID]
+        end
+
         if not savedRec then
             SED.LeaveInteraction()
             return

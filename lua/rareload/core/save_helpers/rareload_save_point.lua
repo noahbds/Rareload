@@ -171,11 +171,22 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         playerData.ammo = save_ammo(ply, newInventory)
     end
 
-    if RARELOAD.GetPlayerSetting(ply, "retainVehicles") and RARELOAD.CheckPermission(ply, "SAVE_VEHICLES") then
+    -- Honor either the per-player setting or the global convar (the tool-menu toggle sets the
+    -- convar), so enabling "Keep Vehicles" from the menu actually takes effect.
+    local wantVehicles = RARELOAD.GetPlayerSetting(ply, "retainVehicles")
+        or (RARELOAD.settings and RARELOAD.settings.retainVehicles)
+    if wantVehicles and RARELOAD.CheckPermission(ply, "SAVE_VEHICLES") then
         playerData.vehicles = save_vehicles(ply)
     end
+    if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
+        print(string.format("[RARELOAD DEBUG] Vehicle save: want=%s perm=%s saved=%d",
+            tostring(wantVehicles), tostring(RARELOAD.CheckPermission(ply, "SAVE_VEHICLES")),
+            (playerData.vehicles and #playerData.vehicles) or 0))
+    end
 
-    if RARELOAD.GetPlayerSetting(ply, "retainVehicleState") and ply:InVehicle() then
+    local wantVehState = RARELOAD.GetPlayerSetting(ply, "retainVehicleState")
+        or (RARELOAD.settings and RARELOAD.settings.retainVehicleState)
+    if wantVehState and ply:InVehicle() then
         playerData.vehicleState = save_vehicle_state(ply)
     end
 

@@ -508,11 +508,14 @@ function RARELOAD.HandlePlayerSpawn(ply)
         end)
     end
 
-    if hasPerm("RESTORE_VEHICLES") and RARELOAD.GetPlayerSetting(ply, "retainVehicles", false) and SavedInfo.vehicles then
+    if hasPerm("RESTORE_VEHICLES")
+        and (RARELOAD.GetPlayerSetting(ply, "retainVehicles", false) or (RARELOAD.settings and RARELOAD.settings.retainVehicles))
+        and SavedInfo.vehicles then
         RARELOAD.RestoreVehicles(SavedInfo, ply)
     end
 
-    if RARELOAD.GetPlayerSetting(ply, "retainVehicleState", false) and SavedInfo.vehicleState then
+    if (RARELOAD.GetPlayerSetting(ply, "retainVehicleState", false) or (RARELOAD.settings and RARELOAD.settings.retainVehicleState))
+        and SavedInfo.vehicleState then
         local vehicleData = SavedInfo.vehicleState
         local seatPos = RARELOAD.DataUtils.ToVector(vehicleData.pos)
         if seatPos then
