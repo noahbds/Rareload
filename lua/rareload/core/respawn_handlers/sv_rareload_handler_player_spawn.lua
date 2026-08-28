@@ -518,23 +518,41 @@ function RARELOAD.HandlePlayerSpawn(ply)
         and SavedInfo.vehicleState then
         local vehicleData = SavedInfo.vehicleState
         local seatPos = RARELOAD.DataUtils.ToVector(vehicleData.pos)
-        if seatPos then
-            -- The vehicle may still be spawning (RestoreVehicles is delayed), so keep trying to
-            -- re-seat the player for a few seconds. Fixes two bugs: pos was a raw table (FindInSphere
-            -- needs a Vector), and a single attempt raced the vehicle spawn.
+        local vid = vehicleData.vehicleID
+        if seatPos or (isstring(vid) and vid ~= "") then
+            -- Find the vehicle to seat into: by its stable id first (wherever it was driven to),
+            -- then by class near the saved spot. The vehicle may still be spawning, so retry.
+            local function findSeatVehicle()
+                if isstring(vid) and vid ~= "" then
+                    for _, ent in ipairs(ents.GetAll()) do
+                        if IsValid(ent) and ent.IsVehicle and ent:IsVehicle()
+                            and ent.GetNWString and ent:GetNWString("RareloadVehicleID", "") == vid then
+                            return ent
+                        end
+                    end
+                end
+                if seatPos then
+                    for _, ent in ipairs(ents.FindInSphere(seatPos, 96)) do
+                        if IsValid(ent) and ent:GetClass() == vehicleData.class
+                            and ent.IsVehicle and ent:IsVehicle() then
+                            return ent
+                        end
+                    end
+                end
+                return nil
+            end
+
             local attempts = 0
             local function tryReseat()
                 if not IsValid(ply) then return end
                 attempts = attempts + 1
-                for _, ent in ipairs(ents.FindInSphere(seatPos, 96)) do
-                    if IsValid(ent) and ent:GetClass() == vehicleData.class
-                        and ent.IsVehicle and ent:IsVehicle() and not IsValid(ent:GetDriver()) then
-                        ply:ExitVehicle()
-                        ply:EnterVehicle(ent)
-                        return
-                    end
+                local veh = findSeatVehicle()
+                if IsValid(veh) and not IsValid(veh:GetDriver()) then
+                    ply:ExitVehicle()
+                    ply:EnterVehicle(veh)
+                    return
                 end
-                if attempts < 10 then timer.Simple(0.5, tryReseat) end
+                if attempts < 12 then timer.Simple(0.5, tryReseat) end
             end
             timer.Simple(1.2, tryReseat)
         end

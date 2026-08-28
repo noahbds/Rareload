@@ -17,9 +17,19 @@ return function(ply)
 
             if isOwnedByPlayer then
                 local c = vehicle:GetColor()
+
+                -- Stable per-vehicle id so restore can tell whether this saved vehicle already
+                -- exists on the map (anywhere) and reuse it instead of spawning a duplicate.
+                local vehID = vehicle:GetNWString("RareloadVehicleID", "")
+                if vehID == "" then
+                    vehID = "rlveh_" .. vehicle:GetCreationID() .. "_" .. math.random(100000, 999999)
+                    vehicle:SetNWString("RareloadVehicleID", vehID)
+                end
+
                 local vehicleData = {
                     class = vehicle:GetClass(),
                     model = vehicle:GetModel(),
+                    vehicleID = vehID,
                     -- Key into list.Get("Vehicles"). Restoring from this recreates the vehicle
                     -- with its vehiclescript so it's actually drivable (the old code omitted it).
                     vehicleName = vehicle.VehicleName,

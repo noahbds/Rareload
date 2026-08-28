@@ -8,6 +8,7 @@ return function(ply)
             ang = { p = vehicle:GetAngles().p, y = vehicle:GetAngles().y, r = vehicle:GetAngles().r },
             health = vehicle:Health(),
             frozen = IsValid(phys) and not phys:IsMotionEnabled(),
+            vehicleID = vehicle:GetNWString("RareloadVehicleID", ""),
             savedinsidevehicle = true
         }
     end

@@ -28,21 +28,36 @@ function RARELOAD.RestoreVehicles(savedInfo, requestingPlayer)
         local debugEnabled = DebugState and DebugState.IsEnabledForPlayer and
             DebugState.IsEnabledForPlayer(requestingPlayer)
         local vehicleCount = 0
+
+        -- Find a saved vehicle already on the map by its stable id, wherever it was driven to,
+        -- so restore reuses it instead of spawning a duplicate.
+        local function findByID(vid)
+            if not isstring(vid) or vid == "" then return nil end
+            for _, ent in ipairs(ents.GetAll()) do
+                if IsValid(ent) and ent.GetNWString and ent:GetNWString("RareloadVehicleID", "") == vid then
+                    return ent
+                end
+            end
+            return nil
+        end
+
         for _, vehicleData in ipairs(savedInfo.vehicles) do
             -- pos is stored as a {x,y,z} table; FindInSphere needs a Vector.
             local vpos = RARELOAD.DataUtils.ToVector(vehicleData.pos)
 
-            local exists = false
-            if vpos then
+            -- Reuse the existing saved vehicle if it's still on the map; fall back to a
+            -- positional class match for old saves that have no id.
+            local existing = findByID(vehicleData.vehicleID)
+            if not existing and vpos then
                 for _, ent in ipairs(ents.FindInSphere(vpos, 64)) do
                     if IsValid(ent) and ent:GetClass() == vehicleData.class then
-                        exists = true
+                        existing = ent
                         break
                     end
                 end
             end
 
-            if vpos and not exists then
+            if not existing and vpos then
                 local success, vehicle = pcall(function()
                     -- Prefer the spawn-menu definition so the vehiclescript (handling/physics) is
                     -- applied and the vehicle is actually drivable; fall back to a raw create.
@@ -96,6 +111,9 @@ function RARELOAD.RestoreVehicles(savedInfo, requestingPlayer)
 
                     ---@diagnostic disable-next-line: inject-field
                     veh.SpawnedByRareload = true
+                    if isstring(vehicleData.vehicleID) and vehicleData.vehicleID ~= "" then
+                        veh:SetNWString("RareloadVehicleID", vehicleData.vehicleID)
+                    end
 
                     if IsValid(requestingPlayer) and RARELOAD.Ownership then
                         RARELOAD.Ownership.SetOwner(veh, requestingPlayer)
