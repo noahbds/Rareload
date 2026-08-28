@@ -11,6 +11,16 @@ local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 local DebugHelpers = include("rareload/debug/sv_debug_helpers.lua")
 
+-- Engine / player-attached helper classes that must never be saved as entities.
+local EXCLUDED_ENTITY_CLASSES = {
+    ["gmod_hands"]          = true,
+    ["viewmodel"]           = true,
+    ["predicted_viewmodel"] = true,
+    ["physgun_beam"]        = true,
+    ["player_ragdoll"]      = true,
+    ["gmod_gamerules"]      = true,
+}
+
 local function WriteEntitySaveDebug(ply, level, message, details)
     if not (DebugHelpers and DebugHelpers.Write) then return end
 
@@ -30,47 +40,29 @@ return function(ply)
     local duplicatorTargets = {}
     local duplicatorSeen = {}
 
+    local DataUtils = RARELOAD.DataUtils
+    local IsVehicleEntity = DataUtils and DataUtils.IsVehicleEntity
+
     for _, ent in ipairs(ents.GetAll()) do
         if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() then
             local className = ent:GetClass() or ""
 
-            -- Exclude player hands, viewmodels, and player-attached entities
-            if className == "gmod_hands"
-                or className == "viewmodel"
-                or className == "predicted_viewmodel"
-                or className == "physgun_beam"
-                or className == "player_ragdoll"
-                or className == "gmod_gamerules" then
+            -- Exclude engine/player-attached helpers.
+            if EXCLUDED_ENTITY_CLASSES[className] then
                 continue
             end
 
-            -- Exclude all vehicles (Source vehicles, LVS, LFS, Simfphys, WAC, Glide, SCars, etc.)
-            if RARELOAD.DataUtils and RARELOAD.DataUtils.IsVehicleEntity and RARELOAD.DataUtils.IsVehicleEntity(ent) then
+            -- Exclude vehicles AND every structural piece of them (roots, seats,
+            -- rotors, wheels, bodies) in one generic, graph-based test — no part
+            -- class names or model paths are hardcoded. See DataUtils.IsVehiclePart.
+            if IsVehicleEntity and IsVehicleEntity(ent) then
                 continue
             end
 
-            -- Exclude vehicle sub-entities (rotors, rotor blade props / sawblades, colliders, wheels, seat pods, attachments)
-            if RARELOAD.DataUtils and RARELOAD.DataUtils.IsVehicleSubEntity and RARELOAD.DataUtils.IsVehicleSubEntity(ent) then
-                continue
-            end
-
-            -- Exclude parts/seats/attachments parented or linked to a vehicle
-            if RARELOAD.DataUtils and RARELOAD.DataUtils.GetRootVehicle then
-                local root = RARELOAD.DataUtils.GetRootVehicle(ent)
-                if IsValid(root) and (
-                    RARELOAD.DataUtils.ClassIsRootVehicle(root:GetClass())
-                    or RARELOAD.DataUtils.IsVehicleEntity(root)
-                    or (root ~= ent and RARELOAD.DataUtils.IsVehicleSubEntity(root))
-                ) then
-                    continue
-                end
-            end
+            -- Exclude anything parented directly to a player (held/worn helpers).
             local parent = ent:GetParent()
-            if IsValid(parent) then
-                if parent:IsPlayer() then continue end
-                if RARELOAD.DataUtils and (RARELOAD.DataUtils.IsVehicleEntity(parent) or RARELOAD.DataUtils.IsVehicleSubEntity(parent)) then
-                    continue
-                end
+            if IsValid(parent) and parent:IsPlayer() then
+                continue
             end
 
             local isWeaponEntity = ent:IsWeapon() or string.StartsWith(className, "weapon_")

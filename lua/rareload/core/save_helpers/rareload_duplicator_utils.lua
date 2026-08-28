@@ -282,16 +282,23 @@ function Bridge.CaptureSnapshot(entities, opts)
                 end
             end
         elseif cat == "vehicle" then
-            local rootCount = 0
-            for _, def in pairs(dupeAccumulator.Entities) do
-                if checkSubEnt and not checkSubEnt(def) then rootCount = rootCount + 1 end
+            -- Keep ONLY the root vehicles we explicitly targeted. Everything the
+            -- duplicator pulled in by following constraints (wheels, rotors, seats,
+            -- extra physics bodies) is a framework-rebuilt part: saving it would
+            -- spawn duplicated/detached pieces on restore. save_vehicles already
+            -- excludes parts from the target set, so `entities` == the roots.
+            local keep = {}
+            for i = 1, #entities do
+                local e = entities[i]
+                if IsValid(e) then
+                    local ei = e:EntIndex()
+                    keep[ei] = true
+                    keep[tostring(ei)] = true
+                end
             end
-
-            if rootCount > 0 then
-                for idx, def in pairs(dupeAccumulator.Entities) do
-                    if checkSubEnt and checkSubEnt(def) then
-                        processRemoval(idx)
-                    end
+            for idx in pairs(dupeAccumulator.Entities) do
+                if not (keep[idx] or keep[tostring(idx)]) then
+                    processRemoval(idx)
                 end
             end
         end

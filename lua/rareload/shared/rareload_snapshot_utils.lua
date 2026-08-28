@@ -78,21 +78,6 @@ local function iterateSnapshot(snapshot, opts, callback)
             summary.name = entityDef.Name
             summary.skin = entityDef.Skin
 
-            -- Phantom visual metadata captured at save time for framework vehicles
-            -- (visible sub-parts + appearance), keyed by the same RareloadEntityID.
-            -- Lets the clientside preview reassemble the whole vehicle rather than
-            -- just the root model. Scoped to snapshots that carry rareloadVisuals
-            -- (vehicles) so entity/NPC phantoms render exactly as before.
-            local visuals = snapshot.rareloadVisuals and snapshot.rareloadVisuals[id]
-            if istable(visuals) then
-                if istable(visuals.parts) then summary.SubModels = visuals.parts end
-                if istable(visuals.pose) then summary.pose = visuals.pose end
-                if istable(visuals.appearance) then
-                    summary.bodygroups = visuals.appearance.bodygroups
-                    if summary.skin == nil then summary.skin = visuals.appearance.skin end
-                end
-            end
-
             summary.SavedViaDuplicator = true
             summary._fromSnapshot = true
             summary.spawnTime = snapshot.savedAt

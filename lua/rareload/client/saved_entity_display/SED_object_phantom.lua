@@ -73,9 +73,6 @@ local function EnsurePhantom(id, rec, isNPC)
         end
     end
 
-    -- Reproduce the saved skeletal pose (walker legs deployed, turret aimed).
-    if rec.pose then SS.ApplyPhantomPose(phantom, rec.pose) end
-
     local subPhantoms = SS.AttachSubModels(phantom, rec)
 
     local data = {

@@ -70,11 +70,10 @@ local function ReadSavedPhysState(def)
     local pos = RARELOAD.DataUtils.ToVector(def.Pos or (phys and phys.Pos))
 
     return {
-        pos     = pos,
-        ang     = ang,
-        frozen  = phys ~= nil and (phys.Frozen == true or phys.Sleep == true),
-        nograv  = phys ~= nil and phys.NoGrav == true,
-        hasPhys = phys ~= nil,
+        pos    = pos,
+        ang    = ang,
+        frozen = phys ~= nil and (phys.Frozen == true or phys.Sleep == true),
+        nograv = phys ~= nil and phys.NoGrav == true,
     }
 end
 
@@ -338,67 +337,8 @@ local function ValidateSeat(seat, requireEmpty)
     return true
 end
 
----@param veh? Vehicle|Entity|any
----@return Vehicle|Entity|nil
-local function GetVehicleSeatToEnter(veh)
-    if not IsValid(veh) then return nil end
-
-    -- 1. Methods that return a single seat
-    for _, method in ipairs(SINGLE_SEAT_METHODS) do
-        local func = veh[method]
-        if isfunction(func) then
-            local ok, seat = pcall(func, veh)
-            if ok and ValidateSeat(seat, method ~= "GetDriverSeat") then return seat end
-        end
-    end
-
-    -- 2. Variables containing a single seat
-    for _, prop in ipairs(SINGLE_SEAT_PROPS) do
-        local seat = veh[prop]
-        if seat and ValidateSeat(seat, prop ~= "DriverSeat") then return seat end
-    end
-
-    -- 3. Methods returning tables of seats
-    for _, method in ipairs(TABLE_SEAT_METHODS) do
-        local func = veh[method]
-        if isfunction(func) then
-            local ok, seats = pcall(func, veh)
-            if ok and istable(seats) then
-                for _, s in pairs(seats) do
-                    if ValidateSeat(s, true) then return s end
-                end
-            end
-        end
-    end
-
-    -- 4. Variables containing tables of seats
-    for _, prop in ipairs(TABLE_SEAT_PROPS) do
-        local t = veh[prop]
-        if istable(t) then
-            for _, s in pairs(t) do
-                if ValidateSeat(s, true) then return s end
-            end
-        end
-    end
-
-    -- 5. Is the entity itself a seat?
-    if ValidateSeat(veh, true) then return veh end
-
-    -- 6. Child scan
-    if isfunction(veh.GetChildren) then
-        for _, child in ipairs(veh:GetChildren() or {}) do
-            if ValidateSeat(child, true) then return child end
-            if isfunction(child.GetChildren) then
-                for _, subChild in ipairs(child:GetChildren() or {}) do
-                    if ValidateSeat(subChild, true) then return subChild end
-                end
-            end
-        end
-    end
-
-    return nil
-end
-
+-- Collects every seat/pod belonging to a (root) vehicle, driver/gunner first,
+-- across frameworks (methods, member tables, and the child graph).
 ---@param veh? Vehicle|Entity|any
 ---@return table<integer, Vehicle|Entity>
 local function EnumerateSeats(veh)
@@ -418,27 +358,21 @@ local function EnumerateSeats(veh)
     end
 
     for _, prop in ipairs(SINGLE_SEAT_PROPS) do
-        local seat = veh[prop]
-        if seat then add(seat) end
+        if veh[prop] then add(veh[prop]) end
     end
 
     for _, method in ipairs(TABLE_SEAT_METHODS) do
         if isfunction(veh[method]) then
             local ok, ps = pcall(veh[method], veh)
             if ok and istable(ps) then
-                for _, s in pairs(ps) do
-                    if s then add(s) end
-                end
+                for _, s in pairs(ps) do if s then add(s) end end
             end
         end
     end
 
     for _, prop in ipairs(TABLE_SEAT_PROPS) do
-        local t = veh[prop]
-        if istable(t) then
-            for _, s in pairs(t) do
-                if s then add(s) end
-            end
+        if istable(veh[prop]) then
+            for _, s in pairs(veh[prop]) do if s then add(s) end end
         end
     end
 
@@ -453,6 +387,18 @@ local function EnumerateSeats(veh)
 
     add(veh)
     return seats
+end
+
+-- The natural seat to drop a player into: the first empty seat, driver/gunner
+-- first (that is the order EnumerateSeats yields them in).
+---@param veh? Vehicle|Entity|any
+---@return Vehicle|Entity|nil
+local function GetVehicleSeatToEnter(veh)
+    if not IsValid(veh) then return nil end
+    for _, s in ipairs(EnumerateSeats(veh)) do
+        if ValidateSeat(s, true) then return s end
+    end
+    return nil
 end
 
 ---@param veh? Vehicle|Entity|any
@@ -613,8 +559,9 @@ function RARELOAD.RestorePlayerVehicle(ply, savedInfo)
             if ply.wac.mouseInput == nil then ply.wac.mouseInput = false end
         end
 
+        -- EnterVehicle fires the engine's PlayerEnteredVehicle hook itself; the
+        -- WAC failsafe below is bound to it, so we must NOT run it again manually.
         ply:EnterVehicle(seat)
-        hook.Run("PlayerEnteredVehicle", ply, seat, seatIndex)
 
         if debugEnabled then
             WriteVehicleDebug(ply, "INFO", "Player restored into vehicle",

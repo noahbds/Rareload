@@ -37,173 +37,28 @@ end
 
 
 -- ============================================================================
--- LOOKUP ARRAYS
--- ============================================================================
-
-local OCCUPANCY_KEYS = {
-    "LFSBaseEnt", "lvsBaseEnt", "VehicleBase", "wac_base", "baseEnt", "BaseEnt", "pPodOwner"
-}
-
-local OWNER_KEYS = {
-    "dOwnerEntLFS", "LFSOwner", "SpawnerPlayer", "RareloadOwner"
-}
-
-
--- ============================================================================
 -- INTERNAL HELPERS
 -- ============================================================================
 
 local DataUtils = RARELOAD.DataUtils
 
-local function IsVehicleEntity(ent)
-    return DataUtils and DataUtils.IsVehicleEntity(ent) or (IsValid(ent) and ent:IsVehicle())
+local function IsRootVehicle(ent)
+    return DataUtils and DataUtils.IsRootVehicle(ent) or false
 end
 
 local function GetRootVehicle(ent)
     return (DataUtils and DataUtils.GetRootVehicle(ent)) or ent
 end
 
+-- True when the player is seated anywhere in the given root vehicle. Relies on
+-- the generic GetRootVehicle to resolve whatever seat/pod they're in.
 local function PlayerOccupiesVehicle(ply, root)
     if not (IsValid(ply) and IsValid(root)) then return false end
     local veh = ply:GetVehicle()
     if not IsValid(veh) then return false end
-
-    if veh == root or GetRootVehicle(veh) == root or root == GetRootVehicle(veh) then return true end
-    if veh:GetParent() == root then return true end
-
-    for _, key in ipairs(OCCUPANCY_KEYS) do
-        if veh[key] == root then return true end
-    end
-
-    return false
+    return veh == root or GetRootVehicle(veh) == root
 end
 
-
--- ============================================================================
--- PHANTOM VISUAL PARTS
--- ============================================================================
-local MAX_VISUAL_PARTS = 32
-local MAX_POSE_BONES = 128
-
-local function GatherVehicleVisualParts(root)
-    if not IsValid(root) then return nil end
-
-    local baseModel = string.lower(root:GetModel() or "")
-    local rootPos, rootAng = root:GetPos(), root:GetAngles()
-    local parts, seen, count = {}, {}, 0
-
-    local function consider(ent)
-        if count >= MAX_VISUAL_PARTS or not IsValid(ent) or ent == root then return end
-        if ent:IsPlayer() or ent:IsNPC() or ent:IsWeapon() then return end
-
-        local mdl = ent:GetModel()
-        if not isstring(mdl) or mdl == "" then return end
-
-        local lower = string.lower(mdl)
-        if lower == baseModel or seen[lower] or not string.EndsWith(lower, ".mdl") then return end
-
-        if ent:GetNoDraw() or (ent.GetRenderMode and ent:GetRenderMode() == RENDERMODE_NONE) or IsVehicleEntity(ent) then return end
-
-        seen[lower] = true
-        count = count + 1
-
-        local lpos, lang = WorldToLocal(ent:GetPos(), ent:GetAngles(), rootPos, rootAng)
-        parts[#parts + 1] = {
-            model = mdl,
-            skin  = ent:GetSkin() or 0,
-            pos   = { x = lpos.x, y = lpos.y, z = lpos.z },
-            ang   = { p = lang.p, y = lang.y, r = lang.r },
-        }
-    end
-
-    if constraint and constraint.GetAllConstrainedEntities then
-        local ok, constrained = pcall(constraint.GetAllConstrainedEntities, root)
-        if ok and istable(constrained) then
-            for _, ent in pairs(constrained) do consider(ent) end
-        end
-    end
-
-    local function walkChildren(ent, depth)
-        if depth > 6 or not IsValid(ent) then return end
-        for _, child in ipairs(ent:GetChildren() or {}) do
-            consider(child)
-            walkChildren(child, depth + 1)
-        end
-    end
-    walkChildren(root, 0)
-
-    return #parts > 0 and parts or nil
-end
-
-local function GatherVehicleAppearance(root)
-    if not IsValid(root) then return nil end
-    local appearance = { skin = root:GetSkin() or 0 }
-    local bodygroups
-
-    for _, bg in ipairs(root:GetBodyGroups() or {}) do
-        local value = root:GetBodygroup(bg.id)
-        if value and value ~= 0 then
-            bodygroups = bodygroups or {}
-            bodygroups[bg.id] = value
-        end
-    end
-    appearance.bodygroups = bodygroups
-
-    return appearance
-end
-
-local function GatherVehiclePose(root)
-    if not IsValid(root) then return nil end
-    local pose = {}
-
-    local seq = root:GetSequence()
-    if seq and seq >= 0 then
-        pose.sequence = seq
-        pose.cycle    = root:GetCycle() or 0
-    end
-
-    local numPP = root:GetNumPoseParameters() or 0
-    if numPP > 0 then
-        local params = {}
-        for i = 0, numPP - 1 do
-            local name = root:GetPoseParameterName(i)
-            if isstring(name) and name ~= "" then
-                local minv, maxv = root:GetPoseParameterRange(i)
-                local norm = root:GetPoseParameter(i)
-                if minv and maxv then
-                    params[name] = minv + (norm or 0) * (maxv - minv)
-                end
-            end
-        end
-        if next(params) then pose.poseParams = params end
-    end
-
-    local numBones = root:GetBoneCount() or 0
-    if numBones > 0 and numBones <= MAX_POSE_BONES then
-        local bones
-        for b = 0, numBones - 1 do
-            local ang = root:GetManipulateBoneAngles(b)
-            local pos = root:GetManipulateBonePosition(b)
-            local scl = root:GetManipulateBoneScale(b)
-
-            local hasAng = ang and (ang.p ~= 0 or ang.y ~= 0 or ang.r ~= 0)
-            local hasPos = pos and (pos.x ~= 0 or pos.y ~= 0 or pos.z ~= 0)
-            local hasScl = scl and (scl.x ~= 1 or scl.y ~= 1 or scl.z ~= 1)
-
-            if hasAng or hasPos or hasScl then
-                bones = bones or {}
-                bones[b] = {
-                    ang = hasAng and { p = ang.p, y = ang.y, r = ang.r } or nil,
-                    pos = hasPos and { x = pos.x, y = pos.y, z = pos.z } or nil,
-                    scl = hasScl and { x = scl.x, y = scl.y, z = scl.z } or nil,
-                }
-            end
-        end
-        if bones then pose.bones = bones end
-    end
-
-    return next(pose) and pose or nil
-end
 
 local function BuildSeatDescriptor(root, seat)
     if not IsValid(seat) then return nil end
@@ -246,12 +101,9 @@ return function(ply)
     local duplicatorSeen = {}
 
     local idOverrides = {}
-    local visuals = {}
 
-    -- Localize API calls for the O(N) loop to minimize global table lookups
+    -- Localize API calls for the O(N) loop to minimize global table lookups.
     local ents_GetAll = ents.GetAll
-    local ClassIsRootVehicle = RARELOAD.DataUtils and RARELOAD.DataUtils.ClassIsRootVehicle
-    local IsVehicleSubEntity = RARELOAD.DataUtils and RARELOAD.DataUtils.IsVehicleSubEntity
 
     local Ownership = RARELOAD.Ownership
     local ResolveOwner = Ownership and Ownership.ResolveOwner
@@ -263,30 +115,27 @@ return function(ply)
     for _, ent in ipairs(ents_GetAll()) do
         if not IsValid(ent) or ent:IsPlayer() or ent:IsNPC() or ent:IsWeapon() then continue end
 
-        local isVeh = (ClassIsRootVehicle and ClassIsRootVehicle(ent:GetClass())) or IsVehicleEntity(ent)
-        if not isVeh then continue end
+        -- Only consider things that can BE a vehicle root or a drivable seat; the
+        -- cheap class/IsVehicle test avoids running the part-graph on every prop.
+        if not (IsRootVehicle(ent) or ent:IsVehicle()) then continue end
 
+        -- Map any seat/part to the framework's actual root, then drop it if it is
+        -- still a structural part (never target a wheel/rotor as a "vehicle").
         local targetEnt = GetRootVehicle(ent) or ent
         if not IsValid(targetEnt) or targetEnt:IsPlayer() or targetEnt:IsNPC() or targetEnt:IsWeapon() then continue end
-        if IsVehicleSubEntity and IsVehicleSubEntity(targetEnt) then continue end
+        if DataUtils and DataUtils.IsVehiclePart(targetEnt) then continue end
 
         local owner = ResolveOwner and ResolveOwner(targetEnt) or nil
         local ownerValid = IsOwnedByPlayerSafe and IsOwnedByPlayerSafe(targetEnt, ply)
 
-        if not ownerValid and (owner == nil or not IsValid(owner)) then
+        -- Frameworks that assign no creator/CPPI owner (some LFS setups) leave a
+        -- vehicle looking unowned. Claim a genuinely unowned vehicle for the saver
+        -- only when they are clearly its operator — occupying or driving it — so we
+        -- never grab someone else's vehicle. Proper owner fields (dOwnerEntLFS, …)
+        -- are already resolved by Ownership.ResolveOwner.
+        if not ownerValid and not IsValid(owner) then
             local claimable = PlayerOccupiesVehicle(ply, targetEnt)
-                or (targetEnt.GetDriver and isfunction(targetEnt.GetDriver) and targetEnt:GetDriver() == ply)
-                or (targetEnt.LastDriver == ply)
-                or (#player.GetHumans() <= 1)
-
-            if not claimable then
-                for _, key in ipairs(OWNER_KEYS) do
-                    if targetEnt[key] == ply then
-                        claimable = true
-                        break
-                    end
-                end
-            end
+                or (isfunction(targetEnt.GetDriver) and targetEnt:GetDriver() == ply)
 
             if claimable and SetOwner then
                 SetOwner(targetEnt, ply)
@@ -296,10 +145,6 @@ return function(ply)
         end
 
         if not ownerValid then
-            if IsVehicleEntity(ent) then
-                WriteVehicleSaveDebug(ply, "VERBOSE", "Skipped vehicle (not owned by saver)",
-                    string.format("class=%s owner=%s", targetEnt:GetClass(), IsValid(owner) and owner:Nick() or "none"))
-            end
             continue
         end
 
@@ -315,18 +160,11 @@ return function(ply)
 
             if sid then targetEnt.OriginalSpawner = sid end
 
-            -- Consolidate visuals and ID overrides directly into the first loop
-            -- to avoid iterating over `duplicatorTargets` multiple times.
+            -- Record EntIndex → live id so frameworks that strip unknown fields
+            -- from their duplicator table (Glide) still get a stable, matchable id
+            -- in the snapshot instead of a synthetic "vehicle_<idx>" fallback.
             if id then
                 idOverrides[targetEnt:EntIndex()] = id
-
-                local parts = GatherVehicleVisualParts(targetEnt)
-                local appearance = GatherVehicleAppearance(targetEnt)
-                local pose = GatherVehiclePose(targetEnt)
-
-                if parts or appearance or pose then
-                    visuals[id] = { parts = parts, appearance = appearance, pose = pose }
-                end
             end
         end
     end
@@ -348,7 +186,6 @@ return function(ply)
     end
 
     if next(idOverrides) then duplicatorSnapshot.rareloadIDOverrides = idOverrides end
-    if next(visuals) then duplicatorSnapshot.rareloadVisuals = visuals end
 
     SnapshotUtils.EnsureIndexMap(duplicatorSnapshot, { category = "vehicle", idPrefix = "vehicle" })
 

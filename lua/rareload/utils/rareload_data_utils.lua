@@ -4,7 +4,7 @@ RARELOAD = RARELOAD or {}
 RARELOAD.DataUtils = RARELOAD.DataUtils or {}
 
 -- ===========================================================================
--- LOOKUP TABLES
+-- LOOKUP TABLES & PATTERNS
 -- ===========================================================================
 
 local EXCLUDED_CLASSES = {
@@ -16,7 +16,9 @@ local EXCLUDED_CLASSES = {
     ["physgun_beam"] = true
 }
 
--- The actual underlying base classes for all major frameworks
+-- The underlying framework base classes. A concrete vehicle is a root when it
+-- inherits (at any depth) from one of these — resolved dynamically through the
+-- scripted_ents registry, so individual vehicle classes never need listing.
 local ROOT_VEHICLE_BASES = {
     ["lvs_base"] = true,
     ["lvs_base_fakephysics"] = true,
@@ -30,7 +32,7 @@ local ROOT_VEHICLE_BASES = {
     ["wac_hc_base"] = true,
     ["wac_pl_base"] = true,
     ["wac_hover_base"] = true,
-    ["glide_base_vehicle"] = true,
+    ["base_glide"] = true, -- Glide root base (base_glide_car/plane/... derive from it)
     ["sent_sakarias_car"] = true
 }
 
@@ -40,6 +42,11 @@ local SOURCE_VEHICLES = {
     ["prop_vehicle_driveable"] = true
 }
 
+-- Marker fields the frameworks set on their *root* vehicle entities. This is the
+-- only framework-specific list we keep: there is no engine-level "is a vehicle"
+-- signal, but everything downstream (which entities are seats/rotors/wheels, how
+-- they attach, where the root is) is derived generically from the parent and
+-- constraint graph — never from hardcoded part class names or model paths.
 local VEHICLE_FLAG_FIELDS = {
     "LVS", "IsLVS", "bIsLVS", "IsLVSVehicle",
     "LFS", "IsLFS", "IdentifiesAsLFS", "IsLFSVehicle",
@@ -47,26 +54,6 @@ local VEHICLE_FLAG_FIELDS = {
     "IsWAC", "IsWACVehicle",
     "IsGlideVehicle", "bIsGlideVehicle",
     "IsSCar", "bIsSCar"
-}
-
-local SUB_ENT_FLAGS = {
-    "wac_ignore", "bWACBlade", "WACBlade", "WACRotor", "IsRotorBlade", "bIsRotorBlade"
-}
-
-local SUB_ENT_MODELS = {
-    ["models/props_junk/sawblade001a.mdl"] = true,
-    ["models/props_c17/trap_propeller_blade.mdl"] = true
-}
-
-local PARENT_KEYS = {
-    "wac_base", "LFSBaseEnt", "lvsBaseEnt", "VehicleBase", "pPodOwner",
-    "Aircraft", "Airframe", "Rotor", "rotor", "TailRotor", "TopRotor",
-    "BackRotor", "Engine", "baseEnt", "BaseEnt", "Pod", "fphysSeat",
-    "wac_rotor", "wac_blade"
-}
-
-local ROOT_PARENT_FUNCS = {
-    "GetBaseEnt", "lfsGetPlane"
 }
 
 -- ===========================================================================
@@ -121,8 +108,7 @@ end
 function RARELOAD.DataUtils.ToPositionTable(pos)
     if istable(pos) then
         if pos.x ~= nil and pos.y ~= nil and pos.z ~= nil then return { x = pos.x, y = pos.y, z = pos.z } end
-        if pos[1] ~= nil and pos[2] ~= nil and pos[3] ~= nil then return { x = tonumber(pos[1]) or 0, y = tonumber(pos
-            [2]) or 0, z = tonumber(pos[3]) or 0 } end
+        if pos[1] ~= nil and pos[2] ~= nil and pos[3] ~= nil then return { x = tonumber(pos[1]) or 0, y = tonumber(pos[2]) or 0, z = tonumber(pos[3]) or 0 } end
         if isfunction(pos.GetPos) then
             local v = pos:GetPos()
             return { x = v.x, y = v.y, z = v.z }
@@ -252,10 +238,8 @@ end
 function RARELOAD.DataUtils.IsValidAngle(ang)
     if isangle(ang) then return true end
     if istable(ang) then
-        if ang.p ~= nil and ang.y ~= nil and ang.r ~= nil then return type(ang.p) == "number" and type(ang.y) == "number" and
-            type(ang.r) == "number" end
-        if ang[1] ~= nil and ang[2] ~= nil and ang[3] ~= nil then return type(ang[1]) == "number" and
-            type(ang[2]) == "number" and type(ang[3]) == "number" end
+        if ang.p ~= nil and ang.y ~= nil and ang.r ~= nil then return type(ang.p) == "number" and type(ang.y) == "number" and type(ang.r) == "number" end
+        if ang[1] ~= nil and ang[2] ~= nil and ang[3] ~= nil then return type(ang[1]) == "number" and type(ang[2]) == "number" and type(ang[3]) == "number" end
     end
     if isstring(ang) then return RARELOAD.DataUtils.ParseAngleString(ang) ~= nil end
     return false
@@ -378,91 +362,71 @@ local function ClassIsRootVehicle(class)
     return false
 end
 RARELOAD.DataUtils.ClassIsRootVehicle = ClassIsRootVehicle
+-- Back-compat: callers (client SED panels) that ask "does this class look like a
+-- vehicle?" want the same hierarchy-based answer.
+RARELOAD.DataUtils.ClassLooksLikeVehicle = ClassIsRootVehicle
 
-function RARELOAD.DataUtils.IsVehicleEntity(ent)
+local function HasVehicleFlag(t)
+    for _, field in ipairs(VEHICLE_FLAG_FIELDS) do
+        local v = t[field]
+        if v == true or (v ~= nil and v ~= false and not isfunction(v)) then return true end
+    end
+    return false
+end
+RARELOAD.DataUtils.HasVehicleFlag = HasVehicleFlag
+
+-- A ROOT vehicle: the entity a framework treats as "the vehicle" — what the
+-- vehicle save targets and respawns. Seats, rotors and wheels are NOT roots.
+-- Detected only from the class hierarchy (ClassIsRootVehicle) and framework
+-- marker flags; never from part class names.
+function RARELOAD.DataUtils.IsRootVehicle(ent)
     if not IsValid(ent) or ent:IsPlayer() or ent:IsNPC() or ent:IsWeapon() then return false end
-    if ent:IsVehicle() then return true end
-
     local class = ent:GetClass()
+    if SOURCE_VEHICLES[string.lower(class or "")] then return true end
     if ClassIsRootVehicle(class) then return true end
-    if RARELOAD.DataUtils.IsVehicleSubEntity(ent) then return true end
-
-    -- Legacy support for standalone properties
-    for _, field in ipairs(VEHICLE_FLAG_FIELDS) do
-        local v = ent[field]
-        if v == true or (v ~= nil and v ~= false) then return true end
-    end
-
-    return false
+    return HasVehicleFlag(ent)
 end
 
-function RARELOAD.DataUtils.IsVehicleEntityDef(def)
-    if not istable(def) then return false end
-
-    local class = def.Class or def.class or def.ClassName
-    if EXCLUDED_CLASSES[string.lower(tostring(class or ""))] then return false end
-    if ClassIsRootVehicle(class) then return true end
-    if RARELOAD.DataUtils.IsVehicleSubEntityDef(def) then return true end
-
-    for _, field in ipairs(VEHICLE_FLAG_FIELDS) do
-        local v = def[field]
-        if v == true or (v ~= nil and v ~= false) then return true end
-    end
-    if def.wac_seatinfo ~= nil then return true end
-
-    return false
+local function creatorIsPlayer(ent)
+    local c = isfunction(ent.GetCreator) and ent:GetCreator() or nil
+    return IsValid(c) and c:IsPlayer()
 end
 
-function RARELOAD.DataUtils.IsVehicleSubEntity(ent)
+-- Generic sub-part test: is `ent` a structural piece of some root vehicle's
+-- contraption (seat, rotor, wheel, body, camera)? Derived PURELY from the parent
+-- and constraint graph plus the engine's DoNotDuplicate marker — never from part
+-- class names, model paths or per-framework field names. A player-built prop
+-- welded to a vehicle keeps its creator and is deliberately NOT counted, so user
+-- contraptions still save normally.
+function RARELOAD.DataUtils.IsVehiclePart(ent)
     if not IsValid(ent) or ent:IsPlayer() or ent:IsNPC() or ent:IsWeapon() then return false end
+    if RARELOAD.DataUtils.IsRootVehicle(ent) then return false end
 
-    local class = string.lower(ent:GetClass() or "")
-    if ClassIsRootVehicle(class) then return false end
+    -- Frameworks flag their own pieces (rotors, wheels, gibs) as non-duplicatable.
+    if ent.DoNotDuplicate == true then return true end
 
-    for _, flag in ipairs(SUB_ENT_FLAGS) do
-        if ent[flag] == true then return true end
+    local isRoot = RARELOAD.DataUtils.IsRootVehicle
+
+    -- Climb the parent chain; a root vehicle anywhere above makes this a part.
+    local node = ent
+    for _ = 1, 32 do
+        local parent = node:GetParent()
+        if not IsValid(parent) or parent == node then break end
+        if isRoot(parent) then return true end
+        node = parent
     end
 
-    for _, key in ipairs(PARENT_KEYS) do
-        local val = ent[key]
-        if IsValid(val) and val ~= ent then return true end
-    end
-
-    local mdl = string.lower(ent:GetModel() or "")
-    if SUB_ENT_MODELS[mdl] or string.find(mdl, "helicopter_brokenpiece") then return true end
-
-    if ent.GetOwner and isfunction(ent.GetOwner) then
-        local ok, owner = pcall(ent.GetOwner, ent)
-        if ok and IsValid(owner) and owner ~= ent and not owner:IsPlayer() then
-            if ClassIsRootVehicle(owner:GetClass()) then
-                return true
-            end
-        end
-    end
-
+    -- The outermost parented ancestor (or `ent` itself) may instead be
+    -- *constrained* into a vehicle (spinning rotors, rolling wheels). Only
+    -- framework-created pieces count — a player-spawned prop keeps its creator.
     if constraint and constraint.GetAllConstrainedEntities then
-        local ok, cEnts = pcall(constraint.GetAllConstrainedEntities, ent)
-        if ok and istable(cEnts) then
-            for _, c in pairs(cEnts) do
-                if IsValid(c) and c ~= ent then
-                    local cClass = c:GetClass()
-                    if ClassIsRootVehicle(cClass) then
-                        if ent.wac_seatinfo or ent.wac_base or ent.wac_ignore or mdl == "models/props_junk/sawblade001a.mdl" then
-                            return true
-                        end
-
-                        -- Dynamically captures engines, armor, constraints explicitly flagged by LVS/LFS authors
-                        if ent.DoNotDuplicate == true then
-                            return true
-                        end
-
-                        if istable(c.rotors) then for _, v in pairs(c.rotors) do if v == ent then return true end end end
-                        if istable(c.wheels) then for _, v in pairs(c.wheels) do if v == ent then return true end end end
-                        if istable(c.weapons) then for _, v in pairs(c.weapons) do if v == ent then return true end end end
-
-                        if c.Rotor == ent or c.TopRotor == ent or c.BackRotor == ent or c.MainRotor == ent or c.Camera == ent then
-                            return true
-                        end
+        local probes = (node == ent) and { ent } or { node, ent }
+        for _, probe in ipairs(probes) do
+            if not creatorIsPlayer(probe) then
+                local ok, group = pcall(constraint.GetAllConstrainedEntities, probe)
+                if ok and istable(group) then
+                    for _, c in pairs(group) do
+                        if IsValid(c) and c ~= probe and isRoot(c) then return true end
                     end
                 end
             end
@@ -470,97 +434,70 @@ function RARELOAD.DataUtils.IsVehicleSubEntity(ent)
     end
 
     return false
+end
+
+-- Back-compat alias for callers that ask for "is a vehicle sub-entity".
+RARELOAD.DataUtils.IsVehicleSubEntity = RARELOAD.DataUtils.IsVehiclePart
+
+-- "Vehicle-related": a root, a drivable seat/pod (IsVehicle), or any structural
+-- part. The broad test used to keep vehicles and every piece of them out of the
+-- standalone entity save.
+function RARELOAD.DataUtils.IsVehicleEntity(ent)
+    if not IsValid(ent) or ent:IsPlayer() or ent:IsNPC() or ent:IsWeapon() then return false end
+    if ent:IsVehicle() then return true end
+    if RARELOAD.DataUtils.IsRootVehicle(ent) then return true end
+    return RARELOAD.DataUtils.IsVehiclePart(ent)
+end
+
+-- Duplicator-def variants work on a decoded table (no live entity → no graph).
+-- Parts are already excluded on the live entity at capture time, so these only
+-- need class/flags for roots and the DoNotDuplicate marker for stray parts.
+function RARELOAD.DataUtils.IsVehicleEntityDef(def)
+    if not istable(def) then return false end
+    local lc = string.lower(tostring(def.Class or def.class or def.ClassName or ""))
+    if EXCLUDED_CLASSES[lc] then return false end
+    if SOURCE_VEHICLES[lc] then return true end
+    if ClassIsRootVehicle(lc) then return true end
+    if def.wac_seatinfo ~= nil then return true end
+    return HasVehicleFlag(def)
 end
 
 function RARELOAD.DataUtils.IsVehicleSubEntityDef(def)
     if not istable(def) then return false end
-    local class = string.lower(tostring(def.Class or def.class or def.ClassName or ""))
-
-    if ClassIsRootVehicle(class) then return false end
-
-    for _, flag in ipairs(SUB_ENT_FLAGS) do
-        if def[flag] == true then return true end
-    end
-
-    -- Crucial dynamic check: Allows components like lvs_fighterplane_engine
-    -- to be instantly stripped from prop lists since the framework flagged them.
     if def.DoNotDuplicate == true then return true end
-
-    local mdl = string.lower(tostring(def.Model or def.model or ""))
-    if SUB_ENT_MODELS[mdl] or string.find(mdl, "helicopter_brokenpiece") then return true end
-
-    return false
+    local lc = string.lower(tostring(def.Class or def.class or def.ClassName or ""))
+    if ClassIsRootVehicle(lc) then return false end
+    -- The engine's universal driveable-seat class, if it rode along into an entity
+    -- capture (its owning vehicle is saved separately in the vehicle snapshot).
+    return lc == "prop_vehicle_prisoner_pod"
 end
 
+-- Resolve the root vehicle for any vehicle-related entity: walk the parent chain,
+-- then follow the outermost ancestor's constraints to a root. Fully generic.
 function RARELOAD.DataUtils.GetRootVehicle(ent)
     if not IsValid(ent) then return nil end
-    if ClassIsRootVehicle(ent:GetClass()) then return ent end
+    if RARELOAD.DataUtils.IsRootVehicle(ent) then return ent end
 
-    local root = ent
+    local isRoot = RARELOAD.DataUtils.IsRootVehicle
 
+    local node = ent
     for _ = 1, 32 do
-        local nextCandidate = nil
-        local parent = root:GetParent()
-
-        if IsValid(parent) and parent ~= root then
-            nextCandidate = parent
-        else
-            for _, key in ipairs(PARENT_KEYS) do
-                local val = root[key]
-                if IsValid(val) and val ~= root then
-                    nextCandidate = val
-                    break
-                end
-            end
-        end
-
-        if not nextCandidate then
-            for _, funcName in ipairs(ROOT_PARENT_FUNCS) do
-                local func = root[funcName]
-                if isfunction(func) then
-                    local ok, b = pcall(func, root)
-                    if ok and IsValid(b) and b ~= root then
-                        nextCandidate = b
-                        break
-                    end
-                end
-            end
-        end
-
-        if not nextCandidate and root.GetOwner and isfunction(root.GetOwner) then
-            local ok, o = pcall(root.GetOwner, root)
-            if ok and IsValid(o) and o ~= root and not o:IsPlayer() and (ClassIsRootVehicle(o:GetClass()) or RARELOAD.DataUtils.IsVehicleEntity(o)) then
-                nextCandidate = o
-            end
-        end
-
-        if IsValid(nextCandidate) then
-            root = nextCandidate
-            if ClassIsRootVehicle(root:GetClass()) then break end
-        else
-            break
-        end
+        local parent = node:GetParent()
+        if not IsValid(parent) or parent == node then break end
+        if isRoot(parent) then return parent end
+        node = parent
     end
 
-    if not ClassIsRootVehicle(root:GetClass()) and constraint and constraint.GetAllConstrainedEntities then
-        local ok, cEnts = pcall(constraint.GetAllConstrainedEntities, root)
-        if ok and istable(cEnts) then
-            for _, cEnt in pairs(cEnts) do
-                if IsValid(cEnt) and cEnt ~= root then
-                    if ClassIsRootVehicle(cEnt:GetClass()) then
-                        return cEnt
-                    end
-                    for _, key in ipairs(PARENT_KEYS) do
-                        if IsValid(cEnt[key]) and cEnt[key] ~= root then
-                            return cEnt[key]
-                        end
-                    end
-                end
+    if constraint and constraint.GetAllConstrainedEntities then
+        local ok, group = pcall(constraint.GetAllConstrainedEntities, node)
+        if ok and istable(group) then
+            for _, c in pairs(group) do
+                if IsValid(c) and c ~= node and isRoot(c) then return c end
             end
         end
     end
 
-    return root
+    return ent
 end
 
 if SERVER then
