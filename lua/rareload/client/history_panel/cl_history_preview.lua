@@ -2,11 +2,11 @@
 -- Save Timeline — in-world preview (4.0 · Phase 4)
 --
 -- A "Preview in World" toggle drops phantoms of a saved snapshot into the map:
--- the player model AND every saved entity/NPC, each at its saved position. Each
--- phantom glows GREEN when its spot is clear or RED when a player-sized hull
--- would spawn inside a solid, and carries a small in-world info card (class +
--- clear/blocked). Restoring a red spot still lands safely (server anti-stuck
--- relocates), so red is a heads-up, not a block.
+-- the player model AND every saved entity/NPC, each at its saved position, each
+-- carrying its real SED info panel (via SED.PanelRendererBuildContext/Draw). Every
+-- phantom glows GREEN when its spot is clear or RED when a player-sized hull would
+-- spawn inside a solid, re-tested live. Restoring a red spot still lands safely
+-- (server anti-stuck relocates), so red is a heads-up, not a block.
 --
 -- Fully client-side and self-contained; owns its phantoms and hooks. Entity
 -- geometry is fetched on demand from the server (RareloadHistory_Preview).
@@ -58,6 +58,7 @@ local function RemoveAll()
         if IsValid(it.phantom) then it.phantom:Remove() end
     end
     Preview.items = {}
+    Preview.playerItem = nil
 end
 
 function Preview.Clear()
@@ -70,14 +71,16 @@ function Preview.IsShowing(id)
     return Preview.active and Preview.showId == id
 end
 
-local function AddPhantom(model, pos, ang, title)
-    if not (pos and model and model ~= "" and util.IsValidModel(model)) then return end
+local function AddPhantom(model, pos, ang, title, rec, isNPC)
+    if not (pos and model and model ~= "" and util.IsValidModel(model)) then return nil end
     local clear = HullClear(pos)
     local it = {
         pos   = pos,
         clear = clear,
         color = clear and COL_CLEAR or COL_BLOCK,
         title = title or "?",
+        rec   = rec,
+        isNPC = isNPC and true or false,
     }
     local p = ClientsideModel(model)
     if IsValid(p) then
@@ -90,6 +93,7 @@ local function AddPhantom(model, pos, ang, title)
         it.phantom = p
     end
     Preview.items[#Preview.items + 1] = it
+    return it
 end
 
 -- `entry` is the summary row (has id, mdl, pos, ang). The player phantom is spawned
@@ -107,7 +111,7 @@ function Preview.Request(entry)
         local lp = LocalPlayer()
         model = (IsValid(lp) and lp:GetModel()) or "models/player/kleiner.mdl"
     end
-    AddPhantom(model, ToVec(entry.pos), ToAng(entry.ang), "Player")
+    Preview.playerItem = AddPhantom(model, ToVec(entry.pos), ToAng(entry.ang), "Player")
     net.Start("RareloadHistory_Preview")
     net.WriteString(entry.id or "")
     net.SendToServer()
@@ -131,10 +135,21 @@ net.Receive("RareloadHistory_Preview", function()
     local json = util.Decompress(raw)
     if not json then return end
     local ok, data = pcall(util.JSONToTable, json)
-    if ok and istable(data) and istable(data.objects) then
-        for _, o in ipairs(data.objects) do
-            AddPhantom(o.m, ToVec(o.p), ToAng(o.a), tostring(o.c or "?"))
-        end
+    if not (ok and istable(data)) then return end
+
+    -- attach the player's SED panel record, built from the saved player-state
+    if Preview.playerItem and istable(data.player) and istable(data.player.info)
+        and SED and SED.Phantom and SED.Phantom.BuildRecordFromInfo then
+        local lp   = LocalPlayer()
+        local name = (IsValid(lp) and lp:Nick()) or "Player"
+        local sid  = (IsValid(lp) and lp:SteamID()) or "preview"
+        local okr, rec = pcall(SED.Phantom.BuildRecordFromInfo, name, sid, data.player.info, game.GetMap())
+        if okr and istable(rec) then Preview.playerItem.rec = rec end
+    end
+
+    -- entity / NPC phantoms, each with its full SED record
+    for _, o in ipairs(data.objects or {}) do
+        AddPhantom(o.m, ToVec(o.p), ToAng(o.a), tostring(o.c or "?"), o.rec, o.npc == 1)
     end
 end)
 
@@ -174,16 +189,29 @@ hook.Add("PostDrawTranslucentRenderables", "RARELOAD_HistoryPreview_World", func
     local eye = lp:EyePos()
     local pulse = 0.55 + math.sin(CurTime() * 4) * 0.35
 
+    -- glow orbs mark each spot green/red
     render.SetMaterial(GLOW_MAT)
     for _, it in ipairs(Preview.items) do
         render.DrawSprite(it.pos + Vector(0, 0, 20), 32 * pulse, 32 * pulse, it.color)
     end
 
-    -- info cards for the nearest few phantoms
-    local shown = 0
+    local hasSED = SED and SED.PanelRendererBuildContext and SED.PanelRendererDraw
+    if hasSED then SED.lpCache = lp end
+
+    local shown, sedDrawn = 0, 0
     for _, it in ipairs(Preview.items) do
-        if shown >= LABEL_CAP then break end
-        if eye:DistToSqr(it.pos) <= LABEL_DIST_SQR then
+        local drewSED = false
+        if it.rec and hasSED and sedDrawn < 16 and IsValid(it.phantom) then
+            -- the real SED info panel for this phantom (player or entity/NPC)
+            local okc, ctx = pcall(SED.PanelRendererBuildContext, it.phantom, it.rec, it.isNPC)
+            if okc and ctx then
+                pcall(SED.PanelRendererDraw, ctx)
+                sedDrawn = sedDrawn + 1
+                drewSED = true
+            end
+        end
+        if not drewSED and shown < LABEL_CAP and eye:DistToSqr(it.pos) <= LABEL_DIST_SQR then
+            -- lightweight fallback card while the record is still loading
             shown = shown + 1
             local top = it.pos + Vector(0, 0, 82)
             local ang = FaceAngle(top, eye)
@@ -197,6 +225,19 @@ hook.Add("PostDrawTranslucentRenderables", "RARELOAD_HistoryPreview_World", func
                 TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
             cam.End3D2D()
         end
+    end
+end)
+
+-- re-test collision periodically so green/red updates live as the world changes
+local _nextRecheck = 0
+hook.Add("Think", "RARELOAD_HistoryPreview_Recheck", function()
+    if not Preview.active then return end
+    local now = CurTime()
+    if now < _nextRecheck then return end
+    _nextRecheck = now + 0.3
+    for _, it in ipairs(Preview.items) do
+        it.clear = HullClear(it.pos)
+        it.color = it.clear and COL_CLEAR or COL_BLOCK
     end
 end)
 

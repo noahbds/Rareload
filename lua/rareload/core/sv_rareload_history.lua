@@ -109,9 +109,13 @@ end)
 
 -- ── in-world preview data (player + entity/NPC geometry, fetched on demand) ──────
 
-local PREVIEW_OBJ_CAP = 96
+local PREVIEW_OBJ_CAP = 48
+local PLAYER_INFO_KEYS = {
+    "pos", "ang", "moveType", "health", "armor", "inventory", "ammo",
+    "playerStates", "appearance", "activeWeapon", "playermodel", "vehicles", "vehicleState",
+}
 
-local function ExtractObjects(bucket, out)
+local function ExtractObjects(bucket, out, isNPC)
     if not (SnapshotUtils and SnapshotUtils.GetSummary and istable(bucket)) then return end
     local ok, list = pcall(SnapshotUtils.GetSummary, bucket, {})
     if not (ok and istable(list)) then return end
@@ -121,10 +125,12 @@ local function ExtractObjects(bucket, out)
         local model = s.model or s.Model
         if istable(pos) and isstring(model) and model ~= "" then
             out[#out + 1] = {
-                c = s.class or s.Class or s.NPCName or "?",
-                m = model,
-                p = pos,
-                a = s.Angle or s.Ang or s.ang or nil,
+                c   = s.class or s.Class or s.NPCName or "?",
+                m   = model,
+                p   = pos,
+                a   = s.Angle or s.Ang or s.ang or nil,
+                npc = isNPC and 1 or nil,
+                rec = s, -- full saved record so the client can draw the SED info panel
             }
         end
     end
@@ -133,14 +139,20 @@ end
 local function BuildPreviewData(steamID, mapName, id)
     local e = RARELOAD.GetHistoryEntryById(steamID, mapName, id)
     if not e then return nil end
+
+    local info = {}
+    for _, k in ipairs(PLAYER_INFO_KEYS) do info[k] = e[k] end
+
     local objects = {}
-    ExtractObjects(e.entities, objects)
-    ExtractObjects(e.npcs, objects)
+    ExtractObjects(e.entities, objects, false)
+    ExtractObjects(e.npcs, objects, true)
+
     return {
         player = {
-            m = (istable(e.appearance) and e.appearance.model) or e.playermodel,
-            p = e.pos,
-            a = e.ang,
+            m    = (istable(e.appearance) and e.appearance.model) or e.playermodel,
+            p    = e.pos,
+            a    = e.ang,
+            info = info,
         },
         objects = objects,
     }
@@ -152,6 +164,15 @@ net.Receive("RareloadHistory_Preview", function(_, ply)
     local data = (id ~= "") and BuildPreviewData(ply:SteamID(), game.GetMap(), id) or nil
     local json = util.TableToJSON(data or {}) or "{}"
     local blob = util.Compress(json) or ""
+
+    -- Net messages cap near 64KB. If the full records blow past that, drop them and resend
+    -- a lightweight version (phantoms + fallback cards still work, just no SED panels).
+    if #blob > 60000 and istable(data) then
+        if istable(data.player) then data.player.info = nil end
+        for _, o in ipairs(data.objects or {}) do o.rec = nil end
+        json = util.TableToJSON(data) or "{}"
+        blob = util.Compress(json) or ""
+    end
 
     net.Start("RareloadHistory_Preview")
     net.WriteString(id)

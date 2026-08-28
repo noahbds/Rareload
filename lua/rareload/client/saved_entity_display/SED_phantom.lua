@@ -348,6 +348,27 @@ function Phantom.BuildSavedRecord(steamID, phantomData, mapName)
     return rec
 end
 
+-- Build a player-phantom saved record from an ARBITRARY savedInfo (not the live
+-- synced position), so callers outside the normal flow — e.g. the Save Timeline
+-- preview showing a HISTORY entry — can render the same SED player panel.
+function Phantom.BuildRecordFromInfo(name, steamID, savedInfo, mapName)
+    local infoTarget = { Nick = function() return name end, SteamID = function() return tostring(steamID) end }
+    local infoData   = Phantom.BuildPhantomInfoData(infoTarget, savedInfo, mapName or game.GetMap(), 1)
+    return {
+        id                 = "histprev_" .. tostring(steamID),
+        class              = name,
+        _phantomTitle      = L("sed.phantom_title", name),
+        _isPhantom         = true,
+        _ownerSteamID      = steamID,
+        MaxHealth          = (savedInfo and tonumber(savedInfo.health)) or 100,
+        CurHealth          = (savedInfo and tonumber(savedInfo.health)) or 100,
+        pos                = savedInfo and savedInfo.pos,
+        ang                = savedInfo and savedInfo.ang,
+        _phantomData       = infoData,
+        _phantomCategories = PHANTOM_CATEGORIES,
+    }
+end
+
 local PLAYER_PHANTOM_CULL_SQR = 10000 * 10000
 
 local function EnsurePlayerPhantom(steamID, savedInfo)
