@@ -181,6 +181,30 @@ function SED.QueueAllSavedPanels()
         end
     end
 
+    -- Save Timeline preview phantoms: their own SED panels + interaction, depth-sorted.
+    for _, pi in ipairs(SED.PreviewItems or {}) do
+        local phantom = pi and pi.ent
+        if IsValid(phantom) and pi.saved then
+            local entPos       = phantom:GetPos()
+            local distSqr      = eyePos:DistToSqr(entPos)
+            local renderParams = SED.CalculateEntityRenderParams(phantom)
+            local maxDistSqr   = renderParams and renderParams.drawDistanceSqr or SED.DRAW_DISTANCE_SQR
+            if distSqr <= maxDistSqr then
+                listCount            = listCount + 1
+                local item           = GetQueueItem()
+                item.ent             = phantom
+                item.saved           = pi.saved
+                item.isNPC           = pi.isNPC and true or false
+                item.distSqr         = distSqr
+                item.renderParams    = renderParams
+                item.pos             = entPos
+                item.priority        = 3
+                item.liveEnt         = nil
+                queueList[listCount] = item
+            end
+        end
+    end
+
     if listCount == 0 then return end
 
     if not SED.InteractionState.active then

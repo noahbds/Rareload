@@ -77,21 +77,25 @@ hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", func
     if bDrawingDepth or bDrawingSkybox then return end
     if render.GetRenderTarget() ~= nil then return end
 
-    if not SS.DebugEnabled() then return end
+    local previewActive = SED.PreviewItems and next(SED.PreviewItems) ~= nil
+    if not SS.DebugEnabled() and not previewActive then return end
 
-    local hasViewSEDPerm = true
-    local lp = LocalPlayer()
-    if IsValid(lp) and RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
-        hasViewSEDPerm = RARELOAD.Permissions.HasPermission(lp, "VIEW_SED")
+    -- VIEW_SED gates only the debug display; the Save Timeline preview is the player's own
+    -- save and isn't permission-gated.
+    if not previewActive then
+        local lp = LocalPlayer()
+        if IsValid(lp) and RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
+            if not RARELOAD.Permissions.HasPermission(lp, "VIEW_SED") then return end
+        end
     end
-    if not hasViewSEDPerm then return end
 
     SED.lpCache = LocalPlayer()
     if not IsValid(SED.lpCache) then return end
 
     SED.CandidateEnt, SED.CandidateIsNPC, SED.CandidateID = nil, nil, nil
 
-    if SED.Phantom and SED.Phantom.InjectTracked then
+    -- Only inject the live-position player phantoms for the debug display, not the preview.
+    if SS.DebugEnabled() and SED.Phantom and SED.Phantom.InjectTracked then
         SED.Phantom.InjectTracked(game.GetMap())
     end
 

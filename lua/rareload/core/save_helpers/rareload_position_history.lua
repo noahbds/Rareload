@@ -2,6 +2,21 @@ RARELOAD = RARELOAD or {}
 RARELOAD.playerPositionHistory = RARELOAD.playerPositionHistory or {}
 RARELOAD.settings = RARELOAD.settings or {}
 RARELOAD.settings.maxHistorySize = RARELOAD.settings.maxHistorySize or 125
+RARELOAD.playerActiveHistoryId = RARELOAD.playerActiveHistoryId or {}
+
+-- Which history entry id is currently the active respawn save, per map+player.
+-- Persisted in the history file so the "active" marker survives map reloads.
+function RARELOAD.GetActiveHistoryId(steamID, mapName)
+    mapName = mapName or game.GetMap()
+    local m = RARELOAD.playerActiveHistoryId[mapName]
+    return m and m[steamID] or nil
+end
+
+function RARELOAD.SetActiveHistoryId(steamID, mapName, id)
+    mapName = mapName or game.GetMap()
+    RARELOAD.playerActiveHistoryId[mapName] = RARELOAD.playerActiveHistoryId[mapName] or {}
+    RARELOAD.playerActiveHistoryId[mapName][steamID] = id
+end
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Persistent save-history store (4.0 · Phase 2)
@@ -101,7 +116,7 @@ end
 
 local META_KEYS = { id = true, timestamp = true, pinned = true, note = true }
 
-local function Serialize(mapName, steamID, steamID64, history, nextSeq)
+local function Serialize(mapName, steamID, steamID64, history, nextSeq, activeId)
     local blobs, entries = {}, {}
     for i = 1, #history do
         local e = history[i]
@@ -130,6 +145,7 @@ local function Serialize(mapName, steamID, steamID64, history, nextSeq)
         steamID   = steamID,
         steamID64 = steamID64 or "",
         nextSeq   = nextSeq or (#history + 1),
+        activeId  = activeId,
         entries   = entries,
         blobs     = blobs,
     }
@@ -169,7 +185,8 @@ local function Persist(mapName, steamID)
     EnsureDirs(mapName)
     local seqKey  = mapName .. "/" .. steamID
     local nextSeq = seqByFile[seqKey] or (#history + 1)
-    local payload = Serialize(mapName, steamID, ResolveSteamID64(steamID), history, nextSeq)
+    local payload = Serialize(mapName, steamID, ResolveSteamID64(steamID), history, nextSeq,
+        RARELOAD.GetActiveHistoryId(steamID, mapName))
 
     local ok, jsonOrErr = pcall(util.TableToJSON, payload, false)
     if not ok then
@@ -202,6 +219,7 @@ function RARELOAD.LoadPositionHistory(mapName)
                 if istable(entries) and isstring(sid) and sid ~= "" then
                     RARELOAD.playerPositionHistory[mapName][sid] = entries
                     seqByFile[mapName .. "/" .. sid] = tonumber(nextSeq) or (#entries + 1)
+                    if payload.activeId then RARELOAD.SetActiveHistoryId(sid, mapName, payload.activeId) end
                     loaded = loaded + 1
                 end
             end
@@ -276,6 +294,8 @@ function RARELOAD.CacheCurrentPositionData(steamID, mapName)
     entry.note      = ""
 
     table.insert(history, 1, entry)
+    -- A fresh save becomes the active respawn, matching normal Rareload behaviour.
+    RARELOAD.SetActiveHistoryId(steamID, mapName, entry.id)
 
     local maxSize = ResolveMaxSize(steamID)
     Prune(history, maxSize)

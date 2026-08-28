@@ -30,6 +30,8 @@ if SERVER then
     AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_main.lua")
     AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_info_panel.lua")
     AddCSLuaFile("rareload/client/entity_viewer/cl_entity_viewer_json_editor.lua")
+    AddCSLuaFile("rareload/client/history_panel/cl_history_panel.lua")
+    AddCSLuaFile("rareload/client/history_panel/cl_history_preview.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_init.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_shared.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_entity_tracking.lua")
@@ -114,6 +116,7 @@ if SERVER then
     include("rareload/anti_stuck/sv_anti_stuck_resolver.lua")
     include("rareload/anti_stuck/sv_anti_stuck_system.lua")
     include("rareload/core/sv_entity_viewer.lua")
+    include("rareload/core/sv_rareload_history.lua")
 
 elseif CLIENT then
     include("rareload/utils/rareload_fonts.lua")
@@ -130,6 +133,8 @@ elseif CLIENT then
     include("rareload/client/entity_viewer/cl_entity_viewer_info_panel.lua")
     include("rareload/client/entity_viewer/cl_entity_viewer_json_editor.lua")
     include("rareload/client/entity_viewer/cl_entity_viewer_main.lua")
+    include("rareload/client/history_panel/cl_history_panel.lua")
+    include("rareload/client/history_panel/cl_history_preview.lua")
     include("rareload/client/saved_entity_display/SED_init.lua")
     include("rareload/client/saved_entity_display/SED_shared.lua")
     include("rareload/client/saved_entity_display/SED_entity_tracking.lua")

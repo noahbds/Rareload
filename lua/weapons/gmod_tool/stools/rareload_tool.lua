@@ -233,6 +233,7 @@ local CPANEL_LAYOUT = {
         expanded = true,
         items = {
             { button = "cpanel.save_position", icon = "icon16/disk.png", cmd = "save_position", color = Color(76, 175, 80) },
+            { button = "cpanel.save_timeline", icon = "icon16/time.png", cmd = "rareload_history", color = Color(88, 101, 242) },
             { button = "cpanel.open_admin", icon = "icon16/shield.png", cmd = "rareload_admin", color = Color(233, 30, 99), perm = "ADMIN_PANEL" },
             {
                 button = "cpanel.configure_params",
