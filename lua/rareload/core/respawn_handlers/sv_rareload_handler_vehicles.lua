@@ -29,15 +29,20 @@ function RARELOAD.RestoreVehicles(savedInfo, requestingPlayer)
             DebugState.IsEnabledForPlayer(requestingPlayer)
         local vehicleCount = 0
         for _, vehicleData in ipairs(savedInfo.vehicles) do
+            -- pos is stored as a {x,y,z} table; FindInSphere needs a Vector.
+            local vpos = RARELOAD.DataUtils.ToVector(vehicleData.pos)
+
             local exists = false
-            for _, ent in ipairs(ents.FindInSphere(vehicleData.pos, 50)) do
-                if ent:GetClass() == vehicleData.class and ent:GetModel() == vehicleData.model then
-                    exists = true
-                    break
+            if vpos then
+                for _, ent in ipairs(ents.FindInSphere(vpos, 64)) do
+                    if IsValid(ent) and ent:GetClass() == vehicleData.class then
+                        exists = true
+                        break
+                    end
                 end
             end
 
-            if not exists then
+            if vpos and not exists then
                 local success, vehicle = pcall(function()
                     -- Prefer the spawn-menu definition so the vehiclescript (handling/physics) is
                     -- applied and the vehicle is actually drivable; fall back to a raw create.

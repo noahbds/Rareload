@@ -147,6 +147,31 @@ local function BuildPreviewData(steamID, mapName, id)
     ExtractObjects(e.entities, objects, false)
     ExtractObjects(e.npcs, objects, true)
 
+    -- Vehicles are stored in a separate array (not the duplicator buckets), so add them
+    -- to the preview too, with a lightweight record for their SED panel.
+    if istable(e.vehicles) then
+        for i, v in ipairs(e.vehicles) do
+            if #objects >= PREVIEW_OBJ_CAP then break end
+            if istable(v.pos) and isstring(v.model) and v.model ~= "" then
+                objects[#objects + 1] = {
+                    c   = v.class or "vehicle",
+                    m   = v.model,
+                    p   = v.pos,
+                    a   = v.ang,
+                    rec = {
+                        id    = "vehicle_" .. i,
+                        class = v.class, Class = v.class,
+                        model = v.model, Model = v.model,
+                        pos   = v.pos, Pos = v.pos,
+                        ang   = v.ang, Angle = v.ang,
+                        health = v.health, CurHealth = v.health, MaxHealth = v.health,
+                        skin  = v.skin,
+                    },
+                }
+            end
+        end
+    end
+
     return {
         player = {
             m    = (istable(e.appearance) and e.appearance.model) or e.playermodel,

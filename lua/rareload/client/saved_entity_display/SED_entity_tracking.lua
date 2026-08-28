@@ -30,6 +30,25 @@ function SED.RebuildSavedLookup()
                     category = "npc", owner = ownerSteamID
                 })
             end
+            -- Vehicles are stored in their own array (not a duplicator bucket), so ingest
+            -- them directly so SED shows a phantom + panel for each like entities/NPCs.
+            if istable(pdata.vehicles) then
+                for i, v in ipairs(pdata.vehicles) do
+                    if istable(v) and istable(v.pos) and isstring(v.model) and v.model ~= "" then
+                        local vid = "vehicle_" .. ownerSteamID .. "_" .. i
+                        SED.SAVED_ENTITIES_BY_ID[vid] = {
+                            id            = vid,
+                            _ownerSteamID = ownerSteamID,
+                            class         = v.class or "vehicle", Class = v.class or "vehicle",
+                            model         = v.model, Model = v.model,
+                            pos           = v.pos, Pos = v.pos,
+                            ang           = v.ang, Angle = v.ang,
+                            health        = v.health, CurHealth = v.health, MaxHealth = v.health,
+                            skin          = v.skin,
+                        }
+                    end
+                end
+            end
         end
     end
     SED.MAP_LAST_BUILD = CurTime()
