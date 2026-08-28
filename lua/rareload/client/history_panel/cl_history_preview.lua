@@ -72,7 +72,8 @@ function Preview.IsShowing(id)
 end
 
 local function AddPhantom(model, pos, ang, title, rec, isNPC)
-    if not (pos and model and model ~= "" and util.IsValidModel(model)) then return nil end
+    if not (pos and isstring(model) and model ~= "") then return nil end
+    util.PrecacheModel(model) -- prop/NPC models may not be loaded client-side yet
     local clear = HullClear(pos)
     local it = {
         pos   = pos,
@@ -163,8 +164,9 @@ hook.Add("PreDrawHalos", "RARELOAD_HistoryPreview_Halo", function()
             t[#t + 1] = it.phantom
         end
     end
-    if #green > 0 then halo.Add(green, COL_CLEAR, 5, 5, 2, true, true) end
-    if #red > 0 then halo.Add(red, COL_BLOCK, 5, 5, 2, true, true) end
+    -- last arg (ignoreZ) false so the glow is occluded by the SED panel in front of it
+    if #green > 0 then halo.Add(green, COL_CLEAR, 5, 5, 2, true, false) end
+    if #red > 0 then halo.Add(red, COL_BLOCK, 5, 5, 2, true, false) end
 end)
 
 -- glow orbs + in-world info cards (SED-style), drawn in the 3D scene so they show
