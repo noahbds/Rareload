@@ -65,6 +65,7 @@ SED.LookingAtPanelUntil = 0
 SED.EntityPanelCache = {}
 SED.NPCPanelCache = {}
 SED.EntityBoundsCache = {}
+SED.PreviewItems = SED.PreviewItems or {} -- Save Timeline preview phantoms (rendered via QueueAllSavedPanels)
 SED.lpCache = nil
 SED.lastPlayerCheck = 0
 
