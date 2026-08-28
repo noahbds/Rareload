@@ -251,6 +251,7 @@ return {
     -- Saved Entity Display (3D2D panels, hints, highlights)
     ["sed.saved_npc"] = "Gespeicherter NPC",
     ["sed.saved_entity"] = "Gespeichertes Objekt",
+    ["sed.saved_vehicle"] = "Gespeichertes Fahrzeug",
     ["sed.unknown_id"] = "unbekannt",
     ["sed.armor"] = "Rüstung: %d",
     ["sed.interact_mode"] = "INTERAKTIONSMODUS",
@@ -269,6 +270,7 @@ return {
     ["sed.cat.meta"] = "Meta",
     ["sed.cat.behavior"] = "Verhalten",
     ["sed.cat.combat"] = "Kampf",
+    ["sed.cat.vehicle"] = "Fahrzeugdaten",
     ["sed.cat.vjbase"] = "VJ Base",
     ["sed.cat.weapons"] = "Waffen",
     ["sed.cat.ai"] = "KI",
@@ -296,7 +298,6 @@ return {
     ["sed.phantom.item.ammo"] = "Munition",
     ["sed.phantom.item.states"] = "Zustände",
     ["sed.phantom.item.vehicles"] = "Fahrzeuge",
-    ["sed.phantom.item.vehicle_state"] = "Fahrzeugzustand",
     ["sed.phantom.item.entities"] = "Objekte",
     ["sed.phantom.item.npcs"] = "NPCs",
     ["sed.phantom.position"] = "Position",

@@ -30,6 +30,109 @@ local function VerboseLog(msg, ...)
     end
 end
 
+local FRAMEWORK_OWNER_FIELDS = {
+    "dOwnerEntLFS",
+    "LFSOwner",
+    "SpawnerPlayer",
+    "Spawner",
+    "OwningPlayer",
+    "Owner",
+    "FPPOwner",
+    "SPPOwner",
+    "Founder",
+    "OriginalSpawner",
+    "m_Player",
+    "creator",
+    "m_pPlayerMatchingClass",
+}
+
+-- Safely resolves an arbitrary owner value (Player entity, SteamID string, SteamID64 string, or UserID number) to a live Player object.
+local function ResolvePlayerObject(val)
+    if not val then return nil end
+
+    if isentity(val) or type(val) == "Player" then
+        if IsValid(val) and val.IsPlayer and val:IsPlayer() then
+            return val
+        end
+        return nil
+    end
+
+    if isstring(val) and val ~= "" then
+        if string.find(val, "^STEAM_%d:%d:%d+") then
+            if player.GetBySteamID then
+                local ply = player.GetBySteamID(val)
+                if IsValid(ply) then return ply end
+            end
+            for _, ply in ipairs(player.GetAll()) do
+                if IsValid(ply) and ply.SteamID and ply:SteamID() == val then
+                    return ply
+                end
+            end
+        end
+
+        if string.find(val, "^7656119%d+") then
+            if player.GetBySteamID64 then
+                local ply = player.GetBySteamID64(val)
+                if IsValid(ply) then return ply end
+            end
+            for _, ply in ipairs(player.GetAll()) do
+                if IsValid(ply) and ply.SteamID64 and ply:SteamID64() == val then
+                    return ply
+                end
+            end
+        end
+    end
+
+    if isnumber(val) and val > 0 then
+        if Player then
+            local ply = Player(val)
+            if IsValid(ply) and ply.IsPlayer and ply:IsPlayer() then
+                return ply
+            end
+        end
+    end
+
+    return nil
+end
+
+local function GetFrameworkOwner(ent)
+    if not IsValid(ent) then return nil end
+
+    for _, field in ipairs(FRAMEWORK_OWNER_FIELDS) do
+        local v = ent[field]
+        local resolved = ResolvePlayerObject(v)
+        if IsValid(resolved) then
+            return resolved
+        end
+    end
+
+    return nil
+end
+
+local function GetUndoOwner(ent)
+    if not IsValid(ent) then return nil end
+    if not (istable(undo) and isfunction(undo.GetTable)) then return nil end
+
+    local utab = undo.GetTable()
+    if not istable(utab) then return nil end
+
+    for _, plyTab in pairs(utab) do
+        if istable(plyTab) then
+            for _, uEntry in pairs(plyTab) do
+                if istable(uEntry) and istable(uEntry.Entities) then
+                    for _, uEnt in pairs(uEntry.Entities) do
+                        if uEnt == ent and IsValid(uEntry.Owner) and uEntry.Owner:IsPlayer() then
+                            return uEntry.Owner
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
 function RARELOAD.Ownership.SetOwner(ent, owner)
     if not IsValid(ent) then return false end
 
@@ -66,6 +169,14 @@ function RARELOAD.Ownership.SetOwner(ent, owner)
 
     if ent.SetPlayer then
         pcall(ent.SetPlayer, ent, owner)
+    end
+
+    -- Framework-specific ownership fields (LFS, LVS, Simfphys, etc.) on entities
+    if not ent:IsPlayer() and not ent:IsNPC() then
+        ent.dOwnerEntLFS = owner
+        ent.LFSOwner     = owner
+        ent.SpawnerPlayer = owner
+        ent.RareloadOwner = owner
     end
 
     OwnershipCache[entIndex] = {
@@ -122,6 +233,20 @@ function RARELOAD.Ownership.GetOwner(ent)
         end
     end
 
+    if ent.GetOwner then
+        local success, entOwner = pcall(ent.GetOwner, ent)
+        if success and IsValid(entOwner) and entOwner:IsPlayer() then
+            return entOwner
+        end
+    end
+
+    -- Framework-specific fields (dOwnerEntLFS for LFS, LFSOwner, SpawnerPlayer, etc.)
+    local fwOwner = GetFrameworkOwner(ent)
+    if IsValid(fwOwner) then
+        return fwOwner
+    end
+
+    -- Sandbox CleanupList
     for _, ply in ipairs(player.GetAll()) do
         if istable(ply.CleanupList) then
             for _, entList in pairs(ply.CleanupList) do
@@ -134,6 +259,12 @@ function RARELOAD.Ownership.GetOwner(ent)
                 end
             end
         end
+    end
+
+    -- Sandbox Undo table
+    local undoOwner = GetUndoOwner(ent)
+    if IsValid(undoOwner) then
+        return undoOwner
     end
 
     local cached = OwnershipCache[entIndex]
@@ -151,7 +282,7 @@ function RARELOAD.Ownership.GetOwner(ent)
         end
     end
 
-    if ent.RareloadOwner and IsValid(ent.RareloadOwner) then
+    if ent.RareloadOwner and IsValid(ent.RareloadOwner) and ent.RareloadOwner:IsPlayer() then
         return ent.RareloadOwner
     end
 
@@ -162,7 +293,7 @@ function RARELOAD.Ownership.GetOwner(ent)
         end
     end
 
-    local steamID = ent.RareloadOwnerSteamID
+    local steamID = ent.RareloadOwnerSteamID or ent.OriginalSpawner
     if not steamID and ent.GetNWString then
         local success, sid = pcall(ent.GetNWString, ent, CONFIG.STEAMID_VAR_KEY, "")
         if success and sid ~= "" then
@@ -194,6 +325,10 @@ function RARELOAD.Ownership.GetOwnerSteamID(ent)
 
     if ent.RareloadOwnerSteamID then
         return ent.RareloadOwnerSteamID
+    end
+
+    if ent.OriginalSpawner and isstring(ent.OriginalSpawner) and ent.OriginalSpawner ~= "" then
+        return ent.OriginalSpawner
     end
 
     if ent.GetNWString then
@@ -255,45 +390,46 @@ function RARELOAD.Ownership.ResolveOwner(ent)
         return owner
     end
 
-    if ent.GetOwner then
-        local success, fallbackOwner = pcall(ent.GetOwner, ent)
-        if success and IsValid(fallbackOwner) and fallbackOwner:IsPlayer() then
-            return fallbackOwner
-        end
-    end
-
-    if ent.GetPlayer then
-        local success, playerOwner = pcall(ent.GetPlayer, ent)
-        if success and IsValid(playerOwner) and playerOwner:IsPlayer() then
-            return playerOwner
-        end
-    end
-
-    if ent.CPPIGetOwner then
-        local success, cppiOwner = pcall(ent.CPPIGetOwner, ent)
-        if success and IsValid(cppiOwner) and cppiOwner:IsPlayer() then
-            return cppiOwner
-        end
-    end
-
-    for _, ply in ipairs(player.GetAll()) do
-        if istable(ply.CleanupList) then
-            for _, entList in pairs(ply.CleanupList) do
-                if istable(entList) then
-                    for _, cleanedEnt in pairs(entList) do
-                        if cleanedEnt == ent then
-                            return ply
-                        end
-                    end
-                end
+    -- If this entity is a child / pod / seat / attachment of a root vehicle, check the root
+    if RARELOAD.DataUtils and RARELOAD.DataUtils.GetRootVehicle then
+        local root = RARELOAD.DataUtils.GetRootVehicle(ent)
+        if IsValid(root) and root ~= ent then
+            local rootOwner = RARELOAD.Ownership.GetOwner(root)
+            if IsValid(rootOwner) and rootOwner:IsPlayer() then
+                return rootOwner
             end
         end
     end
 
-    if ent.GetNWEntity then
-        local success, nwOwner = pcall(ent.GetNWEntity, ent, CONFIG.NETWORK_VAR_KEY, NULL)
-        if success and IsValid(nwOwner) and nwOwner:IsPlayer() then
-            return nwOwner
+    -- Check direct parent if distinct from root
+    local parent = ent:GetParent()
+    if IsValid(parent) and parent ~= ent then
+        local parentOwner = RARELOAD.Ownership.GetOwner(parent)
+        if IsValid(parentOwner) and parentOwner:IsPlayer() then
+            return parentOwner
+        end
+    end
+
+    -- If vehicle is occupied or driven, attribute to current driver
+    if ent.GetDriver and isfunction(ent.GetDriver) then
+        local okDrv, driver = pcall(ent.GetDriver, ent)
+        if okDrv and IsValid(driver) and driver:IsPlayer() then
+            return driver
+        end
+    end
+    if ent.GetDriverSeat and isfunction(ent.GetDriverSeat) then
+        local okSeat, dseat = pcall(ent.GetDriverSeat, ent)
+        if okSeat and IsValid(dseat) and dseat.GetDriver then
+            local okDrv, driver = pcall(dseat.GetDriver, dseat)
+            if okDrv and IsValid(driver) and driver:IsPlayer() then
+                return driver
+            end
+        end
+    end
+    if IsValid(ent.DriverSeat) and ent.DriverSeat.GetDriver then
+        local okDrv, driver = pcall(ent.DriverSeat.GetDriver, ent.DriverSeat)
+        if okDrv and IsValid(driver) and driver:IsPlayer() then
+            return driver
         end
     end
 

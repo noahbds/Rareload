@@ -7,6 +7,9 @@ local function ingestSaved(target, bucket, opts)
     for _, saved in ipairs(list) do
         if istable(saved) and saved.id then
             saved._ownerSteamID = opts.owner
+            if opts.category == "vehicle" then
+                saved.isVehicle = true
+            end
             target[saved.id] = saved
         end
     end
@@ -30,22 +33,28 @@ function SED.RebuildSavedLookup()
                     category = "npc", owner = ownerSteamID
                 })
             end
-            -- Vehicles are stored in their own array (not a duplicator bucket), so ingest
-            -- them directly so SED shows a phantom + panel for each like entities/NPCs.
+            -- Ingest saved vehicles from duplicator snapshot (or legacy array) into SED
             if istable(pdata.vehicles) then
-                for i, v in ipairs(pdata.vehicles) do
-                    if istable(v) and istable(v.pos) and isstring(v.model) and v.model ~= "" then
-                        local vid = "vehicle_" .. ownerSteamID .. "_" .. i
-                        SED.SAVED_ENTITIES_BY_ID[vid] = {
-                            id            = vid,
-                            _ownerSteamID = ownerSteamID,
-                            class         = v.class or "vehicle", Class = v.class or "vehicle",
-                            model         = v.model, Model = v.model,
-                            pos           = v.pos, Pos = v.pos,
-                            ang           = v.ang, Angle = v.ang,
-                            health        = v.health, CurHealth = v.health, MaxHealth = v.health,
-                            skin          = v.skin,
-                        }
+                if SnapshotUtils.HasSnapshot(pdata.vehicles) then
+                    ingestSaved(SED.SAVED_ENTITIES_BY_ID, pdata.vehicles, {
+                        category = "vehicle", idPrefix = "vehicle", owner = ownerSteamID
+                    })
+                else
+                    for i, v in ipairs(pdata.vehicles) do
+                        if istable(v) and istable(v.pos) and isstring(v.model) and v.model ~= "" then
+                            local vid = "vehicle_" .. ownerSteamID .. "_" .. i
+                            SED.SAVED_ENTITIES_BY_ID[vid] = {
+                                id            = vid,
+                                _ownerSteamID = ownerSteamID,
+                                class         = v.class or "vehicle", Class = v.class or "vehicle",
+                                model         = v.model, Model = v.model,
+                                pos           = v.pos, Pos = v.pos,
+                                ang           = v.ang, Angle = v.ang,
+                                health        = v.health, CurHealth = v.health, MaxHealth = v.health,
+                                skin          = v.skin,
+                                isVehicle     = true,
+                            }
+                        end
                     end
                 end
             end

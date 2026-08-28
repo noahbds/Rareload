@@ -101,6 +101,26 @@ function DebugHelpers.PrintLines(prefix, message, details, detailsAsPairs)
     end
 end
 
+-- Builds a category-scoped writer so callers don't each re-implement the same
+-- `function(ply, level, message, details) DebugHelpers.Write("cat", ...) end`
+-- boilerplate. `defaultOpts` are merged into every call (e.g. gate/printPrefix)
+-- and may be overridden per call via a trailing opts table.
+---@param category? string
+---@param defaultOpts? table
+---@return fun(ply?: Player, level?: string, message?: string, details?: any, opts?: table): boolean|nil
+function DebugHelpers.MakeWriter(category, defaultOpts)
+    defaultOpts = defaultOpts or {}
+    return function(ply, level, message, details, opts)
+        local merged = {}
+        for k, v in pairs(defaultOpts) do merged[k] = v end
+        if istable(opts) then
+            for k, v in pairs(opts) do merged[k] = v end
+        end
+        merged.ply = ply
+        return DebugHelpers.Write(category, level, message, details, merged)
+    end
+end
+
 function DebugHelpers.Write(category, level, message, details, opts)
     opts = opts or {}
 

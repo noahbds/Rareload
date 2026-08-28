@@ -95,7 +95,19 @@ local function DrawContent(ctx, ox, oy)
     surface_SetDrawColor(60, 140, 220, 100)
     surface_DrawOutlinedRect(ox, oy, width, panelHeight, 1)
 
-    local title = isNPC and L("sed.saved_npc") or L("sed.saved_entity")
+    local isVehicle = saved and (saved.isVehicle or (isstring(saved.class) and (
+        string.find(saved.class, "vehicle") or
+        string.find(saved.class, "jeep") or
+        string.find(saved.class, "airboat") or
+        string.find(saved.class, "^lvs_") or
+        string.find(saved.class, "^lfs_") or
+        string.find(saved.class, "lunasflightschool") or
+        string.find(saved.class, "fphysics") or
+        string.find(saved.class, "^wac_") or
+        string.find(saved.class, "^glide_") or
+        string.find(saved.class, "^sent_sakarias_car")
+    )))
+    local title = isNPC and L("sed.saved_npc") or (isVehicle and (L("sed.saved_vehicle") or "Saved Vehicle") or L("sed.saved_entity"))
     if saved and saved._isPhantom and saved._phantomTitle then
         title = saved._phantomTitle
     end
@@ -105,7 +117,7 @@ local function DrawContent(ctx, ox, oy)
     local subtitleID = saved.id or saved.RareloadNPCID or saved.RareloadEntityID or saved.RareloadID
     local subtitle   = subtitleID and tostring(subtitleID) or L("sed.unknown_id")
 
-    local maxHP = tonumber(saved.MaxHealth or saved.maxHealth or saved.StartHealth) or 0
+    local maxHP = tonumber(saved.MaxHealth or saved.maxHealth or saved.StartHealth or saved._DuplicatorRestoreMaxHealthTo or (saved.DT and saved.DT.HP)) or 0
     local hpBarReserve = 0
     if maxHP > 0 then
         hpBarReserve = math_min(210, width - 220) + 16
@@ -133,11 +145,29 @@ local function DrawContent(ctx, ox, oy)
         draw_RoundedBox(5, badgeX - 1, badgeY - 1, 44, 18, VJ_OUTER)
         draw_RoundedBox(4, badgeX, badgeY, 42, 16, VJ_INNER)
         draw_SimpleText("VJ", "Trebuchet18", badgeX + 21, badgeY + 8, VJ_TEXT_COLOR, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    elseif isVehicle then
+        local isLVS = saved.LVS or saved.IsLVS or (isstring(saved.class) and string.find(saved.class, "^lvs_")) or (isstring(saved.Base) and string.find(saved.Base, "lvs_"))
+        local isLFS = saved.LFS or saved.IsLFS or (isstring(saved.class) and (string.find(saved.class, "^lfs_") or string.find(saved.class, "^lunasflightschool"))) or (isstring(saved.Base) and string.find(saved.Base, "lunasflightschool"))
+        local isSimf = saved.IsSimfphyscar or (isstring(saved.class) and string.find(saved.class, "fphysics"))
+        local isWAC = saved.IsWAC or (isstring(saved.class) and string.find(saved.class, "^wac_"))
+        local isGlide = saved.IsGlideVehicle or (isstring(saved.class) and string.find(saved.class, "^glide_"))
+
+        if isLVS or isLFS or isSimf or isWAC or isGlide then
+            local badgeLabel = isLVS and "LVS" or (isLFS and "LFS" or (isSimf and "SIMF" or (isWAC and "WAC" or "GLIDE")))
+            surface_SetFont("Trebuchet24")
+            local titleW = surface_GetTextSize(title) or 0
+            local badgeX = ox + 16 + titleW + 10
+            local badgeY = oy + 6
+
+            draw_RoundedBox(5, badgeX - 1, badgeY - 1, 48, 18, Color(20, 80, 140, 200))
+            draw_RoundedBox(4, badgeX, badgeY, 46, 16, Color(10, 40, 80, 220))
+            draw_SimpleText(badgeLabel, "Trebuchet18", badgeX + 23, badgeY + 8, Color(0, 220, 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        end
     end
 
     do
-        local curHP = saved.CurHealth or saved.health or saved.Health or 0
-        local armor = saved.armor or saved.Armor or 0
+        local curHP = tonumber((saved.DT and saved.DT.HP) or saved.CurHealth or saved.health or saved.Health or 0) or 0
+        local armor = tonumber(saved.armor or saved.Armor or 0) or 0
 
         if maxHP > 0 then
             local barW   = math_min(210, width - 220)

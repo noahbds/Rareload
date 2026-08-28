@@ -108,6 +108,11 @@ local function ExtractEntities(tbl, result, isNPC)
     if not tbl then return result end
 
     if (tbl.Class or tbl.class) and (tbl.Pos or tbl.pos) then
+        local cls = tostring(tbl.Class or tbl.class or "")
+        if tbl.constraintType or tbl.isConstraint or string.StartsWith(cls, "constraint_") then
+            return result
+        end
+
         local posData    = tbl.Pos or tbl.pos
         local fallbackID = nil
 
@@ -181,10 +186,27 @@ function EntityViewer:LoadData()
         SnapshotUtils.GetSummary(playerData.entities, { category = "entity", idPrefix = "entity" }) or {}
     local npcList = SnapshotUtils and SnapshotUtils.GetSummary and
         SnapshotUtils.GetSummary(playerData.npcs, { category = "npc", idPrefix = "npc" }) or {}
+    local vehicleList = SnapshotUtils and SnapshotUtils.GetSummary and
+        SnapshotUtils.GetSummary(playerData.vehicles, { category = "vehicle", idPrefix = "vehicle" }) or {}
 
     local loaded = {}
-    ExtractEntities(entityList, loaded, false)
-    ExtractEntities(npcList, loaded, true)
+    local seenIDs = {}
+
+    local function addUnique(items, isNPC)
+        local extracted = {}
+        ExtractEntities(items, extracted, isNPC)
+        for _, ent in ipairs(extracted) do
+            local key = ent.id or (tostring(ent.class) .. "_" .. tostring(ent.pos))
+            if not seenIDs[key] then
+                seenIDs[key] = true
+                table.insert(loaded, ent)
+            end
+        end
+    end
+
+    addUnique(vehicleList, false)
+    addUnique(npcList, true)
+    addUnique(entityList, false)
     return loaded
 end
 
@@ -199,11 +221,21 @@ function EntityViewer:FilterAndSort()
 
         local matchCat =
             cat == "All" or
-            (cat == "NPCs" and string.find(class, "npc")) or
+            (cat == "NPCs" and (string.find(class, "npc") or ent.isNPC)) or
             (cat == "Weapons" and string.find(class, "weapon")) or
-            (cat == "Vehicles" and (string.find(class, "vehicle") or
+            (cat == "Vehicles" and (
+                string.find(class, "vehicle") or
                 string.find(class, "jeep") or
-                string.find(class, "airboat"))) or
+                string.find(class, "airboat") or
+                string.find(class, "^lvs_") or
+                string.find(class, "^lfs_") or
+                string.find(class, "lunasflightschool") or
+                string.find(class, "fphysics") or
+                string.find(class, "^wac_") or
+                string.find(class, "^glide_") or
+                string.find(class, "^sent_sakarias_car") or
+                ent.isVehicle
+            )) or
             (cat == "Props" and string.find(class, "prop"))
 
         local matchSearch = (search == "") or string.find(class, search) or string.find(model, search)

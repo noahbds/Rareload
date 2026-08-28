@@ -118,18 +118,34 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
 
     if lodLevel <= 2 then
         local savedItems = {}
-        if savedInfo.health then savedItems[#savedItems + 1] = L("sed.phantom.item.health") end
-        if savedInfo.armor then savedItems[#savedItems + 1] = L("sed.phantom.item.armor") end
-        if savedInfo.inventory and #savedInfo.inventory > 0 then savedItems[#savedItems + 1] = L("sed.phantom.item.inventory") end
-        if savedInfo.ammo then savedItems[#savedItems + 1] = L("sed.phantom.item.ammo") end
-        if savedInfo.playerStates then savedItems[#savedItems + 1] = L("sed.phantom.item.states") end
-        if savedInfo.vehicles and #savedInfo.vehicles > 0 then savedItems[#savedItems + 1] = L("sed.phantom.item.vehicles") end
-        if savedInfo.vehicleState then savedItems[#savedItems + 1] = L("sed.phantom.item.vehicle_state") end
+        local seenItems = {}
+        local function addItem(name)
+            if name and name ~= "" and not seenItems[name] then
+                seenItems[name] = true
+                savedItems[#savedItems + 1] = name
+            end
+        end
+
+        if savedInfo.health then addItem(L("sed.phantom.item.health")) end
+        if savedInfo.armor then addItem(L("sed.phantom.item.armor")) end
+        if savedInfo.inventory and #savedInfo.inventory > 0 then addItem(L("sed.phantom.item.inventory")) end
+        if savedInfo.ammo then addItem(L("sed.phantom.item.ammo")) end
+        if savedInfo.playerStates then addItem(L("sed.phantom.item.states")) end
+        if savedInfo.vehicleState and savedInfo.vehicleState.savedInVehicle then addItem(L("sed.phantom.item.vehicle_state")) end
 
         local entS = SnapshotUtils.GetSummary(savedInfo.entities, { category = "entity" }) or {}
         local npcS = SnapshotUtils.GetSummary(savedInfo.npcs, { category = "npc" }) or {}
-        if RARELOAD.TextUtils.CountEntries(entS) > 0 then savedItems[#savedItems + 1] = L("sed.phantom.item.entities") end
-        if RARELOAD.TextUtils.CountEntries(npcS) > 0 then savedItems[#savedItems + 1] = L("sed.phantom.item.npcs") end
+        local vehS = SnapshotUtils.GetSummary(savedInfo.vehicles, { category = "vehicle" }) or {}
+
+        if (savedInfo.entities and SnapshotUtils.HasSnapshot(savedInfo.entities)) or RARELOAD.TextUtils.CountEntries(entS) > 0 then
+            addItem(L("sed.phantom.item.entities"))
+        end
+        if (savedInfo.npcs and SnapshotUtils.HasSnapshot(savedInfo.npcs)) or RARELOAD.TextUtils.CountEntries(npcS) > 0 then
+            addItem(L("sed.phantom.item.npcs"))
+        end
+        if (savedInfo.vehicles and SnapshotUtils.HasSnapshot(savedInfo.vehicles)) or RARELOAD.TextUtils.CountEntries(vehS) > 0 then
+            addItem(L("sed.phantom.item.vehicles"))
+        end
 
         if #savedItems > 0 then
             PB.addLine(data.basic, L("sed.phantom.saved_data"), table.concat(savedItems, ", "), Color(150, 255, 150))
@@ -272,6 +288,15 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
             entryColor = Color(200, 255, 200)
         })
 
+    processGroupedDataLOD(
+        SnapshotUtils.GetSummary(savedInfo.vehicles, { category = "vehicle" }) or {},
+        {
+            totalLabel = L("sed.phantom.saved_vehicles"),
+            totalColor = Color(200, 200, 255),
+            labelPrefix = L("ev.cat.vehicles") or "Vehicle",
+            entryColor = Color(200, 200, 255)
+        })
+
     PB.addLine(data.stats, L("sed.phantom.item.health"), math.floor(savedInfo.health or 0), Color(255, 180, 180))
     PB.addLine(data.stats, L("sed.phantom.item.armor"), math.floor(savedInfo.armor or 0), Color(180, 180, 255))
 
@@ -303,12 +328,21 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         end
     end
 
-    if savedInfo.vehicles and type(savedInfo.vehicles) == "table" and #savedInfo.vehicles > 0 then
-        PB.addLine(data.stats, L("sed.phantom.saved_vehicles"), #savedInfo.vehicles, Color(200, 200, 255))
+    local vehSummary = savedInfo.vehicles and SnapshotUtils.GetSummary(savedInfo.vehicles, { category = "vehicle" }) or {}
+    if #vehSummary > 0 then
+        PB.addLine(data.stats, L("sed.phantom.saved_vehicles"), #vehSummary, Color(200, 200, 255))
     end
-    if savedInfo.vehicleState and type(savedInfo.vehicleState) == "table" then
+    if savedInfo.vehicleState and type(savedInfo.vehicleState) == "table" and savedInfo.vehicleState.savedInVehicle then
+        local vehClass = savedInfo.vehicleState.class or L("common.unknown")
+        local framework = (string.find(vehClass, "^lvs_") and "LVS")
+            or ((string.find(vehClass, "^lfs_") or string.find(vehClass, "lunasflightschool")) and "LFS")
+            or (string.find(vehClass, "fphysics") and "Simfphys")
+            or (string.find(vehClass, "^wac_") and "WAC")
+            or (string.find(vehClass, "^glide_") and "Glide")
+            or (string.find(vehClass, "^sent_sakarias_car") and "SCar")
+            or "Vehicle"
         PB.addLine(data.stats, L("sed.phantom.in_vehicle"),
-            savedInfo.vehicleState.class or L("common.unknown"), Color(200, 200, 255))
+            string.format("[%s] %s", framework, vehClass), Color(100, 220, 255))
     end
 
     return data
@@ -397,7 +431,7 @@ local function EnsurePlayerPhantom(steamID, savedInfo)
             end
         end
         if savedInfo.appearance.material then phantom:SetMaterial(savedInfo.appearance.material) end
-        
+
         -- Apply colors manually if you want them to render (playerColor requires proxy, but we can set color)
         if savedInfo.appearance.playerColor then
             local pc = savedInfo.appearance.playerColor
@@ -407,6 +441,22 @@ local function EnsurePlayerPhantom(steamID, savedInfo)
             local c = savedInfo.appearance.color
             -- Keep alpha at 150 (from MakePhantomModel reveal) but apply RGB
             phantom:SetColor(Color(c.r, c.g, c.b, 150))
+        end
+    end
+
+    -- If the player was seated in a vehicle at save time, apply a sitting
+    -- animation so the phantom renders in a seated pose.
+    if savedInfo.vehicleState and savedInfo.vehicleState.savedInVehicle then
+        local sitSeq = phantom:LookupSequence("sit_rollercoaster")
+        if not sitSeq or sitSeq <= 0 then
+            sitSeq = phantom:LookupSequence("sitdown")
+        end
+        if not sitSeq or sitSeq <= 0 then
+            sitSeq = phantom:LookupSequence("idle_all_01")
+        end
+        if sitSeq and sitSeq > 0 then
+            phantom:SetSequence(sitSeq)
+            phantom:SetCycle(0)
         end
     end
 

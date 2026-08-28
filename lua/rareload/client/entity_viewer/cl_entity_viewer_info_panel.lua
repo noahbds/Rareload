@@ -126,6 +126,91 @@ local function BuildInfoTab(contentPanel, data, isNPC)
         end
     end
 
+    local raw = data.rawData or data
+    local isVeh = (data.category == "vehicle") or raw.isVehicle or (data.class and (
+        string.find(data.class, "vehicle") or
+        string.find(data.class, "jeep") or
+        string.find(data.class, "airboat") or
+        string.find(data.class, "lfs_") or
+        string.find(data.class, "lvs_") or
+        string.find(data.class, "fphysics") or
+        string.find(data.class, "glide_") or
+        string.find(data.class, "wac_")
+    ))
+
+    if isVeh then
+        AddSectionLabel(scroll, L("inspector.section.vehicle"))
+        local isLVS = raw.LVS or raw.IsLVS or (data.class and string.find(data.class, "^lvs_"))
+        local isLFS = raw.LFS or raw.IsLFS or (data.class and (string.find(data.class, "^lfs_") or string.find(data.class, "_lfs_") or string.find(data.class, "lunasflightschool")))
+        local isSimfphys = raw.IsSimfphyscar or raw.bIsSimfphyscar or (data.class and string.find(data.class, "fphysics"))
+        local isGlide = raw.IsGlideVehicle or (data.class and string.find(data.class, "^glide_"))
+        local isWAC = raw.IsWAC or (data.class and string.find(data.class, "^wac_"))
+
+        local frameworkName = isLVS and "[LVS] Luna Vehicle System"
+            or (isLFS and "[LFS] Luna's Flight School")
+            or (isSimfphys and "[Simfphys] Physics Vehicle")
+            or (isWAC and "[WAC] Aircraft")
+            or (isGlide and "[Glide] Vehicle")
+            or "Source Engine Vehicle"
+        AddDataRow(scroll, "Framework", frameworkName, Color(0, 220, 255))
+
+        if raw.Category or raw.VehicleCategory then
+            AddDataRow(scroll, "Category", raw.Category or raw.VehicleCategory, Color(200, 220, 255))
+        end
+        if raw.Author and raw.Author ~= "" then
+            AddDataRow(scroll, "Author", raw.Author, Color(220, 220, 180))
+        end
+
+        local dt = raw.DT or raw.dt or {}
+        local topSpeed = raw.MaxVelocity or raw.MaxSpeed or raw.TopSpeed
+        if topSpeed and tonumber(topSpeed) and tonumber(topSpeed) > 0 then
+            local numSpeed = tonumber(topSpeed)
+            local kmh = math.Round(numSpeed * 0.06858)
+            local mph = math.Round(numSpeed * 0.04261)
+            AddDataRow(scroll, "Top Speed", string.format("%d u/s (%d km/h / %d mph)", numSpeed, kmh, mph), Color(100, 255, 150))
+        end
+
+        local engineActive = (dt.EngineActive ~= nil and dt.EngineActive) or (raw.EngineActive ~= nil and raw.EngineActive)
+        if engineActive ~= nil then
+            AddDataRow(scroll, "Engine", engineActive and "RUNNING" or "OFF", engineActive and PAL.success or PAL.error)
+        end
+
+        local curRPM = dt.RPM or raw.RPM
+        local idleRPM = raw.IdleRPM or dt.MinRPM
+        local limitRPM = raw.LimitRPM or raw.MaxRPM
+        if idleRPM or limitRPM then
+            AddDataRow(scroll, "RPM Range", string.format("%s - %s RPM", tostring(idleRPM or 0), tostring(limitRPM or 0)), Color(200, 255, 200))
+        end
+
+        local curGear = dt.Gear or raw.Gear
+        local gears = raw.Gears or raw.ForwardGears
+        if curGear or gears then
+            AddDataRow(scroll, "Gears", (curGear and ("Gear " .. tostring(curGear)) or "Neutral") .. (gears and (" (of " .. tostring(gears) .. ")") or ""), Color(200, 200, 255))
+        end
+
+        local shield = dt.Shield or raw.Shield or raw.CurShield
+        local maxShield = raw.MaxShield or raw.maxShield
+        if (shield and tonumber(shield) and tonumber(shield) > 0) or (maxShield and tonumber(maxShield) and tonumber(maxShield) > 0) then
+            AddDataRow(scroll, "Shield", tostring(shield or 0) .. " / " .. tostring(maxShield or 0) .. " HP", Color(100, 220, 255))
+        end
+
+        local ammoPri = dt.AmmoPrimary or raw.AmmoPrimary or raw.PrimaryAmmo
+        if ammoPri ~= nil then
+            AddDataRow(scroll, "Primary Ammo", tostring(ammoPri) .. " rounds", Color(255, 200, 100))
+        end
+
+        local ammoSec = dt.AmmoSecondary or raw.AmmoSecondary or raw.SecondaryAmmo
+        if ammoSec ~= nil then
+            AddDataRow(scroll, "Secondary Ammo", tostring(ammoSec) .. " rounds", Color(255, 160, 100))
+        end
+
+        local fuel = raw.Fuel or raw.fuel or dt.Fuel
+        local maxFuel = raw.MaxFuel or raw.maxFuel or raw.FuelTankSize
+        if fuel or maxFuel then
+            AddDataRow(scroll, "Fuel", tostring(fuel or "?") .. (maxFuel and (" / " .. tostring(maxFuel)) or "") .. " L", Color(255, 220, 100))
+        end
+    end
+
     AddSectionLabel(scroll, L("inspector.section.position"))
     if data.pos then
         local p = data.pos

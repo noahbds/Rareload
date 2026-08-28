@@ -146,10 +146,10 @@ local function BuildPreviewData(steamID, mapName, id)
     local objects = {}
     ExtractObjects(e.entities, objects, false)
     ExtractObjects(e.npcs, objects, true)
+    ExtractObjects(e.vehicles, objects, false)
 
-    -- Vehicles are stored in a separate array (not the duplicator buckets), so add them
-    -- to the preview too, with a lightweight record for their SED panel.
-    if istable(e.vehicles) then
+    -- If legacy array format without duplicator, fallback to iterating directly
+    if istable(e.vehicles) and not SnapshotUtils.HasSnapshot(e.vehicles) then
         for i, v in ipairs(e.vehicles) do
             if #objects >= PREVIEW_OBJ_CAP then break end
             if istable(v.pos) and isstring(v.model) and v.model ~= "" then
@@ -166,6 +166,7 @@ local function BuildPreviewData(steamID, mapName, id)
                         ang   = v.ang, Angle = v.ang,
                         health = v.health, CurHealth = v.health, MaxHealth = v.health,
                         skin  = v.skin,
+                        isVehicle = true,
                     },
                 }
             end
@@ -304,6 +305,12 @@ function RARELOAD.ApplyHistoryComponents(ply, data, comps)
         end
         if perm("RESTORE_NPCS") and istable(data.npcs) and RARELOAD.RestoreNPCs then
             RARELOAD.RestoreNPCs(data, ply)
+        end
+        if perm("RESTORE_VEHICLES") and istable(data.vehicles) and RARELOAD.RestoreVehicles then
+            RARELOAD.RestoreVehicles(data, ply)
+            if data.vehicleState and data.vehicleState.savedInVehicle and RARELOAD.RestorePlayerVehicle then
+                RARELOAD.RestorePlayerVehicle(ply, data)
+            end
         end
     end
 end

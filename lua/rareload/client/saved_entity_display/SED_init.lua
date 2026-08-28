@@ -105,6 +105,22 @@ SED.ENT_CATEGORIES = {
     { "meta",      "sed.cat.meta",      Color(120, 200, 220) }
 }
 
+SED.VEHICLE_CATEGORIES = {
+    { "basic",      "sed.cat.basic",      Color(64, 152, 255) },
+    { "vehicle",    "sed.cat.vehicle",    Color(0, 200, 255) },
+    { "drivetrain", "sed.cat.drivetrain", Color(255, 170, 50) },
+    { "combat",     "sed.cat.combat",     Color(255, 90, 140) },
+    { "systems",    "sed.cat.systems",    Color(120, 220, 150) },
+    { "state",      "sed.cat.state",      Color(218, 165, 32) },
+    { "position",   "sed.cat.position",   Color(60, 179, 113) },
+    { "saved",      "sed.cat.saved",      Color(255, 140, 40) },
+    { "physics",    "sed.cat.physics",    Color(255, 120, 90) },
+    { "visual",     "sed.cat.visual",     Color(147, 112, 219) },
+    { "ownership",  "sed.cat.ownership",  Color(200, 150, 255) },
+    { "keyvalues",  "sed.cat.keyvalues",  Color(180, 180, 180) },
+    { "meta",       "sed.cat.meta",       Color(120, 200, 220) }
+}
+
 SED.NPC_CATEGORIES = {
     { "basic",     "sed.cat.basic",     Color(64, 152, 255) },
     { "position",  "sed.cat.position",  Color(60, 179, 113) },

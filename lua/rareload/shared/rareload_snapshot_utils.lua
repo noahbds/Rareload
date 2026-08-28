@@ -56,7 +56,15 @@ local function iterateSnapshot(snapshot, opts, callback)
 
     if payload.Entities then
         for dupIndex, entityDef in pairs(payload.Entities) do
-            local id = entityDef.RareloadEntityID or entityDef.RareloadNPCID or entityDef.RareloadID
+            -- Prefer the save-time id override (see rareload_save_vehicles): some
+            -- framework dupe tables strip our RareloadEntityID field, so trust the
+            -- EntIndex→id map captured from the live entity when present.
+            local override = snapshot.rareloadIDOverrides and
+                (snapshot.rareloadIDOverrides[dupIndex]
+                    or snapshot.rareloadIDOverrides[tostring(dupIndex)]
+                    or snapshot.rareloadIDOverrides[tonumber(dupIndex) or -1])
+
+            local id = override or entityDef.RareloadEntityID or entityDef.RareloadNPCID or entityDef.RareloadID
             if not id then
                 id = string.format("%s_%s", idPrefix, tostring(dupIndex))
             end
@@ -69,6 +77,22 @@ local function iterateSnapshot(snapshot, opts, callback)
             summary.model = entityDef.Model
             summary.name = entityDef.Name
             summary.skin = entityDef.Skin
+
+            -- Phantom visual metadata captured at save time for framework vehicles
+            -- (visible sub-parts + appearance), keyed by the same RareloadEntityID.
+            -- Lets the clientside preview reassemble the whole vehicle rather than
+            -- just the root model. Scoped to snapshots that carry rareloadVisuals
+            -- (vehicles) so entity/NPC phantoms render exactly as before.
+            local visuals = snapshot.rareloadVisuals and snapshot.rareloadVisuals[id]
+            if istable(visuals) then
+                if istable(visuals.parts) then summary.SubModels = visuals.parts end
+                if istable(visuals.pose) then summary.pose = visuals.pose end
+                if istable(visuals.appearance) then
+                    summary.bodygroups = visuals.appearance.bodygroups
+                    if summary.skin == nil then summary.skin = visuals.appearance.skin end
+                end
+            end
+
             summary.SavedViaDuplicator = true
             summary._fromSnapshot = true
             summary.spawnTime = snapshot.savedAt
@@ -97,7 +121,7 @@ local function iterateSnapshot(snapshot, opts, callback)
         end
     end
 
-    if payload.Constraints then
+    if payload.Constraints and opts and opts.includeConstraints then
         for dupIndex, constraintDef in pairs(payload.Constraints) do
             local id = string.format("constraint_%s", tostring(dupIndex))
             local summary = table.Copy(constraintDef)
@@ -318,7 +342,15 @@ function SnapshotUtils.MergePreserveExisting(oldBucket, freshBucket, category)
         end
     end
 
-    if replaced == 0 then return freshBucket end
+    -- Keep vehicle contraptions out of the entity bucket; they live in their own
+    -- snapshot. Uses the single shared DataUtils vehicle-def detector.
+    if category == "entity" and RARELOAD.DataUtils and RARELOAD.DataUtils.IsVehicleEntityDef then
+        for dupIndex, def in pairs(freshPayload.Entities) do
+            if RARELOAD.DataUtils.IsVehicleEntityDef(def) then
+                freshPayload.Entities[dupIndex] = nil
+            end
+        end
+    end
 
     local serialized = serializePayload(freshPayload)
     if not serialized then return freshBucket end

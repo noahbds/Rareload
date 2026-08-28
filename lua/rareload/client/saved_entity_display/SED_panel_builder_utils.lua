@@ -43,7 +43,24 @@ PB.CATEGORY_LABEL_ORDER = {
         "Can Investigate", "Can Open Doors", "Can Receive Orders"
     },
     sounds = { "Has Sounds", "Pitch" },
-    vjbase = { "VJ Base NPC", "Name", "Category", "Base", "Type", "Immunities", "God Mode" }
+    vjbase = { "VJ Base NPC", "Name", "Category", "Base", "Type", "Immunities", "God Mode" },
+    vehicle = {
+        "Framework", "Type", "Category", "SubCategory", "Display Name", "Author", "Base", "Info",
+        "Top Speed", "Max Thrust", "VTOL Thrust", "Pitch Rate", "Yaw Rate", "Roll Rate",
+        "Max Pitch", "Max Roll", "Tip Threshold", "Dimensions", "Vehicle Mass"
+    },
+    drivetrain = {
+        "Engine", "RPM Range", "Current RPM", "Live Throttle", "Throttle Up", "Throttle Down",
+        "Transmission", "Gears", "Power Layout", "Differential", "Efficiency", "Horse Power",
+        "Peak Torque", "RPM Torque", "Turbo / Boost", "Brake Power", "Handbrake", "Steer Angle",
+        "Counter Steer", "Steer Limits", "Fuel Capacity"
+    },
+    systems = {
+        "Driver", "Gunner Seat", "Passenger Seats", "Suspension", "Springs", "Dampers",
+        "Wheel Count", "Tires", "Traction", "Tire Smoke", "Headlights", "Light Color",
+        "Sirens", "Doors", "Blast Doors", "Hatches", "Leg Pose", "Turn Range", "Floor Align",
+        "LAAT/c Cargo", "Maintenance"
+    }
 }
 
 PB.EXCLUDED_META_KEYS = {
@@ -124,12 +141,55 @@ PB.EXCLUDED_META_KEYS = {
     Target = true,
     squadMembers = true,
     keyvalues = true,
-    keyValues = true
+    keyValues = true,
+    DT = true,
+    DTlist = true,
+    GibModels = true,
+    EngineSounds = true,
+    StoredEyeAngles = true,
+    smGrabber = true,
+    OldAttack = true,
+    OldKeyReload = true,
+    oldBTbodygroup = true,
+    frontgunYaw = true,
+    RearGunAngleRange = true,
+    ForceLinearMultiplier = true,
+    ForceAngleMultiplier = true,
+    ForceAngleDampingMultiplier = true,
+    PhysicsDampingWhenInactive = true,
+    WaterLevelPreventStart = true,
+    WaterLevelAutoStop = true,
+    WaterLevelDestroyAI = true,
+    MissileAlertDelayMin = true,
+    MissileAlertDelayMax = true,
+    FlyBySound = true,
+    FlyByAdvance = true,
+    DeathSound = true,
+    DriverActiveSound = true,
+    DriverInActiveSound = true,
+    DSArmorDamageReductionType = true,
+    DSArmorBulletPenetrationType = true,
+    DSArmorIgnoreDamageType = true,
+    DSArmorIgnoreForce = true,
+    HitGroundLength = true,
+    SpawnAngleOffset = true,
+    SpawnNormalOffset = true,
+    _DuplicatorRestoreMaxHealthTo = true,
+    LVS = true,
+    LFS = true,
+    IsLVS = true,
+    IsLFS = true,
+    IsSimfphyscar = true,
+    bIsSimfphyscar = true,
+    isVehicle = true,
+    isNPC = true
 }
 
 function PB.newCategories()
     return {
         basic = {},
+        vehicle = {},
+        combat = {},
         position = {},
         saved = {},
         state = {},
@@ -139,7 +199,6 @@ function PB.newCategories()
         ownership = {},
         keyvalues = {},
         relations = {},
-        combat = {},
         vjbase = {},
         weapons = {},
         ai = {},

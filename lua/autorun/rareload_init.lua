@@ -70,7 +70,6 @@ if SERVER then
     include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
     include("rareload/core/save_helpers/rareload_save_ammo.lua")
     include("rareload/core/save_helpers/rareload_save_inventory.lua")
-    include("rareload/core/save_helpers/rareload_save_vehicle_state.lua")
     include("rareload/core/save_helpers/rareload_save_vehicles.lua")
     include("rareload/core/save_helpers/rareload_save_entities.lua")
     include("rareload/core/save_helpers/rareload_save_npcs.lua")
@@ -158,6 +157,26 @@ elseif CLIENT then
     net.Receive("RareloadDebugMessage", function()
         print(net.ReadString())
     end)
+
+    -- Guard WAC aircraft client hooks from crashing if LocalPlayer():InVehicle() is true before WAC networking arrives
+    local function EnsureWACClientTable()
+        local lp = LocalPlayer()
+        if IsValid(lp) then
+            if lp.wac == nil then
+                lp.wac = {
+                    lastView = { origin = Vector(0, 0, 0), angles = Angle(0, 0, 0), fov = 90 },
+                    mousePos = Vector(0, 0, 0),
+                    airframes = {}
+                }
+            elseif istable(lp.wac) and lp.wac.lastView == nil then
+                lp.wac.lastView = { origin = Vector(0, 0, 0), angles = Angle(0, 0, 0), fov = 90 }
+            end
+        end
+    end
+
+    hook.Add("CreateMove", "Rareload_WAC_Guard_CreateMove", EnsureWACClientTable)
+    hook.Add("CalcView", "Rareload_WAC_Guard_CalcView", EnsureWACClientTable)
+    hook.Add("InitPostEntity", "Rareload_WAC_Guard_InitPostEntity", EnsureWACClientTable)
 end
 
 if SERVER then

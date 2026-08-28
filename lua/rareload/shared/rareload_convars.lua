@@ -17,8 +17,7 @@ local CONVAR_DEFS = {
 
     { "sv_rareload_keep_map_entities",     "1",   "Keep map entities on respawn",                                                                                                  "retainMapEntities",                "bool" },
     { "sv_rareload_keep_map_npcs",         "1",   "Keep map NPCs on respawn",                                                                                                      "retainMapNPCs",                    "bool" },
-    { "sv_rareload_keep_vehicles",         "0",   "Respawn your saved vehicles (position, health, colour, drivable)",                                                              "retainVehicles",                   "bool" },
-    { "sv_rareload_keep_vehicle_state",    "0",   "Put you back in the vehicle you were driving when you saved",                                                                   "retainVehicleState",               "bool" },
+    { "sv_rareload_keep_vehicles",         "1",   "Respawn your saved vehicles (position, health, colour, drivable)",                                                              "retainVehicles",                   "bool" },
     { "sv_rareload_auto_overwrite",        "0",   "On save, overwrite already-saved entities/NPCs that were moved or changed (off preserves their old saved state)",               "autoOverwriteModified",            "bool" },
     { "sv_rareload_cleanup_map",           "0",   "Clean up the map right before respawning",                                                                                      "cleanupMapAfterDeath",             "bool" },
     { "sv_rareload_cleanup_owned_only",    "0",   "When cleanup on death is enabled, only remove the player's own Rareload-spawned entities/NPCs instead of wiping the whole map", "cleanupOnlyOwnedEntitiesOnDeath",  "bool" },

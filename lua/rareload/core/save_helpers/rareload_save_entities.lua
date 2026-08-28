@@ -31,9 +31,49 @@ return function(ply)
     local duplicatorSeen = {}
 
     for _, ent in ipairs(ents.GetAll()) do
-        if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() and not ent:IsVehicle() then
-            local className = ent:GetClass()
-            local isWeaponEntity = ent:IsWeapon() or string.StartsWith(className or "", "weapon_")
+        if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() then
+            local className = ent:GetClass() or ""
+
+            -- Exclude player hands, viewmodels, and player-attached entities
+            if className == "gmod_hands"
+                or className == "viewmodel"
+                or className == "predicted_viewmodel"
+                or className == "physgun_beam"
+                or className == "player_ragdoll"
+                or className == "gmod_gamerules" then
+                continue
+            end
+
+            -- Exclude all vehicles (Source vehicles, LVS, LFS, Simfphys, WAC, Glide, SCars, etc.)
+            if RARELOAD.DataUtils and RARELOAD.DataUtils.IsVehicleEntity and RARELOAD.DataUtils.IsVehicleEntity(ent) then
+                continue
+            end
+
+            -- Exclude vehicle sub-entities (rotors, rotor blade props / sawblades, colliders, wheels, seat pods, attachments)
+            if RARELOAD.DataUtils and RARELOAD.DataUtils.IsVehicleSubEntity and RARELOAD.DataUtils.IsVehicleSubEntity(ent) then
+                continue
+            end
+
+            -- Exclude parts/seats/attachments parented or linked to a vehicle
+            if RARELOAD.DataUtils and RARELOAD.DataUtils.GetRootVehicle then
+                local root = RARELOAD.DataUtils.GetRootVehicle(ent)
+                if IsValid(root) and (
+                    RARELOAD.DataUtils.ClassIsRootVehicle(root:GetClass())
+                    or RARELOAD.DataUtils.IsVehicleEntity(root)
+                    or (root ~= ent and RARELOAD.DataUtils.IsVehicleSubEntity(root))
+                ) then
+                    continue
+                end
+            end
+            local parent = ent:GetParent()
+            if IsValid(parent) then
+                if parent:IsPlayer() then continue end
+                if RARELOAD.DataUtils and (RARELOAD.DataUtils.IsVehicleEntity(parent) or RARELOAD.DataUtils.IsVehicleSubEntity(parent)) then
+                    continue
+                end
+            end
+
+            local isWeaponEntity = ent:IsWeapon() or string.StartsWith(className, "weapon_")
             if isWeaponEntity then
                 continue
             end
@@ -66,7 +106,7 @@ return function(ply)
 
     local duplicatorSnapshot = DuplicatorBridge.CaptureSnapshotForPlayer(duplicatorTargets, ply, function(err)
         WriteEntitySaveDebug(ply, "WARNING", "Duplicator snapshot capture failed", tostring(err))
-    end)
+    end, { category = "entity" })
     if not duplicatorSnapshot then
         local level = (count > 0) and "WARNING" or "VERBOSE"
         local reason = (count > 0)

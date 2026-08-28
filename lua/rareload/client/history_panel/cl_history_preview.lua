@@ -103,8 +103,19 @@ local function AddPhantom(model, pos, ang, title, rec, isNPC)
         p:SetMoveType(MOVETYPE_NONE)
         p:SetSolid(SOLID_NONE)
         p:SetRenderMode(RENDERMODE_TRANSALPHA)
-        p:SetColor(clear and TINT_CLEAR or TINT_BLOCK)
+        local col = clear and TINT_CLEAR or TINT_BLOCK
+        p:SetColor(col)
         it.phantom = p
+
+        if rec and SED and SED.Shared and SED.Shared.AttachSubModels then
+            local subPhantoms = SED.Shared.AttachSubModels(p, rec)
+            for _, sub in ipairs(subPhantoms) do
+                if IsValid(sub) then
+                    sub:SetColor(col)
+                    sub:SetNoDraw(false)
+                end
+            end
+        end
     end
     Preview.items[#Preview.items + 1] = it
     return it
@@ -174,7 +185,16 @@ hook.Add("Think", "RARELOAD_HistoryPreview_Recheck", function()
     _nextRecheck = now + 0.3
     for _, it in ipairs(Preview.items) do
         it.clear = HullClear(it.pos)
-        if IsValid(it.phantom) then it.phantom:SetColor(it.clear and TINT_CLEAR or TINT_BLOCK) end
+        if IsValid(it.phantom) then
+            local col = it.clear and TINT_CLEAR or TINT_BLOCK
+            it.phantom:SetColor(col)
+            local children = it.phantom:GetChildren()
+            if istable(children) then
+                for _, child in ipairs(children) do
+                    if IsValid(child) then child:SetColor(col) end
+                end
+            end
+        end
     end
 end)
 

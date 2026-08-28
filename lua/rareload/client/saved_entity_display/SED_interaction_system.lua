@@ -137,7 +137,28 @@ function SED.HandleInteractionInput()
         end
 
         if cache and cache.activeCat then
-            local categoryList = isNPC and SED.NPC_CATEGORIES or SED.ENT_CATEGORIES
+            local isVeh = savedRec and (
+                savedRec.isVehicle == true or
+                (RARELOAD.DataUtils and RARELOAD.DataUtils.ClassLooksLikeVehicle and RARELOAD.DataUtils.ClassLooksLikeVehicle(savedRec.class)) or
+                (isstring(savedRec.class) and (
+                    string.find(savedRec.class, "vehicle") or
+                    string.find(savedRec.class, "jeep") or
+                    string.find(savedRec.class, "airboat") or
+                    string.find(savedRec.class, "^lvs_") or
+                    string.find(savedRec.class, "^lfs_") or
+                    string.find(savedRec.class, "_lfs_") or
+                    string.find(savedRec.class, "lunasflightschool") or
+                    string.find(savedRec.class, "fphysics") or
+                    string.find(savedRec.class, "^wac_") or
+                    string.find(savedRec.class, "^glide_") or
+                    string.find(savedRec.class, "^sent_sakarias_car")
+                )) or
+                (IsValid(liveEnt) and (
+                    (RARELOAD.DataUtils and RARELOAD.DataUtils.IsVehicleEntity and RARELOAD.DataUtils.IsVehicleEntity(liveEnt)) or
+                    liveEnt:IsVehicle() or liveEnt.LVS or liveEnt.IsLVS or liveEnt.LFS or liveEnt.IsLFS or liveEnt.IsSimfphyscar or liveEnt.IsWAC
+                ))
+            )
+            local categoryList = isNPC and SED.NPC_CATEGORIES or (isVeh and SED.VEHICLE_CATEGORIES or SED.ENT_CATEGORIES)
             local scrollTable = isNPC and SED.PanelScroll.npcs or SED.PanelScroll.entities
 
             if savedRec and savedRec._isPhantom and savedRec._phantomCategories then

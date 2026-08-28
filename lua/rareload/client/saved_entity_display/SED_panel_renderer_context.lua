@@ -265,7 +265,28 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
     local cache = SED.BuildPanelData(saved, liveSrc, isNPC)
     if not cache then return nil end
 
-    local categories = isNPC and SED.NPC_CATEGORIES or SED.ENT_CATEGORIES
+    local isVeh = saved and (
+        saved.isVehicle == true or
+        (RARELOAD.DataUtils and RARELOAD.DataUtils.ClassLooksLikeVehicle and RARELOAD.DataUtils.ClassLooksLikeVehicle(saved.class)) or
+        (isstring(saved.class) and (
+            string.find(saved.class, "vehicle") or
+            string.find(saved.class, "jeep") or
+            string.find(saved.class, "airboat") or
+            string.find(saved.class, "^lvs_") or
+            string.find(saved.class, "^lfs_") or
+            string.find(saved.class, "_lfs_") or
+            string.find(saved.class, "lunasflightschool") or
+            string.find(saved.class, "fphysics") or
+            string.find(saved.class, "^wac_") or
+            string.find(saved.class, "^glide_") or
+            string.find(saved.class, "^sent_sakarias_car")
+        )) or
+        (IsValid(liveSrc) and (
+            (RARELOAD.DataUtils and RARELOAD.DataUtils.IsVehicleEntity and RARELOAD.DataUtils.IsVehicleEntity(liveSrc)) or
+            liveSrc:IsVehicle() or liveSrc.LVS or liveSrc.IsLVS or liveSrc.LFS or liveSrc.IsLFS or liveSrc.IsSimfphyscar or liveSrc.IsWAC
+        ))
+    )
+    local categories = isNPC and SED.NPC_CATEGORIES or (isVeh and SED.VEHICLE_CATEGORIES or SED.ENT_CATEGORIES)
     if saved._isPhantom and saved._phantomCategories then
         categories = saved._phantomCategories
     end

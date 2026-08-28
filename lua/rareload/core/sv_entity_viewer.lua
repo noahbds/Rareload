@@ -61,13 +61,16 @@ local function FindAndModify(tbl, isNPC, targetId, modifyFn)
 
     for _, playerData in pairs(tbl) do
         if not istable(playerData) then continue end
-        local container = isNPC and playerData.npcs or playerData.entities
-        if not istable(container) then continue end
-        if TryInMap(container) then return true end
-        if container.__duplicator
-            and container.__duplicator.payload
-            and container.__duplicator.payload.Entities then
-            if TryInMap(container.__duplicator.payload.Entities) then return true end
+        local containers = isNPC and { playerData.npcs } or { playerData.entities, playerData.vehicles }
+        for _, container in ipairs(containers) do
+            if istable(container) then
+                if TryInMap(container) then return true end
+                if container.__duplicator
+                    and container.__duplicator.payload
+                    and container.__duplicator.payload.Entities then
+                    if TryInMap(container.__duplicator.payload.Entities) then return true end
+                end
+            end
         end
     end
     return false

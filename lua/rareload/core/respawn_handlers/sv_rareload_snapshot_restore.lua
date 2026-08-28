@@ -28,7 +28,8 @@ function SnapshotRestore.BuildExistingIDSet(fieldName)
     return existingIDs
 end
 
-function SnapshotRestore.RestoreWithExistingIDFilter(snapshot, indexToID, fieldName, requestingPlayer, onRetry)
+function SnapshotRestore.RestoreWithExistingIDFilter(snapshot, indexToID, fieldName, requestingPlayer, onRetry, opts)
+    opts = opts or {}
     local skippedIDs = {}
 
     local skipFilter = IsValid(requestingPlayer) and requestingPlayer._rareloadSkipExistingFilter
@@ -50,12 +51,23 @@ function SnapshotRestore.RestoreWithExistingIDFilter(snapshot, indexToID, fieldN
         end
     }
 
+    local hasPlayer = IsValid(requestingPlayer) and requestingPlayer:IsPlayer()
+
+    -- Preferred paste context. Vehicle restores set preferPlayerContext because
+    -- some frameworks (e.g. Glide) refuse to spawn from their duplicator factory
+    -- when the paste player is invalid, so a server-context paste silently drops
+    -- them (and, since other entities still paste, the overall result looks OK).
+    local usePlayerFirst = opts.preferPlayerContext and hasPlayer
+    restoreOptions.player = usePlayerFirst and requestingPlayer or nil
+
     local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, restoreOptions)
-    if (not ok) and IsValid(requestingPlayer) then
+
+    -- On a hard failure, try the opposite paste context once.
+    if (not ok) and hasPlayer then
         if isfunction(onRetry) then
             onRetry(res)
         end
-        restoreOptions.player = requestingPlayer
+        restoreOptions.player = usePlayerFirst and nil or requestingPlayer
         ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, restoreOptions)
     end
 

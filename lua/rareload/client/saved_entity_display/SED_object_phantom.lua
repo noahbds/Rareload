@@ -41,6 +41,18 @@ local function CullDistanceSqr()
     return SED.PHANTOM_CULL_DIST_SQR
 end
 
+local function RemovePhantomEntry(data)
+    if not data then return end
+    if istable(data.subPhantoms) then
+        for _, sub in ipairs(data.subPhantoms) do
+            if IsValid(sub) then sub:Remove() end
+        end
+    end
+    if IsValid(data.phantom) then
+        data.phantom:Remove()
+    end
+end
+
 local function EnsurePhantom(id, rec, isNPC)
     local existing = SED.ObjectPhantoms[id]
     if existing and IsValid(existing.phantom) then return existing end
@@ -52,14 +64,29 @@ local function EnsurePhantom(id, rec, isNPC)
     local phantom = SS.MakePhantomModel(rec.model, pos, ang)
     if not phantom then return nil end
 
+    if rec.skin then phantom:SetSkin(rec.skin) end
+    if rec.material and rec.material ~= "" then phantom:SetMaterial(rec.material) end
+    if rec.bodygroups and istable(rec.bodygroups) then
+        for bgId, val in pairs(rec.bodygroups) do
+            local numId = tonumber(bgId)
+            if numId then phantom:SetBodygroup(numId, val) end
+        end
+    end
+
+    -- Reproduce the saved skeletal pose (walker legs deployed, turret aimed).
+    if rec.pose then SS.ApplyPhantomPose(phantom, rec.pose) end
+
+    local subPhantoms = SS.AttachSubModels(phantom, rec)
+
     local data = {
-        phantom = phantom,
-        id      = id,
-        isNPC   = isNPC,
-        pos     = pos,
-        ang     = ang,
-        class   = rec.class,
-        model   = rec.model,
+        phantom     = phantom,
+        subPhantoms = subPhantoms,
+        id          = id,
+        isNPC       = isNPC,
+        pos         = pos,
+        ang         = ang,
+        class       = rec.class,
+        model       = rec.model,
     }
     SED.ObjectPhantoms[id] = data
     return data
@@ -91,7 +118,7 @@ function ObjectPhantom.Refresh()
         local keep = rec and IsValid(data.phantom) and data.pos and
             origin:DistToSqr(data.pos) <= cullSqr
         if not keep then
-            if IsValid(data.phantom) then data.phantom:Remove() end
+            RemovePhantomEntry(data)
             SED.ObjectPhantoms[id] = nil
         end
     end
@@ -122,7 +149,7 @@ end
 
 function ObjectPhantom.RemoveAll()
     for id, data in pairs(SED.ObjectPhantoms) do
-        if IsValid(data.phantom) then data.phantom:Remove() end
+        RemovePhantomEntry(data)
         SED.ObjectPhantoms[id] = nil
     end
 end

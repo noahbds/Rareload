@@ -251,6 +251,24 @@ net.Receive("RareloadEntityViewer_Delete", function(len, ply)
                 deletedBucket = "npcs"
             end
         end
+
+        if playerData.vehicles and SnapshotUtils.HasSnapshot(playerData.vehicles) then
+            attempts = attempts + 1
+
+            local removed = false
+            if isstring(entityId) and entityId ~= "" then
+                removed = SnapshotUtils.RemoveEntryByID(playerData.vehicles, entityId)
+            end
+            if not removed then
+                removed, resolvedDeleteID = RemoveByClassAndPosition(playerData.vehicles, "vehicle")
+            end
+
+            if removed then
+                deleted = true
+                deletedSteamIDs[steamID] = true
+                deletedBucket = "vehicles"
+            end
+        end
     end
 
     if not deleted then
@@ -338,7 +356,7 @@ net.Receive("RareloadEntityViewer_DeleteMany", function(len, ply)
                 if not istable(playerData) then continue end
 
                 local removed = false
-                for _, bucket in ipairs({ playerData.entities, playerData.npcs }) do
+                for _, bucket in ipairs({ playerData.entities, playerData.npcs, playerData.vehicles }) do
                     if not (bucket and SnapshotUtils.HasSnapshot(bucket)) then continue end
 
                     if isstring(entry.id) and entry.id ~= "" then

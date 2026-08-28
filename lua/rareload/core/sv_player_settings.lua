@@ -225,7 +225,6 @@ local ALLOWED_CLIENT_SETTINGS = {
     retainPlayerStates = "bool",
     debugEnabled = "bool",
     nocustomrespawnatdeath = "bool",
-    retainVehicleState = "bool",
     retainMapEntities = "bool",
     autoOverwriteModified = "bool",
     cleanupMapAfterDeath = "bool",

@@ -1,5 +1,3 @@
----@diagnostic disable: inject-field
-
 RARELOAD = RARELOAD or {}
 RARELOAD.EntityIdentity = RARELOAD.EntityIdentity or {}
 

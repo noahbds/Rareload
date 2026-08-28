@@ -197,14 +197,209 @@ function SS.MakePhantomModel(model, pos, ang)
     return phantom
 end
 
+-- Reproduces a saved skeletal pose on a phantom so procedurally-posed vehicles
+-- (walker legs, aimed turrets) render in their deployed stance instead of the
+-- model's reference pose. Safe on any model: unknown sequences/params are no-ops.
+function SS.ApplyPhantomPose(phantom, pose)
+    if not IsValid(phantom) or not istable(pose) then return end
+
+    if pose.sequence and pose.sequence >= 0 then
+        phantom:ResetSequence(pose.sequence)
+        phantom:SetCycle(pose.cycle or 0)
+        phantom:SetPlaybackRate(0) -- freeze on the captured frame
+    end
+
+    if istable(pose.poseParams) then
+        for name, value in pairs(pose.poseParams) do
+            if isstring(name) then phantom:SetPoseParameter(name, value) end
+        end
+        phantom:InvalidateBoneCache()
+    end
+
+    if istable(pose.bones) then
+        for boneId, m in pairs(pose.bones) do
+            local b = tonumber(boneId)
+            if b then
+                if istable(m.ang) then phantom:ManipulateBoneAngles(b, Angle(m.ang.p or 0, m.ang.y or 0, m.ang.r or 0)) end
+                if istable(m.pos) then phantom:ManipulateBonePosition(b, Vector(m.pos.x or 0, m.pos.y or 0, m.pos.z or 0)) end
+                if istable(m.scl) then phantom:ManipulateBoneScale(b, Vector(m.scl.x or 1, m.scl.y or 1, m.scl.z or 1)) end
+            end
+        end
+    end
+
+    phantom:SetupBones()
+end
+
+local function IsValidModelPath(str)
+    if not isstring(str) or str == "" then return false end
+    local lower = string.lower(str)
+    if not string.EndsWith(lower, ".mdl") then return false end
+    if string.find(lower, "gib") or string.find(lower, "debris") or string.find(lower, "piece") or string.find(lower, "chunk") then
+        return false
+    end
+    return true
+end
+
+function SS.GatherSubModels(rec)
+    if not istable(rec) then return {} end
+    local subModels = {}
+    local seen = {}
+    local baseModel = string.lower(rec.model or rec.Model or "")
+    if baseModel ~= "" then seen[baseModel] = true end
+
+    local function addCandidate(mdl, hint, extra)
+        if not IsValidModelPath(mdl) then return end
+        local lower = string.lower(mdl)
+        if not seen[lower] then
+            seen[lower] = true
+            local cand = { model = mdl, hint = tostring(hint or "") }
+            if istable(extra) then
+                -- Exact saved local transform (captured server-side for vehicle parts)
+                cand.pos  = istable(extra.pos) and extra.pos or nil
+                cand.ang  = istable(extra.ang) and extra.ang or nil
+                cand.skin = extra.skin
+            end
+            table.insert(subModels, cand)
+        end
+    end
+
+    local function inspectTable(tbl, prefix)
+        if not istable(tbl) then return end
+        for k, v in pairs(tbl) do
+            local hint = (isstring(k) and k ~= "") and k or prefix
+            if isstring(v) then
+                addCandidate(v, hint)
+            elseif istable(v) then
+                local mdl = v.model or v.Model or v.mdl
+                if isstring(mdl) then
+                    addCandidate(mdl, v.attachment or v.Attachment or v.att or hint, v)
+                end
+            end
+        end
+    end
+
+    -- 1. Snapshot record tables
+    inspectTable(rec.SubModels, "SubModels")
+    inspectTable(rec.ExtraModels, "ExtraModels")
+    inspectTable(rec.ClientModels, "ClientModels")
+    inspectTable(rec.BoneMergeModels, "BoneMergeModels")
+    inspectTable(rec.Parts, "Parts")
+    inspectTable(rec.Models, "Models")
+
+    -- 2. Dynamically inspect the entity's registered scripted_ents class table
+    local cls = rec.class or rec.Class or rec.ClassName
+    if isstring(cls) and cls ~= "" and scripted_ents then
+        local entTable = scripted_ents.Get(cls)
+        if entTable then
+            for k, v in pairs(entTable) do
+                if isstring(k) then
+                    local kLower = string.lower(k)
+                    if string.StartsWith(kLower, "mdl") or string.StartsWith(kLower, "model") or string.StartsWith(kLower, "part") then
+                        if isstring(v) then
+                            addCandidate(v, k)
+                        elseif istable(v) then
+                            inspectTable(v, k)
+                        end
+                    elseif kLower == "submodels" or kLower == "extramodels" or kLower == "clientmodels" or kLower == "bonemergemodels" or kLower == "parts" or kLower == "models" then
+                        inspectTable(v, k)
+                    end
+                end
+            end
+        end
+    end
+
+    return subModels
+end
+
+function SS.AttachSubModels(parentPhantom, rec)
+    if not IsValid(parentPhantom) then return {} end
+    local candidates = SS.GatherSubModels(rec)
+    if #candidates == 0 then return {} end
+
+    local attached = {}
+    local pos = parentPhantom:GetPos()
+    local ang = parentPhantom:GetAngles()
+
+    -- Dynamic attachment lookup from the parent model
+    local attachments = parentPhantom:GetAttachments() or {}
+
+    for _, cand in ipairs(candidates) do
+        local sm = cand.model
+        local hint = string.lower(cand.hint)
+        util.PrecacheModel(sm)
+
+        local sub = SS.MakePhantomModel(sm, pos, ang)
+        if IsValid(sub) then
+            -- Preferred path: an exact local transform was captured for this part
+            -- at save time. Parent to the root phantom and place it precisely.
+            if cand.pos and cand.ang then
+                sub:SetParent(parentPhantom)
+                sub:SetLocalPos(Vector(cand.pos.x or 0, cand.pos.y or 0, cand.pos.z or 0))
+                sub:SetLocalAngles(Angle(cand.ang.p or 0, cand.ang.y or 0, cand.ang.r or 0))
+                sub:SetSkin(cand.skin or rec.skin or rec.Skin or 0)
+                if rec.material and rec.material ~= "" then sub:SetMaterial(rec.material) end
+                table.insert(attached, sub)
+                continue
+            end
+
+            local attID = -1
+
+            -- 1. Try exact hint lookup if hint was provided
+            if hint ~= "" then
+                attID = parentPhantom:LookupAttachment(cand.hint)
+                if attID <= 0 then
+                    local stripped = string.gsub(string.gsub(hint, "^mdl_", ""), "^model_", "")
+                    attID = parentPhantom:LookupAttachment(stripped)
+                end
+            end
+
+            -- 2. Try matching any attachment name dynamically with the model path or hint
+            if attID <= 0 and #attachments > 0 then
+                local modelName = string.StripExtension(string.GetFileFromFilename(sm)):lower()
+                for _, att in ipairs(attachments) do
+                    local attName = string.lower(att.name or "")
+                    if attName ~= "" and (attName == hint or string.find(modelName, attName, 1, true) or (hint ~= "" and string.find(hint, attName, 1, true))) then
+                        attID = att.id
+                        break
+                    end
+                end
+            end
+
+            -- 3. Attach to matched attachment point or fallback to BoneMerge
+            if attID > 0 then
+                sub:SetParent(parentPhantom, attID)
+                sub:SetLocalPos(vector_origin)
+                sub:SetLocalAngles(angle_zero)
+            else
+                sub:SetParent(parentPhantom)
+                sub:AddEffects(EF_BONEMERGE)
+                sub:AddEffects(EF_BONEMERGE_FASTCULL)
+            end
+
+            if rec.skin or rec.Skin then sub:SetSkin(rec.skin or rec.Skin) end
+            if rec.material and rec.material ~= "" then sub:SetMaterial(rec.material) end
+            table.insert(attached, sub)
+        end
+    end
+
+    return attached
+end
+
 function SS.SetPhantomRevealed(phantom, show)
     if not IsValid(phantom) then return end
-    if show then
-        phantom:SetColor(Color(255, 255, 255, 150))
-        phantom:SetNoDraw(false)
-    else
-        phantom:SetColor(Color(0, 0, 0, 0))
-        phantom:SetNoDraw(true)
+    local col = show and Color(255, 255, 255, 150) or Color(0, 0, 0, 0)
+    phantom:SetColor(col)
+    phantom:SetNoDraw(not show)
+
+    -- Also propagate to child / bonemerged clientside models if any
+    local children = phantom:GetChildren()
+    if istable(children) then
+        for _, child in ipairs(children) do
+            if IsValid(child) then
+                child:SetColor(col)
+                child:SetNoDraw(not show)
+            end
+        end
     end
 end
 

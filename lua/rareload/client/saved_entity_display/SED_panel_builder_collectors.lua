@@ -72,7 +72,35 @@ function PB.populateCategories(ctx)
         "ownerSteamID64", "RareloadOwnerSteamID64")
     local spawnTime = PB.firstValue(saved, "spawnTime", "savedAt", "SavedAt")
 
-    add("basic", isNPC and "NPC ID" or "Entity ID", primaryID)
+    local isVeh = not isNPC and (
+        saved.isVehicle == true or
+        (RARELOAD.DataUtils and RARELOAD.DataUtils.ClassLooksLikeVehicle and RARELOAD.DataUtils.ClassLooksLikeVehicle(className)) or
+        (isstring(className) and (
+            string.find(className, "vehicle") or
+            string.find(className, "jeep") or
+            string.find(className, "airboat") or
+            string.find(className, "^lvs_") or
+            string.find(className, "^lfs_") or
+            string.find(className, "lunasflightschool") or
+            string.find(className, "fphysics") or
+            string.find(className, "^wac_") or
+            string.find(className, "^glide_") or
+            string.find(className, "^sent_sakarias_car")
+        )) or
+        (IsValid(ent) and (
+            (RARELOAD.DataUtils and RARELOAD.DataUtils.IsVehicleEntity and RARELOAD.DataUtils.IsVehicleEntity(ent)) or
+            ent:IsVehicle() or ent.LVS or ent.IsLVS or ent.LFS or ent.IsLFS or ent.IsSimfphyscar or ent.IsWAC
+        ))
+    )
+
+    local isLVS = isVeh and (saved.LVS or saved.IsLVS or (IsValid(ent) and (ent.LVS or ent.IsLVS)) or (className and string.find(className, "^lvs_")) or (saved.Base and string.find(saved.Base, "lvs_")))
+    local isLFS = isVeh and (saved.LFS or saved.IsLFS or (IsValid(ent) and (ent.LFS or ent.IsLFS)) or (className and (string.find(className, "^lfs_") or string.find(className, "^lunasflightschool") or string.find(className, "_lfs_"))) or (saved.Base and (string.find(saved.Base, "lunasflightschool") or string.find(saved.Base, "lfs_"))))
+    local isSimfphys = isVeh and (saved.IsSimfphyscar or saved.bIsSimfphyscar or (IsValid(ent) and (ent.IsSimfphyscar or ent.bIsSimfphyscar)) or (className and string.find(className, "fphysics")))
+    local isWAC = isVeh and (saved.IsWAC or saved.wac_seatinfo ~= nil or (IsValid(ent) and (ent.IsWAC or ent.wac_seatinfo ~= nil)) or (className and string.find(className, "^wac_")))
+    local isGlide = isVeh and (saved.IsGlideVehicle or (IsValid(ent) and ent.IsGlideVehicle) or (className and string.find(className, "^glide_")))
+    local isSCar = isVeh and (saved.IsSCar or (IsValid(ent) and ent.IsSCar) or (className and string.find(className, "^sent_sakarias_car")))
+
+    add("basic", isNPC and "NPC ID" or (isVeh and "Vehicle ID" or "Entity ID"), primaryID)
     if saved.RareloadNPCID and saved.RareloadNPCID ~= primaryID then
         add("basic", "Rareload NPC ID", saved.RareloadNPCID)
     end
@@ -88,6 +116,60 @@ function PB.populateCategories(ctx)
     end
     if displayName and displayName ~= className then
         add("basic", "Display Name", displayName)
+    end
+
+    if isVeh then
+        local frameworkName = isLVS and "[LVS] Luna Vehicle System"
+            or (isLFS and "[LFS] Luna's Flight School")
+            or (isSimfphys and "[Simfphys] Physics Vehicle")
+            or (isWAC and "[WAC] Aircraft")
+            or (isGlide and "[Glide] Vehicle")
+            or (isSCar and "[SCars] Vehicle")
+            or "Source Engine Vehicle"
+
+        add("basic", "Framework", frameworkName, Color(0, 220, 255))
+
+        local typeName = "Vehicle"
+        local lowerClass = string.lower(className or "")
+        local lowerBase = string.lower(tostring(saved.Base or ""))
+        if string.find(lowerClass, "atat") or string.find(lowerClass, "atte") or string.find(lowerClass, "walker") or string.find(lowerBase, "walker") or string.find(lowerBase, "atte") then
+            typeName = "Walker / Heavy Armor"
+        elseif string.find(lowerClass, "gunship") or string.find(lowerClass, "laat") or string.find(lowerClass, "dropship") then
+            typeName = "Gunship / Transport"
+        elseif string.find(lowerClass, "starfighter") or string.find(lowerClass, "xwing") or string.find(lowerClass, "tie") or string.find(lowerClass, "fighter") or isLFS then
+            typeName = "Starfighter / Aircraft"
+        elseif string.find(lowerClass, "speeder") or string.find(lowerClass, "hover") then
+            typeName = "Speeder / Hovercraft"
+        elseif string.find(lowerClass, "heli") or string.find(lowerClass, "wac_hc") or string.find(lowerClass, "chopper") then
+            typeName = "Helicopter"
+        elseif string.find(lowerClass, "plane") or string.find(lowerClass, "wac_pl") then
+            typeName = "Airplane"
+        elseif string.find(lowerClass, "police") or string.find(lowerClass, "cruiser") or string.find(lowerClass, "cop") then
+            typeName = "Police / Emergency Vehicle"
+        elseif isSimfphys or isGlide or string.find(lowerClass, "car") or string.find(lowerClass, "truck") or string.find(lowerClass, "sedan") then
+            typeName = "Automobile / Wheeled Vehicle"
+        elseif string.find(lowerClass, "pod") or string.find(lowerClass, "seat") or string.find(lowerClass, "chair") then
+            typeName = "Vehicle Pod / Seat"
+        end
+        add("basic", "Type", typeName, Color(140, 230, 255))
+
+        if saved.Base and saved.Base ~= "" then
+            add("basic", "Base", saved.Base, Color(180, 200, 220))
+        end
+        local vehCat = saved.Category or saved.VehicleCategory
+        if vehCat and vehCat ~= "" then
+            add("basic", "Category", vehCat, Color(200, 220, 255))
+        end
+        if saved.VehicleSubCategory and saved.VehicleSubCategory ~= "" then
+            add("basic", "SubCategory", saved.VehicleSubCategory, Color(170, 210, 255))
+        end
+        if saved.Author and saved.Author ~= "" then
+            add("basic", "Author", saved.Author, Color(220, 220, 180))
+        end
+        local vehInfo = saved.Information or saved.Instructions or saved.Purpose
+        if vehInfo and vehInfo ~= "" then
+            add("basic", "Info", vehInfo, Color(200, 200, 200))
+        end
     end
 
     if modelPath then
@@ -362,8 +444,426 @@ function PB.populateCategories(ctx)
         end
     end
 
-    local maxHPValue = PB.firstValue(saved, "MaxHealth", "maxHealth", "HealthMax")
+    if isVeh then
+        local dt = saved.DT or saved.dt or {}
+        local physObjs = saved.PhysicsObjects or {}
+        local rootPhys = physObjs[0] or physObjs["0"] or physObjs[1] or {}
+
+        -- Framework Name
+        local frameworkName = isLVS and "[LVS] Luna Vehicle System"
+            or (isLFS and "[LFS] Luna's Flight School")
+            or (isSimfphys and "[Simfphys] Physics Vehicle")
+            or (isWAC and "[WAC] Aircraft")
+            or (isGlide and "[Glide] Vehicle")
+            or (isSCar and "[SCars] Vehicle")
+            or "Source Engine Vehicle"
+
+        -- Vehicle Type Classification
+        local typeName = "Vehicle"
+        local lowerClass = string.lower(className or "")
+        local lowerBase = string.lower(tostring(saved.Base or ""))
+        if string.find(lowerClass, "atat") or string.find(lowerClass, "atte") or string.find(lowerClass, "walker") or string.find(lowerBase, "walker") or string.find(lowerBase, "atte") then
+            typeName = "Walker / Heavy Armor"
+        elseif string.find(lowerClass, "gunship") or string.find(lowerClass, "laat") or string.find(lowerClass, "dropship") then
+            typeName = "Gunship / Transport"
+        elseif string.find(lowerClass, "starfighter") or string.find(lowerClass, "xwing") or string.find(lowerClass, "tie") or string.find(lowerClass, "fighter") or isLFS then
+            typeName = "Starfighter / Aircraft"
+        elseif string.find(lowerClass, "speeder") or string.find(lowerClass, "hover") then
+            typeName = "Speeder / Hovercraft"
+        elseif string.find(lowerClass, "heli") or string.find(lowerClass, "wac_hc") or string.find(lowerClass, "chopper") then
+            typeName = "Helicopter"
+        elseif string.find(lowerClass, "plane") or string.find(lowerClass, "wac_pl") then
+            typeName = "Airplane"
+        elseif string.find(lowerClass, "police") or string.find(lowerClass, "cruiser") or string.find(lowerClass, "cop") then
+            typeName = "Police / Emergency Vehicle"
+        elseif isSimfphys or isGlide or string.find(lowerClass, "car") or string.find(lowerClass, "truck") or string.find(lowerClass, "sedan") then
+            typeName = "Automobile / Wheeled Vehicle"
+        elseif string.find(lowerClass, "pod") or string.find(lowerClass, "seat") or string.find(lowerClass, "chair") then
+            typeName = "Vehicle Pod / Seat"
+        end
+
+        local vehCat = saved.Category or saved.VehicleCategory
+
+        -- ====================================================================
+        -- CATEGORY: VEHICLE SPECIFICATIONS & AERODYNAMICS
+        -- ====================================================================
+        add("vehicle", "Framework", frameworkName, Color(0, 220, 255))
+        add("vehicle", "Type", typeName, Color(140, 230, 255))
+        if displayName and displayName ~= "" then
+            add("vehicle", "Display Name", displayName, Color(255, 220, 100))
+        end
+        if vehCat and vehCat ~= "" then
+            add("vehicle", "Category", vehCat, Color(200, 220, 255))
+        end
+        if saved.VehicleSubCategory and saved.VehicleSubCategory ~= "" then
+            add("vehicle", "SubCategory", saved.VehicleSubCategory, Color(170, 210, 255))
+        end
+        if saved.Author and saved.Author ~= "" then
+            add("vehicle", "Author", saved.Author, Color(220, 220, 180))
+        end
+
+        local topSpeed = saved.MaxVelocity or saved.MaxSpeed or saved.maxspeed or saved.TopSpeed or (saved.Walkspeed and saved.Sprintspeed and (saved.Sprintspeed * 10))
+        if topSpeed and tonumber(topSpeed) and tonumber(topSpeed) > 0 then
+            local numSpeed = tonumber(topSpeed)
+            local kmh = math.Round(numSpeed * 0.06858)
+            local mph = math.Round(numSpeed * 0.04261)
+            add("vehicle", "Top Speed", string.format("%d u/s (%d km/h / %d mph)", numSpeed, kmh, mph), Color(100, 255, 150))
+        end
+
+        if saved.Sprintspeed and saved.Walkspeed then
+            add("vehicle", "Speeds", string.format("Walk: %d | Sprint: %d", saved.Walkspeed, saved.Sprintspeed), Color(180, 255, 180))
+        end
+
+        if saved.MaxThrust and tonumber(saved.MaxThrust) and tonumber(saved.MaxThrust) > 0 then
+            add("vehicle", "Max Thrust", tostring(saved.MaxThrust) .. " N", Color(255, 200, 100))
+        end
+        if saved.ThrustVtol and tonumber(saved.ThrustVtol) and tonumber(saved.ThrustVtol) > 0 then
+            add("vehicle", "VTOL Thrust", tostring(saved.ThrustVtol) .. " N", Color(255, 180, 120))
+        end
+
+        if saved.TurnRatePitch or saved.TurnRateYaw or saved.TurnRateRoll then
+            local p = saved.TurnRatePitch and tostring(saved.TurnRatePitch) .. "°" or "-"
+            local y = saved.TurnRateYaw and tostring(saved.TurnRateYaw) .. "°" or "-"
+            local r = saved.TurnRateRoll and tostring(saved.TurnRateRoll) .. "°" or "-"
+            add("vehicle", "Flight Turn Rate", string.format("P: %s  Y: %s  R: %s", p, y, r), Color(150, 220, 255))
+        elseif saved.Turnrate and tonumber(saved.Turnrate) and tonumber(saved.Turnrate) > 0 then
+            add("vehicle", "Turn Rate", tostring(saved.Turnrate) .. "°/s", Color(150, 220, 255))
+        end
+
+        if saved.HeadTurnrate and tonumber(saved.HeadTurnrate) and tonumber(saved.HeadTurnrate) > 0 then
+            add("vehicle", "Head Turn Rate", tostring(saved.HeadTurnrate) .. "°/s", Color(180, 220, 255))
+        end
+
+        if saved.MaxPitch or saved.MaxRoll then
+            local mp = saved.MaxPitch and (tostring(saved.MaxPitch) .. "°") or "-"
+            local mr = saved.MaxRoll and (tostring(saved.MaxRoll) .. "°") or "-"
+            add("vehicle", "Max Pitch / Roll", string.format("Pitch: %s | Roll: %s", mp, mr), Color(200, 200, 255))
+        end
+
+        if saved.TipOverThreashold and istable(saved.TipOverThreashold) then
+            local tp = saved.TipOverThreashold.pitch or "?"
+            local tr = saved.TipOverThreashold.roll or "?"
+            add("vehicle", "Tip Threshold", string.format("Pitch: %s° | Roll: %s°", tp, tr), Color(255, 160, 120))
+        end
+
+        local vehMass = saved.Mass or (saved.physics and saved.physics.mass) or (rootPhys and rootPhys.Mass)
+        if vehMass and tonumber(vehMass) and tonumber(vehMass) > 0 then
+            add("vehicle", "Vehicle Mass", string.format("%s kg", string.Comma(math.floor(tonumber(vehMass)))), Color(200, 220, 255))
+        end
+
+        -- ====================================================================
+        -- CATEGORY: DRIVETRAIN & ENGINE
+        -- ====================================================================
+        local engineActive = (dt.EngineActive ~= nil and dt.EngineActive)
+            or (saved.EngineActive ~= nil and saved.EngineActive)
+            or (dt.Active ~= nil and dt.Active)
+            or (saved.Active ~= nil and saved.Active)
+        if engineActive ~= nil then
+            add("drivetrain", "Engine", engineActive and "RUNNING" or "OFF", engineActive and Color(100, 255, 150) or Color(255, 100, 100))
+        end
+
+        local curRPM = dt.RPM or saved.RPM or (dt.CurrentRPM or saved.CurrentRPM)
+        local idleRPM = saved.IdleRPM or dt.MinRPM or saved.MinRPM
+        local limitRPM = saved.LimitRPM or saved.MaxRPM or dt.MaxRPM
+        if curRPM and tonumber(curRPM) then
+            add("drivetrain", "Current RPM", string.format("%d RPM", math.floor(tonumber(curRPM))), Color(255, 220, 100))
+        end
+        if idleRPM or limitRPM then
+            local idText = idleRPM and tostring(math.floor(tonumber(idleRPM))) or "?"
+            local limText = limitRPM and tostring(math.floor(tonumber(limitRPM))) or "?"
+            add("drivetrain", "RPM Range", string.format("%s - %s RPM", idText, limText), Color(200, 255, 200))
+        end
+
+        local throttle = dt.NWThrottle or dt.Throttle or (dt.Move and math.abs(dt.Move))
+        if throttle and tonumber(throttle) then
+            local thrPct = math.Clamp(math.floor(tonumber(throttle) * (tonumber(throttle) <= 1 and 100 or 1)), 0, 100)
+            add("drivetrain", "Live Throttle", tostring(thrPct) .. "%", Color(255, 220, 100))
+        end
+
+        if saved.ThrottleRateUp or saved.ThrottleRateDown then
+            local up = saved.ThrottleRateUp and tostring(saved.ThrottleRateUp) or "?"
+            local dn = saved.ThrottleRateDown and tostring(saved.ThrottleRateDown) or "?"
+            add("drivetrain", "Throttle Rates", string.format("Up: %s/s | Down: %s/s", up, dn), Color(180, 220, 200))
+        end
+
+        -- Transmission & Gears
+        local curGear = dt.Gear or dt.RGear or dt.LGear or saved.Gear
+        local gears = saved.Gears or saved.ForwardGears
+        if curGear ~= nil or gears ~= nil then
+            local gText = (curGear and ("Gear " .. tostring(curGear)) or "Neutral") .. (gears and (" (of " .. tostring(gears) .. ")") or "")
+            add("drivetrain", "Gears", gText, Color(200, 200, 255))
+        end
+
+        local powerDist = dt.PowerDistribution or saved.PowerDistribution
+        if powerDist and tonumber(powerDist) then
+            local pd = tonumber(powerDist)
+            local pLayout = (pd < -0.1 and string.format("AWD (%.0f%% Rear / %.0f%% Front)", (1 + pd) * 100, (-pd) * 100))
+                or (pd > 0.1 and string.format("FWD (%.0f%% Front)", pd * 100))
+                or "RWD (100% Rear)"
+            add("drivetrain", "Power Layout", pLayout, Color(150, 220, 255))
+        end
+
+        local diffRatio = dt.DifferentialRatio or saved.DifferentialRatio
+        local transEff = dt.TransmissionEfficiency or saved.TransmissionEfficiency
+        if diffRatio or transEff then
+            local dr = diffRatio and string.format("%.2f Ratio", tonumber(diffRatio)) or ""
+            local te = transEff and string.format("%.0f%% Eff", tonumber(transEff) * 100) or ""
+            add("drivetrain", "Differential", dr .. (dr ~= "" and te ~= "" and " | " or "") .. te, Color(200, 220, 255))
+        end
+
+        if dt.FastTransmission ~= nil or saved.FastTransmission ~= nil then
+            local ft = (dt.FastTransmission ~= nil and dt.FastTransmission) or saved.FastTransmission
+            add("drivetrain", "Fast Shift", ft and "Enabled" or "Standard", ft and Color(100, 255, 150) or Color(180, 180, 180))
+        end
+
+        if saved.HorsePower and tonumber(saved.HorsePower) and tonumber(saved.HorsePower) > 0 then
+            add("drivetrain", "Horse Power", tostring(saved.HorsePower) .. " HP", Color(255, 150, 100))
+        end
+
+        local peakTorque = saved.PeakTorque or dt.MaxRPMTorque or saved.MaxRPMTorque
+        if peakTorque and tonumber(peakTorque) and tonumber(peakTorque) > 0 then
+            add("drivetrain", "Peak Torque", tostring(math.floor(tonumber(peakTorque))) .. " Nm", Color(255, 180, 100))
+        end
+
+        if dt.MinRPMTorque and dt.MaxRPMTorque then
+            add("drivetrain", "RPM Torque", string.format("%d - %d Nm", math.floor(dt.MinRPMTorque), math.floor(dt.MaxRPMTorque)), Color(255, 200, 140))
+        end
+
+        local turbo = dt.TurboCharged ~= nil and dt.TurboCharged or saved.TurboCharged
+        if turbo ~= nil then
+            add("drivetrain", "Turbo / Boost", turbo and "Supercharged / Turbo" or "Naturally Aspirated", turbo and Color(255, 150, 50) or Color(180, 180, 180))
+        end
+
+        local brakePower = dt.BrakePower or saved.BrakePower
+        if brakePower and tonumber(brakePower) and tonumber(brakePower) > 0 then
+            add("drivetrain", "Brake Power", tostring(brakePower) .. " N", Color(255, 120, 120))
+        end
+
+        local steerAng = saved.SteerAngle or (dt.MaxSteerAngle and math.floor(dt.MaxSteerAngle))
+        if steerAng and tonumber(steerAng) and tonumber(steerAng) > 0 then
+            add("drivetrain", "Steer Angle", tostring(steerAng) .. "°", Color(150, 200, 255))
+        end
+
+        if dt.CounterSteer and tonumber(dt.CounterSteer) and tonumber(dt.CounterSteer) > 0 then
+            add("drivetrain", "Counter Steer", string.format("%.2f Assist", dt.CounterSteer), Color(180, 220, 255))
+        end
+
+        if dt.SteerConeMaxSpeed or dt.SteerConeChangeRate then
+            local spd = dt.SteerConeMaxSpeed and (tostring(dt.SteerConeMaxSpeed) .. " u/s") or "-"
+            local rate = dt.SteerConeChangeRate and (tostring(dt.SteerConeChangeRate) .. "°/s") or "-"
+            add("drivetrain", "Steer Cone", string.format("Speed: %s | Rate: %s", spd, rate), Color(170, 210, 255))
+        end
+
+        local fuel = saved.Fuel or saved.fuel or dt.Fuel
+        local maxFuel = saved.MaxFuel or saved.maxFuel or saved.FuelTankSize
+        if fuel or maxFuel then
+            local fVal = fuel and tonumber(fuel) and math.floor(tonumber(fuel)) or (fuel and tostring(fuel) or "?")
+            local mfVal = maxFuel and tonumber(maxFuel) and math.floor(tonumber(maxFuel)) or (maxFuel and tostring(maxFuel) or "")
+            local fText = tostring(fVal) .. (mfVal ~= "" and (" / " .. tostring(mfVal)) or "") .. " L"
+            add("drivetrain", "Fuel Capacity", fText, Color(255, 220, 100))
+        end
+
+        -- ====================================================================
+        -- CATEGORY: COMBAT, WEAPONS & DEFENSE
+        -- ====================================================================
+        local curHP = tonumber(saved.CurHealth or saved.health or (dt and dt.HP) or 0) or 0
+        local maxHP = tonumber(saved.MaxHealth or saved.maxHealth or saved._DuplicatorRestoreMaxHealthTo or 0) or 0
+        if curHP > 0 or maxHP > 0 then
+            add("combat", "Hull Integrity", string.format("%s / %s HP", string.Comma(curHP), string.Comma(maxHP)), Color(100, 255, 150))
+        end
+
+        local shield = dt.Shield or saved.Shield or saved.CurShield
+        local maxShield = saved.MaxShield or saved.maxShield
+        if (shield and tonumber(shield) and tonumber(shield) > 0) or (maxShield and tonumber(maxShield) and tonumber(maxShield) > 0) then
+            local sText = tostring(shield or 0) .. " / " .. tostring(maxShield or 0) .. " HP"
+            add("combat", "Deflector Shield", sText, Color(100, 220, 255))
+            if saved.ShieldRechargeRate and tonumber(saved.ShieldRechargeRate) and tonumber(saved.ShieldRechargeRate) > 0 then
+                local delay = saved.ShieldRechargeDelay and (" (Delay: " .. tostring(saved.ShieldRechargeDelay) .. "s)") or ""
+                add("combat", "Shield Recharge", tostring(saved.ShieldRechargeRate) .. " HP/s" .. delay, Color(150, 220, 255))
+            end
+        end
+
+        local ammoPri = dt.AmmoPrimary or saved.AmmoPrimary or saved.PrimaryAmmo
+        local maxAmmoPri = saved.MaxPrimaryAmmo
+        if ammoPri ~= nil then
+            local priText = tostring(ammoPri) .. (maxAmmoPri and (" / " .. tostring(maxAmmoPri)) or "") .. " rounds"
+            add("combat", "Primary Ammo", priText, Color(255, 200, 100))
+        end
+
+        local ammoSec = dt.AmmoSecondary or saved.AmmoSecondary or saved.SecondaryAmmo
+        local maxAmmoSec = saved.MaxSecondaryAmmo
+        if ammoSec ~= nil then
+            local secText = tostring(ammoSec) .. (maxAmmoSec and (" / " .. tostring(maxAmmoSec)) or "") .. " rounds"
+            add("combat", "Secondary Ammo", secText, Color(255, 160, 100))
+        end
+
+        local curWeapon = dt.SelectedWeapon or saved.SelectedWeapon
+        if curWeapon then
+            add("combat", "Weapon Slot", "Slot " .. tostring(curWeapon) .. " (Active)", Color(255, 220, 120))
+        end
+
+        local heat = dt.NWHeat or saved.NWHeat
+        if heat and tonumber(heat) then
+            local heatVal = math.floor(tonumber(heat))
+            local isOverheated = dt.NWOverheated == true
+            local heatColor = isOverheated and Color(255, 50, 50) or (heatVal > 60 and Color(255, 150, 50) or Color(150, 220, 255))
+            local heatText = isOverheated and string.format("OVERHEATED! (%d%%)", heatVal) or string.format("%d%% Heat", heatVal)
+            add("combat", "Weapon Heat", heatText, heatColor)
+        end
+
+        if dt.TurretHeat and tonumber(dt.TurretHeat) and tonumber(dt.TurretHeat) > 0 then
+            add("combat", "Turret Heat", string.format("%d%% Heat", math.floor(dt.TurretHeat)), Color(255, 180, 100))
+        end
+
+        if saved.DSArmorDamageReduction and tonumber(saved.DSArmorDamageReduction) and tonumber(saved.DSArmorDamageReduction) > 0 then
+            local redPercent = math.floor((1 - saved.DSArmorDamageReduction) * 100)
+            add("combat", "Armor Reduction", tostring(redPercent) .. "% Reduced Damage", Color(100, 255, 150))
+        end
+        if saved.DSArmorBulletPenetrationAdd and tonumber(saved.DSArmorBulletPenetrationAdd) and tonumber(saved.DSArmorBulletPenetrationAdd) > 0 then
+            add("combat", "Penetration Res", "+" .. tostring(saved.DSArmorBulletPenetrationAdd) .. " mm Armor", Color(150, 255, 180))
+        end
+
+        if saved.ExplosionDamageOnly ~= nil then
+            add("combat", "Damage Filter", saved.ExplosionDamageOnly and "Explosives Only (Immune to Bullets)" or "Standard", Color(255, 180, 120))
+        end
+
+        if dt.lvsLockedStatus ~= nil then
+            add("combat", "Radar Lock", dt.lvsLockedStatus and "LOCKED ON TARGET" or "Clear",
+                dt.lvsLockedStatus and Color(255, 50, 50) or Color(100, 255, 150))
+        end
+
+        if saved.MissileAlert ~= nil then
+            local dist = saved.MissileAlertDistance and (" (" .. math.floor(saved.MissileAlertDistance) .. " units)") or ""
+            add("combat", "Missile Warning", saved.MissileAlert and ("Active Warning" .. dist) or "Disabled",
+                saved.MissileAlert and Color(255, 100, 100) or Color(150, 150, 150))
+        end
+
+        if dt.AITEAM ~= nil or saved.AITEAM ~= nil then
+            local teamId = dt.AITEAM or saved.AITEAM
+            local teamNames = { [0] = "Neutral", [1] = "Friendly / Rebel Alliance", [2] = "Hostile / Galactic Empire" }
+            add("combat", "AI Allegiance", teamNames[teamId] or ("Team " .. tostring(teamId)), Color(200, 200, 255))
+        end
+
+        if dt.AIGunners ~= nil then
+            add("combat", "AI Gunners", dt.AIGunners and "Active (Auto-Targeting)" or "Disabled",
+                dt.AIGunners and Color(100, 255, 150) or Color(180, 180, 180))
+        end
+        if dt.AI ~= nil then
+            add("combat", "AI Autopilot", dt.AI and "Active (Autonomous Flying)" or "Disabled",
+                dt.AI and Color(100, 255, 150) or Color(180, 180, 180))
+        end
+
+        -- ====================================================================
+        -- CATEGORY: SYSTEMS, CREW, SUSPENSION & UTILITY
+        -- ====================================================================
+        if IsValid(ent) then
+            if ent.GetDriver and isfunction(ent.GetDriver) then
+                local driver = ent:GetDriver()
+                if IsValid(driver) and driver:IsPlayer() then
+                    add("systems", "Driver / Pilot", driver:Nick() .. " (Seated)", Color(100, 255, 150))
+                else
+                    add("systems", "Driver / Pilot", "Empty (Unoccupied)", Color(180, 180, 180))
+                end
+            end
+            if ent.GetGunnerSeat and isfunction(ent.GetGunnerSeat) then
+                local ok, gs = pcall(ent.GetGunnerSeat, ent)
+                if ok and IsValid(gs) and gs:IsVehicle() then
+                    local gDriver = gs:GetDriver()
+                    add("systems", "Gunner Seat", (IsValid(gDriver) and gDriver:IsPlayer()) and (gDriver:Nick() .. " (Seated)") or "Empty",
+                        (IsValid(gDriver) and gDriver:IsPlayer()) and Color(100, 255, 150) or Color(180, 180, 180))
+                end
+            end
+            if ent.GetPassengerSeats and isfunction(ent.GetPassengerSeats) then
+                local ok, seats = pcall(ent.GetPassengerSeats, ent)
+                if ok and istable(seats) then
+                    local totalSeats = #seats
+                    local occupied = 0
+                    for _, s in pairs(seats) do
+                        if IsValid(s) and IsValid(s:GetDriver()) then occupied = occupied + 1 end
+                    end
+                    add("systems", "Passenger Capacity", string.format("%d / %d Occupied", occupied, totalSeats), Color(180, 220, 255))
+                end
+            end
+        end
+
+        -- Suspension
+        local suspLength = dt.SuspensionLength or saved.SuspensionLength
+        local springStr = dt.SpringStrength or saved.SpringStrength
+        local springDamp = dt.SpringDamper or saved.SpringDamper
+        if suspLength then
+            add("systems", "Suspension", string.format("%.1f in Travel", tonumber(suspLength)), Color(150, 220, 255))
+        end
+        if springStr or springDamp then
+            local ss = springStr and string.format("%.0f N/m", tonumber(springStr)) or ""
+            local sd = springDamp and string.format("%.0f Ns/m", tonumber(springDamp)) or ""
+            add("systems", "Spring / Damper", ss .. (ss ~= "" and sd ~= "" and " | " or "") .. sd, Color(170, 210, 255))
+        end
+
+        -- Wheels & Tires
+        local wheelRad = saved.WheelRadius or dt.WheelRadius
+        if wheelRad then
+            local rText = istable(wheelRad) and (tostring(wheelRad[1] or "?") .. " in (x" .. #wheelRad .. " wheels)") or (tostring(wheelRad) .. " in")
+            add("systems", "Wheel / Tire Size", rText, Color(200, 220, 255))
+        end
+
+        local fwdTrac = dt.ForwardTractionMax or saved.ForwardTractionMax
+        local sideTracMax = dt.SideTractionMax or saved.SideTractionMax
+        if fwdTrac or sideTracMax then
+            local ft = fwdTrac and ("Fwd: " .. tostring(fwdTrac)) or ""
+            local st = sideTracMax and ("Side: " .. tostring(sideTracMax)) or ""
+            add("systems", "Tire Traction", ft .. (ft ~= "" and st ~= "" and " | " or "") .. st, Color(180, 220, 255))
+        end
+
+        if dt.TireSmokeColor and istable(dt.TireSmokeColor) then
+            local tsc = dt.TireSmokeColor
+            add("systems", "Tire Smoke Color", string.format("R:%.2f G:%.2f B:%.2f", tsc.x or 0, tsc.y or 0, tsc.z or 0), Color(200, 200, 200))
+        end
+
+        -- Lighting & Siren
+        local lightsActive = dt.LightsActive ~= nil and dt.LightsActive or saved.LightsActive
+        if lightsActive ~= nil then
+            add("systems", "Headlights", lightsActive and "ON" or "OFF", lightsActive and Color(255, 255, 150) or Color(150, 150, 150))
+        end
+        if dt.HeadlightColor and istable(dt.HeadlightColor) then
+            local hlc = dt.HeadlightColor
+            add("systems", "Light Color", string.format("R:%.2f G:%.2f B:%.2f", hlc.x or 0, hlc.y or 0, hlc.z or 0), Color(255, 255, 200))
+        end
+
+        -- Doors & Hatches
+        if dt.DoorMode ~= nil then
+            add("systems", "Door Mode", "Mode " .. tostring(dt.DoorMode), Color(180, 200, 220))
+        end
+        if dt.RearHatch ~= nil then
+            add("systems", "Rear Hatch", dt.RearHatch and "Open" or "Closed", dt.RearHatch and Color(255, 200, 100) or Color(180, 180, 180))
+        end
+
+        -- Walker Specific Parameters
+        if saved.HeadTurnRange and istable(saved.HeadTurnRange) then
+            local hx = saved.HeadTurnRange.x or 0
+            local hy = saved.HeadTurnRange.y or 0
+            add("systems", "Head Turn Limits", string.format("Pitch: ±%d° | Yaw: ±%d°", hx, hy), Color(200, 220, 255))
+        end
+        if saved.floorOffsetPose and istable(saved.floorOffsetPose) then
+            local fop = saved.floorOffsetPose
+            add("systems", "Leg Floor Offset", string.format("FL:%.1f FR:%.1f RL:%.1f RR:%.1f", fop.fl or 0, fop.fr or 0, fop.rl or 0, fop.rr or 0), Color(180, 220, 255))
+        end
+
+        -- Utility & Cargo
+        if saved.LAATC_PICKUPABLE ~= nil then
+            add("systems", "LAAT/c Carrier", saved.LAATC_PICKUPABLE and "Pickup Compatible" or "Incompatible", saved.LAATC_PICKUPABLE and Color(100, 255, 150) or Color(180, 180, 180))
+        end
+
+        if saved.MaintenanceTime and tonumber(saved.MaintenanceTime) and tonumber(saved.MaintenanceTime) > 0 then
+            local prog = dt.MaintenanceProgress and string.format(" (Progress: %d%%)", math.floor(dt.MaintenanceProgress)) or ""
+            add("systems", "Field Repairs", string.format("%ds time / %d HP repair%s", saved.MaintenanceTime, saved.MaintenanceRepairAmount or 0, prog), Color(150, 255, 200))
+        end
+    end
+
+    local maxHPValue = PB.firstValue(saved, "MaxHealth", "maxHealth", "HealthMax", "_DuplicatorRestoreMaxHealthTo")
     local curHPValue = PB.firstValue(saved, "CurHealth", "health", "Health")
+    if isVeh and saved.DT and saved.DT.HP then
+        curHPValue = saved.DT.HP
+    end
     local startHPValue = PB.firstValue(saved, "StartHealth")
     local maxHP = tonumber(maxHPValue or 0) or 0
     local curHP = tonumber(curHPValue or 0) or 0
@@ -381,6 +881,59 @@ function PB.populateCategories(ctx)
     if armorValue and tonumber(armorValue) and tonumber(armorValue) > 0 then
         add("state", "Armor", armorValue, Color(100, 150, 255))
     end
+
+    if isVeh then
+        local dt = saved.DT or saved.dt or {}
+        if dt.EngineActive ~= nil or saved.EngineActive ~= nil then
+            local active = (dt.EngineActive ~= nil and dt.EngineActive) or (saved.EngineActive ~= nil and saved.EngineActive)
+            add("state", "Engine", active and "RUNNING" or "OFF", active and Color(100, 255, 150) or Color(200, 150, 150))
+        end
+
+        if dt.NWThrottle ~= nil then
+            local thr = math.floor((dt.NWThrottle or 0) * 100)
+            add("state", "Throttle", tostring(thr) .. "%", Color(255, 220, 100))
+        end
+
+        if dt.NWHeat ~= nil then
+            local heatColor = dt.NWOverheated and Color(255, 50, 50) or (dt.NWHeat > 50 and Color(255, 150, 50) or Color(150, 220, 255))
+            local heatText = dt.NWOverheated and ("OVERHEATED (" .. tostring(dt.NWHeat) .. ")") or tostring(dt.NWHeat)
+            add("state", "Heat", heatText, heatColor)
+        end
+
+        if dt.LightsActive ~= nil then
+            add("state", "Lights", dt.LightsActive and "ON" or "OFF", dt.LightsActive and Color(255, 255, 150) or Color(150, 150, 150))
+        end
+
+        if dt.DoorMode ~= nil then
+            add("state", "Doors", "Mode " .. tostring(dt.DoorMode), Color(180, 200, 220))
+        end
+        if dt.RearHatch ~= nil then
+            add("state", "Rear Hatch", dt.RearHatch and "Open" or "Closed", dt.RearHatch and Color(255, 200, 100) or Color(180, 180, 180))
+        end
+
+        if IsValid(ent) then
+            if ent.GetDriver and isfunction(ent.GetDriver) then
+                local driver = ent:GetDriver()
+                if IsValid(driver) and driver:IsPlayer() then
+                    add("state", "Driver", driver:Nick(), Color(100, 255, 150))
+                else
+                    add("state", "Driver", "Empty", Color(180, 180, 180))
+                end
+            end
+            if ent.GetPassengerSeats and isfunction(ent.GetPassengerSeats) then
+                local ok, seats = pcall(ent.GetPassengerSeats, ent)
+                if ok and istable(seats) then
+                    local totalSeats = #seats
+                    local occupied = 0
+                    for _, s in pairs(seats) do
+                        if IsValid(s) and IsValid(s:GetDriver()) then occupied = occupied + 1 end
+                    end
+                    add("state", "Passenger Seats", occupied .. " / " .. totalSeats .. " occupied", Color(180, 220, 255))
+                end
+            end
+        end
+    end
+
     if isNPC then
         add("state", "NPC State", PB.firstValue(saved, "npcState", "AIState"))
         add("state", "Hull", PB.firstValue(saved, "hullType", "HullType"))

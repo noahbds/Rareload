@@ -21,7 +21,6 @@ local save_vehicles = include("rareload/core/save_helpers/rareload_save_vehicles
 local save_entities = include("rareload/core/save_helpers/rareload_save_entities.lua")
 local save_npcs = include("rareload/core/save_helpers/rareload_save_npcs.lua")
 local save_ammo = include("rareload/core/save_helpers/rareload_save_ammo.lua")
-local save_vehicle_state = include("rareload/core/save_helpers/rareload_save_vehicle_state.lua") -- off by default (retainVehicleState)
 local save_appearance = include("rareload/core/save_helpers/rareload_save_appearance.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 
@@ -173,21 +172,28 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
 
     -- Honor either the per-player setting or the global convar (the tool-menu toggle sets the
     -- convar), so enabling "Keep Vehicles" from the menu actually takes effect.
-    local wantVehicles = RARELOAD.GetPlayerSetting(ply, "retainVehicles")
+    local wantVehicles = RARELOAD.GetPlayerSetting(ply, "retainVehicles", true)
         or (RARELOAD.settings and RARELOAD.settings.retainVehicles)
     if wantVehicles and RARELOAD.CheckPermission(ply, "SAVE_VEHICLES") then
-        playerData.vehicles = save_vehicles(ply)
+        local vehicleResult = save_vehicles(ply)
+        playerData.vehicles = vehicleResult
+
+        -- Propagate the seated-vehicle reference so the restore side can
+        -- re-seat the player.  save_vehicles now embeds this when the player
+        -- is inside one of their saved vehicles at save time.
+        if istable(vehicleResult) and istable(vehicleResult.vehicleState) then
+            playerData.vehicleState = vehicleResult.vehicleState
+        end
     end
     if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
-        print(string.format("[RARELOAD DEBUG] Vehicle save: want=%s perm=%s saved=%d",
+        local vehCount = 0
+        if istable(playerData.vehicles) and playerData.vehicles.__duplicator then
+            vehCount = playerData.vehicles.__duplicator.entityCount or 0
+        end
+        print(string.format("[RARELOAD DEBUG] Vehicle save: want=%s perm=%s saved=%d seated=%s",
             tostring(wantVehicles), tostring(RARELOAD.CheckPermission(ply, "SAVE_VEHICLES")),
-            (playerData.vehicles and #playerData.vehicles) or 0))
-    end
-
-    local wantVehState = RARELOAD.GetPlayerSetting(ply, "retainVehicleState")
-        or (RARELOAD.settings and RARELOAD.settings.retainVehicleState)
-    if wantVehState and ply:InVehicle() then
-        playerData.vehicleState = save_vehicle_state(ply)
+            vehCount,
+            tostring(playerData.vehicleState ~= nil)))
     end
 
     local autoOverwrite = RARELOAD.GetPlayerSetting(ply, "autoOverwriteModified", false)
