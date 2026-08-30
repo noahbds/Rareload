@@ -262,7 +262,8 @@ local CPANEL_LAYOUT = {
         perm = "DEBUG_MENU",
         items = {
             { toggle = "cpanel.debug_mode", convar = "sv_rareload_debug" },
-            { button = "cpanel.entity_viewer", icon = "icon16/application_view_list.png", cmd = "entity_viewer_open", color = Color(33, 150, 243) },
+            -- The entity viewer is no longer standalone; it opens from the Save
+            -- Timeline ("Objects" on a selected save) so it can browse/edit any save.
         },
     },
 }

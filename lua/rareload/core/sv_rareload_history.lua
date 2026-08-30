@@ -17,6 +17,8 @@ util.AddNetworkString("RareloadHistory_Request")
 util.AddNetworkString("RareloadHistory_Data")
 util.AddNetworkString("RareloadHistory_Action")
 util.AddNetworkString("RareloadHistory_Preview")
+util.AddNetworkString("RareloadHistory_Objects")   -- serve one save's full object list
+util.AddNetworkString("RareloadHistory_ObjAction") -- edit / flag / delete an object in a save
 
 local SnapshotUtils = RARELOAD.SnapshotUtils
 if not SnapshotUtils then
@@ -28,14 +30,46 @@ local MAX_SENT_ENTRIES = 512 -- net-size guard; the default cap is 125
 
 RARELOAD.restoreUndo = RARELOAD.restoreUndo or {} -- per-steamID pre-restore snapshot
 
+-- Restore components the client may request. NEVER read these as an arbitrary
+-- net.ReadTable (unbounded / exploitable) — the client writes them as a fixed
+-- ordered run of booleans and we read exactly that many.
+local RESTORE_COMPS = { "all", "position", "health", "inventory", "ammo", "appearance", "states", "world" }
+
+local function ReadComps()
+    local comps = {}
+    for _, k in ipairs(RESTORE_COMPS) do
+        if net.ReadBool() then comps[k] = true end
+    end
+    return comps
+end
+
+-- Per-player, per-message cooldowns so a client can't spam the (relatively
+-- expensive) history/preview builders.
+local netCooldown = {}
+local function RateLimited(ply, key, interval)
+    local id = ply:SteamID()
+    local slot = netCooldown[id]
+    if not slot then slot = {}; netCooldown[id] = slot end
+    local now = CurTime()
+    if slot[key] and now < slot[key] then return true end
+    slot[key] = now + interval
+    return false
+end
+
 -- ── counts ─────────────────────────────────────────────────────────────────────
+
+-- Single shared accessor for a bucket's summary list (cached inside GetSummary).
+local function SummaryOf(bucket)
+    if not (SnapshotUtils and SnapshotUtils.GetSummary and istable(bucket)) then return nil end
+    local ok, list = pcall(SnapshotUtils.GetSummary, bucket, {})
+    if ok and istable(list) then return list end
+    return nil
+end
 
 local function CountBucket(bucket)
     if not istable(bucket) then return 0 end
-    if SnapshotUtils and SnapshotUtils.GetSummary then
-        local ok, list = pcall(SnapshotUtils.GetSummary, bucket, {})
-        if ok and istable(list) then return #list end
-    end
+    local list = SummaryOf(bucket)
+    if list then return #list end
     local n = 0
     for k in pairs(bucket) do
         if k ~= "__duplicator" then n = n + 1 end
@@ -82,6 +116,8 @@ local function BuildSummary(steamID, mapName)
             st   = st,
             ec   = CountBucket(e.entities),
             nc   = CountBucket(e.npcs),
+            vc   = CountBucket(e.vehicles),
+            veh  = (e.vehicleState and e.vehicleState.savedInVehicle) and (e.vehicleState.class or "1") or nil,
             act  = (activeId and e.id == activeId) and 1 or nil,
         }
     end
@@ -104,6 +140,7 @@ end
 RARELOAD.SendHistoryToClient = SendData
 
 net.Receive("RareloadHistory_Request", function(_, ply)
+    if not IsValid(ply) or RateLimited(ply, "request", 0.25) then return end
     SendData(ply)
 end)
 
@@ -116,9 +153,8 @@ local PLAYER_INFO_KEYS = {
 }
 
 local function ExtractObjects(bucket, out, isNPC)
-    if not (SnapshotUtils and SnapshotUtils.GetSummary and istable(bucket)) then return end
-    local ok, list = pcall(SnapshotUtils.GetSummary, bucket, {})
-    if not (ok and istable(list)) then return end
+    local list = SummaryOf(bucket)
+    if not list then return end
     for _, s in ipairs(list) do
         if #out >= PREVIEW_OBJ_CAP then break end
         local pos   = s.pos or s.Pos
@@ -186,7 +222,8 @@ end
 
 net.Receive("RareloadHistory_Preview", function(_, ply)
     if not IsValid(ply) then return end
-    local id   = net.ReadString()
+    local id = net.ReadString()
+    if RateLimited(ply, "preview", 0.5) then return end
     local data = (id ~= "") and BuildPreviewData(ply:SteamID(), game.GetMap(), id) or nil
     local json = util.TableToJSON(data or {}) or "{}"
     local blob = util.Compress(json) or ""
@@ -341,22 +378,52 @@ function RARELOAD.RestoreHistoryEntry(ply, id, comps)
         ply:ChatPrint("[Rareload] That saved position is no longer in your history.")
         return false
     end
-    RARELOAD.restoreUndo[ply:SteamID()] = CaptureLiveSnapshot(ply)
+
+    local undo = CaptureLiveSnapshot(ply)
+    RARELOAD.restoreUndo[ply:SteamID()] = undo
+
+    -- Record which Rareload world objects already exist so undo can remove ONLY
+    -- the ones this restore spawns. The world restore below is synchronous, so
+    -- the diff right after is accurate.
+    local before = {}
+    for _, e in ipairs(ents.GetAll()) do
+        if IsValid(e) and e.SpawnedByRareload then before[e] = true end
+    end
+
     RARELOAD.ApplyHistoryComponents(ply, data, comps)
+
+    local spawned = {}
+    for _, e in ipairs(ents.GetAll()) do
+        if IsValid(e) and e.SpawnedByRareload and not before[e] then
+            spawned[#spawned + 1] = e
+        end
+    end
+    undo.spawned = spawned
     return true
 end
 
--- Revert the most recent restore (player-state only; spawned world objects aren't undone).
+-- Revert the most recent restore: player-state AND the world objects it spawned.
 function RARELOAD.UndoRestore(ply)
     if not IsValid(ply) then return false end
-    local snap = RARELOAD.restoreUndo[ply:SteamID()]
+    local steamID = ply:SteamID()
+    local snap = RARELOAD.restoreUndo[steamID]
     if not snap then
         ply:ChatPrint("[Rareload] Nothing to undo.")
         return false
     end
-    RARELOAD.restoreUndo[ply:SteamID()] = nil
+    RARELOAD.restoreUndo[steamID] = nil
+
+    local removed = 0
+    if istable(snap.spawned) then
+        for _, e in ipairs(snap.spawned) do
+            if IsValid(e) then e:Remove(); removed = removed + 1 end
+        end
+        snap.spawned = nil -- keep it out of the player-state apply below
+    end
+
     RARELOAD.ApplyHistoryComponents(ply, snap, { all = true })
-    ply:ChatPrint("[Rareload] Reverted to your pre-restore state.")
+    ply:ChatPrint(string.format("[Rareload] Reverted to your pre-restore state%s.",
+        removed > 0 and (" and removed " .. removed .. " restored object" .. (removed == 1 and "" or "s")) or ""))
     return true
 end
 
@@ -417,7 +484,8 @@ net.Receive("RareloadHistory_Action", function(_, ply)
         RARELOAD.ClearPositionHistory(steamID, mapName)
         mutated = true
     elseif action == "restore" then
-        local comps = net.ReadTable()
+        local comps = ReadComps()
+        if RateLimited(ply, "restore", 0.3) then return end
         RARELOAD.RestoreHistoryEntry(ply, id, comps)
     elseif action == "activate" then
         mutated = RARELOAD.ActivateHistoryEntry(ply, id)
@@ -436,6 +504,200 @@ net.Receive("RareloadHistory_Action", function(_, ply)
     end
 end)
 
+-- ── per-save object browser (entity viewer / JSON editor over any save) ──────────
+--
+-- The Save Timeline's "Objects" overlay reuses the entity-viewer UI, but scoped to
+-- ONE history entry instead of the live current save. The server serves that
+-- entry's full object records on demand and applies edit/flag/delete back into the
+-- history store (with copy-on-write so shared, deduped heavy buckets aren't
+-- corrupted). Guarded by MANAGE_ENTITIES, same as the live entity viewer.
+
+local function HasEntityPerm(ply)
+    if RARELOAD.CheckPermission then return RARELOAD.CheckPermission(ply, "MANAGE_ENTITIES") end
+    if RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
+        return RARELOAD.Permissions.HasPermission(ply, "MANAGE_ENTITIES")
+    end
+    return IsValid(ply) and ply:IsAdmin()
+end
+
+-- Flatten a history entry's entities/npcs/vehicles into viewer-ready records. Each
+-- GetSummary record is a full copy of the stored def (so the JSON editor has every
+-- field) plus id/class/model/pos/ang; we only tag its bucket + isNPC.
+local function BuildEntryObjects(steamID, mapName, id)
+    local e = RARELOAD.GetHistoryEntryById(steamID, mapName, id)
+    if not e then return nil end
+    local out = {}
+    local function add(bucket, isNPC)
+        local list = SummaryOf(bucket)
+        if not list then return end
+        for _, s in ipairs(list) do
+            if istable(s) then
+                s.isNPC = isNPC or nil
+                out[#out + 1] = s
+            end
+        end
+    end
+    add(e.entities, false)
+    add(e.npcs, true)
+    add(e.vehicles, false)
+    return out
+end
+
+net.Receive("RareloadHistory_Objects", function(_, ply)
+    if not IsValid(ply) or RateLimited(ply, "objects", 0.3) then return end
+    local id = net.ReadString()
+    local steamID = ply:SteamID()
+    local objs = (id ~= "") and BuildEntryObjects(steamID, game.GetMap(), id) or nil
+    local payload = { id = id, ownerSID = steamID, objects = objs or {} }
+
+    local json = util.TableToJSON(payload) or "{}"
+    local blob = util.Compress(json) or ""
+    -- Net messages cap near 64KB. Full defs (physics/mods) can blow past that on a
+    -- big save; drop the heavy per-def tables and resend so the grid still lists
+    -- every object (the JSON editor then edits the common fields only).
+    if #blob > 60000 and objs then
+        for _, s in ipairs(objs) do
+            s.PhysicsObjects, s.EntityMods, s.BoneManip, s.BoneMods, s.FlexScale = nil, nil, nil, nil, nil
+        end
+        json = util.TableToJSON(payload) or "{}"
+        blob = util.Compress(json) or ""
+    end
+
+    net.Start("RareloadHistory_Objects")
+    net.WriteString(id)
+    net.WriteUInt(#blob, 32)
+    net.WriteData(blob, #blob)
+    net.Send(ply)
+end)
+
+-- Locate a stored def by id inside a bucket (top-level map or duplicator payload)
+-- and hand it to modifyFn. Mirrors sv_entity_viewer's traversal.
+local function ModifyDefInBucket(bucket, targetId, modifyFn)
+    if not istable(bucket) then return false end
+    local function isMatch(record, key)
+        if tostring(key) == targetId then return true end
+        if istable(record) then
+            if tostring(record.RareloadNPCID or "") == targetId then return true end
+            if tostring(record.RareloadEntityID or "") == targetId then return true end
+            if tostring(record.RareloadID or "") == targetId then return true end
+        end
+        return false
+    end
+    local function tryMap(map)
+        if not istable(map) then return false end
+        for k, v in pairs(map) do
+            if k ~= "__duplicator" and istable(v) and isMatch(v, k) then
+                modifyFn(v); return true
+            end
+        end
+        return false
+    end
+    if tryMap(bucket) then return true end
+    local dup = bucket.__duplicator
+    if istable(dup) and istable(dup.payload) and istable(dup.payload.Entities) then
+        if tryMap(dup.payload.Entities) then return true end
+    end
+    return false
+end
+
+local OBJ_FLAG_HANDLERS = {
+    freeze = function(v, value)
+        v.frozen = value
+        if istable(v.PhysicsObjects) then
+            for _, p in pairs(v.PhysicsObjects) do if istable(p) then p.Frozen = value end end
+        end
+    end,
+    gravity_disabled = function(v, value)
+        v.gravity_disabled = value
+        if istable(v.PhysicsObjects) then
+            for _, p in pairs(v.PhysicsObjects) do if istable(p) then p.GravityEnabled = not value end end
+        end
+    end,
+}
+
+-- Clone a heavy bucket before mutating so we never corrupt another entry that
+-- shares the same deduped blob in memory (Persist re-dedups on write).
+local function CloneEntryBucket(e, key)
+    if istable(e[key]) then e[key] = table.Copy(e[key]) end
+    return e[key]
+end
+
+net.Receive("RareloadHistory_ObjAction", function(_, ply)
+    if not IsValid(ply) then return end
+    local saveId   = net.ReadString()
+    local op       = net.ReadString()
+    local targetId = net.ReadString()
+    local isNPC    = net.ReadBool()
+
+    local edit  = op == "edit" and net.ReadTable() or nil
+    local flag, flagVal
+    if op == "flag" then flag = net.ReadString(); flagVal = net.ReadBool() end
+
+    if not HasEntityPerm(ply) then
+        ply:ChatPrint("[Rareload] You lack permission to modify saved objects.")
+        return
+    end
+    if saveId == "" or targetId == "" then return end
+
+    local steamID = ply:SteamID()
+    local mapName = game.GetMap()
+    local e = RARELOAD.GetHistoryEntryById(steamID, mapName, saveId)
+    if not e then return end
+
+    -- entities & vehicles both hold non-NPC objects; NPCs are separate.
+    local bucketKeys = isNPC and { "npcs" } or { "entities", "vehicles" }
+    local mutated = false
+
+    for _, key in ipairs(bucketKeys) do
+        if istable(e[key]) then
+            if op == "delete" then
+                -- delete doesn't touch inner defs' shared identity, but the bucket
+                -- table itself is shared — clone before removing from it.
+                CloneEntryBucket(e, key)
+                if SnapshotUtils and SnapshotUtils.RemoveEntryByID
+                    and SnapshotUtils.RemoveEntryByID(e[key], targetId) then
+                    mutated = true
+                end
+            elseif op == "edit" and istable(edit) then
+                CloneEntryBucket(e, key)
+                if ModifyDefInBucket(e[key], targetId, function(v)
+                        edit.RareloadNPCID    = edit.RareloadNPCID or v.RareloadNPCID
+                        edit.RareloadEntityID = edit.RareloadEntityID or v.RareloadEntityID
+                        for k in pairs(v) do v[k] = nil end
+                        for k, val in pairs(edit) do v[k] = val end
+                    end) then
+                    mutated = true
+                end
+            elseif op == "flag" and OBJ_FLAG_HANDLERS[flag] then
+                CloneEntryBucket(e, key)
+                if ModifyDefInBucket(e[key], targetId, function(v) OBJ_FLAG_HANDLERS[flag](v, flagVal) end) then
+                    mutated = true
+                end
+            end
+        end
+        if mutated then break end
+    end
+
+    if mutated then
+        RARELOAD.PersistPositionHistory(mapName, steamID)
+        SendData(ply) -- refresh timeline summaries (counts change on delete)
+        -- push the fresh object list back so the open overlay updates in place
+        local objs = BuildEntryObjects(steamID, mapName, saveId)
+        local blob = util.Compress(util.TableToJSON({ id = saveId, ownerSID = steamID, objects = objs or {} }) or "{}") or ""
+        if #blob <= 60000 then
+            net.Start("RareloadHistory_Objects")
+            net.WriteString(saveId)
+            net.WriteUInt(#blob, 32)
+            net.WriteData(blob, #blob)
+            net.Send(ply)
+        end
+    end
+end)
+
 hook.Add("PlayerDisconnected", "RARELOAD_HistoryUndo_Cleanup", function(ply)
-    if IsValid(ply) then RARELOAD.restoreUndo[ply:SteamID()] = nil end
+    if IsValid(ply) then
+        local id = ply:SteamID()
+        RARELOAD.restoreUndo[id] = nil
+        netCooldown[id] = nil
+    end
 end)

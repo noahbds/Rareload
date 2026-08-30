@@ -297,16 +297,17 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 DebugLog(ply, "INFO", 0, "Cleanup (full map): cleaning up before respawn")
 
                 local preHookName = "RareloadSaveEntitiesBeforeCleanup"
+                local preVehHookName = "RareloadSaveVehiclesBeforeCleanup"
                 local savedPreHook = hook.GetTable()["PreCleanupMap"] and
                     hook.GetTable()["PreCleanupMap"][preHookName]
-                if savedPreHook then
-                    hook.Remove("PreCleanupMap", preHookName)
-                end
+                local savedPreVehHook = hook.GetTable()["PreCleanupMap"] and
+                    hook.GetTable()["PreCleanupMap"][preVehHookName]
+                if savedPreHook then hook.Remove("PreCleanupMap", preHookName) end
+                if savedPreVehHook then hook.Remove("PreCleanupMap", preVehHookName) end
 
                 game.CleanUpMap(false, {}, function()
-                    if savedPreHook then
-                        hook.Add("PreCleanupMap", preHookName, savedPreHook)
-                    end
+                    if savedPreHook then hook.Add("PreCleanupMap", preHookName, savedPreHook) end
+                    if savedPreVehHook then hook.Add("PreCleanupMap", preVehHookName, savedPreVehHook) end
                     timer.Simple(0.1, function()
                         if IsValid(ply) then
                             ply:Spawn()
@@ -547,6 +548,15 @@ function RARELOAD.HandlePlayerSpawn(ply)
                     end
                 end
             end)
+        end)
+    end
+
+    if SavedInfo.crossConstraints and istable(SavedInfo.crossConstraints) then
+        timer.Simple(0.2, function()
+            local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
+            if DuplicatorBridge and DuplicatorBridge.RestoreCrossCategoryConstraints then
+                DuplicatorBridge.RestoreCrossCategoryConstraints(SavedInfo.crossConstraints)
+            end
         end)
     end
 

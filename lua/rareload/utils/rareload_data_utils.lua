@@ -333,15 +333,24 @@ RARELOAD.DataUtils.SafePlayerKey = RARELOAD.DataUtils.SanitizeSteamID
 -- DYNAMIC INHERITANCE VEHICLE DETECTION
 -- ===========================================================================
 
+local classIsRootCache = {}
+
 local function ClassIsRootVehicle(class)
     class = string.lower(tostring(class or ""))
     if class == "" or EXCLUDED_CLASSES[class] then return false end
+    if classIsRootCache[class] ~= nil then return classIsRootCache[class] end
 
     -- Hardcoded Source Vehicles
-    if SOURCE_VEHICLES[class] then return true end
+    if SOURCE_VEHICLES[class] then
+        classIsRootCache[class] = true
+        return true
+    end
 
     -- Fast Check for Root Bases
-    if ROOT_VEHICLE_BASES[class] then return true end
+    if ROOT_VEHICLE_BASES[class] then
+        classIsRootCache[class] = true
+        return true
+    end
 
     -- Dynamic Check: Recursively walk up the scripted_ents registry hierarchy
     if scripted_ents and scripted_ents.Get then
@@ -354,17 +363,43 @@ local function ClassIsRootVehicle(class)
             if not base or base == "" then break end
 
             base = string.lower(base)
-            if ROOT_VEHICLE_BASES[base] then return true end
+            if ROOT_VEHICLE_BASES[base] then
+                classIsRootCache[class] = true
+                return true
+            end
             current = base
         end
     end
 
+    classIsRootCache[class] = false
     return false
 end
 RARELOAD.DataUtils.ClassIsRootVehicle = ClassIsRootVehicle
 -- Back-compat: callers (client SED panels) that ask "does this class look like a
 -- vehicle?" want the same hierarchy-based answer.
 RARELOAD.DataUtils.ClassLooksLikeVehicle = ClassIsRootVehicle
+
+-- Can `ents.Create(class)` still make this class? A scripted class exists only
+-- while its addon is loaded (`scripted_ents.GetStored`); engine classes are
+-- always creatable. Used to skip saved entities whose addon was uninstalled
+-- instead of spawning NULL and hunting for a phantom that can never appear.
+function RARELOAD.DataUtils.IsClassSpawnable(class)
+    if not isstring(class) or class == "" then return false end
+    if scripted_ents and scripted_ents.GetStored and scripted_ents.GetStored(class) then return true end
+    if scripted_ents and scripted_ents.Get and scripted_ents.Get(class) then return true end
+    if list and list.Get then
+        local vehList = list.Get("Vehicles")
+        if vehList and vehList[class] then return true end
+        local simfphysList = list.Get("simfphys_vehicles")
+        if simfphysList and simfphysList[class] then return true end
+    end
+    return string.find(class, "^prop_") ~= nil
+        or string.find(class, "^gmod_") ~= nil
+        or string.find(class, "^func_") ~= nil
+        or string.find(class, "^npc_") ~= nil
+        or string.find(class, "^item_") ~= nil
+        or string.find(class, "^weapon_") ~= nil
+end
 
 local function HasVehicleFlag(t)
     for _, field in ipairs(VEHICLE_FLAG_FIELDS) do
@@ -398,12 +433,28 @@ end
 -- class names, model paths or per-framework field names. A player-built prop
 -- welded to a vehicle keeps its creator and is deliberately NOT counted, so user
 -- contraptions still save normally.
-function RARELOAD.DataUtils.IsVehiclePart(ent)
+function RARELOAD.DataUtils.IsVehiclePart(ent, cache)
     if not IsValid(ent) or ent:IsPlayer() or ent:IsNPC() or ent:IsWeapon() then return false end
     if RARELOAD.DataUtils.IsRootVehicle(ent) then return false end
 
     -- Frameworks flag their own pieces (rotors, wheels, gibs) as non-duplicatable.
     if ent.DoNotDuplicate == true then return true end
+
+    -- CHEAP PRE-GATE (Tier 2 performance optimization):
+    -- If an entity has no parent, has no constraints, and is not DoNotDuplicate,
+    -- it is impossible for it to be part of a vehicle contraption.
+    local hasParent = IsValid(ent:GetParent())
+    local hasConstraints = (ent.Constraints and next(ent.Constraints) ~= nil)
+        or (constraint and constraint.HasConstraints and constraint.HasConstraints(ent))
+
+    if not hasParent and not hasConstraints then
+        if cache then cache[ent:EntIndex()] = false end
+        return false
+    end
+
+    if cache and cache[ent:EntIndex()] ~= nil then
+        return cache[ent:EntIndex()]
+    end
 
     local isRoot = RARELOAD.DataUtils.IsRootVehicle
 
@@ -412,7 +463,10 @@ function RARELOAD.DataUtils.IsVehiclePart(ent)
     for _ = 1, 32 do
         local parent = node:GetParent()
         if not IsValid(parent) or parent == node then break end
-        if isRoot(parent) then return true end
+        if isRoot(parent) then
+            if cache then cache[ent:EntIndex()] = true end
+            return true
+        end
         node = parent
     end
 
@@ -426,13 +480,22 @@ function RARELOAD.DataUtils.IsVehiclePart(ent)
                 local ok, group = pcall(constraint.GetAllConstrainedEntities, probe)
                 if ok and istable(group) then
                     for _, c in pairs(group) do
-                        if IsValid(c) and c ~= probe and isRoot(c) then return true end
+                        if IsValid(c) and c ~= probe and isRoot(c) then
+                            if cache then
+                                cache[ent:EntIndex()] = true
+                                for _, member in pairs(group) do
+                                    if IsValid(member) then cache[member:EntIndex()] = true end
+                                end
+                            end
+                            return true
+                        end
                     end
                 end
             end
         end
     end
 
+    if cache then cache[ent:EntIndex()] = false end
     return false
 end
 
@@ -442,11 +505,20 @@ RARELOAD.DataUtils.IsVehicleSubEntity = RARELOAD.DataUtils.IsVehiclePart
 -- "Vehicle-related": a root, a drivable seat/pod (IsVehicle), or any structural
 -- part. The broad test used to keep vehicles and every piece of them out of the
 -- standalone entity save.
-function RARELOAD.DataUtils.IsVehicleEntity(ent)
+function RARELOAD.DataUtils.IsVehicleEntity(ent, cache)
     if not IsValid(ent) or ent:IsPlayer() or ent:IsNPC() or ent:IsWeapon() then return false end
-    if ent:IsVehicle() then return true end
-    if RARELOAD.DataUtils.IsRootVehicle(ent) then return true end
-    return RARELOAD.DataUtils.IsVehiclePart(ent)
+    if cache and cache[ent:EntIndex()] ~= nil then return cache[ent:EntIndex()] end
+    if ent:IsVehicle() then
+        if cache then cache[ent:EntIndex()] = true end
+        return true
+    end
+    if RARELOAD.DataUtils.IsRootVehicle(ent) then
+        if cache then cache[ent:EntIndex()] = true end
+        return true
+    end
+    local isPart = RARELOAD.DataUtils.IsVehiclePart(ent, cache)
+    if cache then cache[ent:EntIndex()] = isPart end
+    return isPart
 end
 
 -- Duplicator-def variants work on a decoded table (no live entity → no graph).

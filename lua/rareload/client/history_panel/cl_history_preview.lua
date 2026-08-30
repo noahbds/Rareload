@@ -199,13 +199,11 @@ hook.Add("Think", "RARELOAD_HistoryPreview_Recheck", function()
 end)
 
 -- top-screen confirmation (the panel can sit in front of the phantom)
+local L = RARELOAD.L or function(_, ...) return tostring(...) end
 hook.Add("HUDPaint", "RARELOAD_HistoryPreview_Hint", function()
     if not Preview.active then return end
     local n = #Preview.items
-    local txt = n > 0
-        and ("●  Previewing " .. n .. (n == 1 and " object" or " objects") ..
-            " — aim at a panel and press Shift+E to inspect  ·  reopen the timeline or rareload_preview_off to hide")
-        or "●  Loading preview…"
+    local txt = n > 0 and L("sth.preview.hud_active", n) or L("sth.preview.hud_loading")
     surface.SetFont("RareloadHistPreview")
     local tw = surface.GetTextSize(txt)
     local cx, y = ScrW() * 0.5, 22

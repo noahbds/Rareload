@@ -39,12 +39,24 @@ function SnapshotRestore.RestoreWithExistingIDFilter(snapshot, indexToID, fieldN
 
     local existingIDs = (not skipFilter) and SnapshotRestore.BuildExistingIDSet(fieldName) or {}
 
+    local callerFilter = isfunction(opts.filter) and opts.filter or nil
+
     local restoreOptions = {
         player = nil,
-        filter = function(index, _)
+        -- Category-appropriate "is this class still loadable?" test (vehicles pass
+        -- DataUtils.IsClassSpawnable) so RestoreSnapshot can drop defs from
+        -- uninstalled addons.
+        validateClass = opts.validateClass,
+        filter = function(index, def)
             local id = indexToID[index]
             if id and existingIDs[id] then
                 table.insert(skippedIDs, id)
+                return false
+            end
+            -- Chain the caller's filter (e.g. the per-player restore cap). It runs
+            -- AFTER the existing-ID skip, so already-present vehicles never consume
+            -- a cap slot.
+            if callerFilter and not callerFilter(index, def) then
                 return false
             end
             return true

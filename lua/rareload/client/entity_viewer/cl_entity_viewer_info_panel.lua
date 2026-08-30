@@ -297,6 +297,11 @@ local function BuildInfoTab(contentPanel, data, isNPC)
         if data.rawData then ReadPhysicsFlags(data.rawData) end
 
         local function SendFlag(flagName, value)
+            local EV = RARELOAD.EntityViewer
+            if EV and EV.IsHistory and EV:IsHistory() then
+                EV:SendHistoryObjAction("flag", targetId, isNPC, { flag = flagName, value = value })
+                return
+            end
             net.Start("RareloadEntityViewer_SetFlag")
                 net.WriteString(tostring(targetId))
                 net.WriteBool(isNPC or false)
@@ -363,11 +368,16 @@ local function BuildEditorTab(contentPanel, data, isNPC, onSaved)
             or data.id
             or ""
 
-        net.Start("RareloadEntityViewer_UpdateData")
-        net.WriteString(tostring(targetId))
-        net.WriteBool(isNPC)
-        net.WriteTable(newData)
-        net.SendToServer()
+        local EV = RARELOAD.EntityViewer
+        if EV and EV.IsHistory and EV:IsHistory() then
+            EV:SendHistoryObjAction("edit", targetId, isNPC, { data = newData })
+        else
+            net.Start("RareloadEntityViewer_UpdateData")
+            net.WriteString(tostring(targetId))
+            net.WriteBool(isNPC)
+            net.WriteTable(newData)
+            net.SendToServer()
+        end
 
         ShowNotification(L("inspector.update_sent"), NOTIFY_GENERIC)
 

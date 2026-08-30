@@ -1,28 +1,101 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- Save Timeline panel (4.0 · Phase 3)
+-- Save Timeline panel  (4.0)
 --
 -- Browses the player's full, persistent save history (synced as compact metadata
 -- from the server) and acts on any entry: teleport, restore (whole or by
--- component), pin, note, delete. Reuses the shared THEME / fonts / ShowNotification
--- from the entity viewer. Heavy data and restore live server-side; this panel only
--- shows summaries and sends actions by entry id.
+-- component), pin, note, delete, set-active, preview-in-world. Heavy data and the
+-- actual restore live server-side; this panel shows summaries and sends actions
+-- by entry id.
+--
+-- Design goals of this rewrite:
+--   • Resolution-adaptive — every size is scaled by ScrH()/1080 and clamped, so
+--     the panel is comfortable from 1080p up to 1440p/4K instead of a fixed box.
+--   • Dedicated, legible font set (RH_*), rebuilt for the current scale.
+--   • Clear, dense information: model, exact time, a health bar, and a row of stat
+--     cards (health, armor, weapons, entities, NPCs, VEHICLES) plus detail rows
+--     for position, active weapon, saved-in-vehicle, player states and model.
+--   • Detail pane built ONCE and updated in place — selecting never rebuilds the
+--     model panel or flickers; the stat/info panels self-draw from the selection.
+--   • No timeline strip, no diff panel (removed as noise).
 -- ─────────────────────────────────────────────────────────────────────────────
 
 local L = RARELOAD.L
 local draw, surface, vgui = draw, surface, vgui
 local IsValid, FrameTime, Lerp = IsValid, FrameTime, Lerp
+local ALIGN_L, ALIGN_R, ALIGN_C = TEXT_ALIGN_LEFT, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER
+local ALIGN_T, ALIGN_M = TEXT_ALIGN_TOP, TEXT_ALIGN_CENTER
 
 RARELOAD = RARELOAD or {}
 RARELOAD.HistoryClient = RARELOAD.HistoryClient or { entries = {}, total = 0 }
 
-local HP = { Frame = nil, SelectedId = nil, Search = "" }
+-- Fixed ordered run of restore-component booleans (matches the server's
+-- RESTORE_COMPS). We never net.WriteTable arbitrary data.
+local RESTORE_COMPS = { "all", "position", "health", "inventory", "ammo", "appearance", "states", "world" }
+
+local SORTS   = { "newest", "oldest", "health", "pinned" }
+local FILTERS = { "all", "pinned", "noted", "world" }
+
+-- Derma (Silk) 16px icons — reliable across fonts, unlike unicode glyphs.
+local IC_ENT  = Material("icon16/bricks.png")
+local IC_NPC  = Material("icon16/user.png")
+local IC_VEH  = Material("icon16/car.png")
+local IC_PIN  = Material("icon16/star.png")
+local IC_NOTE = Material("icon16/note.png")
+local IC_HP   = Material("icon16/heart.png")
+
+local HP = {
+    Frame = nil, SelectedId = nil, Search = "",
+    Sort = "newest", Filter = "all",
+    Loading = false, LoadError = false,
+    S = 1,
+}
 HP.Comps = { position = true, health = true, inventory = true, ammo = true, appearance = true, states = true, world = true }
 
--- ── networking ───────────────────────────────────────────────────────────────
+-- ── scaling + fonts ───────────────────────────────────────────────────────────
+
+-- One scale factor drives every dimension. Clamped so the panel neither shrinks
+-- to nothing on tiny screens nor becomes cartoonishly large on 4K.
+local function ComputeScale()
+    return math.Clamp(ScrH() / 1080, 0.85, 2.1)
+end
+
+local function sc(v) return math.floor(v * HP.S + 0.5) end
+
+-- Rebuild the RH_* font set for the current scale. surface.CreateFont with an
+-- existing name redefines it, so this is safe to call again on a resolution change.
+function HP:EnsureFonts()
+    local s = ComputeScale()
+    if self._fontScale == s then return end
+    self._fontScale = s
+    self.S = s
+    local function f(name, size, weight)
+        surface.CreateFont(name, { font = "Roboto", size = math.floor(size * s + 0.5), weight = weight, antialias = true, extended = true })
+    end
+    f("RH_Title", 25, 800)
+    f("RH_Sub", 14, 500)
+    f("RH_H1", 22, 700)
+    f("RH_H2", 17, 600)
+    f("RH_Body", 15, 500)
+    f("RH_BodyB", 15, 700)
+    f("RH_Small", 13, 500)
+    f("RH_Tiny", 11, 600)
+    f("RH_Stat", 26, 800)
+    f("RH_Btn", 15, 600)
+end
+
+-- ── networking ──────────────────────────────────────────────────────────────
 
 function HP:RequestData()
+    self.Loading = true
+    self.LoadError = false
     net.Start("RareloadHistory_Request")
     net.SendToServer()
+end
+
+local function WriteComps(comps)
+    for _, k in ipairs(RESTORE_COMPS) do
+        net.WriteBool(comps[k] == true)
+    end
 end
 
 local function SendAction(action, id, writeExtra)
@@ -36,31 +109,23 @@ end
 net.Receive("RareloadHistory_Data", function()
     local len = net.ReadUInt(32)
     local raw = len > 0 and net.ReadData(len) or ""
+    HP.Loading = false
     local json = util.Decompress(raw)
-    if not json then return end
+    if not json then HP.LoadError = true; if IsValid(HP.Frame) then HP:Refresh() end; return end
     local ok, tbl = pcall(util.JSONToTable, json)
-    if not ok or not istable(tbl) then return end
+    if not ok or not istable(tbl) then HP.LoadError = true; if IsValid(HP.Frame) then HP:Refresh() end; return end
 
+    HP.LoadError = false
     RARELOAD.HistoryClient.entries = istable(tbl.entries) and tbl.entries or {}
     RARELOAD.HistoryClient.total = tonumber(tbl.total) or #RARELOAD.HistoryClient.entries
     RARELOAD.HistoryClient.undo = tbl.undo == true
 
-    if IsValid(HP.Frame) then HP:Rebuild() end
+    if IsValid(HP.Frame) then HP:Refresh() end
 end)
 
--- ── helpers ──────────────────────────────────────────────────────────────────
+-- ── data helpers ──────────────────────────────────────────────────────────────
 
-local function TimeAgo(t)
-    local d = os.time() - (tonumber(t) or 0)
-    if d < 45 then return L("sth.just_now") end
-    if d < 3600 then return L("sth.ago_m", math.floor(d / 60)) end
-    if d < 86400 then return L("sth.ago_h", math.floor(d / 3600)) end
-    return L("sth.ago_d", math.floor(d / 86400))
-end
-
-local function Entries()
-    return RARELOAD.HistoryClient.entries or {}
-end
+local function Entries() return RARELOAD.HistoryClient.entries or {} end
 
 local function FindEntry(id)
     for _, e in ipairs(Entries()) do
@@ -69,346 +134,487 @@ local function FindEntry(id)
     return nil
 end
 
-local function FilteredEntries()
+-- TimeAgo appears in every row's paint; cache the formatted string and recompute
+-- only about once a second instead of every frame.
+local _timeAgoCache, _timeAgoStamp = {}, 0
+local function TimeAgo(t)
+    local now = os.time()
+    if now ~= _timeAgoStamp then _timeAgoCache, _timeAgoStamp = {}, now end
+    local cached = _timeAgoCache[t]
+    if cached then return cached end
+    local d = now - (tonumber(t) or 0)
+    local s
+    if d < 45 then s = L("sth.just_now")
+    elseif d < 3600 then s = L("sth.ago_m", math.floor(d / 60))
+    elseif d < 86400 then s = L("sth.ago_h", math.floor(d / 3600))
+    else s = L("sth.ago_d", math.floor(d / 86400)) end
+    _timeAgoCache[t] = s
+    return s
+end
+
+local function PosStr(p)
+    p = p or {}
+    return string.format("%.0f, %.0f, %.0f", tonumber(p.x) or 0, tonumber(p.y) or 0, tonumber(p.z) or 0)
+end
+
+local function VehicleClassName(veh)
+    if not veh or veh == "1" then return nil end
+    -- prettify "gtav_wolfsbane" → "Gtav Wolfsbane"
+    local nice = string.gsub(tostring(veh), "[_%.]", " ")
+    return nice
+end
+
+local function StatesList(st)
+    st = st or {}
+    local parts = {}
+    if st.g then parts[#parts + 1] = "God" end
+    if st.n then parts[#parts + 1] = "NoTarget" end
+    if st.f then parts[#parts + 1] = "Frozen" end
+    if st.c then parts[#parts + 1] = "NoClip" end
+    return parts
+end
+
+local function EntryMatches(e, s)
+    if string.find(string.lower(e.note or ""), s, 1, true) then return true end
+    if string.find(string.lower(e.aw or ""), s, 1, true) then return true end
+    if string.find(string.lower(e.mdl or ""), s, 1, true) then return true end
+    if e.veh and string.find(string.lower(tostring(e.veh)), s, 1, true) then return true end
+    if string.find(string.lower(PosStr(e.pos)), s, 1, true) then return true end
+    if string.find(string.lower(os.date("%Y-%m-%d %H:%M", tonumber(e.t) or 0)), s, 1, true) then return true end
+    if string.find(string.lower(TimeAgo(e.t)), s, 1, true) then return true end
+    return false
+end
+
+-- Filtered + sorted view of the entries (never mutates the source array).
+local function ViewEntries()
     local s = string.lower(HP.Search or "")
-    if s == "" then return Entries() end
-    local out = {}
+    local filter, out = HP.Filter, {}
     for _, e in ipairs(Entries()) do
-        local note = string.lower(e.note or "")
-        local aw = string.lower(e.aw or "")
-        if string.find(note, s, 1, true) or string.find(aw, s, 1, true) then
-            out[#out + 1] = e
-        end
+        local keep = true
+        if filter == "pinned" then keep = e.pin == 1
+        elseif filter == "noted" then keep = e.note and e.note ~= ""
+        elseif filter == "world" then keep = (e.ec or 0) > 0 or (e.nc or 0) > 0 or (e.vc or 0) > 0 end
+        if keep and s ~= "" then keep = EntryMatches(e, s) end
+        if keep then out[#out + 1] = e end
+    end
+
+    local sort = HP.Sort
+    if sort == "oldest" then
+        table.sort(out, function(a, b) return (tonumber(a.t) or 0) < (tonumber(b.t) or 0) end)
+    elseif sort == "health" then
+        table.sort(out, function(a, b) return (tonumber(a.hp) or 0) > (tonumber(b.hp) or 0) end)
+    elseif sort == "pinned" then
+        table.sort(out, function(a, b)
+            local ap, bp = a.pin == 1, b.pin == 1
+            if ap ~= bp then return ap end
+            return (tonumber(a.t) or 0) > (tonumber(b.t) or 0)
+        end)
+    else -- newest
+        table.sort(out, function(a, b) return (tonumber(a.t) or 0) > (tonumber(b.t) or 0) end)
     end
     return out
 end
 
--- ── entry row (left list) ──────────────────────────────────────────────────────
+-- Cached filtered/sorted view. Recomputed only when search/sort/filter/data
+-- changes (never per Paint frame). Callers must use HP:View().
+function HP:InvalidateView() self._view = ViewEntries() end
+function HP:View() return self._view or {} end
+function HP:Sel() return self.SelectedId and FindEntry(self.SelectedId) or nil end
+
+-- ── shared UI helpers ─────────────────────────────────────────────────────────
+
+local function StyleScrollbar(scroll)
+    local vb = scroll:GetVBar()
+    if not IsValid(vb) then return end
+    vb:SetWide(sc(7))
+    vb.Paint = function() end
+    vb.btnUp.Paint = function() end
+    vb.btnDown.Paint = function() end
+    vb.btnGrip.Paint = function(_, w, h) draw.RoundedBox(sc(4), sc(1), 0, w - sc(2), h, THEME.surfaceHigh) end
+end
+
+-- Frame a DModelPanel's camera onto its model's render bounds.
+local function FrameModelPanel(mp)
+    local ent = mp:GetEntity()
+    if not IsValid(ent) then return end
+    local mn, mx = ent:GetRenderBounds()
+    local center = (mn + mx) * 0.5
+    local size   = math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z)
+    local fov    = 42
+    local dist   = (size * 1.25) / math.tan(math.rad(fov / 2))
+    mp:SetLookAt(center)
+    mp:SetCamPos(center + Vector(dist * 0.65, dist * 0.5, dist * 0.35))
+    mp:SetFOV(fov)
+end
+
+-- Self-drawing button with hover animation and a themed accent.
+local function Button(parent, text, color, onClick, opts)
+    opts = opts or {}
+    local btn = vgui.Create("DButton", parent)
+    btn:SetText("")
+    btn.HoverAnim = 0
+    btn._t = text
+    btn._solid = opts.solid == true
+    btn.GetText2 = function(self) return self._t end
+    btn.SetText2 = function(self, t) self._t = t end
+    btn.Paint = function(self, w, h)
+        self.HoverAnim = Lerp(FrameTime() * 12, self.HoverAnim, self:IsHovered() and 1 or 0)
+        local r = sc(8)
+        if self._solid then
+            local bg = THEME:LerpColor(self.HoverAnim * 0.35, color, THEME.textPrimary)
+            draw.RoundedBox(r, 0, 0, w, h, bg)
+            draw.SimpleText(self:GetText2(), "RH_Btn", w / 2, h / 2, THEME.background, ALIGN_C, ALIGN_M)
+        else
+            -- flat tint that deepens toward the accent on hover (no sharp outline —
+            -- an outlined rect over a rounded fill leaves corner-bracket artifacts)
+            local base = THEME:LerpColor(0.12, THEME.surface, color)
+            local bg = THEME:LerpColor(self.HoverAnim * 0.45, base, color)
+            draw.RoundedBox(r, 0, 0, w, h, bg)
+            local txtCol = THEME:LerpColor(self.HoverAnim, THEME.textPrimary, THEME.background)
+            draw.SimpleText(self:GetText2(), "RH_Btn", w / 2, h / 2, txtCol, ALIGN_C, ALIGN_M)
+        end
+    end
+    btn.DoClick = function(self)
+        surface.PlaySound("ui/buttonclickrelease.wav")
+        onClick(self)
+    end
+    return btn
+end
+
+-- Themed yes/no dialog matching the panel (replaces Derma_Query).
+local function ConfirmDialog(title, body, onYes)
+    local d = vgui.Create("DFrame")
+    d:SetSize(sc(440), sc(180))
+    d:Center()
+    d:SetTitle("")
+    d:ShowCloseButton(false)
+    d:MakePopup()
+    d.Paint = function(_, w, h)
+        draw.RoundedBox(sc(12), 0, 0, w, h, THEME.background)
+        draw.SimpleText(title, "RH_H2", sc(20), sc(18), THEME.textPrimary, ALIGN_L, ALIGN_T)
+        draw.DrawText(body, "RH_Body", sc(20), sc(52), THEME.textSecondary, ALIGN_L)
+    end
+    local yes = Button(d, L("common.proceed"), THEME.error, function() d:Close(); onYes() end, { solid = true })
+    yes:SetSize(sc(190), sc(36)); yes:SetPos(sc(20), sc(126))
+    local no = Button(d, L("common.cancel"), THEME.surface, function() d:Close() end)
+    no:SetSize(sc(190), sc(36)); no:SetPos(sc(230), sc(126))
+end
+
+-- ── entry row (left list) ─────────────────────────────────────────────────────
 
 local function BuildRow(parent, e)
     local row = vgui.Create("DButton", parent)
     row:SetText("")
     row:Dock(TOP)
-    row:DockMargin(8, 0, 8, 6)
-    row:SetTall(58)
+    row:DockMargin(sc(2), 0, sc(6), sc(6))
+    row:SetTall(sc(62))
     row.HoverAnim = 0
 
     row.Paint = function(self, w, h)
         local selected = HP.SelectedId == e.id
         self.HoverAnim = Lerp(FrameTime() * 12, self.HoverAnim, (self:IsHovered() or selected) and 1 or 0)
+        local r = sc(9)
 
-        draw.RoundedBox(8, 0, 0, w, h, THEME.surface)
-        if e.act then
-            draw.RoundedBox(8, 0, 0, w, h, ColorAlpha(THEME.success, 22))
-        end
-        if self.HoverAnim > 0.01 then
-            draw.RoundedBox(8, 0, 0, w, h, ColorAlpha(THEME.primary, 16 * self.HoverAnim))
-        end
-        if selected then
-            draw.RoundedBox(8, 0, 0, w, h, ColorAlpha(THEME.primary, 30))
-        end
-        -- left accent: green marks the active respawn save, blue marks the selected row
-        if e.act then
-            draw.RoundedBox(3, 0, 8, 3, h - 16, THEME.success)
-        elseif selected then
-            draw.RoundedBox(3, 0, 8, 3, h - 16, THEME.primary)
-        end
+        draw.RoundedBox(r, 0, 0, w, h, THEME.surface)
+        if self.HoverAnim > 0.01 then draw.RoundedBox(r, 0, 0, w, h, ColorAlpha(THEME.primary, 18 * self.HoverAnim)) end
+        if selected then draw.RoundedBox(r, 0, 0, w, h, ColorAlpha(THEME.primary, 34)) end
 
-        draw.SimpleText(TimeAgo(e.t), "RareloadBody", 14, 12, THEME.textPrimary, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+        local accent = e.act and THEME.success or (selected and THEME.primary or nil)
+        if accent then draw.RoundedBox(sc(3), 0, sc(9), sc(3), h - sc(18), accent) end
 
-        local pos = e.pos or {}
-        local posStr = string.format("%.0f, %.0f, %.0f", tonumber(pos.x) or 0, tonumber(pos.y) or 0, tonumber(pos.z) or 0)
-        draw.SimpleText(posStr, "RareloadCaption", 14, 34, THEME.textTertiary, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+        local pad = sc(14)
+        draw.SimpleText(TimeAgo(e.t), "RH_BodyB", pad, sc(11), THEME.textPrimary, ALIGN_L, ALIGN_T)
+        draw.SimpleText(os.date("%b %d, %H:%M", tonumber(e.t) or 0), "RH_Small", pad, sc(33), THEME.textTertiary, ALIGN_L, ALIGN_T)
 
-        -- right-aligned badges
-        local bx = w - 12
-        if e.pin then
-            draw.SimpleText("★", "RareloadBody", bx, 14, THEME.warning, TEXT_ALIGN_RIGHT, TEXT_ALIGN_TOP)
-            bx = bx - 20
-        end
-        if e.hp then
-            draw.SimpleText("♥ " .. math.floor(e.hp), "RareloadCaption", bx, 16, THEME:GetHealthColor(e.hp, 100),
-                TEXT_ALIGN_RIGHT, TEXT_ALIGN_TOP)
+        -- top-right status icons: pin, active dot, note
+        local bx = w - sc(12)
+        local isz = sc(14)
+        if e.pin == 1 then
+            surface.SetDrawColor(255, 255, 255); surface.SetMaterial(IC_PIN)
+            surface.DrawTexturedRect(bx - isz, sc(11), isz, isz); bx = bx - isz - sc(6)
         end
         if e.note and e.note ~= "" then
-            draw.SimpleText("✎", "RareloadCaption", w - 12, 36, THEME.textSecondary, TEXT_ALIGN_RIGHT, TEXT_ALIGN_TOP)
+            surface.SetDrawColor(255, 255, 255); surface.SetMaterial(IC_NOTE)
+            surface.DrawTexturedRect(bx - isz, sc(11), isz, isz); bx = bx - isz - sc(6)
         end
+        if e.act == 1 then
+            draw.RoundedBox(sc(4), bx - sc(8), sc(15), sc(8), sc(8), THEME.success); bx = bx - sc(14)
+        end
+
+        -- bottom-right: one badge per object type (only when > 0), then health
+        local rx = w - sc(12)
+        local iy = sc(34)
+        local function badge(mat, n, col)
+            if (n or 0) <= 0 then return end
+            local txt = tostring(n)
+            surface.SetFont("RH_Small")
+            local tw = surface.GetTextSize(txt)
+            draw.SimpleText(txt, "RH_Small", rx, iy + sc(1), col, ALIGN_R, ALIGN_T)
+            local ix = rx - tw - sc(2) - isz
+            surface.SetDrawColor(255, 255, 255); surface.SetMaterial(mat)
+            surface.DrawTexturedRect(ix, iy, isz, isz)
+            rx = ix - sc(9)
+        end
+        badge(IC_VEH, e.vc, THEME.entity.vehicle)
+        badge(IC_NPC, e.nc, THEME.entity.npc)
+        badge(IC_ENT, e.ec, THEME.entity.physics)
+
+        local hp = tonumber(e.hp) or 100 -- unsaved health defaults to full
+        local htxt = tostring(math.floor(hp))
+        draw.SimpleText(htxt, "RH_Small", rx, iy + sc(1), THEME:GetHealthColor(hp, 100), ALIGN_R, ALIGN_T)
+        surface.SetFont("RH_Small")
+        local htw = surface.GetTextSize(htxt)
+        surface.SetDrawColor(255, 255, 255); surface.SetMaterial(IC_HP)
+        surface.DrawTexturedRect(rx - htw - sc(2) - isz, iy, isz, isz)
     end
 
     row.DoClick = function()
-        HP.SelectedId = e.id
+        HP:Select(e.id)
         surface.PlaySound("ui/buttonrollover.wav")
-        HP:RebuildList()
-        HP:RebuildDetail()
     end
     return row
 end
 
--- ── generic themed button ──────────────────────────────────────────────────────
+-- ── detail pane (built once, updated in place) ────────────────────────────────
 
-local function ActionButton(parent, text, color, onClick)
-    local btn = vgui.Create("DButton", parent)
-    btn:SetText("")
-    btn.HoverAnim = 0
-    btn.Paint = function(self, w, h)
-        self.HoverAnim = Lerp(FrameTime() * 12, self.HoverAnim, self:IsHovered() and 1 or 0)
-        local bg = THEME:LerpColor(self.HoverAnim * 0.5, THEME.surface, color)
-        draw.RoundedBox(8, 0, 0, w, h, bg)
-        surface.SetDrawColor(color.r, color.g, color.b, 60 + 120 * self.HoverAnim)
-        surface.DrawOutlinedRect(0, 0, w, h, 1)
-        draw.SimpleText(text, "RareloadBody", w / 2, h / 2, THEME.textPrimary, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    end
-    btn.DoClick = onClick
-    return btn
-end
+function HP:BuildDetail(host)
+    local D = {}
+    self.D = D
+    local pad = sc(4)
 
--- ── detail pane (right) ────────────────────────────────────────────────────────
-
-local function DetailField(parent, y, label, value, valueColor)
-    local p = vgui.Create("DPanel", parent)
-    p:Dock(TOP)
-    p:DockMargin(0, 0, 0, 6)
-    p:SetTall(20)
-    p.Paint = function(self, w, h)
-        draw.SimpleText(label, "RareloadCaption", 0, h / 2, THEME.textTertiary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText(value, "RareloadCaption", w, h / 2, valueColor or THEME.textPrimary, TEXT_ALIGN_RIGHT,
-            TEXT_ALIGN_CENTER)
-    end
-    return p
-end
-
-function HP:RebuildDetail()
-    local host = self.Detail
-    if not IsValid(host) then return end
-    -- Clearing a focused note field fires its OnLoseFocus; suppress the resulting save.
-    self._rebuilding = true
-    host:Clear()
-    self._rebuilding = false
-
-    local e = self.SelectedId and FindEntry(self.SelectedId) or nil
-    if not e then
-        if RARELOAD.HistoryPreview then RARELOAD.HistoryPreview.Clear() end
-        local empty = vgui.Create("DPanel", host)
-        empty:Dock(FILL)
-        empty.Paint = function(_, w, h)
-            draw.SimpleText(L("sth.select_hint"), "RareloadSubheading", w / 2, h / 2, THEME.textSecondary,
-                TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-        end
-        return
-    end
-
-    -- header: compact model preview + primary facts
+    -- Header card: model + time + health bar
     local header = vgui.Create("DPanel", host)
-    header:Dock(TOP)
-    header:SetTall(98)
-    header:DockMargin(0, 0, 0, 10)
-    header.Paint = function(_, w, h) draw.RoundedBox(10, 0, 0, w, h, THEME.backgroundDark) end
+    D.header = header
+    header:Dock(TOP); header:SetTall(sc(120)); header:DockMargin(pad, 0, pad, sc(12))
+    header.Paint = function(_, w, h)
+        draw.RoundedBox(sc(12), 0, 0, w, h, THEME.backgroundDark)
+        local e = self:Sel(); if not e then return end
+        local mx = sc(110)
+        -- facts
+        draw.SimpleText(TimeAgo(e.t), "RH_H1", mx, sc(14), THEME.textPrimary, ALIGN_L, ALIGN_T)
+        draw.SimpleText(os.date("%A, %B %d %Y  ·  %H:%M:%S", tonumber(e.t) or 0), "RH_Small", mx, sc(44),
+            THEME.textSecondary, ALIGN_L, ALIGN_T)
 
-    local dispModel = (e.mdl and util.IsValidModel(e.mdl)) and e.mdl or nil
-    if not dispModel then
-        local lp = LocalPlayer()
-        if IsValid(lp) and util.IsValidModel(lp:GetModel()) then dispModel = lp:GetModel() end
-    end
-    if dispModel then
-        local mp = vgui.Create("DModelPanel", header)
-        mp:Dock(LEFT)
-        mp:DockMargin(7, 7, 7, 7)
-        mp:SetWide(84)
-        mp:SetModel(dispModel)
-        mp:SetMouseInputEnabled(false)
-        mp.LayoutEntity = function(_, en) en:SetAngles(Angle(0, RealTime() * 24, 0)) end
-        local ent = mp:GetEntity()
-        if IsValid(ent) then
-            local mn, mx = ent:GetRenderBounds()
-            local center = (mn + mx) * 0.5
-            local size   = math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z)
-            local fov    = 45
-            local dist   = (size * 1.2) / math.tan(math.rad(fov / 2))
-            mp:SetLookAt(center)
-            mp:SetCamPos(center + Vector(dist * 0.6, dist * 0.5, dist * 0.4))
-            mp:SetFOV(fov)
+        -- badges
+        local by = sc(66)
+        if e.act == 1 then
+            local txt = L("sth.is_active")
+            surface.SetFont("RH_Tiny"); local tw = surface.GetTextSize(txt)
+            draw.RoundedBox(sc(5), mx, by, tw + sc(16), sc(18), ColorAlpha(THEME.success, 45))
+            draw.SimpleText(txt, "RH_Tiny", mx + sc(8), by + sc(9), THEME.success, ALIGN_L, ALIGN_M)
+        elseif e.pin == 1 then
+            local txt = "★ " .. L("sth.pinned")
+            surface.SetFont("RH_Tiny"); local tw = surface.GetTextSize(txt)
+            draw.RoundedBox(sc(5), mx, by, tw + sc(16), sc(18), ColorAlpha(THEME.warning, 45))
+            draw.SimpleText(txt, "RH_Tiny", mx + sc(8), by + sc(9), THEME.warning, ALIGN_L, ALIGN_M)
         end
-    else
-        local ph = vgui.Create("DPanel", header)
-        ph:Dock(LEFT)
-        ph:DockMargin(7, 7, 7, 7)
-        ph:SetWide(84)
-        ph.Paint = function(_, w, h)
-            draw.RoundedBox(8, 0, 0, w, h, THEME.surface)
-            draw.SimpleText("?", "RareloadHeading", w / 2, h / 2, THEME.textDisabled, TEXT_ALIGN_CENTER,
-                TEXT_ALIGN_CENTER)
+
+        -- health bar along the bottom (unsaved health = full)
+        local barY, barH = h - sc(24), sc(8)
+        local barX, barW = mx, w - mx - sc(16)
+        draw.RoundedBox(sc(4), barX, barY, barW, barH, THEME.surface)
+        local hpVal = tonumber(e.hp) or 100
+        local hp = math.Clamp(hpVal / 100, 0, 1)
+        if hp > 0 then
+            draw.RoundedBox(sc(4), barX, barY, math.max(sc(4), barW * hp), barH, THEME:GetHealthColor(hpVal, 100))
         end
+        draw.SimpleText(math.floor(hpVal) .. " HP", "RH_Tiny", barX, barY - sc(12), THEME.textTertiary, ALIGN_L, ALIGN_T)
+        local arTxt = e.ar ~= nil and (math.floor(e.ar) .. " " .. string.upper(L("sth.field.armor"))) or string.upper(L("sth.unsaved"))
+        draw.SimpleText(arTxt, "RH_Tiny", barX + barW, barY - sc(12), e.ar ~= nil and THEME.info or THEME.textDisabled, ALIGN_R, ALIGN_T)
     end
 
-    local facts = vgui.Create("DPanel", header)
-    facts:Dock(FILL)
-    facts:DockMargin(6, 12, 12, 10)
-    facts.Paint = function(_, w, h)
-        draw.SimpleText(TimeAgo(e.t), "RareloadHeading", 0, 2, THEME.textPrimary, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-        draw.SimpleText(os.date("%Y-%m-%d  %H:%M:%S", tonumber(e.t) or 0), "RareloadCaption", 0, 32,
-            THEME.textSecondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-        if e.pin then
-            draw.SimpleText("★ " .. L("sth.pinned"), "RareloadCaption", 0, 54, THEME.warning, TEXT_ALIGN_LEFT,
-                TEXT_ALIGN_TOP)
+    local mp = vgui.Create("DModelPanel", header)
+    mp:SetPos(sc(8), sc(8)); mp:SetSize(sc(94), sc(104))
+    mp:SetModel("models/player/kleiner.mdl")
+    mp:SetMouseInputEnabled(false)
+    mp.LayoutEntity = function(_, en) en:SetAngles(Angle(0, RealTime() * 22, 0)) end
+    D.model = mp
+
+    -- Stat cards: HP, Armor, Weapons, Entities, NPCs, Vehicles
+    local stats = vgui.Create("DPanel", host)
+    D.stats = stats
+    stats:Dock(TOP); stats:SetTall(sc(66)); stats:DockMargin(pad, 0, pad, sc(12))
+    stats.Paint = function(_, w, h)
+        local e = self:Sel(); if not e then return end
+        -- health defaults to full when unsaved; armor is genuinely "Unsaved" when nil
+        local hp = tonumber(e.hp) or 100
+        local cards = {
+            { L("sth.field.health"),   tostring(math.floor(hp)),        THEME:GetHealthColor(hp, 100) },
+            { L("sth.field.armor"),    e.ar ~= nil and tostring(math.floor(e.ar)) or nil, THEME.info },
+            { L("sth.field.weapons"),  tostring(e.wc or 0),             THEME.textPrimary },
+            { L("sth.field.entities"), tostring(e.ec or 0),             THEME.entity.physics },
+            { L("sth.field.npcs"),     tostring(e.nc or 0),             THEME.entity.npc },
+            { L("sth.field.vehicles"), tostring(e.vc or 0),             THEME.entity.vehicle },
+        }
+        local n = #cards
+        local gap = sc(7)
+        local cw = (w - gap * (n - 1)) / n
+        for i, cinfo in ipairs(cards) do
+            local x = (i - 1) * (cw + gap)
+            draw.RoundedBox(sc(8), x, 0, cw, h, THEME.surface)
+            if cinfo[2] then
+                draw.SimpleText(cinfo[2], "RH_Stat", x + cw / 2, h * 0.42, cinfo[3], ALIGN_C, ALIGN_M)
+            else
+                draw.SimpleText(L("sth.unsaved"), "RH_Small", x + cw / 2, h * 0.42, THEME.textDisabled, ALIGN_C, ALIGN_M)
+            end
+            draw.SimpleText(string.upper(cinfo[1]), "RH_Tiny", x + cw / 2, h * 0.78, THEME.textTertiary, ALIGN_C, ALIGN_M)
         end
     end
 
-    -- in-world preview: a "Preview in World" toggle drops phantoms of the whole
-    -- saved snapshot (player + entities) into the map, each glowing green/red.
-    local previewClear = true
-    if RARELOAD.HistoryPreview then
-        if RARELOAD.HistoryPreview.active and RARELOAD.HistoryPreview.showId ~= e.id then
-            RARELOAD.HistoryPreview.Clear() -- drop a stale preview from a different entry
+    -- Info rows (position, active weapon, in-vehicle, states, model)
+    local info = vgui.Create("DPanel", host)
+    D.info = info
+    info:Dock(TOP); info:SetTall(sc(146)); info:DockMargin(pad, 0, pad, sc(12))
+    info.Paint = function(_, w, h)
+        draw.RoundedBox(sc(10), 0, 0, w, h, THEME.surface)
+        local e = self:Sel(); if not e then return end
+        local rows = {}
+        rows[#rows + 1] = { L("sth.field.position"), PosStr(e.pos), THEME.textPrimary }
+        local a = e.ang or {}
+        rows[#rows + 1] = { L("sth.field.angle"),
+            string.format("%.0f, %.0f, %.0f", tonumber(a.p) or 0, tonumber(a.y) or 0, tonumber(a.r) or 0), THEME.textSecondary }
+        local awTxt, awCol
+        if e.aw == nil then awTxt, awCol = L("sth.unsaved"), THEME.textDisabled
+        elseif e.aw == "None" or e.aw == "" then awTxt, awCol = L("sth.none"), THEME.textTertiary
+        else awTxt, awCol = e.aw, THEME.textPrimary end
+        rows[#rows + 1] = { L("sth.field.active"), awTxt, awCol }
+        if e.veh then
+            rows[#rows + 1] = { L("sth.field.in_vehicle"), VehicleClassName(e.veh) or L("sth.yes"), THEME.entity.vehicle }
         end
-        if RARELOAD.HistoryPreview.TestClear and istable(e.pos) then
-            previewClear = RARELOAD.HistoryPreview.TestClear(
-                Vector(tonumber(e.pos.x) or 0, tonumber(e.pos.y) or 0, tonumber(e.pos.z) or 0))
+        local stl = StatesList(e.st)
+        rows[#rows + 1] = { L("sth.field.states"),
+            #stl > 0 and table.concat(stl, ", ") or L("sth.none"),
+            #stl > 0 and THEME.warning or THEME.textTertiary }
+        rows[#rows + 1] = e.mdl and { L("sth.field.model"), tostring(e.mdl), THEME.textSecondary }
+            or { L("sth.field.model"), L("sth.unsaved"), THEME.textDisabled }
+
+        local rh = sc(23)
+        local y = sc(8)
+        for i, r in ipairs(rows) do
+            if i > 1 then
+                surface.SetDrawColor(THEME.divider.r, THEME.divider.g, THEME.divider.b, 90)
+                surface.DrawLine(sc(12), y, w - sc(12), y)
+            end
+            draw.SimpleText(r[1], "RH_Small", sc(12), y + rh / 2, THEME.textTertiary, ALIGN_L, ALIGN_M)
+            -- right-aligned value, clipped to available width
+            draw.SimpleText(r[2], "RH_Small", w - sc(12), y + rh / 2, r[3], ALIGN_R, ALIGN_M)
+            y = y + rh
         end
     end
-    do
-        local status = vgui.Create("DPanel", host)
-        status:Dock(TOP)
-        status:DockMargin(4, 0, 4, 8)
-        status:SetTall(22)
-        status.Paint = function(_, w, h)
-            draw.SimpleText(previewClear and L("sth.inworld_clear") or L("sth.inworld_blocked"),
-                "RareloadCaption", 0, h / 2, previewClear and THEME.success or THEME.error,
-                TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+
+    -- Preview status + toggle
+    D.previewStatus = vgui.Create("DPanel", host)
+    D.previewStatus:Dock(TOP); D.previewStatus:DockMargin(pad + sc(2), 0, pad, sc(6)); D.previewStatus:SetTall(sc(20))
+    D.previewStatus.Paint = function(_, w, h)
+        local e = self:Sel(); if not e then return end
+        local clear = true
+        if RARELOAD.HistoryPreview and RARELOAD.HistoryPreview.TestClear and istable(e.pos) then
+            clear = RARELOAD.HistoryPreview.TestClear(Vector(tonumber(e.pos.x) or 0, tonumber(e.pos.y) or 0, tonumber(e.pos.z) or 0))
         end
+        draw.SimpleText(clear and L("sth.inworld_clear") or L("sth.inworld_blocked"), "RH_Small", 0, h / 2,
+            clear and THEME.success or THEME.error, ALIGN_L, ALIGN_M)
     end
 
-    local showing = RARELOAD.HistoryPreview and RARELOAD.HistoryPreview.IsShowing(e.id)
-    local prevBtn = ActionButton(host, showing and L("sth.preview_hide") or L("sth.preview_show"), THEME.info,
-        function()
-            if RARELOAD.HistoryPreview then RARELOAD.HistoryPreview.Toggle(e) end
-            timer.Simple(0, function() if IsValid(HP.Frame) then HP:RebuildDetail() end end)
-        end)
-    prevBtn:Dock(TOP)
-    prevBtn:DockMargin(4, 0, 4, 10)
-    prevBtn:SetTall(30)
+    D.preview = Button(host, L("sth.preview_show"), THEME.info, function()
+        local e = self:Sel(); if not e then return end
+        if RARELOAD.HistoryPreview then RARELOAD.HistoryPreview.Toggle(e) end
+        self:UpdatePreviewButton()
+    end)
+    D.preview:Dock(TOP); D.preview:DockMargin(pad, 0, pad, sc(8)); D.preview:SetTall(sc(32))
 
-    -- active respawn: banner when this entry is the active save, button to make it so
-    if e.act then
-        local banner = vgui.Create("DPanel", host)
-        banner:Dock(TOP)
-        banner:DockMargin(4, 0, 4, 10)
-        banner:SetTall(34)
-        banner.Paint = function(_, w, h)
-            draw.RoundedBox(8, 0, 0, w, h, ColorAlpha(THEME.success, 40))
-            surface.SetDrawColor(THEME.success.r, THEME.success.g, THEME.success.b, 150)
-            surface.DrawOutlinedRect(0, 0, w, h, 1)
-            draw.SimpleText(L("sth.is_active"), "RareloadBody", w / 2, h / 2, THEME.success, TEXT_ALIGN_CENTER,
-                TEXT_ALIGN_CENTER)
-        end
-    else
-        local setActive = ActionButton(host, L("sth.set_active"), THEME.success, function()
-            SendAction("activate", e.id)
-            ShowNotification(L("sth.set_active_done"), NOTIFY_GENERIC)
-        end)
-        setActive:Dock(TOP)
-        setActive:DockMargin(4, 0, 4, 10)
-        setActive:SetTall(34)
+    -- Open the entity viewer + JSON editor scoped to this save.
+    D.objects = Button(host, L("sth.objects"), THEME.entity.vehicle, function()
+        local e = self:Sel(); if not e then return end
+        local n = (e.ec or 0) + (e.nc or 0) + (e.vc or 0)
+        if n <= 0 then ShowNotification(L("sth.objects_none"), NOTIFY_ERROR); return end
+        HP._objectsLabel = TimeAgo(e.t) .. "  ·  " .. os.date("%Y-%m-%d %H:%M", tonumber(e.t) or 0)
+        net.Start("RareloadHistory_Objects")
+        net.WriteString(e.id or "")
+        net.SendToServer()
+    end)
+    D.objects:Dock(TOP); D.objects:DockMargin(pad, 0, pad, sc(10)); D.objects:SetTall(sc(32))
+
+    -- Active banner / set-active
+    D.banner = vgui.Create("DPanel", host)
+    D.banner:Dock(TOP); D.banner:DockMargin(pad, 0, pad, sc(10)); D.banner:SetTall(sc(34))
+    D.banner.Paint = function(_, w, h)
+        draw.RoundedBox(sc(8), 0, 0, w, h, ColorAlpha(THEME.success, 45))
+        draw.SimpleText(L("sth.is_active"), "RH_Body", w / 2, h / 2, THEME.success, ALIGN_C, ALIGN_M)
     end
 
-    -- fields block
-    local fieldBox = vgui.Create("DPanel", host)
-    fieldBox:Dock(TOP)
-    fieldBox:DockMargin(4, 0, 4, 10)
-    fieldBox.Paint = function() end
-    fieldBox:SetTall(20 * 7 + 6 * 7)
+    D.setActive = Button(host, L("sth.set_active"), THEME.success, function()
+        local e = self:Sel(); if not e then return end
+        SendAction("activate", e.id)
+        ShowNotification(L("sth.set_active_done"), NOTIFY_GENERIC)
+    end)
+    D.setActive:Dock(TOP); D.setActive:DockMargin(pad, 0, pad, sc(10)); D.setActive:SetTall(sc(34))
 
-    local pos, ang = e.pos or {}, e.ang or {}
-    DetailField(fieldBox, 0, L("sth.field.position"),
-        string.format("%.0f, %.0f, %.0f", tonumber(pos.x) or 0, tonumber(pos.y) or 0, tonumber(pos.z) or 0))
-    DetailField(fieldBox, 0, L("sth.field.angle"),
-        string.format("%.0f, %.0f, %.0f", tonumber(ang.p) or 0, tonumber(ang.y) or 0, tonumber(ang.r) or 0))
-    DetailField(fieldBox, 0, L("sth.field.health"),
-        (e.hp and math.floor(e.hp) or 0) .. "  /  " .. (e.ar and math.floor(e.ar) or 0) .. " " .. L("sth.field.armor"),
-        e.hp and THEME:GetHealthColor(e.hp, 100) or THEME.textPrimary)
-    DetailField(fieldBox, 0, L("sth.field.weapons"), tostring(e.wc or 0))
-    DetailField(fieldBox, 0, L("sth.field.active"), e.aw and e.aw ~= "None" and e.aw or L("sth.none"))
-    DetailField(fieldBox, 0, L("sth.field.entities") .. " / " .. L("sth.field.npcs"),
-        (e.ec or 0) .. " / " .. (e.nc or 0))
-
-    local st = e.st or {}
-    local stParts = {}
-    if st.g then stParts[#stParts + 1] = "god" end
-    if st.n then stParts[#stParts + 1] = "notarget" end
-    if st.f then stParts[#stParts + 1] = "frozen" end
-    if st.c then stParts[#stParts + 1] = "noclip" end
-    DetailField(fieldBox, 0, L("sth.field.states"), #stParts > 0 and table.concat(stParts, ", ") or L("sth.none"))
-
-    -- note editor
+    -- Note editor
     local note = vgui.Create("DTextEntry", host)
-    note:Dock(TOP)
-    note:DockMargin(4, 0, 4, 10)
-    note:SetTall(28)
-    note:SetFont("RareloadBody")
-    note:SetText(e.note or "")
-    note:SetPlaceholderText(L("sth.note_placeholder"))
-    note:SetUpdateOnType(false)
-    note.Paint = function(self, w, h)
-        draw.RoundedBox(6, 0, 0, w, h, THEME.surface)
-        self:DrawTextEntryText(THEME.textPrimary, THEME.primary, THEME.textPrimary)
-        if self:GetValue() == "" and not self:HasFocus() then
-            draw.SimpleText(L("sth.note_placeholder"), "RareloadBody", 8, h / 2, THEME.textTertiary, TEXT_ALIGN_LEFT,
-                TEXT_ALIGN_CENTER)
+    note:Dock(TOP); note:DockMargin(pad, 0, pad, sc(10)); note:SetTall(sc(30))
+    note:SetFont("RH_Body"); note:SetUpdateOnType(false)
+    note.Paint = function(selfp, w, h)
+        draw.RoundedBox(sc(7), 0, 0, w, h, THEME.surface)
+        selfp:DrawTextEntryText(THEME.textPrimary, THEME.primary, THEME.textPrimary)
+        if selfp:GetValue() == "" and not selfp:HasFocus() then
+            draw.SimpleText(L("sth.note_placeholder"), "RH_Body", sc(9), h / 2, THEME.textTertiary, ALIGN_L, ALIGN_M)
         end
     end
-    note._committed = e.note or ""
-    local function commitNote(self)
-        if HP._rebuilding then return end
-        local v = self:GetValue()
-        if v == self._committed then return end
-        self._committed = v
+    local function commitNote(selfp)
+        local e = self:Sel(); if not e then return end
+        local v = selfp:GetValue()
+        if v == (note._committed or "") then return end
+        note._committed = v
         SendAction("note", e.id, function() net.WriteString(v) end)
         ShowNotification(L("sth.note_saved"), NOTIFY_GENERIC)
     end
     note.OnEnter = commitNote
-    note.OnLoseFocus = commitNote
+    note.OnGetFocus = function() HP._typing = true end
+    note.OnLoseFocus = function(selfp) commitNote(selfp); HP._typing = false end
+    D.note = note
 
-    -- primary actions
+    -- Primary actions
     local actions = vgui.Create("DPanel", host)
-    actions:Dock(TOP)
-    actions:DockMargin(4, 0, 4, 8)
-    actions:SetTall(36)
-    actions.Paint = function() end
+    D.actions = actions
+    actions:Dock(TOP); actions:DockMargin(pad, 0, pad, sc(8)); actions:SetTall(sc(38)); actions.Paint = function() end
 
-    local tp = ActionButton(actions, L("sth.teleport"), THEME.info, function()
-        if e.pos then
-            RunConsoleCommand("rareload_teleport_to", e.pos.x, e.pos.y, e.pos.z)
-            ShowNotification(L("sth.teleporting"), NOTIFY_GENERIC)
-        end
+    -- LEFT-docked buttons are created first; the FILL button (Restore) comes LAST so
+    -- it takes only the remaining space instead of overlapping the others.
+    local tp = Button(actions, L("sth.teleport"), THEME.info, function()
+        local e = self:Sel(); if not (e and e.pos) then return end
+        RunConsoleCommand("rareload_teleport_to", e.pos.x, e.pos.y, e.pos.z)
+        ShowNotification(L("sth.teleporting"), NOTIFY_GENERIC)
     end)
-    tp:Dock(LEFT); tp:SetWide(120); tp:DockMargin(0, 0, 6, 0)
+    tp:Dock(LEFT); tp:SetWide(sc(104)); tp:DockMargin(0, 0, sc(6), 0)
 
-    local rs = ActionButton(actions, L("sth.restore_all"), THEME.success, function()
-        SendAction("restore", e.id, function() net.WriteTable({ all = true }) end)
-        ShowNotification(L("sth.restoring"), NOTIFY_GENERIC)
+    D.pin = Button(actions, L("sth.pin"), THEME.warning, function()
+        local e = self:Sel(); if not e then return end
+        SendAction("pin", e.id, function() net.WriteBool(e.pin ~= 1) end)
     end)
-    rs:Dock(LEFT); rs:SetWide(150); rs:DockMargin(0, 0, 6, 0)
+    D.pin:Dock(LEFT); D.pin:SetWide(sc(78)); D.pin:DockMargin(0, 0, sc(6), 0)
 
-    local pin = ActionButton(actions, e.pin and L("sth.unpin") or L("sth.pin"), THEME.warning, function()
-        SendAction("pin", e.id, function() net.WriteBool(not e.pin) end)
-    end)
-    pin:Dock(LEFT); pin:SetWide(90); pin:DockMargin(0, 0, 6, 0)
-
-    local del = ActionButton(actions, L("sth.delete"), THEME.error, function()
-        Derma_Query(L("sth.delete_confirm"), L("sth.delete"), L("common.proceed"), function()
+    local del = Button(actions, L("sth.delete"), THEME.error, function()
+        local e = self:Sel(); if not e then return end
+        ConfirmDialog(L("sth.delete"), L("sth.delete_confirm"), function()
             SendAction("delete", e.id)
             HP.SelectedId = nil
-        end, L("common.cancel"))
+        end)
     end)
-    del:Dock(FILL)
+    del:Dock(LEFT); del:SetWide(sc(78)); del:DockMargin(0, 0, sc(6), 0)
 
-    -- partial restore
+    local rs = Button(actions, L("sth.restore_all"), THEME.success, function()
+        local e = self:Sel(); if not e then return end
+        SendAction("restore", e.id, function() WriteComps({ all = true }) end)
+        ShowNotification(L("sth.restoring"), NOTIFY_GENERIC)
+    end, { solid = true })
+    rs:Dock(FILL)
+
+    -- Partial restore
     local partHeader = vgui.Create("DPanel", host)
-    partHeader:Dock(TOP)
-    partHeader:DockMargin(4, 4, 4, 4)
-    partHeader:SetTall(20)
+    D.partHeader = partHeader
+    partHeader:Dock(TOP); partHeader:DockMargin(pad, sc(4), pad, sc(6)); partHeader:SetTall(sc(18))
     partHeader.Paint = function(_, w, h)
-        draw.SimpleText(L("sth.partial_title"), "RareloadLabel", 0, h / 2, THEME.textSecondary, TEXT_ALIGN_LEFT,
-            TEXT_ALIGN_CENTER)
+        draw.SimpleText(L("sth.partial_title"), "RH_Tiny", 0, h / 2, THEME.textTertiary, ALIGN_L, ALIGN_M)
     end
 
     local comps = {
@@ -418,192 +624,359 @@ function HP:RebuildDetail()
         { "world", "sth.comp.world" },
     }
     local grid = vgui.Create("DIconLayout", host)
-    grid:Dock(TOP)
-    grid:DockMargin(4, 0, 4, 8)
-    grid:SetTall(60)
-    grid:SetSpaceX(6)
-    grid:SetSpaceY(6)
+    D.grid = grid
+    grid:Dock(TOP); grid:DockMargin(pad, 0, pad, sc(8)); grid:SetTall(sc(58)); grid:SetSpaceX(sc(6)); grid:SetSpaceY(sc(6))
     for _, c in ipairs(comps) do
         local cb = grid:Add("DCheckBoxLabel")
-        cb:SetText(L(c[2]))
-        cb:SetTextColor(THEME.textSecondary)
-        cb:SetFont("RareloadCaption")
-        cb:SetValue(HP.Comps[c[1]] and true or false)
-        cb:SizeToContents()
+        cb:SetText(L(c[2])); cb:SetTextColor(THEME.textSecondary); cb:SetFont("RH_Small")
+        cb:SetValue(HP.Comps[c[1]] and true or false); cb:SizeToContents()
         cb.OnChange = function(_, v) HP.Comps[c[1]] = v end
     end
 
-    local applyBtn = ActionButton(host, L("sth.apply_selected"), THEME.primary, function()
+    D.applyBtn = Button(host, L("sth.apply_selected"), THEME.primary, function()
+        local e = self:Sel(); if not e then return end
         local chosen = {}
         for k, v in pairs(HP.Comps) do if v then chosen[k] = true end end
-        if not next(chosen) then
-            ShowNotification(L("sth.nothing_selected"), NOTIFY_ERROR)
-            return
-        end
-        SendAction("restore", e.id, function() net.WriteTable(chosen) end)
+        if not next(chosen) then ShowNotification(L("sth.nothing_selected"), NOTIFY_ERROR); return end
+        SendAction("restore", e.id, function() WriteComps(chosen) end)
         ShowNotification(L("sth.restoring"), NOTIFY_GENERIC)
     end)
-    applyBtn:Dock(TOP)
-    applyBtn:DockMargin(4, 0, 4, 4)
-    applyBtn:SetTall(32)
+    D.applyBtn:Dock(TOP); D.applyBtn:DockMargin(pad, 0, pad, sc(6)); D.applyBtn:SetTall(sc(32))
+
+    -- Empty state (nothing selected)
+    D.empty = vgui.Create("DPanel", host)
+    D.empty:Dock(TOP); D.empty:SetTall(sc(320)); D.empty:SetMouseInputEnabled(false)
+    D.empty.Paint = function(_, w, h)
+        draw.SimpleText("◈", "RH_Stat", w / 2, h / 2 - sc(26), THEME.textDisabled, ALIGN_C, ALIGN_M)
+        draw.SimpleText(L("sth.select_hint"), "RH_H2", w / 2, h / 2 + sc(8), THEME.textSecondary, ALIGN_C, ALIGN_M)
+    end
 end
 
--- ── list rebuild ────────────────────────────────────────────────────────────────
+function HP:UpdatePreviewButton()
+    if not self.D then return end
+    local e = self:Sel()
+    local showing = e and RARELOAD.HistoryPreview and RARELOAD.HistoryPreview.IsShowing(e.id)
+    self.D.preview:SetText2(showing and L("sth.preview_hide") or L("sth.preview_show"))
+end
+
+-- Update the persistent detail widgets to the current selection (no teardown).
+function HP:UpdateDetail()
+    local D = self.D
+    if not D then return end
+    local e = self:Sel()
+    local hasSel = e ~= nil
+
+    for _, k in ipairs({ "header", "stats", "info", "previewStatus", "preview", "objects", "banner",
+        "setActive", "note", "actions", "partHeader", "grid", "applyBtn" }) do
+        if IsValid(D[k]) then D[k]:SetVisible(hasSel) end
+    end
+    if IsValid(D.empty) then D.empty:SetVisible(not hasSel) end
+    if not hasSel then
+        if RARELOAD.HistoryPreview then RARELOAD.HistoryPreview.Clear() end
+        return
+    end
+
+    -- model
+    local dispModel = (e.mdl and util.IsValidModel(e.mdl)) and e.mdl or nil
+    if not dispModel then
+        local lp = LocalPlayer()
+        if IsValid(lp) and util.IsValidModel(lp:GetModel()) then dispModel = lp:GetModel() end
+    end
+    if dispModel and D.model:GetModel() ~= dispModel then
+        D.model:SetModel(dispModel)
+        timer.Simple(0, function() if IsValid(D.model) then FrameModelPanel(D.model) end end)
+    end
+
+    D.pin:SetText2(e.pin == 1 and L("sth.unpin") or L("sth.pin"))
+    D.banner:SetVisible(e.act == 1)
+    D.setActive:SetVisible(e.act ~= 1)
+    self:UpdatePreviewButton()
+
+    if IsValid(D.objects) then
+        local n = (e.ec or 0) + (e.nc or 0) + (e.vc or 0)
+        D.objects:SetText2(n > 0 and L("sth.objects_count", n) or L("sth.objects_none"))
+    end
+
+    if not D.note:HasFocus() then
+        D.note._committed = e.note or ""
+        D.note:SetText(e.note or "")
+    end
+
+    -- don't let a preview from a different entry linger
+    if RARELOAD.HistoryPreview and RARELOAD.HistoryPreview.active and RARELOAD.HistoryPreview.showId ~= e.id then
+        RARELOAD.HistoryPreview.Clear()
+        self:UpdatePreviewButton()
+    end
+end
+
+function HP:Select(id)
+    self.SelectedId = id
+    self:UpdateDetail()
+end
+
+-- ── list ──────────────────────────────────────────────────────────────────────
 
 function HP:RebuildList()
     local scroll = self.List
     if not IsValid(scroll) then return end
+    self:InvalidateView()
     scroll:Clear()
 
-    local list = FilteredEntries()
+    local function centered(text, col, font)
+        local p = vgui.Create("DPanel", scroll)
+        p:Dock(TOP); p:DockMargin(sc(8), sc(40), sc(8), 0); p:SetTall(sc(60))
+        p.Paint = function(_, w, h)
+            draw.SimpleText(text, font or "RH_H2", w / 2, h / 2, col, ALIGN_C, ALIGN_M)
+        end
+        return p
+    end
+
+    if self.Loading then centered(L("sth.loading"), THEME.textSecondary); return end
+    if self.LoadError then centered(L("sth.load_error"), THEME.error); return end
+
+    local list = self:View()
     if #list == 0 then
         local empty = vgui.Create("DPanel", scroll)
-        empty:Dock(TOP)
-        empty:DockMargin(8, 40, 8, 0)
-        empty:SetTall(120)
+        empty:Dock(TOP); empty:DockMargin(sc(8), sc(40), sc(8), 0); empty:SetTall(sc(120))
         empty.Paint = function(_, w, h)
-            draw.SimpleText(L("sth.empty"), "RareloadSubheading", w / 2, h / 2 - 12, THEME.textSecondary,
-                TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-            draw.SimpleText(L("sth.empty_hint"), "RareloadCaption", w / 2, h / 2 + 14, THEME.textTertiary,
-                TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            draw.SimpleText(L("sth.empty"), "RH_H2", w / 2, h / 2 - sc(12), THEME.textSecondary, ALIGN_C, ALIGN_M)
+            draw.SimpleText(L("sth.empty_hint"), "RH_Small", w / 2, h / 2 + sc(14), THEME.textTertiary, ALIGN_C, ALIGN_M)
         end
         return
     end
-
-    for _, e in ipairs(list) do
-        BuildRow(scroll, e)
-    end
+    for _, e in ipairs(list) do BuildRow(scroll, e) end
 end
 
-function HP:Rebuild()
-    -- auto-select the newest save so the detail pane isn't empty on open
-    local entries = Entries()
-    if entries[1] and (not self.SelectedId or not FindEntry(self.SelectedId)) then
-        self.SelectedId = entries[1].id
+-- ── refresh (data changed) ─────────────────────────────────────────────────────
+
+function HP:Refresh()
+    self:InvalidateView()
+    if not self.SelectedId or not FindEntry(self.SelectedId) then
+        local v = self:View()
+        self.SelectedId = v[1] and v[1].id or nil
     end
     self:RebuildList()
-    self:RebuildDetail()
+    self:UpdateDetail()
     if IsValid(self.CountLabel) then
         self.CountLabel:SetText(L("sth.count", RARELOAD.HistoryClient.total or #Entries()))
     end
-    if IsValid(self.UndoBtn) then
-        self.UndoBtn:SetVisible(RARELOAD.HistoryClient.undo == true)
-    end
+    if IsValid(self.UndoBtn) then self.UndoBtn:SetVisible(RARELOAD.HistoryClient.undo == true) end
 end
 
--- ── open ────────────────────────────────────────────────────────────────────────
+-- ── keyboard navigation ─────────────────────────────────────────────────────────
+
+function HP:MoveSelection(dir)
+    local v = self:View()
+    if #v == 0 then return end
+    local idx = 1
+    for i, e in ipairs(v) do if e.id == self.SelectedId then idx = i break end end
+    idx = math.Clamp(idx + dir, 1, #v)
+    self:Select(v[idx].id)
+end
+
+-- ── open ───────────────────────────────────────────────────────────────────────
 
 function HP:Open()
     if IsValid(self.Frame) then self.Frame:Close() end
+    self:EnsureFonts()
 
     local frame = vgui.Create("DFrame")
-    frame:SetSize(960, 640)
+    local w = math.min(ScrW() * 0.82, sc(1220))
+    local h = math.min(ScrH() * 0.86, sc(800))
+    frame:SetSize(w, h)
+    frame:SetMinWidth(sc(880)); frame:SetMinHeight(sc(560))
     frame:Center()
     frame:SetTitle("")
     frame:ShowCloseButton(false)
     frame:MakePopup()
-    frame:SetSizable(false)
+    frame:SetSizable(true)
     self.Frame = frame
 
-    frame.Paint = function(_, w, h)
-        draw.RoundedBox(12, 0, 0, w, h, THEME.background)
-        draw.RoundedBoxEx(12, 0, 0, 380, h, THEME.backgroundDark, true, false, true, false)
+    local headH = sc(64)
+    frame.Paint = function(_, fw, fh)
+        draw.RoundedBox(sc(14), 0, 0, fw, fh, THEME.background)
         surface.SetDrawColor(THEME.divider)
-        surface.DrawLine(380, 56, 380, h)
-        surface.DrawLine(0, 56, w, 56)
-        draw.SimpleText(L("sth.title"), "RareloadHeading", 16, 16, THEME.primary, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-        draw.SimpleText(L("sth.subtitle"), "RareloadCaption", 16, 40, THEME.textTertiary, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+        surface.DrawLine(0, headH, fw, headH)
+        draw.SimpleText(L("sth.title"), "RH_Title", sc(18), sc(13), THEME.primaryLight, ALIGN_L, ALIGN_T)
+        draw.SimpleText(L("sth.subtitle"), "RH_Sub", sc(20), sc(42), THEME.textTertiary, ALIGN_L, ALIGN_T)
     end
 
-    local closeBtn = ActionButton(frame, "✕", THEME.error, function() frame:Close() end)
-    closeBtn:SetPos(960 - 44, 12)
-    closeBtn:SetSize(32, 32)
+    -- header spacer keeps the title bar draggable
+    local spacer = vgui.Create("DPanel", frame)
+    spacer:Dock(TOP); spacer:SetTall(headH); spacer:SetMouseInputEnabled(false); spacer.Paint = function() end
 
-    -- top-right controls
-    local refresh = ActionButton(frame, L("sth.refresh"), THEME.info, function() self:RequestData() end)
-    refresh:SetPos(960 - 44 - 110, 12)
-    refresh:SetSize(104, 32)
+    local body = vgui.Create("DPanel", frame)
+    body:Dock(FILL); body.Paint = function() end
 
-    local clearAll = ActionButton(frame, L("sth.clear_all"), THEME.error, function()
-        Derma_Query(L("sth.clear_confirm"), L("sth.clear_all"), L("common.proceed"), function()
-            SendAction("clear", "")
-            self.SelectedId = nil
-        end, L("common.cancel"))
-    end)
-    clearAll:SetPos(960 - 44 - 110 - 130, 12)
-    clearAll:SetSize(124, 32)
+    -- ── sidebar ──
+    local side = vgui.Create("DPanel", body)
+    side:Dock(LEFT); side:SetWide(sc(360)); side:DockPadding(sc(12), sc(12), sc(12), sc(10))
+    side.Paint = function(_, sw, sh)
+        surface.SetDrawColor(THEME.backgroundDark); surface.DrawRect(0, 0, sw, sh)
+        surface.SetDrawColor(THEME.divider); surface.DrawLine(sw - 1, 0, sw - 1, sh)
+    end
 
-    -- Undo the last restore (shown only when an undo snapshot is available)
-    local undoBtn = ActionButton(frame, L("sth.undo"), THEME.warning, function()
-        SendAction("undo", "")
-    end)
-    undoBtn:SetPos(960 - 44 - 110 - 130 - 130, 12)
-    undoBtn:SetSize(124, 32)
-    undoBtn:SetVisible(RARELOAD.HistoryClient.undo == true)
-    self.UndoBtn = undoBtn
-
-    -- search + count (sidebar)
-    local search = vgui.Create("DTextEntry", frame)
-    search:SetPos(12, 66)
-    search:SetSize(356, 30)
-    search:SetFont("RareloadBody")
-    search:SetPlaceholderText(L("sth.search_placeholder"))
-    search:SetUpdateOnType(true)
-    search.Paint = function(selfp, w, h)
-        draw.RoundedBox(8, 0, 0, w, h, THEME.surface)
+    local search = vgui.Create("DTextEntry", side)
+    search:Dock(TOP); search:SetTall(sc(32)); search:SetFont("RH_Body"); search:SetUpdateOnType(true)
+    search:SetTextInset(sc(28), 0)
+    search.Paint = function(selfp, sw, sh)
+        draw.RoundedBox(sc(8), 0, 0, sw, sh, THEME.surface)
+        -- drawn magnifier (glyph fonts can't be relied on for the emoji)
+        local cx, cy, rad = sc(13), sh / 2, sc(5)
+        surface.SetDrawColor(THEME.textTertiary)
+        for i = 0, 32 do
+            local a1, a2 = math.rad(i / 32 * 360), math.rad((i + 1) / 32 * 360)
+            surface.DrawLine(cx + math.cos(a1) * rad, cy + math.sin(a1) * rad,
+                cx + math.cos(a2) * rad, cy + math.sin(a2) * rad)
+        end
+        surface.DrawLine(cx + rad * 0.7, cy + rad * 0.7, cx + rad * 1.7, cy + rad * 1.7)
         selfp:DrawTextEntryText(THEME.textPrimary, THEME.primary, THEME.textPrimary)
         if selfp:GetValue() == "" then
-            draw.SimpleText(L("sth.search_placeholder"), "RareloadBody", 8, h / 2, THEME.textTertiary, TEXT_ALIGN_LEFT,
-                TEXT_ALIGN_CENTER)
+            draw.SimpleText(L("sth.search_placeholder"), "RH_Body", sc(28), sh / 2, THEME.textTertiary, ALIGN_L, ALIGN_M)
         end
     end
-    search.OnChange = function(selfp)
-        HP.Search = selfp:GetValue()
-        HP:RebuildList()
+    search.OnChange = function(selfp) HP.Search = selfp:GetValue(); HP:RebuildList() end
+    search.OnGetFocus = function() HP._typing = true end
+    search.OnLoseFocus = function() HP._typing = false end
+
+    -- controls: sort dropdown (its own row) + filter chips (its own row, equal-width)
+    local sortBtn = vgui.Create("DButton", side)
+    sortBtn:Dock(TOP); sortBtn:DockMargin(0, sc(8), 0, 0); sortBtn:SetTall(sc(26)); sortBtn:SetText("")
+    sortBtn.Paint = function(selfp, bw, bh)
+        draw.RoundedBox(sc(6), 0, 0, bw, bh, THEME.surface)
+        draw.SimpleText(L("sth.sort_label") .. " " .. L("sth.sort." .. HP.Sort), "RH_Small", sc(10), bh / 2,
+            THEME.textSecondary, ALIGN_L, ALIGN_M)
+        draw.SimpleText("▾", "RH_Small", bw - sc(10), bh / 2, THEME.textTertiary, ALIGN_R, ALIGN_M)
+    end
+    sortBtn.DoClick = function()
+        local m = DermaMenu()
+        for _, s in ipairs(SORTS) do
+            m:AddOption(L("sth.sort." .. s), function() HP.Sort = s; HP:RebuildList() end)
+        end
+        m:Open()
     end
 
-    local countLabel = vgui.Create("DLabel", frame)
-    countLabel:SetPos(16, 604)
-    countLabel:SetSize(356, 24)
-    countLabel:SetFont("RareloadCaption")
+    local chips = vgui.Create("DPanel", side)
+    chips:Dock(TOP); chips:DockMargin(0, sc(6), 0, sc(8)); chips:SetTall(sc(26)); chips.Paint = function() end
+    local chipBtns = {}
+    for _, fkey in ipairs(FILTERS) do
+        local chip = vgui.Create("DButton", chips)
+        chip:SetText("")
+        chip.Paint = function(selfp, bw, bh)
+            local on = HP.Filter == fkey
+            draw.RoundedBox(sc(6), 0, 0, bw, bh, on and ColorAlpha(THEME.primary, 70) or THEME.surface)
+            draw.SimpleText(L("sth.filter." .. fkey), "RH_Small", bw / 2, bh / 2,
+                on and THEME.textPrimary or THEME.textTertiary, ALIGN_C, ALIGN_M)
+        end
+        chip.DoClick = function() HP.Filter = fkey; HP:RebuildList() end
+        chipBtns[#chipBtns + 1] = chip
+    end
+    -- distribute chips equally across the row so long labels (e.g. "Objects") fit
+    chips.PerformLayout = function(_, cw, ch)
+        local n = #chipBtns
+        if n == 0 then return end
+        local gap = sc(5)
+        local w1 = math.floor((cw - gap * (n - 1)) / n)
+        local x = 0
+        for i, c in ipairs(chipBtns) do
+            local ww = (i == n) and (cw - x) or w1
+            c:SetPos(x, 0); c:SetSize(ww, ch)
+            x = x + ww + gap
+        end
+    end
+
+    -- footer: kbd hint + count (docked bottom before the list fills)
+    local hint = vgui.Create("DPanel", side)
+    hint:Dock(BOTTOM); hint:SetTall(sc(16)); hint.Paint = function(_, sw, sh)
+        draw.SimpleText(L("sth.kbd_hint"), "RH_Tiny", 0, sh / 2, THEME.textDisabled, ALIGN_L, ALIGN_M)
+    end
+    local countLabel = vgui.Create("DLabel", side)
+    countLabel:Dock(BOTTOM); countLabel:SetTall(sc(22)); countLabel:SetFont("RH_Small")
     countLabel:SetTextColor(THEME.textTertiary)
     countLabel:SetText(L("sth.count", RARELOAD.HistoryClient.total or #Entries()))
     self.CountLabel = countLabel
 
-    local list = vgui.Create("DScrollPanel", frame)
-    list:SetPos(0, 104)
-    list:SetSize(380, 496)
-    local vb = list:GetVBar()
-    vb:SetWide(6)
-    vb.Paint = function() end
-    vb.btnUp.Paint = function() end
-    vb.btnDown.Paint = function() end
-    vb.btnGrip.Paint = function(_, w, h) draw.RoundedBox(3, 0, 0, w, h, THEME.primary) end
+    local list = vgui.Create("DScrollPanel", side)
+    list:Dock(FILL); list:DockMargin(0, sc(2), 0, sc(6))
+    StyleScrollbar(list)
     self.List = list
 
-    local detail = vgui.Create("DScrollPanel", frame)
-    detail:SetPos(392, 66)
-    detail:SetSize(556, 562)
-    local dvb = detail:GetVBar()
-    dvb:SetWide(6)
-    dvb.Paint = function() end
-    dvb.btnUp.Paint = function() end
-    dvb.btnDown.Paint = function() end
-    dvb.btnGrip.Paint = function(_, w, h) draw.RoundedBox(3, 0, 0, w, h, THEME.primary) end
+    -- ── detail ──
+    local detail = vgui.Create("DScrollPanel", body)
+    detail:Dock(FILL); detail:DockMargin(sc(14), sc(12), sc(8), sc(12))
+    StyleScrollbar(detail)
     self.Detail = detail
+    self:BuildDetail(detail)
+
+    -- ── top-right controls (absolute children so they float above the body) ──
+    local topButtons = {}
+    local function topBtn(text, color, wide, fn)
+        local b = Button(frame, text, color, fn)
+        b._wide = wide
+        topButtons[#topButtons + 1] = b
+        return b
+    end
+    topBtn("✕", THEME.error, sc(34), function() frame:Close() end)
+    topBtn(L("sth.refresh"), THEME.info, sc(100), function() self:RequestData() end)
+    topBtn(L("sth.clear_all"), THEME.error, sc(112), function()
+        ConfirmDialog(L("sth.clear_all"), L("sth.clear_confirm"), function()
+            SendAction("clear", ""); self.SelectedId = nil
+        end)
+    end)
+    self.UndoBtn = topBtn(L("sth.undo"), THEME.warning, sc(120), function() SendAction("undo", "") end)
+    self.UndoBtn:SetVisible(RARELOAD.HistoryClient.undo == true)
+
+    local baseLayout = frame.PerformLayout
+    frame.PerformLayout = function(pnl, fw, fh)
+        if baseLayout then baseLayout(pnl, fw, fh) end
+        local x = fw - sc(12)
+        for _, b in ipairs(topButtons) do
+            x = x - b._wide
+            b:SetSize(b._wide, sc(34))
+            b:SetPos(x, sc(14))
+            x = x - sc(6)
+        end
+    end
+    frame:InvalidateLayout(true)
+
+    -- keyboard navigation (skipped while typing). Chain base Think so drag/resize work.
+    local baseThink = frame.Think
+    frame.Think = function(pnl)
+        if baseThink then baseThink(pnl) end
+        if self._typing then self._keys = {}; return end
+        self._keys = self._keys or {}
+        local function edge(key, fn)
+            local down = input.IsKeyDown(key)
+            if down and not self._keys[key] then fn() end
+            self._keys[key] = down
+        end
+        edge(KEY_UP, function() self:MoveSelection(-1) end)
+        edge(KEY_DOWN, function() self:MoveSelection(1) end)
+        edge(KEY_ENTER, function()
+            local e = self:Sel()
+            if e then
+                SendAction("restore", e.id, function() WriteComps({ all = true }) end)
+                ShowNotification(L("sth.restoring"), NOTIFY_GENERIC)
+            end
+        end)
+        edge(KEY_DELETE, function()
+            local e = self:Sel()
+            if e then
+                ConfirmDialog(L("sth.delete"), L("sth.delete_confirm"), function() SendAction("delete", e.id); self.SelectedId = nil end)
+            end
+        end)
+    end
 
     self:RebuildList()
-    self:RebuildDetail()
+    self:UpdateDetail()
     self:RequestData()
 end
 
--- ── entry points ─────────────────────────────────────────────────────────────
+-- ── entry points ────────────────────────────────────────────────────────────────
 
 concommand.Add("rareload_history", function() HP:Open() end)
 concommand.Add("rareload_save_timeline", function() HP:Open() end)
 
-function OpenPositionHistory()
-    HP:Open()
-end
+function OpenPositionHistory() HP:Open() end
 
 RARELOAD.HistoryPanel = HP

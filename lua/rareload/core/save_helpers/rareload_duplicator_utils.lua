@@ -172,6 +172,7 @@ local function SanitizeConstraints(payload)
     local removed = 0
     for cIndex, cDef in pairs(payload.Constraints) do
         local drop = false
+        local isCrossCategory = false
 
         if not istable(cDef) or cDef.DoNotDuplicate == true then
             drop = true
@@ -179,6 +180,7 @@ local function SanitizeConstraints(payload)
             for _, eRef in pairs(cDef.Entity) do
                 if istable(eRef) and not eRef.World and not validIndices[eRef.Index] then
                     drop = true
+                    isCrossCategory = true
                     break
                 end
             end
@@ -187,6 +189,12 @@ local function SanitizeConstraints(payload)
         if drop then
             payload.Constraints[cIndex] = nil
             removed = removed + 1
+            if isCrossCategory then
+                WriteDuplicatorDebug("VERBOSE", string.format(
+                    "Dropped cross-category or dangling constraint [%s] referencing excluded entity",
+                    tostring(cDef and cDef.Type or "unknown")
+                ))
+            end
         end
     end
 
@@ -337,7 +345,6 @@ function Bridge.CaptureSnapshot(entities, opts)
         constraintCount = countPairs(dupeAccumulator.Constraints),
         ownerSteamID = opts.ownerSteamID,
         ownerSteamID64 = opts.ownerSteamID64,
-        anchor = opts.anchor and vectorToTable(opts.anchor) or nil,
         payload = serialized
     }
 
@@ -357,8 +364,7 @@ end
 local function buildPlayerCaptureOptions(ply)
     return {
         ownerSteamID = (IsValid(ply) and ply.SteamID and ply:SteamID()) or nil,
-        ownerSteamID64 = (IsValid(ply) and ply.SteamID64 and ply:SteamID64()) or nil,
-        anchor = IsValid(ply) and ply:GetPos() or nil
+        ownerSteamID64 = (IsValid(ply) and ply.SteamID64 and ply:SteamID64()) or nil
     }
 end
 
@@ -390,13 +396,6 @@ function Bridge.FindSnapshotOwner(snapshot)
     return nil
 end
 
-local function resolveAnchorVector(anchor)
-    if not anchor then return nil end
-    if isvector and isvector(anchor) then return anchor end
-    if istable(anchor) then return Vector(anchor.x or 0, anchor.y or 0, anchor.z or 0) end
-    return nil
-end
-
 local function defaultPostProcess(createdEntities, owner)
     if not istable(createdEntities) then return end
     for _, ent in pairs(createdEntities) do
@@ -409,10 +408,58 @@ local function defaultPostProcess(createdEntities, owner)
     end
 end
 
+-- Per-entity paste with isolated pcalls: creates each entity in its own pcall
+-- so that a corrupt entity definition, missing model, or crash inside an entity's
+-- Initialize/Spawn will NOT abort other entities in the batch and will never
+-- cause orphaned ghost entities or double spawns on retries.
+local function pasteEntitiesIndividually(pastePlayer, entities, constraints)
+    local created = {}
+    if istable(entities) then
+        for k, def in pairs(entities) do
+            local ok, ent = pcall(duplicator.CreateEntityFromTable, pastePlayer, def)
+            if ok and IsValid(ent) then
+                created[k] = ent
+            else
+                local err = not ok and ent or "entity creation returned invalid entity"
+                local cls = tostring(def and (def.Class or def.class or def.ClassName) or "unknown")
+                WriteDuplicatorDebug("WARNING", string.format(
+                    "Per-entity paste failed for class '%s' (key %s): %s",
+                    cls, tostring(k), tostring(err)
+                ))
+            end
+        end
+    end
+
+    local createdConstraints = {}
+    if istable(constraints) then
+        for _, cDef in pairs(constraints) do
+            local ok, c = pcall(duplicator.CreateConstraintFromTable, cDef, created)
+            if ok and IsValid(c) then
+                createdConstraints[#createdConstraints + 1] = c
+            elseif not ok then
+                WriteDuplicatorDebug("WARNING", string.format(
+                    "Constraint paste failed: %s", tostring(c)
+                ))
+            end
+        end
+    end
+
+    return created, createdConstraints
+end
+
+Bridge.MAX_SUPPORTED_VERSION = 1
+
 function Bridge.RestoreSnapshot(snapshot, opts)
     opts = opts or {}
     if not Bridge.IsSupported() then return false, "duplicator library unavailable" end
     if not snapshot or not snapshot.payload then return false, "invalid duplicator snapshot" end
+
+    if snapshot.version and isnumber(snapshot.version) and snapshot.version > Bridge.MAX_SUPPORTED_VERSION then
+        WriteDuplicatorDebug("WARNING", string.format(
+            "Snapshot version %d exceeds supported version %d; proceeding with best-effort restore",
+            snapshot.version, Bridge.MAX_SUPPORTED_VERSION
+        ))
+    end
 
     local payload = Bridge.DeserializePayload(snapshot.payload)
     if not payload or not istable(payload.Entities) then return false, "unable to decode duplicator payload" end
@@ -423,18 +470,39 @@ function Bridge.RestoreSnapshot(snapshot, opts)
         end
     end
 
+    -- Drop defs whose class can no longer be spawned (uninstalled addon), so a
+    -- missing framework doesn't abort the batch paste or leave a phantom the
+    -- re-seater then hunts for. Caller supplies the category-appropriate test.
+    if isfunction(opts.validateClass) then
+        local warned = {}
+        for k, def in pairs(payload.Entities) do
+            local class = def and (def.Class or def.class or def.ClassName)
+            if not opts.validateClass(class) then
+                payload.Entities[k] = nil
+                if class and not warned[class] then
+                    warned[class] = true
+                    WriteDuplicatorDebug("WARNING",
+                        "Skipping saved entity with unavailable class (addon removed?): " .. tostring(class))
+                end
+            end
+        end
+    end
+
     SanitizeConstraints(payload)
     resetDuplicatorFrame()
 
     local pastePlayer = (IsValid(opts.player) and opts.player:IsPlayer()) and opts.player or nil
-    local ok, createdEntities, createdConstraints = pcall(
-        duplicator.Paste,
+    local createdEntities, createdConstraints = pasteEntitiesIndividually(
         pastePlayer,
         payload.Entities,
         payload.Constraints or {}
     )
 
-    if not ok then return false, createdEntities end
+    resetDuplicatorFrame()
+
+    if not next(createdEntities) then
+        return false, "duplicator paste created no valid entities"
+    end
 
     local postProcess = opts.onEntityCreated or defaultPostProcess
     postProcess(createdEntities, pastePlayer)
@@ -442,9 +510,130 @@ function Bridge.RestoreSnapshot(snapshot, opts)
     return true, {
         entities = createdEntities,
         constraints = createdConstraints,
-        entityDefs = payload.Entities,
-        anchor = resolveAnchorVector(snapshot.anchor)
+        entityDefs = payload.Entities
     }
+end
+
+-- ============================================================================
+-- CROSS-CATEGORY CONSTRAINT LINKING (Tier 3.3 Full)
+-- ============================================================================
+
+function Bridge.CaptureCrossCategoryConstraints(savedEntities, savedVehicles)
+    if not istable(savedEntities) or not istable(savedVehicles) then return nil end
+
+    local entityIDs = {}
+    local vehicleIDs = {}
+    local EntityIdentity = include("rareload/core/rareload_entity_identity.lua")
+    if not (EntityIdentity and EntityIdentity.GetID) then return nil end
+
+    for _, e in ipairs(savedEntities) do
+        if IsValid(e) then
+            local id = EntityIdentity.GetID(e, "RareloadEntityID")
+            if id then entityIDs[e] = id end
+        end
+    end
+
+    for _, v in ipairs(savedVehicles) do
+        if IsValid(v) then
+            local id = EntityIdentity.GetID(v, "RareloadEntityID")
+            if id then vehicleIDs[v] = id end
+        end
+    end
+
+    if not next(entityIDs) or not next(vehicleIDs) then return nil end
+
+    local crossConstraints = {}
+    local seen = {}
+
+    for e, eID in pairs(entityIDs) do
+        if IsValid(e) and constraint and constraint.GetTable then
+            local cList = constraint.GetTable(e)
+            if istable(cList) then
+                for _, cDef in pairs(cList) do
+                    if istable(cDef) and istable(cDef.Entity) and #cDef.Entity >= 2 and not cDef.DoNotDuplicate then
+                        local ent1 = cDef.Entity[1] and cDef.Entity[1].Entity
+                        local ent2 = cDef.Entity[2] and cDef.Entity[2].Entity
+                        if IsValid(ent1) and IsValid(ent2) then
+                            local id1 = entityIDs[ent1] or vehicleIDs[ent1]
+                            local id2 = entityIDs[ent2] or vehicleIDs[ent2]
+
+                            local isCross = (entityIDs[ent1] and vehicleIDs[ent2])
+                                or (vehicleIDs[ent1] and entityIDs[ent2])
+
+                            if isCross and id1 and id2 then
+                                local key = tostring(id1) .. "_" .. tostring(id2) .. "_" .. tostring(cDef.Type)
+                                if not seen[key] then
+                                    seen[key] = true
+                                    local copyCDef = table.Copy(cDef)
+                                    copyCDef.Constraint = nil
+                                    crossConstraints[#crossConstraints + 1] = {
+                                        cDef = encode(copyCDef, 0, {}),
+                                        id1  = id1,
+                                        id2  = id2,
+                                        type = cDef.Type or "unknown"
+                                    }
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return #crossConstraints > 0 and crossConstraints or nil
+end
+
+function Bridge.RestoreCrossCategoryConstraints(crossConstraints)
+    if not istable(crossConstraints) or #crossConstraints == 0 then return 0 end
+    local restored = 0
+
+    local idToEnt = {}
+    local EntityIdentity = include("rareload/core/rareload_entity_identity.lua")
+    if EntityIdentity and EntityIdentity.GetID then
+        for _, ent in ipairs(ents.GetAll()) do
+            if IsValid(ent) then
+                local id = EntityIdentity.GetID(ent, "RareloadEntityID")
+                if id then idToEnt[id] = ent end
+            end
+        end
+    end
+
+    for _, entry in ipairs(crossConstraints) do
+        if istable(entry) and entry.id1 and entry.id2 and entry.cDef then
+            local ent1 = idToEnt[entry.id1]
+            local ent2 = idToEnt[entry.id2]
+            if IsValid(ent1) and IsValid(ent2) then
+                local decodedCDef = decode(entry.cDef, 0)
+                if istable(decodedCDef) then
+                    local entMap = {
+                        [1] = ent1,
+                        [2] = ent2,
+                        ["1"] = ent1,
+                        ["2"] = ent2,
+                        [tostring(ent1:EntIndex())] = ent1,
+                        [tostring(ent2:EntIndex())] = ent2,
+                    }
+                    if decodedCDef.Entity and decodedCDef.Entity[1] then
+                        decodedCDef.Entity[1].Index = 1
+                    end
+                    if decodedCDef.Entity and decodedCDef.Entity[2] then
+                        decodedCDef.Entity[2].Index = 2
+                    end
+                    local ok, con = pcall(duplicator.CreateConstraintFromTable, decodedCDef, entMap)
+                    if ok and IsValid(con) then
+                        restored = restored + 1
+                    end
+                end
+            end
+        end
+    end
+
+    if restored > 0 then
+        WriteDuplicatorDebug("INFO", string.format("Restored %d cross-category vehicle<->prop constraint(s)", restored))
+    end
+
+    return restored
 end
 
 return Bridge

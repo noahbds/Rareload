@@ -14,26 +14,13 @@ if not (RARELOAD.DataUtils and RARELOAD.DataUtils.IsVehicleEntity) then
     include("rareload/utils/rareload_data_utils.lua")
 end
 
----@param ply? Player|Entity
----@param level? string
----@param message? string
----@param details? any
----@param opts? table
----@return boolean|nil
-local function WriteVehicleSaveDebug(ply, level, message, details, opts)
-    if DebugHelpers and DebugHelpers.Write then
-        local merged = {
-            gate = true,
-            allowPrintFallback = true,
-            printPrefix = "[RARELOAD DEBUG] ",
-            ply = ply
-        }
-        if istable(opts) then
-            for k, v in pairs(opts) do merged[k] = v end
-        end
-        return DebugHelpers.Write("vehicle_save", level, message, details, merged)
-    end
-end
+local WriteVehicleSaveDebug = (DebugHelpers and DebugHelpers.MakeWriter)
+    and DebugHelpers.MakeWriter("vehicle_save", {
+        gate = true,
+        allowPrintFallback = true,
+        printPrefix = "[RARELOAD DEBUG] "
+    })
+    or function() end
 
 
 -- ============================================================================
@@ -59,6 +46,72 @@ local function PlayerOccupiesVehicle(ply, root)
     return veh == root or GetRootVehicle(veh) == root
 end
 
+
+local function CaptureOperationalState(veh)
+    if not IsValid(veh) then return nil end
+    local op = {}
+
+    -- LVS / LFS Engine State
+    if isfunction(veh.GetEngineActive) then
+        local ok, val = pcall(veh.GetEngineActive, veh)
+        if ok and isbool(val) then op.engineActive = val end
+    end
+
+    -- Glide Engine State & Lights
+    if isfunction(veh.GetEngineState) then
+        local ok, val = pcall(veh.GetEngineState, veh)
+        if ok and isnumber(val) then op.glideEngineState = val end
+    elseif isfunction(veh.IsEngineRunning) then
+        local ok, val = pcall(veh.IsEngineRunning, veh)
+        if ok and isbool(val) then op.engineActive = val end
+    end
+    if isfunction(veh.GetHeadlights) then
+        local ok, val = pcall(veh.GetHeadlights, veh)
+        if ok and isbool(val) then op.headlights = val end
+    end
+
+    -- Simfphys Active / Lights / Fuel
+    if isfunction(veh.GetActive) then
+        local ok, val = pcall(veh.GetActive, veh)
+        if ok and isbool(val) then op.simfphysActive = val end
+    end
+    if isfunction(veh.GetLightsEnabled) then
+        local ok, val = pcall(veh.GetLightsEnabled, veh)
+        if ok and isbool(val) then op.lights = val end
+    end
+    if isfunction(veh.GetFuel) then
+        local ok, val = pcall(veh.GetFuel, veh)
+        if ok and isnumber(val) then op.fuel = val end
+    end
+
+    -- SCars
+    if veh.IsRunning ~= nil then
+        op.scarRunning = veh.IsRunning == true
+    end
+
+    -- Base vehicle handbrake
+    if isfunction(veh.GetHandbrake) then
+        local ok, val = pcall(veh.GetHandbrake, veh)
+        if ok and isbool(val) then op.handbrake = val end
+    end
+
+    -- Render color + skin. Frameworks that randomize their paint on spawn (Glide
+    -- rolls GetSpawnColor() every Initialize) don't reliably honor the duplicator's
+    -- "colour" modifier on paste, so we snapshot the live values and re-apply them
+    -- explicitly on restore. Stored as plain fields (survives JSON round-trip).
+    if isfunction(veh.GetColor) then
+        local ok, col = pcall(veh.GetColor, veh)
+        if ok and istable(col) then
+            op.color = { r = col.r or 255, g = col.g or 255, b = col.b or 255, a = col.a or 255 }
+        end
+    end
+    if isfunction(veh.GetSkin) then
+        local ok, skin = pcall(veh.GetSkin, veh)
+        if ok and isnumber(skin) then op.skin = skin end
+    end
+
+    return next(op) ~= nil and op or nil
+end
 
 local function BuildSeatDescriptor(root, seat)
     if not IsValid(seat) then return nil end
@@ -101,6 +154,7 @@ return function(ply)
     local duplicatorSeen = {}
 
     local idOverrides = {}
+    local opStates = {}
 
     -- Localize API calls for the O(N) loop to minimize global table lookups.
     local ents_GetAll = ents.GetAll
@@ -166,6 +220,11 @@ return function(ply)
             if id then
                 idOverrides[targetEnt:EntIndex()] = id
             end
+
+            local op = CaptureOperationalState(targetEnt)
+            if op then
+                opStates[targetEnt:EntIndex()] = op
+            end
         end
     end
 
@@ -186,10 +245,11 @@ return function(ply)
     end
 
     if next(idOverrides) then duplicatorSnapshot.rareloadIDOverrides = idOverrides end
+    if next(opStates) then duplicatorSnapshot.operationalStates = opStates end
 
     SnapshotUtils.EnsureIndexMap(duplicatorSnapshot, { category = "vehicle", idPrefix = "vehicle" })
 
-    local result = {}
+    local result = { _targets = duplicatorTargets }
     rawset(result, "__duplicator", duplicatorSnapshot)
 
     local currentVehicle = ply:GetVehicle()

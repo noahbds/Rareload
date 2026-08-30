@@ -82,6 +82,7 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
     end
 
     local indexToID = snapshot._indexMap or {}
+    local validateClass = RARELOAD.DataUtils and RARELOAD.DataUtils.IsClassSpawnable or nil
     local ok, res, skippedEntities = SnapshotRestore.RestoreWithExistingIDFilter(
         snapshot,
         indexToID,
@@ -92,7 +93,10 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
                 print(string.format("[RARELOAD DEBUG] Server-context restore failed, retrying with player context: %s",
                     tostring(err)))
             end
-        end
+        end,
+        {
+            validateClass = validateClass
+        }
     )
 
     if debugEnabled and #skippedEntities > 0 then

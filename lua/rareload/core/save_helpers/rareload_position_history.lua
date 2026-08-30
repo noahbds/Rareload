@@ -153,6 +153,15 @@ end
 
 local function Deserialize(payload)
     if not istable(payload) or not istable(payload.entries) then return nil, nil end
+    -- Version gate: refuse a file written by a newer format rather than silently
+    -- mis-reading it. (Only v1 exists today, so there is nothing to migrate yet.)
+    local ver = tonumber(payload.version) or 1
+    if ver > HISTORY_VERSION then
+        ErrorNoHalt(string.format(
+            "[RARELOAD] History file is version %d, this build supports up to %d — skipping to avoid corruption.\n",
+            ver, HISTORY_VERSION))
+        return nil, nil
+    end
     local blobs = payload.blobs or {}
     local out = {}
     for i = 1, #payload.entries do

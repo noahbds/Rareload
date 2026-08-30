@@ -19,6 +19,33 @@ EntityViewer.SearchText   = ""
 EntityViewer.Category     = "All"
 EntityViewer.SortMode     = "Name"
 EntityViewer.PendingDeleteBatch = nil
+-- When set, the viewer is scoped to a single Save Timeline entry instead of the
+-- live current save: { saveId, ownerSID, objects, parent }. nil = live behavior.
+EntityViewer.Context      = nil
+RARELOAD.EntityViewer     = EntityViewer
+
+function EntityViewer:IsHistory()
+    return istable(self.Context) and isstring(self.Context.saveId) and self.Context.saveId ~= ""
+end
+
+-- Route an object mutation to the history store when scoped to a save. Returns
+-- true if it handled the send (caller should then NOT do the live send).
+function EntityViewer:SendHistoryObjAction(op, targetId, isNPC, opts)
+    if not self:IsHistory() then return false end
+    opts = opts or {}
+    net.Start("RareloadHistory_ObjAction")
+    net.WriteString(self.Context.saveId)
+    net.WriteString(op)
+    net.WriteString(tostring(targetId or ""))
+    net.WriteBool(isNPC and true or false)
+    if op == "edit" then net.WriteTable(opts.data or {}) end
+    if op == "flag" then
+        net.WriteString(tostring(opts.flag or ""))
+        net.WriteBool(opts.value and true or false)
+    end
+    net.SendToServer()
+    return true
+end
 
 local function ResolveDeleteEntityID(entityData)
     if not (entityData and entityData.rawData) then return "" end
@@ -29,6 +56,12 @@ end
 local function SendDeleteRequest(entityData, options)
     options = options or {}
     local entityId = ResolveDeleteEntityID(entityData)
+
+    -- Scoped to a Save Timeline entry: delete from that save, not the live one.
+    if EntityViewer:IsHistory() then
+        EntityViewer:SendHistoryObjAction("delete", entityId, entityData.isNPC)
+        return true
+    end
 
     net.Start("RareloadEntityViewer_Delete")
     net.WriteString(tostring(entityId))
@@ -50,6 +83,14 @@ end
 
 local function SendDeleteManyRequest(items)
     if not istable(items) or #items == 0 then return false end
+
+    -- History scope has no batch net; delete each object individually.
+    if EntityViewer:IsHistory() then
+        for _, entityData in ipairs(items) do
+            EntityViewer:SendHistoryObjAction("delete", ResolveDeleteEntityID(entityData), entityData.isNPC)
+        end
+        return true
+    end
 
     net.Start("RareloadEntityViewer_DeleteMany")
     net.WriteUInt(#items, 16)
@@ -169,6 +210,32 @@ local function ExtractEntities(tbl, result, isNPC)
 end
 
 function EntityViewer:LoadData()
+    -- Save-scoped: use the object records the server sent for this history entry.
+    if self:IsHistory() and istable(self.Context.objects) then
+        local loaded = {}
+        for _, s in ipairs(self.Context.objects) do
+            if istable(s) then
+                local ent = {
+                    id        = s.id or s.RareloadEntityID or s.RareloadNPCID or s.RareloadID,
+                    class     = s.class or s.Class,
+                    model     = s.model or s.Model,
+                    pos       = s.pos or s.Pos,
+                    ang       = s.ang or s.Angle or s.Ang,
+                    health    = s.health or s.CurHealth,
+                    maxHealth = s.maxHealth or s.MaxHealth,
+                    skin      = s.skin or s.Skin,
+                    isNPC     = s.isNPC and true or false,
+                    isVehicle = s.isVehicle,
+                    rawData   = s,
+                }
+                if istable(ent.pos) then ent.pos = Vector(ent.pos.x or 0, ent.pos.y or 0, ent.pos.z or 0) end
+                if istable(ent.ang) then ent.ang = Angle(ent.ang.p or 0, ent.ang.y or 0, ent.ang.r or 0) end
+                loaded[#loaded + 1] = ent
+            end
+        end
+        return loaded
+    end
+
     local mapName = game.GetMap()
     local mapData = RARELOAD and RARELOAD.playerPositions and RARELOAD.playerPositions[mapName]
     if not istable(mapData) then return {} end
@@ -445,11 +512,34 @@ local function CreateEntityCard(parent, data, onTeleport, onDelete, onDetails, o
     return card
 end
 
+-- Open the viewer scoped to a single Save Timeline entry. `ctx` = { saveId,
+-- ownerSID, objects, parent }. Reuses the whole viewer UI; only the data source
+-- and where mutations are sent differ.
+function EntityViewer:OpenFor(ctx)
+    self.Context = ctx
+    self:Open()
+end
+
 function EntityViewer:Open()
+    -- Closing the old frame fires its OnClose (which clears Context); guard it so a
+    -- reopen initiated by OpenFor keeps the Context it just set.
+    self._reopening = true
     if IsValid(self.Frame) then self.Frame:Close() end
+    if IsValid(self.Backdrop) then self.Backdrop:Remove() end
+    self._reopening = false
 
     self.Data = self:LoadData()
     self:FilterAndSort()
+
+    -- Dim backdrop so the viewer reads as an overlay above the Save Timeline.
+    if self:IsHistory() then
+        local back = vgui.Create("DPanel")
+        back:SetSize(ScrW(), ScrH()); back:SetPos(0, 0)
+        back:MakePopup()
+        back.Paint = function(_, w, h) surface.SetDrawColor(0, 0, 0, 170); surface.DrawRect(0, 0, w, h) end
+        back.OnMousePressed = function() if IsValid(EntityViewer.Frame) then EntityViewer.Frame:Close() end end
+        self.Backdrop = back
+    end
 
     local frame = vgui.Create("DFrame")
     frame:SetSize(920, 620)
@@ -460,6 +550,11 @@ function EntityViewer:Open()
     frame:SetDraggable(true)
     frame:SetSizable(false)
     self.Frame = frame
+
+    frame.OnClose = function()
+        if IsValid(EntityViewer.Backdrop) then EntityViewer.Backdrop:Remove() end
+        if not EntityViewer._reopening then EntityViewer.Context = nil end
+    end
 
     frame.Paint = function(self, w, h)
         draw.RoundedBox(12, 0, 0, w, h, EV_THEME.background)
@@ -492,8 +587,8 @@ function EntityViewer:Open()
     sidebarHeader:SetSize(200, 70)
     sidebarHeader.Paint = function(self, w, h)
         draw.SimpleText("Rareload", "RareloadHeading", 16, 18, EV_THEME.primary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText(L("ev.title"), "RareloadCaption", 16, 42, EV_THEME.textSecondary, TEXT_ALIGN_LEFT,
-            TEXT_ALIGN_CENTER)
+        local sub = (EntityViewer:IsHistory() and EntityViewer.Context.label) or L("ev.title")
+        draw.SimpleText(sub, "RareloadCaption", 16, 42, EV_THEME.textSecondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
 
     -- First element is the internal filter token, second the localization key.
@@ -760,15 +855,46 @@ net.Receive("RareloadEntityViewer_DeleteResult", function()
     end
 end)
 
-concommand.Add("rareload_entity_viewer", function() EntityViewer:Open() end)
-concommand.Add("entity_viewer_open", function() EntityViewer:Open() end)
+-- The entity viewer is no longer a standalone window — it opens only from the
+-- Save Timeline ("Objects" on a selected save), scoped to that save. The server
+-- sends this with the chosen entry's object records; we open or refresh in place.
+net.Receive("RareloadHistory_Objects", function()
+    local id  = net.ReadString()
+    local len = net.ReadUInt(32)
+    local raw = len > 0 and net.ReadData(len) or ""
+    local json = util.Decompress(raw)
+    if not json then return end
+    local ok, tbl = pcall(util.JSONToTable, json)
+    if not ok or not istable(tbl) then return end
+
+    local parent = RARELOAD.HistoryPanel and RARELOAD.HistoryPanel.Frame
+    local label  = RARELOAD.HistoryPanel and RARELOAD.HistoryPanel._objectsLabel or nil
+
+    -- already open for this same save → refresh its data in place (e.g. after an edit)
+    if EntityViewer:IsHistory() and EntityViewer.Context.saveId == tbl.id
+        and IsValid(EntityViewer.Frame) then
+        EntityViewer.Context.objects = tbl.objects or {}
+        EntityViewer:ReloadDataAndRefresh()
+        return
+    end
+
+    EntityViewer:OpenFor({
+        saveId   = tbl.id,
+        ownerSID = tbl.ownerSID,
+        objects  = tbl.objects or {},
+        parent   = parent,
+        label    = label,
+    })
+end)
 
 function OpenEntityViewer()
-    EntityViewer:Open()
+    -- kept for back-buttons; routes to the Save Timeline (the new home)
+    if RARELOAD.HistoryPanel then RARELOAD.HistoryPanel:Open() end
 end
 
 hook.Add("RareloadPlayerPositionsUpdated", "RARELOAD_EntityViewer_AutoRefresh", function(mapName)
     if mapName ~= game.GetMap() then return end
     if not (EntityViewer.Frame and IsValid(EntityViewer.Frame)) then return end
+    if EntityViewer:IsHistory() then return end -- history data is pushed by the server, not playerPositions
     EntityViewer:ReloadDataAndRefresh()
 end)

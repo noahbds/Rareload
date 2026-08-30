@@ -23,6 +23,7 @@ local save_npcs = include("rareload/core/save_helpers/rareload_save_npcs.lua")
 local save_ammo = include("rareload/core/save_helpers/rareload_save_ammo.lua")
 local save_appearance = include("rareload/core/save_helpers/rareload_save_appearance.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
+local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
 
 local function NeedsDuplicatorUpgrade(bucket)
     if not SnapshotUtils.HasSnapshot(bucket) then
@@ -213,14 +214,36 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         if oldData then
             if shouldSaveMapEntities then playerData.entities = oldData.entities end
             if shouldSaveMapNPCs then playerData.npcs = oldData.npcs end
+            if oldData.crossConstraints then playerData.crossConstraints = oldData.crossConstraints end
         end
     else
+        local rawEntitiesResult = nil
         if shouldSaveMapEntities then
-            playerData.entities = captureBucket(save_entities, oldData and oldData.entities, "entity")
+            rawEntitiesResult = save_entities(ply)
+            local fresh = SnapshotUtils.NormalizeBucketForSave(rawEntitiesResult)
+            if autoOverwrite then
+                playerData.entities = fresh
+            elseif fresh and oldData and oldData.entities and SnapshotUtils.HasSnapshot(oldData.entities) then
+                playerData.entities = SnapshotUtils.MergePreserveExisting(oldData.entities, fresh, "entity")
+            else
+                playerData.entities = fresh or (oldData and oldData.entities)
+            end
         end
 
         if shouldSaveMapNPCs then
             playerData.npcs = captureBucket(save_npcs, oldData and oldData.npcs, "npc")
+        end
+
+        -- Capture cross-category constraints (props welded/roped to vehicles)
+        if shouldSaveMapEntities and wantVehicles and DuplicatorBridge and DuplicatorBridge.CaptureCrossCategoryConstraints then
+            local rawEnts = rawEntitiesResult and rawEntitiesResult._targets
+            local rawVehs = (istable(playerData.vehicles) and playerData.vehicles._targets)
+            if rawEnts and rawVehs then
+                local cross = DuplicatorBridge.CaptureCrossCategoryConstraints(rawEnts, rawVehs)
+                if cross then
+                    playerData.crossConstraints = cross
+                end
+            end
         end
     end
 

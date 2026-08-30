@@ -21,16 +21,13 @@ local EXCLUDED_ENTITY_CLASSES = {
     ["gmod_gamerules"]      = true,
 }
 
-local function WriteEntitySaveDebug(ply, level, message, details)
-    if not (DebugHelpers and DebugHelpers.Write) then return end
-
-    DebugHelpers.Write("entity_save", level, message, details, {
-        ply = ply,
+local WriteEntitySaveDebug = (DebugHelpers and DebugHelpers.MakeWriter)
+    and DebugHelpers.MakeWriter("entity_save", {
         gate = true,
         allowPrintFallback = true,
         printPrefix = "[RARELOAD DEBUG] "
     })
-end
+    or function() end
 
 return function(ply)
     if not IsValid(ply) then return {} end
@@ -39,6 +36,7 @@ return function(ply)
     local startTime = SysTime()
     local duplicatorTargets = {}
     local duplicatorSeen = {}
+    local vehCheckCache = {}
 
     local DataUtils = RARELOAD.DataUtils
     local IsVehicleEntity = DataUtils and DataUtils.IsVehicleEntity
@@ -55,7 +53,7 @@ return function(ply)
             -- Exclude vehicles AND every structural piece of them (roots, seats,
             -- rotors, wheels, bodies) in one generic, graph-based test — no part
             -- class names or model paths are hardcoded. See DataUtils.IsVehiclePart.
-            if IsVehicleEntity and IsVehicleEntity(ent) then
+            if IsVehicleEntity and IsVehicleEntity(ent, vehCheckCache) then
                 continue
             end
 
@@ -116,7 +114,7 @@ return function(ply)
         idPrefix = "entity"
     })
 
-    local result = {}
+    local result = { _targets = duplicatorTargets }
     rawset(result, "__duplicator", duplicatorSnapshot)
 
     WriteEntitySaveDebug(ply, "INFO", "Entity save completed", {

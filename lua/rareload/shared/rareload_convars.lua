@@ -27,6 +27,7 @@ local CONVAR_DEFS = {
     { "sv_rareload_auto_save_interval",    "0",   "Seconds between auto saves",                                                                                                    "autoSaveInterval",                 "number" },
     { "sv_rareload_angle_tolerance",       "100", "Angle tolerance for entity restoration",                                                                                        "angleTolerance",                   "number" },
     { "sv_rareload_history_size",          "125", "Maximum position history entries",                                                                                              "maxHistorySize",                   "number" },
+    { "sv_rareload_max_vehicles",          "0",   "Maximum restored vehicles per player (0 = unlimited)",                                                                         "maxRestoredVehicles",              "number" },
 }
 RARELOAD.ConVarToSetting = {}
 RARELOAD.SettingToConVar = {}
