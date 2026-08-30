@@ -1,203 +1,57 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Rareload access check (shared)
+--
+-- Rareload no longer ships its own per-player permission system (SQL store, admin
+-- GUI, per-player grant sync). Admin-only actions defer to the server's admin mod
+-- through CAMI (ULX / ServerGuard / SAM / …) with a plain IsAdmin fallback; every
+-- other "permission" is a normal per-player feature that the player's own settings
+-- decide. This file is the thin compatibility shim the rest of the code calls, so
+-- existing CheckPermission / Permissions.HasPermission call sites keep working.
+-- ─────────────────────────────────────────────────────────────────────────────
+
 RARELOAD = RARELOAD or {}
 RARELOAD.Permissions = RARELOAD.Permissions or {}
 
--- Define all available permissions
--- Each permission has: name, desc, default, category
--- Categories: ADMIN, POSITION, INVENTORY, ENTITIES, TOOL
-RARELOAD.Permissions.DEFS = {
-    -- ═══════════════════════════════════════════
-    -- TOOL ACCESS
-    -- ═══════════════════════════════════════════
-    USE_TOOL = {
-        name = "Use Toolgun",
-        desc = "Can use the Rareload toolgun",
-        default = true,
-        category = "TOOL"
-    },
-    EXECUTE_RARELOAD_COMMANDS = {
-        name = "Console Commands",
-        desc = "Can use Rareload save/restore console commands (e.g. save_position)",
-        default = true,
-        category = "TOOL"
-    },
-
-    -- ═══════════════════════════════════════════
-    -- POSITION & SPAWN
-    -- ═══════════════════════════════════════════
-    LOAD_POSITION = {
-        name = "Load Position",
-        desc = "Can load their saved position",
-        default = true,
-        category = "POSITION"
-    },
-    RARELOAD_SPAWN = {
-        name = "Restore Position on Spawn",
-        desc = "Player's saved position and data will be restored when they respawn",
-        default = true,
-        category = "POSITION"
-    },
-    TELEPORT_PLAYER = {
-        name = "Teleport to Position",
-        desc = "Can use teleport commands to move to specific coordinates",
-        default = false,
-        category = "POSITION"
-    },
-
-    -- ═══════════════════════════════════════════
-    -- INVENTORY & STATS
-    -- ═══════════════════════════════════════════
-    KEEP_INVENTORY = {
-        name = "Inventory Restore (Master Switch)",
-        desc = "Master gate: disabling this blocks ALL inventory restore (map & global) for this player",
-        default = true,
-        category = "INVENTORY"
-    },
-    RETAIN_INVENTORY = {
-        name = "Map Inventory Restore",
-        desc = "Allows restoring map-specific inventory on respawn (requires master switch)",
-        default = true,
-        category = "INVENTORY"
-    },
-    RETAIN_APPEARANCE = {
-        name = "Appearance Restore",
-        desc = "Allows restoring player appearance (playermodel, color, bodygroups) on respawn",
-        default = true,
-        category = "INVENTORY"
-    },
-    RETAIN_GLOBAL_INVENTORY = {
-        name = "Global Inventory Restore",
-        desc = "Allows restoring cross-map global inventory on respawn (requires master switch)",
-        default = true,
-        category = "INVENTORY"
-    },
-    RETAIN_HEALTH_ARMOR = {
-        name = "Retain Health and Armor",
-        desc = "Can restore health and armor from saved data on respawn",
-        default = true,
-        category = "INVENTORY"
-    },
-    RETAIN_AMMO = {
-        name = "Retain Ammo",
-        desc = "Can restore ammo and clips from saved data on respawn",
-        default = true,
-        category = "INVENTORY"
-    },
-    RETAIN_PLAYER_STATES = {
-        name = "Retain Player States",
-        desc = "Can restore player states on respawn: god mode, notarget, noclip, frozen",
-        default = false,
-        category = "INVENTORY"
-    },
-
-    -- ═══════════════════════════════════════════
-    -- ENTITIES & NPCs
-    -- ═══════════════════════════════════════════
-    SAVE_ENTITIES = {
-        name = "Save Entities",
-        desc = "Entities owned by this player will be included when saving their position",
-        default = true,
-        category = "ENTITIES"
-    },
-    RESTORE_ENTITIES = {
-        name = "Restore Entities",
-        desc = "Player's saved entities will be restored on respawn",
-        default = true,
-        category = "ENTITIES"
-    },
-    SAVE_NPCS = {
-        name = "Save NPCs",
-        desc = "NPCs owned by this player will be included when saving their position",
-        default = false,
-        category = "ENTITIES"
-    },
-    RESTORE_NPCS = {
-        name = "Restore NPCs",
-        desc = "Player's saved NPCs will be restored on respawn",
-        default = false,
-        category = "ENTITIES"
-    },
-    SAVE_VEHICLES = {
-        name = "Save Vehicles",
-        desc = "Vehicles owned by this player will be included when saving their position",
-        default = false,
-        category = "ENTITIES"
-    },
-    RESTORE_VEHICLES = {
-        name = "Restore Vehicles",
-        desc = "Player's saved vehicles will be restored on respawn",
-        default = false,
-        category = "ENTITIES"
-    },
-    MANAGE_ENTITIES = {
-        name = "Manage Entities (Admin)",
-        desc = "Can manage, manually respawn, delete, and freeze/unfreeze saved entities and NPCs via admin commands",
-        default = false,
-        category = "ENTITIES"
-    },
-    ANTI_STUCK_CONFIG = {
-        name = "Anti-Stuck Configuration",
-        desc = "Can configure anti-stuck settings and methods on the server",
-        default = false,
-        category = "ENTITIES"
-    },
-
-    -- ═══════════════════════════════════════════
-    -- DISPLAY & VISUALIZATION
-    -- ═══════════════════════════════════════════
-    VIEW_PHANTOM = {
-        name = "View Phantom",
-        desc = "Can see the phantom (ghost) showing saved positions in the world",
-        default = true,
-        category = "DISPLAY"
-    },
-    VIEW_SED = {
-        name = "View Saved Entity Display",
-        desc = "Can see the Saved Entity Display (SED) panels on entities and NPCs in the world",
-        default = true,
-        category = "DISPLAY"
-    },
-
-    -- ═══════════════════════════════════════════
-    -- ADMINISTRATION
-    -- ═══════════════════════════════════════════
-    ADMIN_PANEL = {
-        name = "Admin Panel Access",
-        desc = "Can open the admin panel and manage player permissions",
-        default = false,
-        category = "ADMIN"
-    },
-    DEBUG_MENU = {
-        name = "Debug & Tools Menu",
-        desc = "Can access the Debug & Tools section in the toolgun panel and use debug commands",
-        default = false,
-        category = "ADMIN"
-    },
-    RARELOAD_TOGGLE = {
-        name = "Global Settings Toggle",
-        desc = "Can toggle global addon settings (ConVars) on/off for the entire server",
-        default = false,
-        category = "ADMIN"
-    },
-    DATA_CLEANUP = {
-        name = "Data Cleanup",
-        desc = "Can run data cleanup and maintenance commands to manage server files",
-        default = false,
-        category = "ADMIN"
-    },
+-- The only actions that require admin rights. Everything else is a per-player
+-- feature governed by settings, so it is allowed for everyone here.
+local ADMIN_PERMS = {
+    ADMIN_PANEL       = true,
+    MANAGE_ENTITIES   = true,
+    DEBUG_MENU        = true,
+    DATA_CLEANUP      = true,
+    ANTI_STUCK_CONFIG = true,
+    TELEPORT_PLAYER   = true,
+    RARELOAD_TOGGLE   = true,
 }
+RARELOAD.Permissions.ADMIN_PERMS = ADMIN_PERMS
 
-function RARELOAD.CheckPermission(ply, permName)
+-- Is this player a Rareload admin? Superadmin, or granted the CAMI privilege
+-- `rareload_admin` by the server's admin mod, or a plain admin as a fallback.
+function RARELOAD.IsAdmin(ply)
     if not IsValid(ply) then return false end
     if ply:IsSuperAdmin() then return true end
-
-    if RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
-        return RARELOAD.Permissions.HasPermission(ply, permName)
+    if CAMI and CAMI.PlayerHasAccess and CAMI.PlayerHasAccess(ply, "rareload_admin") == true then
+        return true
     end
-
-    if RARELOAD.Permissions and RARELOAD.Permissions.DEFS and RARELOAD.Permissions.DEFS[permName] then
-        return RARELOAD.Permissions.DEFS[permName].default
-    end
-
-    return false
+    return ply:IsAdmin()
 end
 
+-- Admin actions require IsAdmin; every other feature is allowed (settings decide
+-- whether it actually happens).
+function RARELOAD.CheckPermission(ply, permName)
+    if not IsValid(ply) then return false end
+    if ADMIN_PERMS[permName] then return RARELOAD.IsAdmin(ply) end
+    return true
+end
+
+-- Back-compat alias used across the codebase.
+RARELOAD.Permissions.HasPermission = RARELOAD.CheckPermission
+
+-- Register the privilege so admin mods (ULX/ServerGuard/SAM) can grant it.
+if SERVER and CAMI and CAMI.RegisterPrivilege then
+    CAMI.RegisterPrivilege({
+        Name = "rareload_admin",
+        MinAccess = "superadmin",
+        Description = "Access to Rareload admin actions",
+    })
+end

@@ -241,7 +241,7 @@ function RARELOAD.RegisterFonts()
         scanlines = 0,
         extended = true
     })
-    surface.CreateFont("RareloadUI.Title", {
+    surface.CreateFont("RareloadToolUI.Title", {
         font = "Segoe UI",
         size = 30,
         weight = 600,
@@ -258,7 +258,7 @@ function RARELOAD.RegisterFonts()
         scanlines = 0,
         extended = true
     })
-    surface.CreateFont("RareloadUI.Heading", {
+    surface.CreateFont("RareloadToolUI.Heading", {
         font = "Segoe UI",
         size = 24,
         weight = 600,
@@ -275,7 +275,7 @@ function RARELOAD.RegisterFonts()
         scanlines = 0,
         extended = true
     })
-    surface.CreateFont("RareloadUI.Text", {
+    surface.CreateFont("RareloadToolUI.Text", {
         font = "Segoe UI",
         size = 19,
         weight = 400,
@@ -292,7 +292,7 @@ function RARELOAD.RegisterFonts()
         scanlines = 0,
         extended = true
     })
-    surface.CreateFont("RareloadUI.Small", {
+    surface.CreateFont("RareloadToolUI.Small", {
         font = "Segoe UI",
         size = 17,
         weight = 400,
@@ -309,7 +309,7 @@ function RARELOAD.RegisterFonts()
         scanlines = 0,
         extended = true
     })
-    surface.CreateFont("RareloadUI.Button", {
+    surface.CreateFont("RareloadToolUI.Button", {
         font = "Segoe UI",
         size = 19,
         weight = 600,

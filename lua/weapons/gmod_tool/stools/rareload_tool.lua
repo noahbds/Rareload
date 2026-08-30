@@ -14,9 +14,9 @@ TOOL.Information         = {
     { name = "info" },
 }
 
-local RareloadUI, ToolScreen
+local RareloadToolUI, ToolScreen
 if CLIENT then
-    RareloadUI = include("rareload/ui/rareload_ui.lua")
+    RareloadToolUI = include("rareload/ui/rareload_tool_ui.lua")
     ToolScreen = include("rareload/ui/rareload_toolscreen.lua")
 end
 
@@ -236,12 +236,11 @@ local CPANEL_LAYOUT = {
         items = {
             { button = "cpanel.save_position", icon = "icon16/disk.png", cmd = "save_position", color = Color(76, 175, 80) },
             { button = "cpanel.save_timeline", icon = "icon16/time.png", cmd = "rareload_history", color = Color(88, 101, 242) },
-            { button = "cpanel.open_admin", icon = "icon16/shield.png", cmd = "rareload_admin", color = Color(233, 30, 99), perm = "ADMIN_PANEL" },
             {
                 button = "cpanel.configure_params",
                 icon = "icon16/cog_edit.png",
                 color = Color(255, 152, 0),
-                perm = "ADMIN_PANEL",
+                perm = "RARELOAD_TOGGLE",
                 fn = function() if RARELOAD.OpenTunablesMenu then RARELOAD.OpenTunablesMenu() end end,
             },
         },
@@ -285,7 +284,7 @@ local function AddLanguageDropdown(content, L)
         choices[#choices + 1] = { value = code, text = Lang.GetName(code) }
     end
 
-    return RareloadUI.CreateDropdown(content, L("cpanel.language"), L("cpanel.language.tip"),
+    return RareloadToolUI.CreateDropdown(content, L("cpanel.language"), L("cpanel.language.tip"),
         choices, current, function(value)
             RunConsoleCommand("rareload_language", value)
         end)
@@ -329,35 +328,35 @@ function TOOL.BuildCPanel(panel)
     headerPanel:DockMargin(5, 5, 5, 8)
     headerPanel:SetTall(50)
     headerPanel.Paint = function(_, w, h)
-        RareloadUI.DrawRoundedBox(0, 0, w, h, 8, COL_HEADER_BG)
-        surface.SetDrawColor(RareloadUI.Theme.Colors.Accent)
+        RareloadToolUI.DrawRoundedBox(0, 0, w, h, 8, COL_HEADER_BG)
+        surface.SetDrawColor(RareloadToolUI.Theme.Colors.Accent)
         surface.DrawRect(0, h - 3, w, 3)
-        draw.SimpleText("RARELOAD", "RareloadUI.Title", 12, h / 2 - 6, RareloadUI.Theme.Colors.Text.Primary,
+        draw.SimpleText("RARELOAD", "RareloadToolUI.Title", 12, h / 2 - 6, RareloadToolUI.Theme.Colors.Text.Primary,
             TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText(L("cpanel.subtitle"), "RareloadUI.Small", 12, h / 2 + 10,
-            RareloadUI.Theme.Colors.Text.Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText(versionText, "RareloadUI.Small", w - 12, h / 2, RareloadUI.Theme.Colors.Accent,
+        draw.SimpleText(L("cpanel.subtitle"), "RareloadToolUI.Small", 12, h / 2 + 10,
+            RareloadToolUI.Theme.Colors.Text.Secondary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(versionText, "RareloadToolUI.Small", w - 12, h / 2, RareloadToolUI.Theme.Colors.Accent,
             TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
     end
 
     local ply = LocalPlayer()
     for _, catDef in ipairs(CPANEL_LAYOUT) do
         if not catDef.perm or RARELOAD.CheckPermission(ply, catDef.perm) then
-            local category = track(RareloadUI.CreateCategory(panel, L(catDef.title), catDef.icon,
+            local category = track(RareloadToolUI.CreateCategory(panel, L(catDef.title), catDef.icon,
                 catDef.expanded == true))
 
             for _, item in ipairs(catDef.items) do
                 if item.perm and not RARELOAD.CheckPermission(ply, item.perm) then
                 elseif item.toggle then
-                    category:AddItem(RareloadUI.CreateToggleSwitch(category.Content,
+                    category:AddItem(RareloadToolUI.CreateToggleSwitch(category.Content,
                         L(item.toggle), item.convar, L(item.toggle .. ".tip")))
                 elseif item.slider then
-                    category:AddItem(RareloadUI.CreateCompactSlider(category.Content,
+                    category:AddItem(RareloadToolUI.CreateCompactSlider(category.Content,
                         L(item.slider), L(item.slider .. ".tip"), item.convar,
                         item.min, item.max, item.decimals or 0, item.default, item.suffix or ""))
                 elseif item.button then
                     local onClick = item.fn or function() RunConsoleCommand(item.cmd) end
-                    category:AddItem(RareloadUI.CreateModernButton(category.Content,
+                    category:AddItem(RareloadToolUI.CreateModernButton(category.Content,
                         L(item.button), item.icon, onClick, item.color))
                 elseif item.language then
                     local dropdown = AddLanguageDropdown(category.Content, L)
@@ -372,7 +371,7 @@ function TOOL.BuildCPanel(panel)
     footerPanel:DockMargin(5, 10, 5, 5)
     footerPanel:SetTall(24)
     footerPanel.Paint = function(_, w, h)
-        draw.SimpleText(L("cpanel.made_by"), "RareloadUI.Small", w / 2, h / 2, COL_FOOTER,
+        draw.SimpleText(L("cpanel.made_by"), "RareloadToolUI.Small", w / 2, h / 2, COL_FOOTER,
             TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
 

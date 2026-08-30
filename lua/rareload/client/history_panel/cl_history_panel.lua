@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- Save Timeline panel  (4.0)
+-- Save Timeline panel  (rewritten from scratch, 4.1)
 --
 -- Browses the player's full, persistent save history (synced as compact metadata
 -- from the server) and acts on any entry: teleport, restore (whole or by
@@ -35,53 +35,21 @@ local RESTORE_COMPS = { "all", "position", "health", "inventory", "ammo", "appea
 local SORTS   = { "newest", "oldest", "health", "pinned" }
 local FILTERS = { "all", "pinned", "noted", "world" }
 
--- Derma (Silk) 16px icons — reliable across fonts, unlike unicode glyphs.
-local IC_ENT  = Material("icon16/bricks.png")
-local IC_NPC  = Material("icon16/user.png")
-local IC_VEH  = Material("icon16/car.png")
-local IC_PIN  = Material("icon16/star.png")
-local IC_NOTE = Material("icon16/note.png")
-local IC_HP   = Material("icon16/heart.png")
+-- Shared client UI primitives (scaling, fonts, Button, scrollbar, model framing,
+-- confirm dialog, Derma icons) — one copy for every Rareload panel.
+local UI = RARELOAD.UI
+local sc = UI.sc
+local Button, StyleScrollbar, FrameModelPanel, ConfirmDialog =
+    UI.Button, UI.StyleScrollbar, UI.FrameModelPanel, UI.ConfirmDialog
+local IC_ENT, IC_NPC, IC_VEH = UI.icons.ent, UI.icons.npc, UI.icons.veh
+local IC_PIN, IC_NOTE, IC_HP = UI.icons.pin, UI.icons.note, UI.icons.health
 
 local HP = {
     Frame = nil, SelectedId = nil, Search = "",
     Sort = "newest", Filter = "all",
     Loading = false, LoadError = false,
-    S = 1,
 }
 HP.Comps = { position = true, health = true, inventory = true, ammo = true, appearance = true, states = true, world = true }
-
--- ── scaling + fonts ───────────────────────────────────────────────────────────
-
--- One scale factor drives every dimension. Clamped so the panel neither shrinks
--- to nothing on tiny screens nor becomes cartoonishly large on 4K.
-local function ComputeScale()
-    return math.Clamp(ScrH() / 1080, 0.85, 2.1)
-end
-
-local function sc(v) return math.floor(v * HP.S + 0.5) end
-
--- Rebuild the RH_* font set for the current scale. surface.CreateFont with an
--- existing name redefines it, so this is safe to call again on a resolution change.
-function HP:EnsureFonts()
-    local s = ComputeScale()
-    if self._fontScale == s then return end
-    self._fontScale = s
-    self.S = s
-    local function f(name, size, weight)
-        surface.CreateFont(name, { font = "Roboto", size = math.floor(size * s + 0.5), weight = weight, antialias = true, extended = true })
-    end
-    f("RH_Title", 25, 800)
-    f("RH_Sub", 14, 500)
-    f("RH_H1", 22, 700)
-    f("RH_H2", 17, 600)
-    f("RH_Body", 15, 500)
-    f("RH_BodyB", 15, 700)
-    f("RH_Small", 13, 500)
-    f("RH_Tiny", 11, 600)
-    f("RH_Stat", 26, 800)
-    f("RH_Btn", 15, 600)
-end
 
 -- ── networking ──────────────────────────────────────────────────────────────
 
@@ -220,85 +188,6 @@ end
 function HP:InvalidateView() self._view = ViewEntries() end
 function HP:View() return self._view or {} end
 function HP:Sel() return self.SelectedId and FindEntry(self.SelectedId) or nil end
-
--- ── shared UI helpers ─────────────────────────────────────────────────────────
-
-local function StyleScrollbar(scroll)
-    local vb = scroll:GetVBar()
-    if not IsValid(vb) then return end
-    vb:SetWide(sc(7))
-    vb.Paint = function() end
-    vb.btnUp.Paint = function() end
-    vb.btnDown.Paint = function() end
-    vb.btnGrip.Paint = function(_, w, h) draw.RoundedBox(sc(4), sc(1), 0, w - sc(2), h, THEME.surfaceHigh) end
-end
-
--- Frame a DModelPanel's camera onto its model's render bounds.
-local function FrameModelPanel(mp)
-    local ent = mp:GetEntity()
-    if not IsValid(ent) then return end
-    local mn, mx = ent:GetRenderBounds()
-    local center = (mn + mx) * 0.5
-    local size   = math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z)
-    local fov    = 42
-    local dist   = (size * 1.25) / math.tan(math.rad(fov / 2))
-    mp:SetLookAt(center)
-    mp:SetCamPos(center + Vector(dist * 0.65, dist * 0.5, dist * 0.35))
-    mp:SetFOV(fov)
-end
-
--- Self-drawing button with hover animation and a themed accent.
-local function Button(parent, text, color, onClick, opts)
-    opts = opts or {}
-    local btn = vgui.Create("DButton", parent)
-    btn:SetText("")
-    btn.HoverAnim = 0
-    btn._t = text
-    btn._solid = opts.solid == true
-    btn.GetText2 = function(self) return self._t end
-    btn.SetText2 = function(self, t) self._t = t end
-    btn.Paint = function(self, w, h)
-        self.HoverAnim = Lerp(FrameTime() * 12, self.HoverAnim, self:IsHovered() and 1 or 0)
-        local r = sc(8)
-        if self._solid then
-            local bg = THEME:LerpColor(self.HoverAnim * 0.35, color, THEME.textPrimary)
-            draw.RoundedBox(r, 0, 0, w, h, bg)
-            draw.SimpleText(self:GetText2(), "RH_Btn", w / 2, h / 2, THEME.background, ALIGN_C, ALIGN_M)
-        else
-            -- flat tint that deepens toward the accent on hover (no sharp outline —
-            -- an outlined rect over a rounded fill leaves corner-bracket artifacts)
-            local base = THEME:LerpColor(0.12, THEME.surface, color)
-            local bg = THEME:LerpColor(self.HoverAnim * 0.45, base, color)
-            draw.RoundedBox(r, 0, 0, w, h, bg)
-            local txtCol = THEME:LerpColor(self.HoverAnim, THEME.textPrimary, THEME.background)
-            draw.SimpleText(self:GetText2(), "RH_Btn", w / 2, h / 2, txtCol, ALIGN_C, ALIGN_M)
-        end
-    end
-    btn.DoClick = function(self)
-        surface.PlaySound("ui/buttonclickrelease.wav")
-        onClick(self)
-    end
-    return btn
-end
-
--- Themed yes/no dialog matching the panel (replaces Derma_Query).
-local function ConfirmDialog(title, body, onYes)
-    local d = vgui.Create("DFrame")
-    d:SetSize(sc(440), sc(180))
-    d:Center()
-    d:SetTitle("")
-    d:ShowCloseButton(false)
-    d:MakePopup()
-    d.Paint = function(_, w, h)
-        draw.RoundedBox(sc(12), 0, 0, w, h, THEME.background)
-        draw.SimpleText(title, "RH_H2", sc(20), sc(18), THEME.textPrimary, ALIGN_L, ALIGN_T)
-        draw.DrawText(body, "RH_Body", sc(20), sc(52), THEME.textSecondary, ALIGN_L)
-    end
-    local yes = Button(d, L("common.proceed"), THEME.error, function() d:Close(); onYes() end, { solid = true })
-    yes:SetSize(sc(190), sc(36)); yes:SetPos(sc(20), sc(126))
-    local no = Button(d, L("common.cancel"), THEME.surface, function() d:Close() end)
-    no:SetSize(sc(190), sc(36)); no:SetPos(sc(230), sc(126))
-end
 
 -- ── entry row (left list) ─────────────────────────────────────────────────────
 
@@ -778,7 +667,7 @@ end
 
 function HP:Open()
     if IsValid(self.Frame) then self.Frame:Close() end
-    self:EnsureFonts()
+    UI.EnsureFonts()
 
     local frame = vgui.Create("DFrame")
     local w = math.min(ScrW() * 0.82, sc(1220))
@@ -821,15 +710,7 @@ function HP:Open()
     search:SetTextInset(sc(28), 0)
     search.Paint = function(selfp, sw, sh)
         draw.RoundedBox(sc(8), 0, 0, sw, sh, THEME.surface)
-        -- drawn magnifier (glyph fonts can't be relied on for the emoji)
-        local cx, cy, rad = sc(13), sh / 2, sc(5)
-        surface.SetDrawColor(THEME.textTertiary)
-        for i = 0, 32 do
-            local a1, a2 = math.rad(i / 32 * 360), math.rad((i + 1) / 32 * 360)
-            surface.DrawLine(cx + math.cos(a1) * rad, cy + math.sin(a1) * rad,
-                cx + math.cos(a2) * rad, cy + math.sin(a2) * rad)
-        end
-        surface.DrawLine(cx + rad * 0.7, cy + rad * 0.7, cx + rad * 1.7, cy + rad * 1.7)
+        UI.DrawSearchIcon(sc(13), sh / 2, sc(5), THEME.textTertiary)
         selfp:DrawTextEntryText(THEME.textPrimary, THEME.primary, THEME.textPrimary)
         if selfp:GetValue() == "" then
             draw.SimpleText(L("sth.search_placeholder"), "RH_Body", sc(28), sh / 2, THEME.textTertiary, ALIGN_L, ALIGN_M)

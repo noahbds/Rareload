@@ -7,7 +7,6 @@ if SERVER then
         "SyncPlayerPositionsChunk",
         "RareloadTeleportTo",
         "RareloadReloadData",
-        "RareloadSendPermissionsDefinitions",
     }
 
     for _, str in ipairs(networkStrings) do

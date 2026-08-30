@@ -3,8 +3,6 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 
-util.AddNetworkString("RareloadRespawnNPC")
-
 if not (RARELOAD.Util and RARELOAD.Util.GenerateDeterministicID) then
     if file.Exists("rareload/core/rareload_state_utils.lua", "LUA") then
         include("rareload/core/rareload_state_utils.lua")

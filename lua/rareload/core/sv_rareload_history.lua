@@ -527,19 +527,20 @@ local function BuildEntryObjects(steamID, mapName, id)
     local e = RARELOAD.GetHistoryEntryById(steamID, mapName, id)
     if not e then return nil end
     local out = {}
-    local function add(bucket, isNPC)
+    local function add(bucket, isNPC, isVehicle)
         local list = SummaryOf(bucket)
         if not list then return end
         for _, s in ipairs(list) do
             if istable(s) then
                 s.isNPC = isNPC or nil
+                s.isVehicle = isVehicle or nil
                 out[#out + 1] = s
             end
         end
     end
-    add(e.entities, false)
-    add(e.npcs, true)
-    add(e.vehicles, false)
+    add(e.entities, false, false)
+    add(e.npcs, true, false)
+    add(e.vehicles, false, true)
     return out
 end
 
@@ -571,7 +572,7 @@ net.Receive("RareloadHistory_Objects", function(_, ply)
 end)
 
 -- Locate a stored def by id inside a bucket (top-level map or duplicator payload)
--- and hand it to modifyFn. Mirrors sv_entity_viewer's traversal.
+-- and hand it to modifyFn (top-level map or duplicator payload).
 local function ModifyDefInBucket(bucket, targetId, modifyFn)
     if not istable(bucket) then return false end
     local function isMatch(record, key)

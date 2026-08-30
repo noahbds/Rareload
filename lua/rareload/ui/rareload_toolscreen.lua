@@ -1,4 +1,4 @@
-local RareloadUI = include("rareload/ui/rareload_ui.lua")
+local RareloadToolUI = include("rareload/ui/rareload_tool_ui.lua")
 local GRADIENT_U = Material("vgui/gradient-u")
 local GRADIENT_R = Material("vgui/gradient-r")
 
@@ -218,12 +218,12 @@ local function drawIconCircle(x, y, size, bgColor, alpha, animProgress)
     draw.NoTexture()
 
     surface.SetDrawColor(bgColor.r, bgColor.g, bgColor.b, alpha * 0.3)
-    RareloadUI.DrawCircle(x, y, bgSize + 4, 40)
-    RareloadUI.DrawCircle(x, y, bgSize + 4, 40, Color(bgColor.r, bgColor.g, bgColor.b, alpha * 0.3))
+    RareloadToolUI.DrawCircle(x, y, bgSize + 4, 40)
+    RareloadToolUI.DrawCircle(x, y, bgSize + 4, 40, Color(bgColor.r, bgColor.g, bgColor.b, alpha * 0.3))
 
     surface.SetDrawColor(bgColor.r, bgColor.g, bgColor.b, alpha)
-    RareloadUI.DrawCircle(x, y, bgSize, 40)
-    RareloadUI.DrawCircle(x, y, bgSize, 40, Color(bgColor.r, bgColor.g, bgColor.b, alpha))
+    RareloadToolUI.DrawCircle(x, y, bgSize, 40)
+    RareloadToolUI.DrawCircle(x, y, bgSize, 40, Color(bgColor.r, bgColor.g, bgColor.b, alpha))
 
     return bgSize
 end
@@ -284,9 +284,9 @@ local function drawStatusEmoji(x, y, size, isSuccess, alpha, animProgress)
 
             surface.SetDrawColor(255, 255, 255, alpha)
             surface.DrawPoly(poly)
-            RareloadUI.DrawCircle(startX, startY, thickness / 2, 12, Color(255, 255, 255, alpha))
+            RareloadToolUI.DrawCircle(startX, startY, thickness / 2, 12, Color(255, 255, 255, alpha))
             if firstSegmentProgress >= 0.95 then
-                RareloadUI.DrawCircle(midX, midY, thickness / 2, 12, Color(255, 255, 255, alpha))
+                RareloadToolUI.DrawCircle(midX, midY, thickness / 2, 12, Color(255, 255, 255, alpha))
             end
         end
 
@@ -311,7 +311,7 @@ local function drawStatusEmoji(x, y, size, isSuccess, alpha, animProgress)
             surface.SetDrawColor(255, 255, 255, alpha)
             surface.DrawPoly(poly)
             if secondSegmentProgress >= 0.95 then
-                RareloadUI.DrawCircle(currentEndX, currentEndY, thickness / 2, 12, Color(255, 255, 255, alpha))
+                RareloadToolUI.DrawCircle(currentEndX, currentEndY, thickness / 2, 12, Color(255, 255, 255, alpha))
             end
         end
     else
@@ -459,11 +459,11 @@ local function drawPermissionIcon(x, y, size, alpha, animProgress)
         surface.DrawRect(bodyX, bodyY, bodyW, currentBodyH)
 
         -- Rounded corners on body
-        RareloadUI.DrawCircle(bodyX + 2, bodyY + 2, 2, 8, Color(255, 255, 255, alpha))
-        RareloadUI.DrawCircle(bodyX + bodyW - 2, bodyY + 2, 2, 8, Color(255, 255, 255, alpha))
+        RareloadToolUI.DrawCircle(bodyX + 2, bodyY + 2, 2, 8, Color(255, 255, 255, alpha))
+        RareloadToolUI.DrawCircle(bodyX + bodyW - 2, bodyY + 2, 2, 8, Color(255, 255, 255, alpha))
         if bodyProgress >= 0.95 then
-            RareloadUI.DrawCircle(bodyX + 2, bodyY + currentBodyH - 2, 2, 8, Color(255, 255, 255, alpha))
-            RareloadUI.DrawCircle(bodyX + bodyW - 2, bodyY + currentBodyH - 2, 2, 8, Color(255, 255, 255, alpha))
+            RareloadToolUI.DrawCircle(bodyX + 2, bodyY + currentBodyH - 2, 2, 8, Color(255, 255, 255, alpha))
+            RareloadToolUI.DrawCircle(bodyX + bodyW - 2, bodyY + currentBodyH - 2, 2, 8, Color(255, 255, 255, alpha))
         end
     end
 
@@ -513,7 +513,7 @@ local function drawPermissionIcon(x, y, size, alpha, animProgress)
     -- Keyhole dot on body
     if bodyProgress >= 0.8 then
         local dotAlpha = math.min(alpha, ((bodyProgress - 0.8) / 0.2) * alpha)
-        RareloadUI.DrawCircle(x, bodyY + bodyH * 0.4, size * 0.06, 12, Color(bgColor.r, bgColor.g, bgColor.b, dotAlpha))
+        RareloadToolUI.DrawCircle(x, bodyY + bodyH * 0.4, size * 0.06, 12, Color(bgColor.r, bgColor.g, bgColor.b, dotAlpha))
         -- Keyhole line below dot
         surface.SetDrawColor(bgColor.r, bgColor.g, bgColor.b, dotAlpha)
         surface.DrawRect(x - size * 0.02, bodyY + bodyH * 0.45, size * 0.04, bodyH * 0.25)

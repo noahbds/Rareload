@@ -1,13 +1,16 @@
--- Rareload VGUI widget library (client). Widgets avoid per-frame Color/Matrix
+-- Rareload TOOL UI widget library (client) — the spawnmenu tool config panel
+-- (categories, toggles, sliders, buttons, dropdowns) and the toolgun screen.
+-- Distinct from RARELOAD.UI (client/shared/cl_rareload_ui.lua), which styles the
+-- Save Timeline / entity-viewer data panels. Widgets avoid per-frame Color/Matrix
 -- allocations: paint hooks write into shared scratch colors instead.
 
-local RareloadUI = {}
+local RareloadToolUI = {}
 
 RARELOAD = RARELOAD or {}
 
 if SERVER then
-    RareloadUI.Theme = {}
-    return RareloadUI
+    RareloadToolUI.Theme = {}
+    return RareloadToolUI
 end
 
 RARELOAD.Theme = RARELOAD.Theme or {}
@@ -16,7 +19,7 @@ if not RARELOAD.Theme.BuildMainTheme then
     include("rareload/client/shared/theme_utils.lua")
 end
 
-RareloadUI.Theme = RARELOAD.Theme.BuildMainTheme()
+RareloadToolUI.Theme = RARELOAD.Theme.BuildMainTheme()
 
 
 local function AnimateLerp(current, target, speed)
@@ -107,11 +110,11 @@ local function GetConVarFloat(name)
     return cv and cv:GetFloat() or 0
 end
 
-function RareloadUI.DrawRoundedBox(x, y, w, h, radius, color)
+function RareloadToolUI.DrawRoundedBox(x, y, w, h, radius, color)
     draw.RoundedBox(radius, x, y, w, h, color)
 end
 
-function RareloadUI.DrawCircle(x, y, radius, segments, color)
+function RareloadToolUI.DrawCircle(x, y, radius, segments, color)
     local points = {}
     for i = 0, segments do
         local angle = math.rad((i / segments) * 360)
@@ -131,8 +134,8 @@ function RareloadUI.DrawCircle(x, y, radius, segments, color)
     surface.DrawPoly(points)
 end
 
-function RareloadUI.CreateCategory(parent, title, icon, defaultExpanded)
-    local theme = RareloadUI.Theme
+function RareloadToolUI.CreateCategory(parent, title, icon, defaultExpanded)
+    local theme = RareloadToolUI.Theme
     defaultExpanded = defaultExpanded ~= false
 
     local iconMat = icon and Material(icon, "smooth mips") or nil
@@ -155,7 +158,7 @@ function RareloadUI.CreateCategory(parent, title, icon, defaultExpanded)
         self.HoverFraction = AnimateLerp(self.HoverFraction, self:IsHovered() and 1 or 0)
         self.ArrowRotation = AnimateLerp(self.ArrowRotation, container.IsExpanded and 0 or -90, 12)
 
-        RareloadUI.DrawRoundedBox(0, 0, w, h, 6, SetCol(
+        RareloadToolUI.DrawRoundedBox(0, 0, w, h, 6, SetCol(
             45 + 10 * self.HoverFraction,
             50 + 10 * self.HoverFraction,
             60 + 10 * self.HoverFraction))
@@ -171,7 +174,7 @@ function RareloadUI.CreateCategory(parent, title, icon, defaultExpanded)
             textOffset = 32
         end
 
-        draw.SimpleText(title, "RareloadUI.Text", textOffset, h / 2, theme.Colors.Text.Primary, TEXT_ALIGN_LEFT,
+        draw.SimpleText(title, "RareloadToolUI.Text", textOffset, h / 2, theme.Colors.Text.Primary, TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER)
 
         DrawArrow(w - 20, h / 2, 5, self.ArrowRotation, theme.Colors.Text.Secondary)
@@ -227,8 +230,8 @@ function RareloadUI.CreateCategory(parent, title, icon, defaultExpanded)
     return container
 end
 
-function RareloadUI.CreateToggleSwitch(parent, label, convar, tooltip)
-    local theme = RareloadUI.Theme
+function RareloadToolUI.CreateToggleSwitch(parent, label, convar, tooltip)
+    local theme = RareloadToolUI.Theme
 
     local container = vgui.Create("DPanel", parent)
     container:Dock(TOP)
@@ -248,24 +251,24 @@ function RareloadUI.CreateToggleSwitch(parent, label, convar, tooltip)
 
     container.Paint = function(self, w, h)
         if self.HoverFraction > 0.01 then
-            RareloadUI.DrawRoundedBox(0, 0, w, h, 4, SetCol(255, 255, 255, 10 * self.HoverFraction))
+            RareloadToolUI.DrawRoundedBox(0, 0, w, h, 4, SetCol(255, 255, 255, 10 * self.HoverFraction))
         end
 
-        draw.SimpleText(label, "RareloadUI.Small", 8, h / 2, theme.Colors.Text.Primary, TEXT_ALIGN_LEFT,
+        draw.SimpleText(label, "RareloadToolUI.Small", 8, h / 2, theme.Colors.Text.Primary, TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER)
 
         local switchW, switchH = 36, 18
         local switchX = w - switchW - 8
         local switchY = (h - switchH) / 2
 
-        RareloadUI.DrawRoundedBox(switchX, switchY, switchW, switchH, switchH / 2, SetCol(
+        RareloadToolUI.DrawRoundedBox(switchX, switchY, switchW, switchH, switchH / 2, SetCol(
             Lerp(self.SwitchFraction, 60, theme.Colors.Accent.r),
             Lerp(self.SwitchFraction, 65, theme.Colors.Accent.g),
             Lerp(self.SwitchFraction, 75, theme.Colors.Accent.b)))
 
         local knobSize = switchH - 4
         local knobX = switchX + 2 + (switchW - knobSize - 4) * self.SwitchFraction
-        RareloadUI.DrawRoundedBox(knobX, switchY + 2, knobSize, knobSize, knobSize / 2, COL_WHITE)
+        RareloadToolUI.DrawRoundedBox(knobX, switchY + 2, knobSize, knobSize, knobSize / 2, COL_WHITE)
     end
 
     container.OnMousePressed = function(self, keyCode)
@@ -279,8 +282,8 @@ function RareloadUI.CreateToggleSwitch(parent, label, convar, tooltip)
     return container
 end
 
-function RareloadUI.CreateCompactSlider(parent, label, tooltip, convarName, minVal, maxVal, decimals, defaultVal, suffix)
-    local theme = RareloadUI.Theme
+function RareloadToolUI.CreateCompactSlider(parent, label, tooltip, convarName, minVal, maxVal, decimals, defaultVal, suffix)
+    local theme = RareloadToolUI.Theme
     suffix = suffix or ""
     decimals = decimals or 0
 
@@ -319,23 +322,23 @@ function RareloadUI.CreateCompactSlider(parent, label, tooltip, convarName, minV
 
     container.Paint = function(self, w, h)
         if self.HoverFraction > 0.01 then
-            RareloadUI.DrawRoundedBox(0, 0, w, h, 4, SetCol(255, 255, 255, 8 * self.HoverFraction))
+            RareloadToolUI.DrawRoundedBox(0, 0, w, h, 4, SetCol(255, 255, 255, 8 * self.HoverFraction))
         end
 
-        draw.SimpleText(label, "RareloadUI.Small", 8, 10, theme.Colors.Text.Primary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText(tostring(self.Value) .. suffix, "RareloadUI.Small", w - 8, 10, theme.Colors.Accent,
+        draw.SimpleText(label, "RareloadToolUI.Small", 8, 10, theme.Colors.Text.Primary, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(tostring(self.Value) .. suffix, "RareloadToolUI.Small", w - 8, 10, theme.Colors.Accent,
             TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
 
         local trackH, trackY, trackX, trackW = 6, h - 14, 8, w - 16
-        RareloadUI.DrawRoundedBox(trackX, trackY, trackW, trackH, 3, COL_TRACK_OFF)
+        RareloadToolUI.DrawRoundedBox(trackX, trackY, trackW, trackH, 3, COL_TRACK_OFF)
 
         local fillW = trackW * self.DragFraction
         if fillW > 0 then
-            RareloadUI.DrawRoundedBox(trackX, trackY, fillW, trackH, 3, theme.Colors.Accent)
+            RareloadToolUI.DrawRoundedBox(trackX, trackY, fillW, trackH, 3, theme.Colors.Accent)
         end
 
         local knobSize = 12
-        RareloadUI.DrawRoundedBox(trackX + fillW - knobSize / 2, trackY + trackH / 2 - knobSize / 2, knobSize, knobSize,
+        RareloadToolUI.DrawRoundedBox(trackX + fillW - knobSize / 2, trackY + trackH / 2 - knobSize / 2, knobSize, knobSize,
             knobSize / 2, COL_WHITE)
     end
 
@@ -358,8 +361,8 @@ function RareloadUI.CreateCompactSlider(parent, label, tooltip, convarName, minV
     return container
 end
 
-function RareloadUI.CreateModernButton(parent, text, icon, onClick, accentColor)
-    local theme = RareloadUI.Theme
+function RareloadToolUI.CreateModernButton(parent, text, icon, onClick, accentColor)
+    local theme = RareloadToolUI.Theme
     accentColor = accentColor or theme.Colors.Accent
     local iconMat = icon and Material(icon, "smooth mips") or nil
 
@@ -376,7 +379,7 @@ function RareloadUI.CreateModernButton(parent, text, icon, onClick, accentColor)
         self.PressFraction = AnimateLerp(self.PressFraction, self:IsDown() and 1 or 0, 15)
 
         local shade = -30 + 20 * self.HoverFraction - 10 * self.PressFraction
-        RareloadUI.DrawRoundedBox(0, 0, w, h, 6, SetCol(
+        RareloadToolUI.DrawRoundedBox(0, 0, w, h, 6, SetCol(
             accentColor.r + shade,
             accentColor.g + shade,
             accentColor.b + shade,
@@ -395,7 +398,7 @@ function RareloadUI.CreateModernButton(parent, text, icon, onClick, accentColor)
             textX = w / 2 + 10
         end
 
-        draw.SimpleText(text, "RareloadUI.Small", textX, h / 2 + self.PressFraction, theme.Colors.Text.Primary,
+        draw.SimpleText(text, "RareloadToolUI.Small", textX, h / 2 + self.PressFraction, theme.Colors.Text.Primary,
             TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
 
@@ -409,8 +412,8 @@ end
 
 -- Labeled dropdown row. choices = { { value = ..., text = ... }, ... };
 -- onSelect(value) fires when the user picks an entry.
-function RareloadUI.CreateDropdown(parent, label, tooltip, choices, activeValue, onSelect)
-    local theme = RareloadUI.Theme
+function RareloadToolUI.CreateDropdown(parent, label, tooltip, choices, activeValue, onSelect)
+    local theme = RareloadToolUI.Theme
 
     local container = vgui.Create("DPanel", parent)
     container:Dock(TOP)
@@ -419,7 +422,7 @@ function RareloadUI.CreateDropdown(parent, label, tooltip, choices, activeValue,
     container:SetPaintBackground(false)
 
     container.Paint = function(_, w, h)
-        draw.SimpleText(label, "RareloadUI.Small", 8, h / 2, theme.Colors.Text.Primary,
+        draw.SimpleText(label, "RareloadToolUI.Small", 8, h / 2, theme.Colors.Text.Primary,
             TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
 
@@ -441,9 +444,9 @@ function RareloadUI.CreateDropdown(parent, label, tooltip, choices, activeValue,
     end
 
     combo.Paint = function(self, w, h)
-        RareloadUI.DrawRoundedBox(0, 0, w, h, 4, COL_TRACK_OFF)
+        RareloadToolUI.DrawRoundedBox(0, 0, w, h, 4, COL_TRACK_OFF)
         if self:IsHovered() then
-            RareloadUI.DrawRoundedBox(0, 0, w, h, 4, SetCol(255, 255, 255, 12))
+            RareloadToolUI.DrawRoundedBox(0, 0, w, h, 4, SetCol(255, 255, 255, 12))
         end
     end
 
@@ -456,7 +459,7 @@ function RareloadUI.CreateDropdown(parent, label, tooltip, choices, activeValue,
     return container
 end
 
-function RareloadUI.RegisterLanguage()
+function RareloadToolUI.RegisterLanguage()
     local L = RARELOAD.L or function(key) return key end
     language.Add("tool.rareload_tool.name", L("tool.name"))
     language.Add("tool.rareload_tool.desc", L("tool.desc"))
@@ -468,10 +471,10 @@ end
 
 -- GMod's language.Add stores plain strings, so re-register when the Rareload
 -- language changes to keep the native toolgun tooltips in sync.
-hook.Add("RareloadLanguageChanged", "RareloadUI_RegisterToolLanguage", function()
-    RareloadUI.RegisterLanguage()
+hook.Add("RareloadLanguageChanged", "RareloadToolUI_RegisterToolLanguage", function()
+    RareloadToolUI.RegisterLanguage()
 end)
 
-RareloadUI.RegisterLanguage()
+RareloadToolUI.RegisterLanguage()
 
-return RareloadUI
+return RareloadToolUI
