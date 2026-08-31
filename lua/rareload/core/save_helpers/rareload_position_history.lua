@@ -4,8 +4,6 @@ RARELOAD.settings = RARELOAD.settings or {}
 RARELOAD.settings.maxHistorySize = RARELOAD.settings.maxHistorySize or 125
 RARELOAD.playerActiveHistoryId = RARELOAD.playerActiveHistoryId or {}
 
--- Which history entry id is currently the active respawn save, per map+player.
--- Persisted in the history file so the "active" marker survives map reloads.
 function RARELOAD.GetActiveHistoryId(steamID, mapName)
     mapName = mapName or game.GetMap()
     local m = RARELOAD.playerActiveHistoryId[mapName]
@@ -18,27 +16,10 @@ function RARELOAD.SetActiveHistoryId(steamID, mapName, id)
     RARELOAD.playerActiveHistoryId[mapName][steamID] = id
 end
 
--- ─────────────────────────────────────────────────────────────────────────────
--- Persistent save-history store (4.0 · Phase 2)
---
--- Every meaningful save appends a timestamped snapshot here, and the store is
--- written to disk (rareload/history/<map>/<steamid>.json) so the whole timeline
--- survives map reloads and server restarts. Reads are NON-destructive: the
--- upcoming Save Timeline panel browses and restores any entry without consuming
--- it. The tool-gun reload key is untouched — it still restores the active save.
---
--- On disk, heavy entity/NPC duplicator snapshots are stored once in a `blobs`
--- table keyed by a content hash and referenced from each entry, so repeated
--- saves of the same map objects don't bloat the file. JSON is written compact.
--- ─────────────────────────────────────────────────────────────────────────────
-
 local HISTORY_VERSION = 1
 local HISTORY_ROOT    = "rareload/history"
 local HEAVY_KEYS      = { "entities", "npcs" }
 local DEFAULT_MAX     = 125
-
--- Next sequence number per "<map>/<steamid>", so entry ids stay unique across
--- sessions. Seeded from each file's stored nextSeq on load.
 local seqByFile = {}
 
 -- ── small helpers ─────────────────────────────────────────────────────────────
@@ -153,8 +134,6 @@ end
 
 local function Deserialize(payload)
     if not istable(payload) or not istable(payload.entries) then return nil, nil end
-    -- Version gate: refuse a file written by a newer format rather than silently
-    -- mis-reading it. (Only v1 exists today, so there is nothing to migrate yet.)
     local ver = tonumber(payload.version) or 1
     if ver > HISTORY_VERSION then
         ErrorNoHalt(string.format(
@@ -171,7 +150,7 @@ local function Deserialize(payload)
             for _, hk in ipairs(HEAVY_KEYS) do
                 local ref = data[hk]
                 if istable(ref) and ref.__ref then
-                    data[hk] = blobs[ref.__ref] or nil -- shared reference; treated as read-only
+                    data[hk] = blobs[ref.__ref] or nil
                 end
             end
             data.id        = pe.id
@@ -242,8 +221,6 @@ end
 
 -- ── retention ─────────────────────────────────────────────────────────────────
 
--- Keep at most `maxSize` UNPINNED entries (newest kept). Pinned entries are never
--- pruned and don't count toward the cap, so deliberate keeps can't be evicted.
 local function Prune(history, maxSize)
     local unpinned = 0
     for i = 1, #history do
@@ -260,11 +237,6 @@ local function Prune(history, maxSize)
     end
 end
 
--- Copy a snapshot for archival: small fields become independent copies, but the
--- heavy entity/NPC buckets are shared by reference. They are immutable once saved
--- (the next save replaces the bucket wholesale rather than mutating it in place),
--- so this keeps memory flat across many autosaves instead of duplicating the map
--- snapshot for every entry. On disk they are deduped by content hash anyway.
 local function ArchiveCopy(src)
     local out = {}
     for k, v in pairs(src) do
@@ -303,7 +275,6 @@ function RARELOAD.CacheCurrentPositionData(steamID, mapName)
     entry.note      = ""
 
     table.insert(history, 1, entry)
-    -- A fresh save becomes the active respawn, matching normal Rareload behaviour.
     RARELOAD.SetActiveHistoryId(steamID, mapName, entry.id)
 
     local maxSize = ResolveMaxSize(steamID)
@@ -334,8 +305,6 @@ function RARELOAD.GetPositionHistory(steamID, mapName)
     return #RARELOAD.GetPositionHistoryEntries(steamID, mapName)
 end
 
--- Destructive "pop newest", kept for backwards compatibility. It is NOT used by
--- the reload key (that restores the active save) — prefer the getters above.
 function RARELOAD.GetPreviousPositionData(steamID, mapName)
     if not steamID or not mapName then return nil end
     local byMap = RARELOAD.playerPositionHistory[mapName]

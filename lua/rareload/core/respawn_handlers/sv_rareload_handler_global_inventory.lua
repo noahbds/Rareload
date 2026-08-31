@@ -1,4 +1,3 @@
---- @class RARELOAD
 RARELOAD = RARELOAD or nil
 RARELOAD.settings = RARELOAD.settings or {}
 RARELOAD.globalInventory = RARELOAD.globalInventory or {}

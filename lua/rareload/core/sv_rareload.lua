@@ -33,7 +33,7 @@ if SERVER then
     RARELOAD.playerPositions = RARELOAD.playerPositions or {}
     RARELOAD.globalInventory = RARELOAD.globalInventory or {}
     RARELOAD.lastSavedTime = 0
-    RARELOAD.version = "3.9"
+    RARELOAD.version = "4.0"
 
     util.AddNetworkString("RareloadAntiStuckPriorities")
     util.AddNetworkString("SyncData")

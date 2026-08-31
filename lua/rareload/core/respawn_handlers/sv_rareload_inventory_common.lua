@@ -1,5 +1,3 @@
----@diagnostic disable: undefined-field
-
 RARELOAD = RARELOAD or {}
 RARELOAD.InventoryRestoreCommon = RARELOAD.InventoryRestoreCommon or {}
 

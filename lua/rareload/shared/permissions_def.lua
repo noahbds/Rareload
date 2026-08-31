@@ -1,21 +1,3 @@
--- ─────────────────────────────────────────────────────────────────────────────
--- Rareload access check (shared)
---
--- Rareload has no permission system of its own. Every gated action is a CAMI
--- privilege, so the server's admin mod (ULX / SAM / ServerGuard / FAdmin / …) lists
--- them and an owner grants/revokes them per user-group in that mod's own UI.
---
---   • Admin privileges (tier admin/superadmin) gate admin-only actions.
---   • Feature privileges (tier "user") gate per-player features — everyone has them
---     by default, so default behaviour is unchanged; an owner restricts a group only
---     if they want to. A feature happens when the player's SETTING is on AND their
---     group HAS the privilege.
---
--- When an admin mod (CAMI) is present it is the sole authority — no IsSuperAdmin
--- bypass, so ULX grant/revoke actually applies (even to superadmins; re-grant from
--- server console if you lock yourself out). With no admin mod we fall back by tier.
--- ─────────────────────────────────────────────────────────────────────────────
-
 RARELOAD = RARELOAD or {}
 RARELOAD.Permissions = RARELOAD.Permissions or {}
 
@@ -108,6 +90,7 @@ RARELOAD.Permissions.NAME_TO_PRIV = NAME_TO_PRIV
 local function CAMIHasAccess(ply, priv)
     if not (CAMI and CAMI.PlayerHasAccess) then return nil end
     local result = false
+    ---@diagnostic disable-next-line: undefined-global
     CAMI.PlayerHasAccess(ply, priv, function(hasAccess) result = hasAccess == true end)
     return result
 end
@@ -173,6 +156,7 @@ if SERVER then
         EachPrivilege(function(name, tier, desc)
             out(string.format("  %-30s (%-10s) %s", name, tier, desc))
         end)
+        ---@diagnostic disable-next-line: undefined-global
         out(CAMI and "[RARELOAD] CAMI detected — privileges are registered with your admin mod."
             or "[RARELOAD] No CAMI/admin mod detected — falling back to IsAdmin() for admin actions.")
     end)

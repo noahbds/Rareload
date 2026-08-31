@@ -290,11 +290,6 @@ function Bridge.CaptureSnapshot(entities, opts)
                 end
             end
         elseif cat == "vehicle" then
-            -- Keep ONLY the root vehicles we explicitly targeted. Everything the
-            -- duplicator pulled in by following constraints (wheels, rotors, seats,
-            -- extra physics bodies) is a framework-rebuilt part: saving it would
-            -- spawn duplicated/detached pieces on restore. save_vehicles already
-            -- excludes parts from the target set, so `entities` == the roots.
             local keep = {}
             for i = 1, #entities do
                 local e = entities[i]
@@ -408,10 +403,6 @@ local function defaultPostProcess(createdEntities, owner)
     end
 end
 
--- Per-entity paste with isolated pcalls: creates each entity in its own pcall
--- so that a corrupt entity definition, missing model, or crash inside an entity's
--- Initialize/Spawn will NOT abort other entities in the batch and will never
--- cause orphaned ghost entities or double spawns on retries.
 local function pasteEntitiesIndividually(pastePlayer, entities, constraints)
     local created = {}
     if istable(entities) then
@@ -470,9 +461,6 @@ function Bridge.RestoreSnapshot(snapshot, opts)
         end
     end
 
-    -- Drop defs whose class can no longer be spawned (uninstalled addon), so a
-    -- missing framework doesn't abort the batch paste or leave a phantom the
-    -- re-seater then hunts for. Caller supplies the category-appropriate test.
     if isfunction(opts.validateClass) then
         local warned = {}
         for k, def in pairs(payload.Entities) do

@@ -444,23 +444,23 @@ function RARELOAD.HandlePlayerSpawn(ply)
     local setVal = RARELOAD.GetPlayerSetting(ply, "retainAppearance", true)
     local hasData = (SavedInfo.appearance ~= nil) or (SavedInfo.playermodel ~= nil)
     DebugLog(ply, "INFO", 0, "APPEARANCE RESTORE CHECK: hasPerm: " .. tostring(permVal) .. " | setting: " .. tostring(setVal) .. " | hasData: " .. tostring(hasData))
-    
+
     if permVal and setVal then
         if hasData then
             timer.Simple(1, function()
                 if not IsValid(ply) then return end
-                
+
                 local savedModel = (SavedInfo.appearance and SavedInfo.appearance.model) or SavedInfo.playermodel
                 local beforeModel = ply:GetModel()
                 DebugLog(ply, "INFO", 0, "APPEARANCE RESTORE: Attempting to restore model: " .. tostring(savedModel) .. " | Model before restore: " .. tostring(beforeModel))
-                
+
                 if SavedInfo.appearance and RARELOAD.RestoreAppearance then
                     RARELOAD.RestoreAppearance(ply, SavedInfo.appearance)
                 else
                     ply:SetModel(SavedInfo.playermodel)
                     ply:SetupHands()
                 end
-                
+
                 timer.Simple(0.1, function()
                     if IsValid(ply) then
                         DebugLog(ply, "INFO", 0, "APPEARANCE RESTORE RESULT: Actual model is now: " .. tostring(ply:GetModel()) .. " | Expected: " .. tostring(savedModel))
@@ -514,9 +514,6 @@ function RARELOAD.HandlePlayerSpawn(ply)
         and SavedInfo.vehicles then
         RARELOAD.RestoreVehicles(SavedInfo, ply)
 
-        -- If the player was seated in a vehicle at save time, re-seat them.
-        -- RestorePlayerVehicle uses the unified RareloadEntityID and retries
-        -- until the duplicator has finished spawning the vehicle.
         if SavedInfo.vehicleState and SavedInfo.vehicleState.savedInVehicle then
             RARELOAD.RestorePlayerVehicle(ply, SavedInfo)
         end

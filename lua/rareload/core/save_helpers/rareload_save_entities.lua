@@ -50,9 +50,6 @@ return function(ply)
                 continue
             end
 
-            -- Exclude vehicles AND every structural piece of them (roots, seats,
-            -- rotors, wheels, bodies) in one generic, graph-based test — no part
-            -- class names or model paths are hardcoded. See DataUtils.IsVehiclePart.
             if IsVehicleEntity and IsVehicleEntity(ent, vehCheckCache) then
                 continue
             end

@@ -17,7 +17,6 @@ if not (RARELOAD.DataUtils and RARELOAD.DataUtils.ToAngle) then
     include("rareload/utils/rareload_data_utils.lua")
 end
 
-
 -- ============================================================================
 -- DEBUG
 -- ============================================================================
@@ -29,7 +28,6 @@ local WriteVehicleDebug = (DebugHelpers and DebugHelpers.MakeWriter)
         printPrefix = "[RARELOAD DEBUG] "
     })
     or function() end
-
 
 -- ============================================================================
 -- LOOKUP ARRAYS FOR DATA-DRIVEN SEAT DETECTION
@@ -45,8 +43,7 @@ local SEAT_MATCH_TOL_SQR  = 2304 -- 48^2
 
 
 -- ============================================================================
--- ============================================================================
--- POST-SPAWN STABILIZATION & CLEARANCE
+-- POST-SPAWN STABILIZATION
 -- ============================================================================
 
 local vector_origin = vector_origin or Vector(0, 0, 0)
@@ -83,74 +80,6 @@ local function ReadSavedPhysState(def)
         nograv = isNoGrav,
         bodies = bodies,
     }
-end
-
-local function ResolveVehicleSpawnClearance(ent, targetPos)
-    if not IsValid(ent) or not targetPos then return targetPos end
-
-    local mins = ent:OBBMins() or Vector(-16, -16, -16)
-    local maxs = ent:OBBMaxs() or Vector(16, 16, 16)
-
-    if mins:DistToSqr(maxs) < 1 then return targetPos end
-
-    -- Probe hull: 2 units in on X/Y, but drop the bottom ~40% on Z. A vehicle's
-    -- wheels/legs and its ground contact live in that bottom slab; including them
-    -- makes the trace read the ground/legs as "embedded" and floats the vehicle.
-    local height = maxs.z - mins.z
-    local checkMins = Vector(mins.x + 2, mins.y + 2, mins.z + math.max(4, height * 0.4))
-    local checkMaxs = Vector(maxs.x - 2, maxs.y - 2, maxs.z - 2)
-
-    checkMins.x = math.min(checkMins.x, checkMaxs.x)
-    checkMins.y = math.min(checkMins.y, checkMaxs.y)
-    checkMins.z = math.min(checkMins.z, checkMaxs.z)
-
-    local function isClear(testPos)
-        if not util.IsInWorld(testPos) then return false end
-        local tr = util.TraceHull({
-            start          = testPos,
-            endpos         = testPos,
-            mins           = checkMins,
-            maxs           = checkMaxs,
-            filter         = ent,
-            mask           = MASK_SOLID,
-            collisiongroup = COLLISION_GROUP_VEHICLE
-        })
-        return not (tr.StartSolid or tr.AllSolid or (tr.Hit and tr.Fraction < 0.99))
-    end
-
-    if isClear(targetPos) then
-        return targetPos
-    end
-
-    -- Initial position is embedded or blocked: probe upward offsets first
-    local height = math.max(maxs.z - mins.z, 32)
-    local upOffsets = { 16, 32, 64, height * 0.5, height, height * 1.5 }
-    for _, zOff in ipairs(upOffsets) do
-        local testPos = targetPos + Vector(0, 0, zOff)
-        if isClear(testPos) then
-            return testPos
-        end
-    end
-
-    -- Try radial offsets with slight upward elevation
-    local radOffsets = { 32, 64, 128 }
-    local dirs = {
-        Vector(1, 0, 0), Vector(-1, 0, 0),
-        Vector(0, 1, 0), Vector(0, -1, 0),
-        Vector(1, 1, 0):GetNormalized(), Vector(-1, -1, 0):GetNormalized(),
-        Vector(1, -1, 0):GetNormalized(), Vector(-1, 1, 0):GetNormalized(),
-    }
-
-    for _, r in ipairs(radOffsets) do
-        for _, dir in ipairs(dirs) do
-            local testPos = targetPos + (dir * r) + Vector(0, 0, 16)
-            if isClear(testPos) then
-                return testPos
-            end
-        end
-    end
-
-    return targetPos
 end
 
 local function applyPhysTransform(ent, st)
@@ -200,20 +129,10 @@ local function StabilizeRestoredVehicle(ent, def)
     local st = ReadSavedPhysState(def)
     if not st then return end
 
-    local rawPos = st.pos or ent:GetPos()
-    -- A vehicle saved frozen/asleep was parked exactly where it belonged, so keep
-    -- its position verbatim. Only clearance-check vehicles that were live/moving,
-    -- where the saved spot may since have become blocked.
-    if st.frozen then
-        st.pos = rawPos
-    else
-        st.pos = ResolveVehicleSpawnClearance(ent, rawPos)
-    end
+    -- Restore verbatim at the saved position/angle.
+    st.pos = st.pos or ent:GetPos()
     st.ang = st.ang or ent:GetAngles()
-
-    if st.pos ~= rawPos then
-        ent:SetPos(st.pos)
-    end
+    ent:SetPos(st.pos)
 
     local timerName = "RareloadVehStabilize_" .. ent:EntIndex()
     local ticks = 0
@@ -229,11 +148,6 @@ local function StabilizeRestoredVehicle(ent, def)
         applyPhysTransform(ent, st)
 
         if ticks >= 8 then
-            -- No driver at the end of the settle window: the vehicle was restored
-            -- unoccupied, so park it. Frozen saves get a hard freeze (EnableMotion
-            -- off); everything else is put to sleep so it stays where it was placed
-            -- instead of rolling/sliding away (Glide bikes have no balance without a
-            -- rider) — a collision or the player driving it wakes it back up.
             local driverless = not (ent.GetDriver and IsValid(ent:GetDriver()))
             local numPhys = (isfunction(ent.GetPhysicsObjectCount) and ent:GetPhysicsObjectCount()) or 0
             if numPhys > 0 then
@@ -271,11 +185,6 @@ local function StabilizeRestoredVehicle(ent, def)
         end
     end)
 end
-
-
--- WAC aircraft compatibility (PatchEntity, ResolveAircraft, ResolveSeatIndex,
--- BindPassenger + the input wrapper and failsafe hooks) lives in its own module.
-
 
 -- ============================================================================
 -- MAIN RESTORATION FUNCTION
@@ -339,8 +248,6 @@ local function RestoreOperationalState(veh, op)
         pcall(veh.SetHandbrake, veh, op.handbrake == true)
     end
 
-    -- Render color + skin. Re-applied explicitly because some frameworks (Glide)
-    -- overwrite the duplicator's colour modifier with a randomized spawn color.
     if istable(op.color) and isfunction(veh.SetColor) then
         local c = Color(op.color.r or 255, op.color.g or 255, op.color.b or 255, op.color.a or 255)
         pcall(veh.SetColor, veh, c)
@@ -470,8 +377,6 @@ function RARELOAD.RestoreVehicles(savedInfo, requestingPlayer)
             StabilizeRestoredVehicle(ent, entityDefs[dupIndex] or entityDefs[tostring(dupIndex)])
             WAC.PatchEntity(ent)
 
-            -- Operational state (engine/lights/fuel) is applied on a short delay so
-            -- the framework has finished initializing its setters (Tier 3.2).
             local op = operationalStates[dupIndex] or operationalStates[tostring(dupIndex)]
             if op then
                 local target = ent
@@ -498,23 +403,15 @@ function RARELOAD.RestoreVehicles(savedInfo, requestingPlayer)
 end
 
 -- ============================================================================
--- SEAT DETECTION & RE-SEATING (DATA DRIVEN)
+-- SEAT DETECTION & RE-SEATING
 -- ============================================================================
 
----@param seat? Vehicle|Entity|any
----@param requireEmpty? boolean
----@return boolean
 local function ValidateSeat(seat, requireEmpty)
     if not IsValid(seat) then return false end
     if not isfunction(seat.IsVehicle) or not seat:IsVehicle() then return false end
     if requireEmpty and isfunction(seat.GetDriver) and IsValid(seat:GetDriver()) then return false end
     return true
 end
-
--- Collects every seat/pod belonging to a (root) vehicle, driver/gunner first,
--- across frameworks (methods, member tables, and the child graph).
----@param veh? Vehicle|Entity|any
----@return table<integer, Vehicle|Entity>
 local function EnumerateSeats(veh)
     local seats, seen = {}, {}
     local function add(s)
@@ -563,10 +460,6 @@ local function EnumerateSeats(veh)
     return seats
 end
 
--- The natural seat to drop a player into: the first empty seat, driver/gunner
--- first (that is the order EnumerateSeats yields them in).
----@param veh? Vehicle|Entity|any
----@return Vehicle|Entity|nil
 local function GetVehicleSeatToEnter(veh)
     if not IsValid(veh) then return nil end
     for _, s in ipairs(EnumerateSeats(veh)) do
@@ -575,9 +468,6 @@ local function GetVehicleSeatToEnter(veh)
     return nil
 end
 
----@param veh? Vehicle|Entity|any
----@param seatInfo? table
----@return Vehicle|Entity|nil, boolean
 local function FindSavedSeat(veh, seatInfo)
     if not IsValid(veh) then return nil, false end
     if not istable(seatInfo) then return GetVehicleSeatToEnter(veh), false end
@@ -639,9 +529,6 @@ function RARELOAD.RestorePlayerVehicle(ply, savedInfo)
 
     local debugEnabled = DebugState and DebugState.IsEnabledForPlayer and DebugState.IsEnabledForPlayer(ply)
 
-    -- Missing class short-circuit (Tier 1.2):
-    -- If the vehicle's class is no longer registered (e.g. uninstalled addon),
-    -- do not poll 35 times across 3.5s for something that cannot spawn.
     local targetClass = vehicleData.class
     if targetClass and RARELOAD.DataUtils and RARELOAD.DataUtils.IsClassSpawnable then
         if not RARELOAD.DataUtils.IsClassSpawnable(targetClass) then
@@ -696,16 +583,8 @@ function RARELOAD.RestorePlayerVehicle(ply, savedInfo)
 
         local vClass = string.lower(vehicle:GetClass() or "")
 
-        -- RACE CONDITION FIX:
-        -- WAC is extremely sensitive to networking delays. If the server puts the player
-        -- in the seat before the client has fully constructed the scripted entity,
-        -- the client's CalcView hooks crash trying to call missing methods (MovePlayerView).
         if string.find(vClass, "^wac_") then
-            -- 1. Ensure the server-side WAC entity has fully built its internal metatable
             if not isfunction(vehicle.receiveInput) then return false end
-
-            -- 2. Force a minimum 1.5 second delay (15 attempts * 0.1s) to guarantee
-            -- the client has received the entity and initialized its client-side functions.
             if attempts < 15 then return false end
         end
 
@@ -718,8 +597,6 @@ function RARELOAD.RestorePlayerVehicle(ply, savedInfo)
             return attempts >= maxAttempts
         end
 
-        -- WAC seats need their passenger tables/networked vars wired before the
-        -- player enters, or receiveInput throws. Handled entirely by WACCompat.
         local isWac = WAC.IsWACClass(vClass)
             or seat.wac_seatinfo ~= nil
             or (isfunction(seat.GetNWEntity) and IsValid(seat:GetNWEntity("wac_aircraft")))
@@ -727,8 +604,6 @@ function RARELOAD.RestorePlayerVehicle(ply, savedInfo)
             WAC.BindPassenger(vehicle, seat, ply)
         end
 
-        -- EnterVehicle fires the engine's PlayerEnteredVehicle hook itself; the
-        -- WACCompat failsafe is bound to it, so we must NOT run it again manually.
         ply:EnterVehicle(seat)
 
         if debugEnabled then
@@ -739,14 +614,13 @@ function RARELOAD.RestorePlayerVehicle(ply, savedInfo)
         return true
     end
 
-    -- Polling loop at 0.1s intervals gives frameworks and the network time to breathe
     timer.Create(timerName, 0.1, maxAttempts, function()
         if executeReseatAttempt() then timer.Remove(timerName) end
     end)
 end
 
 -- ============================================================================
--- PRE-CLEANUP MAP VEHICLE SAVING (Option 1)
+-- PRE-CLEANUP MAP VEHICLE SAVING
 -- ============================================================================
 
 hook.Add("PreCleanupMap", "RareloadSaveVehiclesBeforeCleanup", function()

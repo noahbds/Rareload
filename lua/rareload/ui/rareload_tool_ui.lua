@@ -1,8 +1,4 @@
--- Rareload TOOL UI widget library (client) — the spawnmenu tool config panel
--- (categories, toggles, sliders, buttons, dropdowns) and the toolgun screen.
--- Distinct from RARELOAD.UI (client/shared/cl_rareload_ui.lua), which styles the
--- Save Timeline / entity-viewer data panels. Widgets avoid per-frame Color/Matrix
--- allocations: paint hooks write into shared scratch colors instead.
+-- Rareload TOOL UI
 
 local RareloadToolUI = {}
 

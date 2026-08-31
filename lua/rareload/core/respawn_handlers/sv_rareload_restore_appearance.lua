@@ -7,7 +7,6 @@ function RARELOAD.RestoreAppearance(ply, app)
     if app.model then
         util.PrecacheModel(app.model)
         ply:SetModel(app.model)
-        -- Update the client's convar so their C-menu reflects the restored model
         ply:ConCommand("cl_playermodel " .. app.model)
     end
 
