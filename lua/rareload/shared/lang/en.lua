@@ -66,7 +66,7 @@ return {
     ["cpanel.keep_map_npcs"] = "Keep Map NPCs",
     ["cpanel.keep_map_npcs.tip"] = "Restore NPCs on respawn",
     ["cpanel.keep_vehicles"] = "Keep Vehicles",
-    ["cpanel.keep_vehicles.tip"] = "Respawn your saved vehicles (drivable). Needs the Save Vehicles permission.",
+    ["cpanel.keep_vehicles.tip"] = "Respawn your saved vehicles (drivable).",
     ["cpanel.reseat_in_vehicule"] = "Keep Vehicle Seat",
     ["cpanel.reseat_in_vehicule.tip"] = "Put you back in the vehicle you were driving when you saved.",
     ["cpanel.auto_overwrite"] = "Overwrite Moved on Save",

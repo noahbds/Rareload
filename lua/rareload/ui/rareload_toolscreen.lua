@@ -212,18 +212,57 @@ local function getProgressColor(progress)
     end
 end
 
+-- Overshoot ease: pops slightly past full size, then settles. Snappier entrance.
+local function easeOutBack(t)
+    t = math.Clamp(t, 0, 1)
+    local c1, c3 = 1.70158, 2.70158
+    return 1 + c3 * (t - 1) ^ 3 + c1 * (t - 1) ^ 2
+end
+
+-- Thin circle outline (DrawCircle is filled) — used for the entrance "ping" ring.
+local function drawRing(x, y, radius, color)
+    surface.SetDrawColor(color.r, color.g, color.b, color.a or 255)
+    local segs = 44
+    local px, py = x + radius, y
+    for i = 1, segs do
+        local a = (i / segs) * math.pi * 2
+        local nx, ny = x + math.cos(a) * radius, y + math.sin(a) * radius
+        surface.DrawLine(px, py, nx, ny)
+        px, py = nx, ny
+    end
+end
+
+-- Decaying horizontal shake for the "denied" states (X / lock), gone by ~half the entrance.
+local function shakeOffset(animProgress, amp)
+    if animProgress >= 0.55 then return 0 end
+    local t = animProgress / 0.55
+    return math.sin(t * math.pi * 6) * amp * (1 - t)
+end
+
 -- Draw the glowing circular backdrop shared by the status/permission icons. Returns bgSize.
 local function drawIconCircle(x, y, size, bgColor, alpha, animProgress)
-    local bgSize = size * math.min(1, animProgress * 1.3)
     draw.NoTexture()
 
-    surface.SetDrawColor(bgColor.r, bgColor.g, bgColor.b, alpha * 0.3)
-    RareloadToolUI.DrawCircle(x, y, bgSize + 4, 40)
-    RareloadToolUI.DrawCircle(x, y, bgSize + 4, 40, Color(bgColor.r, bgColor.g, bgColor.b, alpha * 0.3))
+    -- Snappy pop-in with a slight overshoot over the first part of the entrance.
+    local bgSize = size * easeOutBack(animProgress / 0.55)
 
-    surface.SetDrawColor(bgColor.r, bgColor.g, bgColor.b, alpha)
-    RareloadToolUI.DrawCircle(x, y, bgSize, 40)
-    RareloadToolUI.DrawCircle(x, y, bgSize, 40, Color(bgColor.r, bgColor.g, bgColor.b, alpha))
+    -- Breathing halo once settled, so the badge has life instead of sitting static.
+    local settle = math.Clamp((animProgress - 0.5) / 0.5, 0, 1)
+    if settle > 0 then
+        local breathe = 0.5 + 0.5 * math.sin(CurTime() * 3.2)
+        RareloadToolUI.DrawCircle(x, y, bgSize + 8 + breathe * 5, 44,
+            Color(bgColor.r, bgColor.g, bgColor.b, alpha * 0.10 * settle * breathe))
+    end
+
+    -- Soft outer glow + main disc.
+    RareloadToolUI.DrawCircle(x, y, bgSize + 4, 44, Color(bgColor.r, bgColor.g, bgColor.b, alpha * 0.3))
+    RareloadToolUI.DrawCircle(x, y, bgSize, 44, Color(bgColor.r, bgColor.g, bgColor.b, alpha))
+
+    -- Expanding burst ring on entrance (a quick "ping").
+    if animProgress < 0.65 then
+        local rp = animProgress / 0.65
+        drawRing(x, y, size * (0.9 + rp * 1.1), Color(bgColor.r, bgColor.g, bgColor.b, alpha * (1 - rp) * 0.6))
+    end
 
     return bgSize
 end
@@ -244,6 +283,9 @@ end
 
 local function drawStatusEmoji(x, y, size, isSuccess, alpha, animProgress)
     animProgress = animProgress or 1
+
+    -- The failure state gets a short "denied" shake; success settles cleanly.
+    if not isSuccess then x = x + shakeOffset(animProgress, size * 0.09) end
 
     local bgColor = isSuccess and TOOL_UI.COLORS.EMOJI.DATA_FOUND or TOOL_UI.COLORS.EMOJI.NO_DATA
     local bgSize = drawIconCircle(x, y, size, bgColor, alpha, animProgress)
@@ -433,6 +475,9 @@ end
 
 local function drawPermissionIcon(x, y, size, alpha, animProgress)
     animProgress = animProgress or 1
+
+    -- Denied wiggle on the lock as it pops in.
+    x = x + shakeOffset(animProgress, size * 0.07)
 
     local bgColor = TOOL_UI.COLORS.EMOJI.NO_PERMISSION
     local bgSize = drawIconCircle(x, y, size, bgColor, alpha, animProgress)

@@ -62,6 +62,8 @@ end
 function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     opts = opts or {}
     if not IsValid(ply) then return false, "invalid player" end
+    -- Gate the whole save (covers the command, the tool, and auto-save).
+    if not RARELOAD.CheckPermission(ply, "SAVE_POSITION") then return false, "no permission" end
     local silent = opts.silent or false
 
     EnsureFolderExists()
@@ -73,7 +75,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     local newActiveWeapon = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or "None"
     local newInventory = save_inventory(ply)
 
-    if RARELOAD.GetPlayerSetting(ply, "retainGlobalInventory") then
+    if RARELOAD.GetPlayerSetting(ply, "retainGlobalInventory") and RARELOAD.CheckPermission(ply, "GLOBAL_INVENTORY") then
         local globalInventory = {}
         for _, weapon in ipairs(ply:GetWeapons()) do
             table.insert(globalInventory, weapon:GetClass())
@@ -135,12 +137,12 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         ang = newAng,
         moveType = ply:GetMoveType(),
         playermodel = ply:GetModel(), -- Legacy fallback
-        appearance = save_appearance(ply),
+        appearance = RARELOAD.CheckPermission(ply, "SAVE_APPEARANCE") and save_appearance(ply) or nil,
         activeWeapon = newActiveWeapon,
-        inventory = newInventory,
+        inventory = RARELOAD.CheckPermission(ply, "SAVE_INVENTORY") and newInventory or nil,
     }
 
-    if RARELOAD.GetPlayerSetting(ply, "retainPlayerStates") then
+    if RARELOAD.GetPlayerSetting(ply, "retainPlayerStates") and RARELOAD.CheckPermission(ply, "SAVE_STATES") then
         playerData.playerStates = {
             godmode = ply:HasGodMode(),
             notarget = ply:IsFlagSet(FL_NOTARGET),
@@ -162,12 +164,12 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         end
     end
 
-    if RARELOAD.GetPlayerSetting(ply, "retainHealthArmor") then
+    if RARELOAD.GetPlayerSetting(ply, "retainHealthArmor") and RARELOAD.CheckPermission(ply, "SAVE_HEALTH_ARMOR") then
         playerData.health = ply:Health()
         playerData.armor = ply:Armor()
     end
 
-    if RARELOAD.GetPlayerSetting(ply, "retainAmmo") then
+    if RARELOAD.GetPlayerSetting(ply, "retainAmmo") and RARELOAD.CheckPermission(ply, "SAVE_AMMO") then
         playerData.ammo = save_ammo(ply, newInventory)
     end
 

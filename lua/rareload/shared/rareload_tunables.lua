@@ -205,7 +205,7 @@ if SERVER then
 
     net.Receive("RareloadUpdateTunable", function(_, ply)
         if not IsValid(ply) then return end
-        if RARELOAD.CheckPermission and not RARELOAD.CheckPermission(ply, "ADMIN_PANEL") then
+        if RARELOAD.CheckPermission and not RARELOAD.CheckPermission(ply, "RARELOAD_TOGGLE") then
             print("[RARELOAD] " .. ply:Nick() .. " tried to change a parameter without permission.")
             return
         end
