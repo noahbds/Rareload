@@ -1,5 +1,7 @@
 local SS = SED.Require("Shared", "rareload/client/saved_entity_display/SED_shared.lua")
 
+local EMPTY_GROUPS      = {} -- shared read-only placeholder for frames with nothing to group
+
 local queueItemPool     = {}
 local queueItemPoolSize = 0
 local queueList         = {}
@@ -37,8 +39,12 @@ local function GetRenderData()
     else
         rdata = {}
         rdata.fn = function()
-            SED.DrawSavedPanel(rdata.ent, rdata.saved, rdata.isNPC, rdata.renderParams, rdata.distSqr,
-                rdata.liveEnt, rdata.stackIndex)
+            if rdata.group then
+                SED.DrawPile(rdata.group)
+            else
+                SED.DrawSavedPanel(rdata.ent, rdata.saved, rdata.isNPC, rdata.renderParams, rdata.distSqr,
+                    rdata.liveEnt)
+            end
         end
     end
     return rdata
@@ -51,18 +57,13 @@ local function RecycleRenderData()
         rdata.saved                      = nil
         rdata.renderParams               = nil
         rdata.liveEnt                    = nil
-        rdata.stackIndex                 = nil
+        rdata.group                      = nil
         sedRenderPoolSize                = sedRenderPoolSize + 1
         sedRenderPool[sedRenderPoolSize] = rdata
         sedActiveRender[i]               = nil
     end
     sedActiveCount = 0
 end
-
-local BOOTSTRAP_W = 520
-local BOOTSTRAP_H = 280
-
-local math_sqrt = math.sqrt
 
 local function SortQueue(a, b)
     if not a then return false end
@@ -71,34 +72,13 @@ local function SortQueue(a, b)
     return a.priority < b.priority
 end
 
-local function PanelAnchorZ(rp, posZ, eyeZ)
-    local sizeZ  = (rp and rp.size and rp.size.z) or 80
-    local band   = math.max(SED.PANEL_EYE_BAND or 150, sizeZ)
-    local center = posZ + sizeZ * 0.5
-    return math.Clamp(eyeZ, center - band, center + band)
-end
-
-local function IsAimingEstimatedPanel(ent, renderParams, eyePos, eyeForward)
-    if not IsValid(ent) then return false, nil end
-
-    local panelCenter  = SS.PanelAimPos(ent, renderParams, eyePos)
-    local toPanel      = panelCenter - eyePos
-    local panelDistSqr = toPanel:LengthSqr()
-    if panelDistSqr < 1 then return false, nil end
-
-    local distance = math.sqrt(panelDistSqr)
-    local estW     = BOOTSTRAP_W
-    local scale    = SS.PanelScale(renderParams, distance, estW)
-    local ang      = SS.FacingAngle(toPanel)
-
-    local hit      = SS.PanelHitTest(panelCenter, ang, scale, estW, BOOTSTRAP_H, eyePos, eyeForward)
-    return hit, panelDistSqr
-end
-
-local function CollectObjectPhantoms(eyePos, eyeForward, listCount, liveByID)
+-- Collect within draw distance only (NO view-cone cull here): grouping must see every nearby
+-- member regardless of where the player looks, otherwise a member whose group-partner is behind
+-- the camera would fall out of the group and leak back as a lone panel. The whole group is
+-- view-culled later, at enqueue.
+local function CollectObjectPhantoms(eyePos, listCount, liveByID)
     local CalcParams        = SED.CalculateEntityRenderParams
     local DRAW_DISTANCE_SQR = SED.DRAW_DISTANCE_SQR
-    local CULL_VIEW_CONE    = SED.CULL_VIEW_CONE
 
     for id, data in pairs(SED.ObjectPhantoms or {}) do
         local phantom = data.phantom
@@ -111,8 +91,7 @@ local function CollectObjectPhantoms(eyePos, eyeForward, listCount, liveByID)
                 local renderParams = CalcParams(phantom)
                 local maxDistSqr   = renderParams and renderParams.drawDistanceSqr or DRAW_DISTANCE_SQR
 
-                if distSqr <= maxDistSqr and
-                    (not CULL_VIEW_CONE or SS.CullFOV(entPos, eyePos, eyeForward, distSqr)) then
+                if distSqr <= maxDistSqr then
                     listCount            = listCount + 1
                     local item           = GetQueueItem()
                     item.ent             = phantom
@@ -149,7 +128,7 @@ function SED.QueueAllSavedPanels()
 
     local liveByID = SS.BuildLiveByID()
 
-    listCount = CollectObjectPhantoms(eyePos, eyeForward, listCount, liveByID)
+    listCount = CollectObjectPhantoms(eyePos, listCount, liveByID)
 
     local PHANTOM_SAVED = SED.PhantomSavedRecords or {}
     for phantom, steamID in pairs(SED.TrackedPhantoms or {}) do
@@ -161,8 +140,7 @@ function SED.QueueAllSavedPanels()
                 local renderParams = SED.CalculateEntityRenderParams(phantom)
                 local maxDistSqr   = renderParams and renderParams.drawDistanceSqr or SED.DRAW_DISTANCE_SQR
 
-                if distSqr <= maxDistSqr and
-                    (not SED.CULL_VIEW_CONE or SS.CullFOV(entPos, eyePos, eyeForward, distSqr)) then
+                if distSqr <= maxDistSqr then
                     listCount            = listCount + 1
                     local item           = GetQueueItem()
                     item.ent             = phantom
@@ -205,85 +183,55 @@ function SED.QueueAllSavedPanels()
         end
     end
 
-    if listCount == 0 then return end
-
-    if not SED.InteractionState.active then
-        local distThresholdSqr = SED.INTERACT_DIST_SQR
-        local efx, efy, efz = eyeForward.x, eyeForward.y, eyeForward.z
-        local epx, epy, epz = eyePos.x, eyePos.y, eyePos.z
-
-        local bestIdx, bestCos = nil, 0.5
-        for i = 1, listCount do
-            local item = queueList[i]
-            if item then
-                local p = item.pos
-                local dx = p.x - epx
-                local dy = p.y - epy
-                local dz = PanelAnchorZ(item.renderParams, p.z, epz) - epz
-                local len2 = dx * dx + dy * dy + dz * dz
-                if len2 > 1 then
-                    local d = dx * efx + dy * efy + dz * efz
-                    if d > 0 then
-                        local cos = d / math_sqrt(len2)
-                        if cos > bestCos then bestCos = cos; bestIdx = i end
-                    end
-                end
-            end
-        end
-
-        if bestIdx then
-            local item = queueList[bestIdx]
-            local hit, panelDistSqr = IsAimingEstimatedPanel(item.ent, item.renderParams, eyePos, eyeForward)
-            if hit and panelDistSqr and panelDistSqr < distThresholdSqr then
-                local saved = item.saved
-                if saved then
-                    SED.CandidateEnt   = item.ent
-                    SED.CandidateIsNPC = item.isNPC
-                    SED.CandidateID    = saved.id or saved.RareloadNPCID or saved.RareloadEntityID or
-                        saved.RareloadID or
-                        ((saved.class or saved.Class or saved.ClassName or "unknown") .. "?")
-                end
-            end
-        end
+    if listCount == 0 then
+        SED.ActiveGroups = EMPTY_GROUPS
+        return
     end
 
     table.sort(queueList, SortQueue)
 
     local maxQueue = math.min(listCount, SED.MAX_DRAW_PER_FRAME)
 
-    local clusterSqr = (SED.PANEL_CLUSTER_DIST or 150) ^ 2
-    for i = 1, maxQueue do
-        local item = queueList[i]
-        local stack = 0
-        local p = item.pos
-        for j = 1, i - 1 do
-            local b = queueList[j]
-            local dx, dy = p.x - b.pos.x, p.y - b.pos.y
-            if (dx * dx + dy * dy) < clusterSqr then
-                local bs = (b.stackIndex or 0) + 1
-                if bs > stack then stack = bs end
-            end
-        end
-        item.stackIndex = stack
+    -- Cluster close saves into piles (each pile is one aim target); lone saves stay single panels.
+    local groups     = SED.GroupQueue(queueList, maxQueue)
+    SED.ActiveGroups = groups
+
+    -- Anchor each pile on the member the player is looking at (not just the nearest), so it renders
+    -- where they face. During interaction the view is locked, so this resolves to a stable anchor.
+    SED.ResolveGroupAnchors(groups, eyePos, eyeForward)
+
+    -- Pick the pile under the crosshair (skipped while already inspecting one).
+    if not SED.InteractionState.active then
+        SED.SelectCandidateGroup(groups, eyePos, eyeForward)
     end
 
-    for i = 1, maxQueue do
-        local item = queueList[i]
-        if item then
-            local rdata                     = GetRenderData()
-            rdata.ent                       = item.ent
-            rdata.saved                     = item.saved
-            rdata.isNPC                     = item.isNPC
-            rdata.renderParams              = item.renderParams
-            rdata.distSqr                   = item.distSqr
-            rdata.liveEnt                   = item.liveEnt
-            rdata.stackIndex                = item.stackIndex
-            rdata.opts                      = rdata.opts or { skipCull = true, distSqr = 0 }
-            rdata.opts.distSqr              = item.distSqr
+    for g = 1, #groups do
+        local grp    = groups[g]
+        local anchor = grp.anchorItem
+
+        -- View-cull the WHOLE group on its anchor (the nearest member). Collection no longer FOV-
+        -- culls, so this is where off-screen groups are dropped -- and because a group is culled as
+        -- a unit, a grouped member never leaks back as a lone panel when a partner is behind you.
+        if not SED.CULL_VIEW_CONE or SS.CullFOV(anchor.pos, eyePos, eyeForward, anchor.distSqr) then
+            local rdata        = GetRenderData()
+            rdata.opts         = rdata.opts or { skipCull = true, distSqr = 0 }
+            rdata.opts.distSqr = anchor.distSqr
+
+            if #grp.members > 1 then
+                rdata.group = grp
+            else
+                rdata.group        = nil
+                rdata.ent          = anchor.ent
+                rdata.saved        = anchor.saved
+                rdata.isNPC        = anchor.isNPC
+                rdata.renderParams = anchor.renderParams
+                rdata.distSqr      = anchor.distSqr
+                rdata.liveEnt      = anchor.liveEnt
+            end
 
             sedActiveCount                  = sedActiveCount + 1
             sedActiveRender[sedActiveCount] = rdata
-            RARELOAD.DepthRenderer.AddRenderItem(item.pos, rdata.fn, "entity", rdata.opts)
+            RARELOAD.DepthRenderer.AddRenderItem(anchor.pos, rdata.fn, "entity", rdata.opts)
         end
     end
 end

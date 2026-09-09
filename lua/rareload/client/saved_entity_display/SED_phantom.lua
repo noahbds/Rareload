@@ -131,7 +131,7 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         if savedInfo.inventory and #savedInfo.inventory > 0 then addItem(L("sed.phantom.item.inventory")) end
         if savedInfo.ammo then addItem(L("sed.phantom.item.ammo")) end
         if savedInfo.playerStates then addItem(L("sed.phantom.item.states")) end
-        if savedInfo.vehicleState and savedInfo.vehicleState.savedInVehicle then addItem(L("sed.phantom.item.vehicle_state")) end
+        if savedInfo.vehicleState and savedInfo.vehicleState.savedInVehicle then addItem(L("sed.phantom.item.reseat_in_vehicule")) end
 
         local entS = SnapshotUtils.GetSummary(savedInfo.entities, { category = "entity" }) or {}
         local npcS = SnapshotUtils.GetSummary(savedInfo.npcs, { category = "npc" }) or {}
@@ -405,20 +405,21 @@ end
 
 local PLAYER_PHANTOM_CULL_SQR = 10000 * 10000
 
-local function EnsurePlayerPhantom(steamID, savedInfo)
-    local existing = SED.PlayerPhantoms[steamID]
-    if existing and IsValid(existing.phantom) then return existing end
-
+-- Build the clientside player-phantom model from a savedInfo — model, yaw-only angle (the saved
+-- angle is the eye/aim angle, whose pitch/roll would tilt the standing model), appearance, and a
+-- seated pose when the player was in a vehicle — WITHOUT storing it. Shared so the History preview
+-- renders the same phantom as the debug display. Starts hidden; the caller reveals/tints it.
+-- Returns the phantom, or nil.
+function Phantom.CreatePlayerModel(savedInfo, fallbackModel)
+    if not istable(savedInfo) then return nil end
     local pos = RARELOAD.DataUtils.ToVector(savedInfo.pos)
     if not pos then return nil end
 
-    local model = (savedInfo.appearance and savedInfo.appearance.model) or savedInfo.playermodel
-    if not model or model == "" then
-        local owner = player.GetBySteamID(steamID)
-        model = IsValid(owner) and owner:GetModel() or "models/player/kleiner.mdl"
-    end
+    local model = (savedInfo.appearance and savedInfo.appearance.model) or savedInfo.playermodel or fallbackModel
+    if not model or model == "" then model = "models/player/kleiner.mdl" end
+    util.PrecacheModel(model)
 
-    local ang = RARELOAD.DataUtils.ToAngle(savedInfo.ang)
+    local ang     = RARELOAD.DataUtils.ToAngle(savedInfo.ang) or Angle(0, 0, 0)
     local phantom = SS.MakePhantomModel(model, pos, Angle(0, ang.y, 0))
     if not phantom then return nil end
 
@@ -460,7 +461,20 @@ local function EnsurePlayerPhantom(steamID, savedInfo)
         end
     end
 
-    local data = { phantom = phantom, steamID = steamID, pos = pos, ang = ang, model = model }
+    return phantom
+end
+
+local function EnsurePlayerPhantom(steamID, savedInfo)
+    local existing = SED.PlayerPhantoms[steamID]
+    if existing and IsValid(existing.phantom) then return existing end
+
+    local owner    = player.GetBySteamID(steamID)
+    local fallback = IsValid(owner) and owner:GetModel() or "models/player/kleiner.mdl"
+    local phantom  = Phantom.CreatePlayerModel(savedInfo, fallback)
+    if not phantom then return nil end
+
+    local ang  = RARELOAD.DataUtils.ToAngle(savedInfo.ang) or Angle(0, 0, 0)
+    local data = { phantom = phantom, steamID = steamID, pos = phantom:GetPos(), ang = ang, model = phantom:GetModel() }
     SED.PlayerPhantoms[steamID] = data
     return data
 end

@@ -51,6 +51,7 @@ function SED.EnterInteraction(ent, isNPC, id, options)
     SED.InteractionState.onPageChange = options and options.onPageChange or nil
     SED.InteractionState.phantom = options and options.phantom or nil
     SED.InteractionState.steamID = options and options.steamID or nil
+    SED.InteractionState.pileKey = options and options.pileKey or nil
     SED.lpCache = SED.lpCache or LocalPlayer()
     if IsValid(SED.lpCache) then
         SED.InteractionState.lockAng = SED.lpCache:EyeAngles()
@@ -71,14 +72,78 @@ function SED.LeaveInteraction()
     SED.InteractionState.onPageChange = nil
     SED.InteractionState.phantom = nil
     SED.InteractionState.steamID = nil
+    SED.InteractionState.pileKey = nil
+    SED.FocusedPileMulti = false
     SED.LeaveTime = CurTime()
     if IsValid(SED.lpCache) then
         SED.lpCache:DrawViewModel(true)
     end
 end
 
+-- While inspecting a pile, resolve the current-frame group, apply a Left/Right flip, start the
+-- swap animation, and keep the interaction pointed at the active card so all the per-card
+-- controls (tabs / scroll / highlight) operate on whatever is showing.
+function SED.UpdateFocusedPile()
+    SED.FocusedPileMulti = false
+    local key = SED.InteractionState.pileKey
+    if not key or not SED.FindGroup then return end
+
+    local group = SED.FindGroup(key, SED.InteractionState.id)
+    if not group or #group.members < 2 then return end
+
+    SED.FocusedPileMulti         = true
+    SED.InteractionState.pileKey = group.key -- re-sync if the pile was re-keyed
+
+    local st = SED.PileState[group.key]
+    if not st then st = { active = 1 }; SED.PileState[group.key] = st end
+    local n = #group.members
+    if st.active > n or st.active < 1 then st.active = 1 end
+
+    -- Point the deck at whatever card the interaction is actually on (reconciles the enter frame,
+    -- where the player may have entered on a card the idle deck hadn't switched to yet).
+    if group.members[st.active] and group.members[st.active].id ~= SED.InteractionState.id then
+        for i = 1, n do
+            if group.members[i].id == SED.InteractionState.id then st.active = i; break end
+        end
+    end
+
+    -- Left / Right arrows flip between the stacked cards (debounced by SED.KeyPressed).
+    local flip = 0
+    if SED.KeyPressed(KEY_RIGHT) then flip = flip + 1 end
+    if SED.KeyPressed(KEY_LEFT) then flip = flip - 1 end
+    if flip ~= 0 then
+        local old    = st.active
+        local newIdx = ((old - 1 + flip) % n) + 1
+        if newIdx ~= old then
+            local oldMember = group.members[old]
+            st.active = newIdx
+            st.anim   = {
+                from = oldMember and {
+                    id           = oldMember.id,
+                    ent          = oldMember.ent,
+                    saved        = oldMember.saved,
+                    isNPC        = oldMember.isNPC,
+                    renderParams = oldMember.renderParams,
+                    liveEnt      = oldMember.liveEnt,
+                } or nil,
+                t0  = CurTime(),
+                dir = flip > 0 and 1 or -1,
+            }
+        end
+    end
+
+    local m = group.members[st.active]
+    if m then
+        SED.InteractionState.ent   = m.ent
+        SED.InteractionState.isNPC = m.isNPC
+        SED.InteractionState.id    = m.id
+    end
+end
+
 function SED.HandleInteractionInput()
     if SED.InteractionState.active then
+        SED.UpdateFocusedPile()
+
         local ent = SED.InteractionState.ent
         if not IsValid(ent) then
             SED.LeaveInteraction()
@@ -205,9 +270,13 @@ function SED.HandleInteractionInput()
                 scrollTable[panelID .. "_" .. cache.activeCat] = 0
             end
 
+            -- Left/Right scroll the content, except on a multi-card pile where they flip cards
+            -- (handled in SED.UpdateFocusedPile); the mouse wheel scrolls content in either case.
             local scrollDelta = SED.ScrollDelta
-            if input.IsKeyDown(KEY_LEFT) then scrollDelta = scrollDelta - SED.SCROLL_SPEED end
-            if input.IsKeyDown(KEY_RIGHT) then scrollDelta = scrollDelta + SED.SCROLL_SPEED end
+            if not SED.FocusedPileMulti then
+                if input.IsKeyDown(KEY_LEFT) then scrollDelta = scrollDelta - SED.SCROLL_SPEED end
+                if input.IsKeyDown(KEY_RIGHT) then scrollDelta = scrollDelta + SED.SCROLL_SPEED end
+            end
 
             if scrollDelta ~= 0 then
                 local scrollKey = panelID .. "_" .. cache.activeCat
@@ -241,7 +310,9 @@ function SED.HandleInteractionInput()
         end
     else
         if SED.CandidateEnt and SED.KeyPressed(SED.INTERACT_KEY) and SED.InteractModifierDown() and not SED.PlayerIsHoldingSomething() then
-            SED.EnterInteraction(SED.CandidateEnt, SED.CandidateIsNPC, SED.CandidateID)
+            local g = SED.CandidateGroup
+            SED.EnterInteraction(SED.CandidateEnt, SED.CandidateIsNPC, SED.CandidateID,
+                g and { pileKey = g.key } or nil)
         end
     end
 end

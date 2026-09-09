@@ -13,7 +13,6 @@ end
 local VALUE_COLOR = RS.VALUE_COLOR
 local surface_SetFont = RS.surface_SetFont
 local surface_GetTextSize = RS.surface_GetTextSize
-local math_sqrt = RS.math_sqrt
 local math_max = RS.math_max
 local math_min = RS.math_min
 local math_Clamp = RS.math_Clamp
@@ -243,7 +242,7 @@ local function RebuildLayout(cache, lines, categories, activeCat, scrollTable, s
     }
 end
 
-function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, precomputedDistSqr, liveEnt, stackIndex)
+function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, precomputedDistSqr, liveEnt)
     if not (IsValid(ent) and saved) then return nil end
 
     SED.lpCache = SED.lpCache or LocalPlayer()
@@ -377,7 +376,8 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
 
         local bakeSig = panelID .. "|" .. (cache._gen or 0) .. "|" .. activeCat .. "|" .. scroll ..
             (isLiveTab and ("|g" .. liveGen) or "") .. "|" ..
-            math_floor(width) .. "x" .. math_floor(panelHeight)
+            math_floor(width) .. "x" .. math_floor(panelHeight) ..
+            (saved._isHistPreview and (saved._histPreviewSame and "|hpS" or "|hp") or "")
 
         ctx = ctx or {}
         cache._ctx = ctx
@@ -419,27 +419,10 @@ function SED.PanelRendererBuildContext(ent, saved, isNPC, precomputedParams, pre
     ctx.saved  = saved
     ctx.eyePos = eyePos
 
-    local panelHeight = ctx.panelHeight
-    local distance = math_sqrt(distSqr)
-    local scale = SS.PanelScale(renderParams, distance, ctx.width)
-    local frameHeightWorldUnits = panelHeight * scale
-    local obbCenterLocal = (renderParams.obbMin + renderParams.obbMax) * 0.5
-    local worldCenter = ent.LocalToWorld and ent:LocalToWorld(obbCenterLocal) or pos
-    local band = math_max(SED.PANEL_EYE_BAND or 150, (renderParams.size and renderParams.size.z) or 80)
-    local baseZ = math_Clamp(eyePos.z, worldCenter.z - band, worldCenter.z + band)
-    baseZ = baseZ + (stackIndex or 0) * (frameHeightWorldUnits + 6)
-
-    local horiz = Vector(worldCenter.x - eyePos.x, worldCenter.y - eyePos.y, 0)
-    if horiz:LengthSqr() < 1e-4 then horiz = Vector(1, 0, 0) end
-    horiz:Normalize()
-    local outwardAmount = math_Clamp(renderParams.maxDimension * 0.35, 24, 400)
-    local drawPos = Vector(worldCenter.x, worldCenter.y, baseZ) - horiz * outwardAmount
-
-    local toPanel = drawPos - eyePos
-    if toPanel:Length() < 10 then drawPos = eyePos + toPanel:GetNormalized() * 50 end
+    local drawPos, ang, scale = SS.ComputePlacement(ent, renderParams, eyePos, distSqr, ctx.width)
 
     ctx.drawPos = drawPos
-    ctx.ang     = SS.FacingAngle(drawPos - eyePos)
+    ctx.ang     = ang
     ctx.scale   = scale
 
     return ctx

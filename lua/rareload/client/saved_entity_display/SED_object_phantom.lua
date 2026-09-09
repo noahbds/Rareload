@@ -53,18 +53,24 @@ local function RemovePhantomEntry(data)
     end
 end
 
-local function EnsurePhantom(id, rec, isNPC)
-    local existing = SED.ObjectPhantoms[id]
-    if existing and IsValid(existing.phantom) then return existing end
-
-    local pos = RARELOAD.DataUtils.ToVector(rec.pos)
+-- Build the clientside phantom model for a saved record — model, angle (via DataUtils.ToAngle,
+-- which parses every stored format), skin, bodygroups and sub-models — WITHOUT storing it. Shared
+-- so the History preview renders identical phantoms to the debug display instead of reimplementing
+-- spawning. The phantom starts hidden (MakePhantomModel); the caller reveals/tints it.
+-- Returns phantom, subPhantoms, pos, ang.
+function ObjectPhantom.CreateModel(rec)
+    if not istable(rec) then return nil end
+    local pos = RARELOAD.DataUtils.ToVector(rec.pos or rec.Pos)
     if not pos then return nil end
 
-    local ang = RARELOAD.DataUtils.ToAngle(rec.ang)
-    local phantom = SS.MakePhantomModel(rec.model, pos, ang)
+    local ang     = RARELOAD.DataUtils.ToAngle(rec.ang or rec.Angle or rec.Ang) or Angle(0, 0, 0)
+    local model   = rec.model or rec.Model
+    if isstring(model) and model ~= "" then util.PrecacheModel(model) end
+    local phantom = SS.MakePhantomModel(model, pos, ang)
     if not phantom then return nil end
 
-    if rec.skin then phantom:SetSkin(rec.skin) end
+    local skin = rec.skin or rec.Skin
+    if skin then phantom:SetSkin(skin) end
     if rec.material and rec.material ~= "" then phantom:SetMaterial(rec.material) end
     if rec.bodygroups and istable(rec.bodygroups) then
         for bgId, val in pairs(rec.bodygroups) do
@@ -74,6 +80,15 @@ local function EnsurePhantom(id, rec, isNPC)
     end
 
     local subPhantoms = SS.AttachSubModels(phantom, rec)
+    return phantom, subPhantoms, pos, ang
+end
+
+local function EnsurePhantom(id, rec, isNPC)
+    local existing = SED.ObjectPhantoms[id]
+    if existing and IsValid(existing.phantom) then return existing end
+
+    local phantom, subPhantoms, pos, ang = ObjectPhantom.CreateModel(rec)
+    if not phantom then return nil end
 
     local data = {
         phantom     = phantom,
@@ -83,7 +98,7 @@ local function EnsurePhantom(id, rec, isNPC)
         pos         = pos,
         ang         = ang,
         class       = rec.class,
-        model       = rec.model,
+        model       = rec.model or rec.Model,
     }
     SED.ObjectPhantoms[id] = data
     return data

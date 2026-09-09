@@ -64,6 +64,7 @@ end)
 
 hook.Add("PlayerBindPress", "RARELOAD_InteractScroll", function(ply, bind, pressed)
     if not SED.InteractionState.active or not pressed then return end
+    -- The wheel scrolls the active card's content (pile cards are flipped with ◄ ►).
     if bind == "invprev" then
         SED.ScrollDelta = SED.ScrollDelta - SED.SCROLL_SPEED
         return true
@@ -93,6 +94,7 @@ hook.Add("PostDrawOpaqueRenderables", "Rareload_QueueSavedEntitiesAndNPCs", func
     if not IsValid(SED.lpCache) then return end
 
     SED.CandidateEnt, SED.CandidateIsNPC, SED.CandidateID = nil, nil, nil
+    SED.CandidateGroup = nil
 
     -- Only inject the live-position player phantoms for the debug display, not the preview.
     if SS.DebugEnabled() and SED.Phantom and SED.Phantom.InjectTracked then

@@ -100,6 +100,32 @@ function SS.PanelAimPos(ent, renderParams, eyePos)
     return closestWorld + dirToEye * 12
 end
 
+-- Where a panel is drawn for `ent`: proportional world scale, clamped into the eye band, pulled
+-- off the entity toward the player so it doesn't clip the model, and turned to face the player.
+-- The pull is capped so it never drags the panel nearer than PANEL_MIN_STANDOFF — big vehicles
+-- used to shove the panel right into the camera. A pile anchors here on its nearest member, so
+-- pile and lone panels sit identically. Returns drawPos, facing angle, scale.
+function SS.ComputePlacement(ent, renderParams, eyePos, distSqr, panelWidth)
+    local scale          = SS.PanelScale(renderParams, math.sqrt(distSqr), panelWidth)
+    local obbCenterLocal = (renderParams.obbMin + renderParams.obbMax) * 0.5
+    local pos            = ent:GetPos()
+    local worldCenter    = ent.LocalToWorld and ent:LocalToWorld(obbCenterLocal) or pos
+    local band           = math.max(SED.PANEL_EYE_BAND or 150, (renderParams.size and renderParams.size.z) or 80)
+    local baseZ          = math.Clamp(eyePos.z, worldCenter.z - band, worldCenter.z + band)
+
+    -- Horizontal direction from the entity toward the player.
+    local dx, dy = eyePos.x - worldCenter.x, eyePos.y - worldCenter.y
+    local dist   = math.sqrt(dx * dx + dy * dy)
+    local dirx, diry = (dist > 1) and (dx / dist) or 1, (dist > 1) and (dy / dist) or 0
+
+    local pull      = math.Clamp(renderParams.maxDimension * 0.35, 24, 400)
+    local minStand  = math.min(SED.PANEL_MIN_STANDOFF or 160, dist)
+    local panelDist = math.Clamp(dist - pull, minStand, dist) -- distance from the eye to the panel
+    local drawPos   = Vector(eyePos.x - dirx * panelDist, eyePos.y - diry * panelDist, baseZ)
+
+    return drawPos, SS.FacingAngle(drawPos - eyePos), scale
+end
+
 function SS.PanelHitTest(panelCenter, ang, scale, panelW, panelH, eyePos, eyeForward)
     local panelNormal = (panelCenter - eyePos):GetNormalized()
     local denom       = eyeForward:Dot(panelNormal)

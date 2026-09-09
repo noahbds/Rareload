@@ -128,6 +128,33 @@ local function DrawContent(ctx, ox, oy)
     subtitle = clipTextToWidth(subtitle, subtitleMaxW)
     draw_SimpleText(subtitle, "Trebuchet18", ox + 12, oy + 30, MINI_TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
 
+    -- History-preview marker: a tick badge after the id. Green "still in world" when this saved
+    -- object is a live entity the player kept across saves, cyan "preview" otherwise.
+    if saved._isHistPreview then
+        local persists = saved._histPreviewSame == true
+        local label    = persists and L("sed.preview_persists") or L("sed.preview_badge")
+        surface_SetFont("Trebuchet18")
+        local subW     = surface_GetTextSize(subtitle) or 0
+        local textW    = surface_GetTextSize(label) or 0
+        local iconSize, spacing, padX = 12, 4, 8
+        local badgeW   = iconSize + spacing + textW + padX * 2
+        local badgeH   = 18
+        local bx       = ox + 12 + subW + 10
+        local maxRight = ox + width - hpBarReserve - 10
+        if bx + badgeW > maxRight then bx = math_max(ox + 12, maxRight - badgeW) end
+        local by       = oy + 29
+
+        local glow = persists and Color(60, 200, 110, 130) or Color(0, 180, 225, 130)
+        local txt  = persists and Color(150, 255, 185) or Color(150, 230, 250)
+        draw_RoundedBox(8, bx - 1, by - 1, badgeW + 2, badgeH + 2, glow)
+        draw_RoundedBox(8, bx, by, badgeW, badgeH, Color(18, 24, 32, 255))
+        surface_SetDrawColor(txt.r, txt.g, txt.b, 255)
+        surface_SetMaterial(matTick)
+        surface_DrawTexturedRect(bx + padX, by + (badgeH - iconSize) / 2, iconSize, iconSize)
+        draw_SimpleText(label, "Trebuchet18", bx + padX + iconSize + spacing, by + badgeH / 2, txt,
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    end
+
     local isVJBase = false
     if IsValid(ent) then
         isVJBase = ((ent.IsVJBaseSNPC == true) or (ent.VJ_ID_Living == true) or (ent.IsVJBaseSNPC_Human == true)) and
@@ -404,22 +431,55 @@ local function DrawContent(ctx, ox, oy)
     end
 end
 
+-- Bake (or fetch the cached) RTT material for this panel context. Returns mat, uMax, vMax
+-- (mat is nil if the RTT system is unavailable or the panel is too large to bake).
+function SED.EnsurePanelMat(ctx)
+    local RTT = SED.RTT
+    if RTT and ctx.bakeSig then
+        local rtMat, uMax, vMax = RTT.GetMat(ctx.bakeSig)
+        if not rtMat then
+            rtMat, uMax, vMax = RTT.BakePanel(ctx.bakeSig, ctx.width, ctx.panelHeight, function()
+                DrawContent(ctx, 0, 0)
+            end)
+        end
+        return rtMat, uMax, vMax
+    end
+    return nil
+end
+
+-- Draw a panel context inside an ALREADY-OPEN cam.Start3D2D block, centred at (dx, dy) in the
+-- plane, scaled by scaleMul and faded to `alpha`. Used by the pile renderer to composite the
+-- active card, the swap-animation cards, and (implicitly) keep them in one shared plane.
+function SED.DrawPanelInPlane(ctx, dx, dy, scaleMul, alpha, drawShadow)
+    scaleMul = scaleMul or 1
+    alpha = math_Clamp(alpha or 255, 0, 255)
+    local w = ctx.width * scaleMul
+    local h = ctx.panelHeight * scaleMul
+    local ox = -w * 0.5 + (dx or 0)
+    local oy = -h * 0.5 + (dy or 0)
+
+    if drawShadow then
+        surface_SetDrawColor(0, 0, 0, 150 * alpha / 255)
+        surface_DrawRect(ox + 4, oy + 4, w, h)
+    end
+
+    local rtMat, uMax, vMax = SED.EnsurePanelMat(ctx)
+    if rtMat then
+        surface_SetDrawColor(255, 255, 255, alpha)
+        surface_SetMaterial(rtMat)
+        surface_DrawTexturedRectUV(ox, oy, w, h, 0, 0, uMax, vMax)
+    else
+        DrawContent(ctx, ox, oy)
+    end
+end
+
 function SED.PanelRendererDraw(ctx)
     local w = ctx.width
     local h = ctx.panelHeight
     local ox = ctx.offsetX
     local oy = ctx.offsetY
-    local RTT = SED.RTT
 
-    local rtMat, uMax, vMax
-    if RTT and ctx.bakeSig then
-        rtMat, uMax, vMax = RTT.GetMat(ctx.bakeSig)
-        if not rtMat then
-            rtMat, uMax, vMax = RTT.BakePanel(ctx.bakeSig, w, h, function()
-                DrawContent(ctx, 0, 0)
-            end)
-        end
-    end
+    local rtMat, uMax, vMax = SED.EnsurePanelMat(ctx)
 
     cam_Start3D2D(ctx.drawPos, ctx.ang, ctx.scale)
 

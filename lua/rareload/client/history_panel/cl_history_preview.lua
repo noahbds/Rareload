@@ -20,6 +20,7 @@ RARELOAD.HistoryPreview = Preview
 
 local TINT_CLEAR = Color(140, 255, 170, 190)
 local TINT_BLOCK = Color(255, 140, 130, 190)
+local TINT_SAME  = Color(120, 200, 255, 170) -- this saved object still exists live (kept across saves)
 
 Preview.items  = Preview.items or {}
 Preview.active = Preview.active or false
@@ -28,31 +29,40 @@ Preview.showId = Preview.showId or nil
 surface.CreateFont("RareloadHistPreview", { font = "Roboto", size = 15, weight = 600, antialias = true })
 
 -- Would a standing player be stuck here? Lift the box off the floor so standing on
--- the ground doesn't read as "starting in solid".
-local function HullClear(pos)
+-- the ground doesn't read as "starting in solid". `ignoreEnt` is the live entity that IS this
+-- saved object (kept across saves) so its own body doesn't read as an obstacle.
+local function HullClear(pos, ignoreEnt)
+    local filter = { LocalPlayer() }
+    if IsValid(ignoreEnt) then filter[#filter + 1] = ignoreEnt end
     local tr = util.TraceHull({
         start  = pos,
         endpos = pos,
         mins   = Vector(-16, -16, 4),
         maxs   = Vector(16, 16, 72),
         mask   = MASK_PLAYERSOLID,
-        filter = LocalPlayer(),
+        filter = filter,
     })
     return not (tr.StartSolid or tr.AllSolid)
 end
 Preview.TestClear = HullClear
 
-local function ToVec(t)
-    return istable(t) and Vector(tonumber(t.x) or 0, tonumber(t.y) or 0, tonumber(t.z) or 0) or nil
-end
-local function ToAng(t)
-    return istable(t) and Angle(tonumber(t.p) or 0, tonumber(t.y) or 0, tonumber(t.r) or 0) or Angle(0, 0, 0)
-end
-
 -- Same id SED derives for a record, so preview panel interaction can find it back.
 local function RecID(rec)
     return rec.id or rec.RareloadNPCID or rec.RareloadEntityID or rec.RareloadID
         or ((rec.class or rec.Class or rec.ClassName or "unknown") .. "?")
+end
+
+-- The live world entity kept across saves that IS this saved record: entities broadcast their
+-- saved id as the networked "RareloadID" (== rec.id), so a match means the player carried this
+-- object from the previewed save into the current one. Returns the entity, or nil.
+local function FindLiveByRID(rid)
+    if not rid or rid == "" then return nil end
+    for _, e in ipairs(ents.GetAll()) do
+        if IsValid(e) and not e:IsPlayer() and e.GetNWString and e:GetNWString("RareloadID", "") == rid then
+            return e
+        end
+    end
+    return nil
 end
 
 -- Hand SED the phantoms that have a saved record; it draws their panels + interaction.
@@ -61,6 +71,7 @@ local function SyncSED()
     local out, byID = {}, {}
     for _, it in ipairs(Preview.items) do
         if it.rec and IsValid(it.phantom) then
+            it.rec._isHistPreview = true -- SED draws a preview badge from this flag
             out[#out + 1] = { ent = it.phantom, saved = it.rec, isNPC = it.isNPC, pos = it.pos }
             byID[RecID(it.rec)] = it.rec
         end
@@ -71,6 +82,9 @@ end
 
 local function RemoveAll()
     for _, it in ipairs(Preview.items) do
+        if istable(it.subs) then
+            for _, s in ipairs(it.subs) do if IsValid(s) then s:Remove() end end
+        end
         if IsValid(it.phantom) then it.phantom:Remove() end
     end
     Preview.items = {}
@@ -91,49 +105,70 @@ function Preview.IsShowing(id)
     return Preview.active and Preview.showId == id
 end
 
-local function AddPhantom(model, pos, ang, title, rec, isNPC)
-    if not (pos and isstring(model) and model ~= "") then return nil end
-    util.PrecacheModel(model) -- prop/NPC models may not be loaded client-side yet
-    local clear = HullClear(pos)
-    local it = { pos = pos, clear = clear, title = title or "?", rec = rec, isNPC = isNPC and true or false }
-    local p = ClientsideModel(model)
-    if IsValid(p) then
-        p:SetPos(pos)
-        p:SetAngles(ang)
-        p:SetMoveType(MOVETYPE_NONE)
-        p:SetSolid(SOLID_NONE)
-        p:SetRenderMode(RENDERMODE_TRANSALPHA)
-        local col = clear and TINT_CLEAR or TINT_BLOCK
-        p:SetColor(col)
-        it.phantom = p
-
-        if rec and SED and SED.Shared and SED.Shared.AttachSubModels then
-            local subPhantoms = SED.Shared.AttachSubModels(p, rec)
-            for _, sub in ipairs(subPhantoms) do
-                if IsValid(sub) then
-                    sub:SetColor(col)
-                    sub:SetNoDraw(false)
-                end
-            end
+-- SED phantoms spawn hidden (MakePhantomModel); reveal the phantom + its sub-models and tint them.
+local function RevealPhantom(phantom, subs, col)
+    if not IsValid(phantom) then return end
+    phantom:SetNoDraw(false)
+    phantom:SetColor(col)
+    if istable(subs) then
+        for _, s in ipairs(subs) do
+            if IsValid(s) then s:SetNoDraw(false); s:SetColor(col) end
         end
     end
+    local children = phantom:GetChildren()
+    if istable(children) then
+        for _, c in ipairs(children) do
+            if IsValid(c) then c:SetNoDraw(false); c:SetColor(col) end
+        end
+    end
+end
+
+-- Spawn an entity/NPC preview phantom through the SED module (identical to the debug display),
+-- then reveal + tint it. Blue when the object still exists live (kept across saves), else the
+-- green/red clearance tint.
+local function AddObjectPhantom(rec, title, isNPC)
+    if not (istable(rec) and SED and SED.ObjectPhantom and SED.ObjectPhantom.CreateModel) then return nil end
+    local phantom, subs, pos = SED.ObjectPhantom.CreateModel(rec)
+    if not IsValid(phantom) then return nil end
+
+    local selfEnt = FindLiveByRID(RecID(rec))
+    rec._histPreviewSame = IsValid(selfEnt) or nil
+    local clear = HullClear(pos, selfEnt)
+    local col   = IsValid(selfEnt) and TINT_SAME or (clear and TINT_CLEAR or TINT_BLOCK)
+    RevealPhantom(phantom, subs, col)
+
+    local it = {
+        pos = pos, clear = clear, title = title or "?", rec = rec, isNPC = isNPC and true or false,
+        selfEnt = selfEnt, phantom = phantom, subs = subs,
+    }
     Preview.items[#Preview.items + 1] = it
     return it
 end
 
--- `entry` is the summary row (id, mdl, pos, ang). The player phantom is spawned
--- immediately from it; entity/NPC phantoms + all SED records arrive from the server.
+-- Spawn the player preview phantom through the SED module (yaw-only angle, appearance, seated pose
+-- when saved in a vehicle), then reveal + tint it.
+local function AddPlayerPhantom(savedInfo, fallbackModel)
+    if not (SED and SED.Phantom and SED.Phantom.CreatePlayerModel) then return nil end
+    local phantom = SED.Phantom.CreatePlayerModel(savedInfo, fallbackModel)
+    if not IsValid(phantom) then return nil end
+
+    local pos   = phantom:GetPos()
+    local clear = HullClear(pos)
+    RevealPhantom(phantom, nil, clear and TINT_CLEAR or TINT_BLOCK)
+
+    local it = { pos = pos, clear = clear, title = "Player", isPlayerPhantom = true, phantom = phantom }
+    Preview.items[#Preview.items + 1] = it
+    return it
+end
+
+-- `entry` is the summary row (id). Every phantom — player and objects — is spawned from the full
+-- saved records the server sends back, through the SED builders, so they match the debug display.
 function Preview.Request(entry)
     if not istable(entry) then return end
     Preview.active = true
     Preview.showId = entry.id
+    Preview._fallbackModel = entry.mdl
     RemoveAll()
-    local model = entry.mdl
-    if not (isstring(model) and util.IsValidModel(model)) then
-        local lp = LocalPlayer()
-        model = (IsValid(lp) and lp:GetModel()) or "models/player/kleiner.mdl"
-    end
-    Preview.playerItem = AddPhantom(model, ToVec(entry.pos), ToAng(entry.ang), "Player")
     net.Start("RareloadHistory_Preview")
     net.WriteString(entry.id or "")
     net.SendToServer()
@@ -158,19 +193,22 @@ net.Receive("RareloadHistory_Preview", function()
     local ok, data = pcall(util.JSONToTable, json)
     if not (ok and istable(data)) then return end
 
-    -- attach the player's SED panel record, built from the saved player-state
-    if Preview.playerItem and istable(data.player) and istable(data.player.info)
-        and SED and SED.Phantom and SED.Phantom.BuildRecordFromInfo then
-        local lp   = LocalPlayer()
-        local name = (IsValid(lp) and lp:Nick()) or "Player"
-        local sid  = (IsValid(lp) and lp:SteamID()) or "preview"
-        local okr, rec = pcall(SED.Phantom.BuildRecordFromInfo, name, sid, data.player.info, game.GetMap())
-        if okr and istable(rec) then Preview.playerItem.rec = rec end
+    -- player phantom, built from the full saved info (yaw-only angle, appearance, seated pose)
+    if istable(data.player) and istable(data.player.info) then
+        local fallback = data.player.m or Preview._fallbackModel
+        Preview.playerItem = AddPlayerPhantom(data.player.info, fallback)
+        if Preview.playerItem and SED and SED.Phantom and SED.Phantom.BuildRecordFromInfo then
+            local lp   = LocalPlayer()
+            local name = (IsValid(lp) and lp:Nick()) or "Player"
+            local sid  = (IsValid(lp) and lp:SteamID()) or "preview"
+            local okr, rec = pcall(SED.Phantom.BuildRecordFromInfo, name, sid, data.player.info, game.GetMap())
+            if okr and istable(rec) then Preview.playerItem.rec = rec end
+        end
     end
 
-    -- entity / NPC phantoms, each with its full SED record
+    -- entity / NPC phantoms, each from its full SED record
     for _, o in ipairs(data.objects or {}) do
-        AddPhantom(o.m, ToVec(o.p), ToAng(o.a), tostring(o.c or "?"), o.rec, o.npc == 1)
+        if istable(o.rec) then AddObjectPhantom(o.rec, tostring(o.c or "?"), o.npc == 1) end
     end
 
     SyncSED()
@@ -183,10 +221,23 @@ hook.Add("Think", "RARELOAD_HistoryPreview_Recheck", function()
     local now = CurTime()
     if now < _nextRecheck then return end
     _nextRecheck = now + 0.3
+
+    -- One pass: map every live entity's saved id -> entity, to spot objects kept across saves.
+    local byRID = {}
+    for _, e in ipairs(ents.GetAll()) do
+        if IsValid(e) and not e:IsPlayer() and e.GetNWString then
+            local rid = e:GetNWString("RareloadID", "")
+            if rid ~= "" then byRID[rid] = e end
+        end
+    end
+
     for _, it in ipairs(Preview.items) do
-        it.clear = HullClear(it.pos)
+        local selfEnt = (it.rec and not it.isPlayerPhantom) and byRID[RecID(it.rec)] or nil
+        it.selfEnt = IsValid(selfEnt) and selfEnt or nil
+        if it.rec then it.rec._histPreviewSame = it.selfEnt and true or nil end
+        it.clear = HullClear(it.pos, it.selfEnt)
         if IsValid(it.phantom) then
-            local col = it.clear and TINT_CLEAR or TINT_BLOCK
+            local col = it.selfEnt and TINT_SAME or (it.clear and TINT_CLEAR or TINT_BLOCK)
             it.phantom:SetColor(col)
             local children = it.phantom:GetChildren()
             if istable(children) then

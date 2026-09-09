@@ -39,8 +39,22 @@ SED.PANEL_MAX_WORLD_WIDTH    = 130  -- ceiling (world units) so huge entities do
 SED.PANEL_REF_WIDTH          = 480  -- fallback panel pixel width if a caller omits it
 SED.PANEL_CLUSTER_DIST = 150
 SED.PANEL_EYE_BAND = 150
+SED.PANEL_MIN_STANDOFF = 160 -- panel never drawn nearer than this to the player (world units)
 SED.MAX_VISIBLE_LINES = 7
 SED.SCROLL_SPEED = 3
+
+-- Pile grouping: close saves are gathered into one "business-card stack" that acts as a
+-- single aim target. In interaction mode the player flips between the cards.
+SED.PILE_Z_GATE     = 220   -- max vertical gap (plus half-heights) to still group two saves
+SED.PILE_MAX_PEEK   = 2     -- how many cards peek out behind the active one
+SED.PILE_ANIM_DUR   = 0.28  -- card-swap animation length (seconds)
+SED.PILE_PEEK_DX    = 26    -- per-peek horizontal offset (panel px, up-right)
+SED.PILE_PEEK_DY    = 22    -- per-peek vertical offset (panel px, up-right)
+SED.PILE_PEEK_SCALE = 0.94  -- per-peek scale falloff
+SED.PileState       = {}    -- key -> { active, anim, lastSeen }: persistent per-pile flip state
+SED.ActiveGroups    = {}    -- frame-scoped list of the current groups
+SED.CandidateGroup  = nil   -- group currently under the crosshair (nil when none)
+SED.FocusedPileMulti = false -- true while the inspected pile has >= 2 cards (◄ ► flips them)
 SED.CULL_VIEW_CONE = true
 SED.FOV_COS_THRESHOLD = math.cos(math.rad(50))
 SED.FOV_COS_THRESHOLD_SQR = SED.FOV_COS_THRESHOLD * SED.FOV_COS_THRESHOLD
@@ -134,3 +148,11 @@ SED.NPC_CATEGORIES = {
     { "keyvalues", "sed.cat.keyvalues", Color(180, 180, 180) },
     { "meta",      "sed.cat.meta",      Color(120, 200, 220) }
 }
+
+-- Stable identity of a saved record, matching the id the interaction lookups expect
+-- (object phantoms use rec.id, player phantoms use "phantom_"..steamID, previews their own id).
+function SED.SavedRecID(saved)
+    if not saved then return "unknown?" end
+    return saved.id or saved.RareloadNPCID or saved.RareloadEntityID or saved.RareloadID or
+        ((saved.class or saved.Class or saved.ClassName or "unknown") .. "?")
+end
