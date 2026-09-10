@@ -48,21 +48,17 @@ end
 -- Aim helpers
 -- ─────────────────────────────────────────────────────────────────────────────
 
--- Rough "is the crosshair on this panel?" test using an estimated panel size at the entity's
--- nearest surface. Cheap, distance-independent, and matches where the pile is drawn (anchor).
+-- "Is the crosshair on this panel?" tested against the panel's ACTUAL drawn position (via the same
+-- SS.ComputePlacement the renderer uses), and the returned distance is to the PANEL, not the entity.
+-- This is what lets you inspect a panel that's drawn close to you even when its entity is far off
+-- (e.g. a saved prop floating high in the air) -- the interact-distance gate keys off the panel.
 function SED.EstimateAimHit(ent, renderParams, eyePos, eyeForward)
     if not IsValid(ent) then return false, nil end
 
-    local panelCenter  = SS.PanelAimPos(ent, renderParams, eyePos)
-    local toPanel      = panelCenter - eyePos
-    local panelDistSqr = toPanel:LengthSqr()
-    if panelDistSqr < 1 then return false, nil end
-
-    local distance = math_sqrt(panelDistSqr)
-    local scale    = SS.PanelScale(renderParams, distance, BOOTSTRAP_W)
-    local ang      = SS.FacingAngle(toPanel)
-    local hit      = SS.PanelHitTest(panelCenter, ang, scale, BOOTSTRAP_W, BOOTSTRAP_H, eyePos, eyeForward)
-    return hit, panelDistSqr
+    local distSqr = eyePos:DistToSqr(ent:GetPos())
+    local drawPos, ang, scale = SS.ComputePlacement(ent, renderParams, eyePos, distSqr, BOOTSTRAP_W)
+    local hit = SS.PanelHitTest(drawPos, ang, scale, BOOTSTRAP_W, BOOTSTRAP_H, eyePos, eyeForward)
+    return hit, eyePos:DistToSqr(drawPos)
 end
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -136,10 +132,12 @@ function SED.GroupQueue(queueList, maxQueue)
     return groups
 end
 
--- Re-pick each multi-member group's anchor to the member the player is LOOKING at (highest
--- cosine to eye-forward), not merely the nearest one. Without this the pile renders behind you
--- whenever a closer member sits off to the side while you face a farther one. A small hysteresis
--- bonus for last frame's anchor stops it flickering when you look between two members.
+-- Re-pick each multi-member group's anchor to the member the player is LOOKING at (highest cosine
+-- to eye-forward), not merely the nearest one. Without this the pile renders behind you whenever a
+-- closer member sits off to the side while you face a farther one. A small hysteresis bonus for
+-- last frame's anchor stops it flickering when you look between two members, and a size bonus
+-- prefers the bigger model when members overlap -- so a player phantom seated INSIDE a vehicle
+-- anchors the panel on the vehicle (whose near surface is clear) instead of inside the vehicle.
 function SED.ResolveGroupAnchors(groups, eyePos, eyeForward)
     local efx, efy, efz = eyeForward.x, eyeForward.y, eyeForward.z
     local epx, epy, epz = eyePos.x, eyePos.y, eyePos.z
@@ -149,6 +147,13 @@ function SED.ResolveGroupAnchors(groups, eyePos, eyeForward)
         if #members > 1 then
             local st     = SED.PileState[grp.key]
             local prevId = st and st.anchorId
+
+            local groupMaxDim = 1
+            for i = 1, #members do
+                local md = members[i].renderParams and members[i].renderParams.maxDimension or 0
+                if md > groupMaxDim then groupMaxDim = md end
+            end
+
             local best, bestScore = members[1], -2
             for i = 1, #members do
                 local m = members[i]
@@ -156,6 +161,8 @@ function SED.ResolveGroupAnchors(groups, eyePos, eyeForward)
                 local len = math_sqrt(dx * dx + dy * dy + dz * dz)
                 if len > 1 then
                     local cos = (dx * efx + dy * efy + dz * efz) / len
+                    local md  = m.renderParams and m.renderParams.maxDimension or 0
+                    cos = cos + 0.06 * (md / groupMaxDim)         -- bias toward the bigger model on ties
                     if prevId and m.id == prevId then cos = cos + 0.05 end
                     if cos > bestScore then bestScore = cos; best = m end
                 end

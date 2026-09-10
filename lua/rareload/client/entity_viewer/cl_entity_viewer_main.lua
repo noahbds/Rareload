@@ -210,11 +210,12 @@ function EntityViewer:BuildDetail(host)
     -- self-drawn fields block
     local fields = vgui.Create("DPanel", host)
     D.fields = fields
-    fields:Dock(TOP); fields:SetTall(sc(150)); fields:DockMargin(0, 0, 0, sc(8))
+    fields:Dock(TOP); fields:SetTall(sc(170)); fields:DockMargin(0, 0, 0, sc(8))
     fields.Paint = function(_, w, h)
         draw.RoundedBox(sc(10), 0, 0, w, h, THEME.surface)
         local e = self:Selected(); if not e then return end
         local rows = {
+            { L("inspector.row.id"), tostring(ObjID(e) or "?") },
             { L("inspector.row.class"), tostring(e.class or "?") },
             { L("inspector.row.model"), tostring(e.model or "-") },
             { L("inspector.row.health"), (e.health and tostring(math.floor(e.health)) or "-") ..

@@ -39,12 +39,8 @@ SED.PANEL_MAX_WORLD_WIDTH    = 130  -- ceiling (world units) so huge entities do
 SED.PANEL_REF_WIDTH          = 480  -- fallback panel pixel width if a caller omits it
 SED.PANEL_CLUSTER_DIST = 150
 SED.PANEL_EYE_BAND = 150
-SED.PANEL_MIN_STANDOFF = 160 -- panel never drawn nearer than this to the player (world units)
 SED.MAX_VISIBLE_LINES = 7
 SED.SCROLL_SPEED = 3
-
--- Pile grouping: close saves are gathered into one "business-card stack" that acts as a
--- single aim target. In interaction mode the player flips between the cards.
 SED.PILE_Z_GATE     = 220   -- max vertical gap (plus half-heights) to still group two saves
 SED.PILE_MAX_PEEK   = 2     -- how many cards peek out behind the active one
 SED.PILE_ANIM_DUR   = 0.28  -- card-swap animation length (seconds)

@@ -1,22 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- Save Timeline panel  (rewritten from scratch, 4.1)
---
--- Browses the player's full, persistent save history (synced as compact metadata
--- from the server) and acts on any entry: teleport, restore (whole or by
--- component), pin, note, delete, set-active, preview-in-world. Heavy data and the
--- actual restore live server-side; this panel shows summaries and sends actions
--- by entry id.
---
--- Design goals of this rewrite:
---   • Resolution-adaptive — every size is scaled by ScrH()/1080 and clamped, so
---     the panel is comfortable from 1080p up to 1440p/4K instead of a fixed box.
---   • Dedicated, legible font set (RH_*), rebuilt for the current scale.
---   • Clear, dense information: model, exact time, a health bar, and a row of stat
---     cards (health, armor, weapons, entities, NPCs, VEHICLES) plus detail rows
---     for position, active weapon, saved-in-vehicle, player states and model.
---   • Detail pane built ONCE and updated in place — selecting never rebuilds the
---     model panel or flickers; the stat/info panels self-draw from the selection.
---   • No timeline strip, no diff panel (removed as noise).
+-- Save Timeline panel
 -- ─────────────────────────────────────────────────────────────────────────────
 
 local L = RARELOAD.L
@@ -27,16 +10,10 @@ local ALIGN_T, ALIGN_M = TEXT_ALIGN_TOP, TEXT_ALIGN_CENTER
 
 RARELOAD = RARELOAD or {}
 RARELOAD.HistoryClient = RARELOAD.HistoryClient or { entries = {}, total = 0 }
-
--- Fixed ordered run of restore-component booleans (matches the server's
--- RESTORE_COMPS). We never net.WriteTable arbitrary data.
 local RESTORE_COMPS = { "all", "position", "health", "inventory", "ammo", "appearance", "states", "world" }
 
 local SORTS   = { "newest", "oldest", "health", "pinned" }
 local FILTERS = { "all", "pinned", "noted", "world" }
-
--- Shared client UI primitives (scaling, fonts, Button, scrollbar, model framing,
--- confirm dialog, Derma icons) — one copy for every Rareload panel.
 local UI = RARELOAD.UI
 local sc = UI.sc
 local Button, StyleScrollbar, FrameModelPanel, ConfirmDialog =

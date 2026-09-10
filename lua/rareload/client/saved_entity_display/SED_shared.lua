@@ -100,28 +100,37 @@ function SS.PanelAimPos(ent, renderParams, eyePos)
     return closestWorld + dirToEye * 12
 end
 
--- Where a panel is drawn for `ent`: proportional world scale, clamped into the eye band, pulled
--- off the entity toward the player so it doesn't clip the model, and turned to face the player.
--- The pull is capped so it never drags the panel nearer than PANEL_MIN_STANDOFF — big vehicles
--- used to shove the panel right into the camera. A pile anchors here on its nearest member, so
--- pile and lone panels sit identically. Returns drawPos, facing angle, scale.
+-- Where a panel is drawn for `ent`, facing the player: just in FRONT of the model's near surface,
+-- at the player's eye height. The reach toward the eye is measured HORIZONTALLY only (the OBB
+-- support function in the horizontal view direction) so a tall model's height doesn't inflate it --
+-- an inflated reach used to shove the panel toward the player when far and make it jump around. The
+-- panel is anchored to the MODEL (a fixed world spot on its near side), so it does NOT drift toward
+-- the camera as you approach; it just grows like a world-space label. Returns drawPos, angle, scale.
 function SS.ComputePlacement(ent, renderParams, eyePos, distSqr, panelWidth)
-    local scale          = SS.PanelScale(renderParams, math.sqrt(distSqr), panelWidth)
-    local obbCenterLocal = (renderParams.obbMin + renderParams.obbMax) * 0.5
-    local pos            = ent:GetPos()
-    local worldCenter    = ent.LocalToWorld and ent:LocalToWorld(obbCenterLocal) or pos
-    local band           = math.max(SED.PANEL_EYE_BAND or 150, (renderParams.size and renderParams.size.z) or 80)
-    local baseZ          = math.Clamp(eyePos.z, worldCenter.z - band, worldCenter.z + band)
+    local scale = SS.PanelScale(renderParams, math.sqrt(distSqr), panelWidth)
 
-    -- Horizontal direction from the entity toward the player.
-    local dx, dy = eyePos.x - worldCenter.x, eyePos.y - worldCenter.y
-    local dist   = math.sqrt(dx * dx + dy * dy)
-    local dirx, diry = (dist > 1) and (dx / dist) or 1, (dist > 1) and (dy / dist) or 0
+    local mn, mx     = renderParams.obbMin, renderParams.obbMax
+    local hx, hy, hz = (mx.x - mn.x) * 0.5, (mx.y - mn.y) * 0.5, (mx.z - mn.z) * 0.5
+    local center     = ent.LocalToWorld and ent:LocalToWorld((mn + mx) * 0.5) or ent:GetPos()
 
-    local pull      = math.Clamp(renderParams.maxDimension * 0.35, 24, 400)
-    local minStand  = math.min(SED.PANEL_MIN_STANDOFF or 160, dist)
-    local panelDist = math.Clamp(dist - pull, minStand, dist) -- distance from the eye to the panel
-    local drawPos   = Vector(eyePos.x - dirx * panelDist, eyePos.y - diry * panelDist, baseZ)
+    local dx, dy     = center.x - eyePos.x, center.y - eyePos.y
+    local d          = math.sqrt(dx * dx + dy * dy)
+    local dirx, diry = (d > 1) and (dx / d) or 1, (d > 1) and (dy / d) or 0
+
+    -- Horizontal OBB reach toward the eye: |dir·f|·hx + |dir·r|·hy + |dir·u|·hz with dir horizontal,
+    -- so an upright (vertical-u) model contributes nothing from its height.
+    local ang     = ent.GetAngles and ent:GetAngles() or angle_zero
+    local f, r, u = ang:Forward(), ang:Right(), ang:Up()
+    local reach = math.abs(dirx * f.x + diry * f.y) * hx
+        + math.abs(dirx * r.x + diry * r.y) * hy
+        + math.abs(dirx * u.x + diry * u.y) * hz
+
+    local nearDist = d - reach - 6                          -- eye→panel distance, 6u off the near surface
+    if nearDist < 24 then nearDist = math.min(24, d) end    -- inside/touching the model: keep just in front
+
+    local band  = math.max(SED.PANEL_EYE_BAND or 150, hz * 2)
+    local baseZ = math.Clamp(eyePos.z, center.z - band, center.z + band)
+    local drawPos = Vector(eyePos.x + dirx * nearDist, eyePos.y + diry * nearDist, baseZ)
 
     return drawPos, SS.FacingAngle(drawPos - eyePos), scale
 end
