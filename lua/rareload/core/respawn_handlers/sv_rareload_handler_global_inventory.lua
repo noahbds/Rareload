@@ -63,6 +63,11 @@ function RARELOAD.RestoreGlobalInventory(ply)
     return restoredCount > 0
 end
 
+-- Fallback path for the no-per-map-save case: HandlePlayerSpawn returns early
+-- when there is no SavedInfo, so the registry inventory provider never runs. This
+-- hook still restores the cross-map global inventory then. When a save DOES exist,
+-- the provider stamps _lastGlobalRestore up front, so the guard below makes this
+-- fallback skip and the give happens exactly once.
 hook.Add("PlayerSpawn", "RARELOAD_RestoreGlobalInventory", function(ply)
     timer.Simple(0.5, function()
         if not IsValid(ply) then return end

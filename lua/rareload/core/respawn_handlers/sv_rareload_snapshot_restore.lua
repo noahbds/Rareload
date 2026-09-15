@@ -5,6 +5,21 @@ local SnapshotRestore = RARELOAD.SnapshotRestore
 local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
 local EntityIdentity = include("rareload/core/rareload_entity_identity.lua")
 
+-- Shared post-paste bookkeeping for a duplicator-restored entity: mark it as
+-- Rareload-spawned, reapply its saved identity, and set its owner. Category
+-- handlers call this and then do their own specialized work (health, stabilize…).
+function SnapshotRestore.FinalizeCreated(ent, savedID, fieldName, targetOwner)
+    if not IsValid(ent) then return end
+    ent.SpawnedByRareload  = true
+    ent.SavedViaDuplicator = true
+    if savedID then
+        EntityIdentity.SetID(ent, fieldName, savedID)
+    end
+    if IsValid(targetOwner) and RARELOAD.Ownership then
+        RARELOAD.Ownership.SetOwner(ent, targetOwner)
+    end
+end
+
 function SnapshotRestore.BuildExistingIDSet(fieldName)
     local existingIDs = {}
     if not isstring(fieldName) or fieldName == "" then

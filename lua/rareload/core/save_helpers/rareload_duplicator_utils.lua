@@ -46,6 +46,20 @@ end
 
 local function encode(value, depth, visited)
     if depth > MAX_RECURSION_DEPTH then return nil end
+
+    -- Typed values must be tested before the generic-table branch: type(Color())
+    -- is "table", so checking these first is what keeps a Color from being
+    -- serialized as a plain {r,g,b,a} table and losing its type on decode.
+    if isvector and isvector(value) then
+        return { [SERIALIZED_TYPE_KEY] = "Vector", x = value.x, y = value.y, z = value.z }
+    end
+    if isangle and isangle(value) then
+        return { [SERIALIZED_TYPE_KEY] = "Angle", p = value.p, y = value.y, r = value.r }
+    end
+    if safeIsColor(value) then
+        return { [SERIALIZED_TYPE_KEY] = "Color", r = value.r, g = value.g, b = value.b, a = value.a }
+    end
+
     local valueType = type(value)
 
     if valueType == "table" then
@@ -60,12 +74,6 @@ local function encode(value, depth, visited)
 
         visited[value] = nil
         return out
-    elseif isvector and isvector(value) then
-        return { [SERIALIZED_TYPE_KEY] = "Vector", x = value.x, y = value.y, z = value.z }
-    elseif isangle and isangle(value) then
-        return { [SERIALIZED_TYPE_KEY] = "Angle", p = value.p, y = value.y, r = value.r }
-    elseif safeIsColor(value) then
-        return { [SERIALIZED_TYPE_KEY] = "Color", r = value.r, g = value.g, b = value.b, a = value.a }
     elseif valueType == "number" or valueType == "boolean" or valueType == "string" or value == nil then
         return value
     end

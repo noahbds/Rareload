@@ -37,9 +37,17 @@ return function(ply)
     local duplicatorTargets = {}
     local duplicatorSeen = {}
     local vehCheckCache = {}
+    -- Per-entity live state the duplicator does not carry (current health), keyed
+    -- by RareloadEntityID and reapplied on restore.
+    local entityStates = {}
 
     local DataUtils = RARELOAD.DataUtils
     local IsVehicleEntity = DataUtils and DataUtils.IsVehicleEntity
+
+    -- Resolve every entity's owner against one-time reverse indices for this pass.
+    if RARELOAD.Ownership and RARELOAD.Ownership.BeginResolveBatch then
+        RARELOAD.Ownership.BeginResolveBatch()
+    end
 
     for _, ent in ipairs(ents.GetAll()) do
         if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() then
@@ -72,11 +80,18 @@ return function(ply)
             if ownerValid then
                 count = count + 1
 
-                EntityIdentity.EnsureID(ent, "RareloadEntityID", "ent_legacyid")
+                local id = EntityIdentity.EnsureID(ent, "RareloadEntityID", "ent_legacyid")
 
                 if not duplicatorSeen[ent] then
                     duplicatorSeen[ent] = true
                     duplicatorTargets[#duplicatorTargets + 1] = ent
+
+                    if id and isfunction(ent.GetMaxHealth) then
+                        local maxHP = ent:GetMaxHealth() or 0
+                        if maxHP > 0 then
+                            entityStates[id] = { health = ent:Health(), maxHealth = maxHP }
+                        end
+                    end
                 end
 
                 local sid = (RARELOAD.Ownership and RARELOAD.Ownership.GetPlayerSteamIDSafe and
@@ -89,6 +104,10 @@ return function(ply)
                 end
             end
         end
+    end
+
+    if RARELOAD.Ownership and RARELOAD.Ownership.EndResolveBatch then
+        RARELOAD.Ownership.EndResolveBatch()
     end
 
     local duplicatorSnapshot = DuplicatorBridge.CaptureSnapshotForPlayer(duplicatorTargets, ply, function(err)
@@ -105,6 +124,8 @@ return function(ply)
 
         return {}
     end
+
+    if next(entityStates) then duplicatorSnapshot.entityStates = entityStates end
 
     SnapshotUtils.EnsureIndexMap(duplicatorSnapshot, {
         category = "entity",

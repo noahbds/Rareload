@@ -2,7 +2,7 @@ RARELOAD         = RARELOAD or {}
 RARELOAD.version = "4.0"
 
 if SERVER then
-    AddCSLuaFile("rareload/shared/sh_lang.lua") -- locale files are AddCSLuaFile'd inside
+    AddCSLuaFile("rareload/shared/sh_lang.lua")
     AddCSLuaFile("rareload/shared/permissions_def.lua")
     AddCSLuaFile("rareload/shared/rareload_convars.lua")
     AddCSLuaFile("rareload/shared/rareload_tunables.lua")
@@ -68,6 +68,8 @@ if SERVER then
     include("rareload/core/save_helpers/rareload_save_entities.lua")
     include("rareload/core/save_helpers/rareload_save_npcs.lua")
     include("rareload/core/save_helpers/rareload_position_history.lua")
+    include("rareload/core/rareload_state_registry.lua")
+    include("rareload/core/rareload_state_providers.lua")
     include("rareload/core/save_helpers/rareload_save_point.lua")
     include("rareload/core/respawn_handlers/sv_rareload_handler_entities.lua")
     include("rareload/core/respawn_handlers/sv_rareload_handler_global_inventory.lua")

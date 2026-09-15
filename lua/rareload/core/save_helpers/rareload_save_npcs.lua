@@ -7,8 +7,8 @@ local CONFIG = {
     DEBUG = false,
     SAVE_PLAYER_OWNED_ONLY = true,
     MAX_NPCS_TO_SAVE = 500,
-    SAVE_NPC_NPC_RELATIONS = true,
-    MAX_RELATION_NPCS = 128,
+    -- NOTE: KEY_VALUES_TO_SAVE is not currently consumed (the duplicator captures
+    -- NPC keyvalues); left in place as it is unrelated to this change.
     KEY_VALUES_TO_SAVE = {
         "squadname", "targetname",
         "wakeradius", "sleepstate",
@@ -72,6 +72,11 @@ return function(ply)
     local npcCount = #allNPCs
     DebugLog(ply, "INFO", "Found %d NPCs on the map", npcCount)
 
+    -- Resolve owners against one-time reverse indices (covers the sort + main loop).
+    if RARELOAD.Ownership and RARELOAD.Ownership.BeginResolveBatch then
+        RARELOAD.Ownership.BeginResolveBatch()
+    end
+
     table.sort(allNPCs, function(a, b)
         local ao = RARELOAD.Ownership and RARELOAD.Ownership.ResolveOwner and RARELOAD.Ownership.ResolveOwner(a) or nil
         local bo = RARELOAD.Ownership and RARELOAD.Ownership.ResolveOwner and RARELOAD.Ownership.ResolveOwner(b) or nil
@@ -87,6 +92,9 @@ return function(ply)
     local savedCount = 0
     local duplicatorTargets = {}
     local duplicatorSeen = {}
+    -- Current health per NPC (keyed by RareloadNPCID); the duplicator respawns
+    -- NPCs at default health, so we reapply this on restore.
+    local npcStates = {}
 
     for i = 1, #allNPCs do
         local npc = allNPCs[i]
@@ -97,13 +105,24 @@ return function(ply)
             or not CONFIG.SAVE_PLAYER_OWNED_ONLY
         if not shouldSave then continue end
 
-        EntityIdentity.EnsureID(npc, "RareloadNPCID", "npc_legacyid")
+        local id = EntityIdentity.EnsureID(npc, "RareloadNPCID", "npc_legacyid")
 
         if not duplicatorSeen[npc] then
             duplicatorSeen[npc] = true
             duplicatorTargets[#duplicatorTargets + 1] = npc
             savedCount = savedCount + 1
+
+            if id and isfunction(npc.GetMaxHealth) then
+                local maxHP = npc:GetMaxHealth() or 0
+                if maxHP > 0 then
+                    npcStates[id] = { health = npc:Health(), maxHealth = maxHP }
+                end
+            end
         end
+    end
+
+    if RARELOAD.Ownership and RARELOAD.Ownership.EndResolveBatch then
+        RARELOAD.Ownership.EndResolveBatch()
     end
 
     local endTime = SysTime()
@@ -121,6 +140,8 @@ return function(ply)
         DebugLog(ply, level, reason, savedCount)
         return {}
     end
+
+    if next(npcStates) then duplicatorSnapshot.npcStates = npcStates end
 
     SnapshotUtils.EnsureIndexMap(duplicatorSnapshot, {
         category = "npc",

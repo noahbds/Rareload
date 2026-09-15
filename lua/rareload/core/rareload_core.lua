@@ -2,6 +2,21 @@ RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 RARELOAD.Debug = RARELOAD.Debug or {}
 
+-- Save-format schema version. Stamped onto every saved playerData (see
+-- save_point) and read back on load so old saves can be migrated forward.
+RARELOAD.SAVE_SCHEMA_VERSION = 1
+
+-- Bring a loaded playerData table up to the current schema. Absent/older
+-- versions load as-is today; this is the single place future format changes
+-- migrate through, keeping existing saves readable.
+function RARELOAD.MigratePlayerData(pdata)
+    if not istable(pdata) then return pdata end
+    -- local v = tonumber(pdata.version) or 0
+    -- (version-gated migrations go here, applied in order before the stamp)
+    pdata.version = RARELOAD.SAVE_SCHEMA_VERSION
+    return pdata
+end
+
 local function SafePlayerKey(steamID)
     if RARELOAD.DataUtils and RARELOAD.DataUtils.SanitizeSteamID then
         return RARELOAD.DataUtils.SanitizeSteamID(steamID)
@@ -115,10 +130,10 @@ function RARELOAD.LoadPlayerPositions(mapName)
                 end
 
                 if istable(targetedData) and isstring(result.steamID) and result.steamID ~= "" then
-                    RARELOAD.playerPositions[mapName][result.steamID] = targetedData
+                    RARELOAD.playerPositions[mapName][result.steamID] = RARELOAD.MigratePlayerData(targetedData)
                 elseif istable(result[mapName]) then
                     for steamID, pdata in pairs(result[mapName]) do
-                        RARELOAD.playerPositions[mapName][steamID] = pdata
+                        RARELOAD.playerPositions[mapName][steamID] = RARELOAD.MigratePlayerData(pdata)
                     end
                 elseif RARELOAD.settings and RARELOAD.settings.debugEnabled then
                     print("[RARELOAD DEBUG] Invalid player position data in: " .. filePath)

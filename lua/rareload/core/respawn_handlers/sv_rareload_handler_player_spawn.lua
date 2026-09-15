@@ -1,14 +1,8 @@
-local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
+local Registry = include("rareload/core/rareload_state_providers.lua")
 
 -----------------------------------------------------------------
 -- Utility helpers
 -----------------------------------------------------------------
-
-local function HasSnapshotData(bucket)
-    if bucket == nil then return false end
-    if SnapshotUtils.HasSnapshot(bucket) then return true end
-    return istable(bucket) and next(bucket) ~= nil
-end
 
 local function DebugLog(ply, level, indent, msg)
     if RARELOAD.Debug and RARELOAD.Debug.Write then
@@ -143,7 +137,7 @@ function RARELOAD.CleanupSavedEntities(ply)
 end
 
 -----------------------------------------------------------------
--- Active weapon restoration
+-- Active weapon restoration (invoked by the activeWeapon state provider)
 -----------------------------------------------------------------
 local function RestoreActiveWeapon(ply, SavedInfo, inventoryWasRestored, globalInventoryWasRestored)
     local activeWeaponToRestore
@@ -173,6 +167,7 @@ local function RestoreActiveWeapon(ply, SavedInfo, inventoryWasRestored, globalI
         end
     end)
 end
+RARELOAD.RestoreActiveWeaponFromSpawn = RestoreActiveWeapon
 
 -----------------------------------------------------------------
 -- Helper to safely get a setting with fallback chain
@@ -416,178 +411,9 @@ function RARELOAD.HandlePlayerSpawn(ply)
         DebugLog(ply, "VERBOSE", 0, "Anti-stuck disabled; used saved position and angles directly")
     end
 
-    local canRestoreInventory = hasPerm("KEEP_INVENTORY") and hasPerm("RETAIN_INVENTORY")
-    local canRestoreGlobalInventory = hasPerm("KEEP_INVENTORY") and hasPerm("RETAIN_GLOBAL_INVENTORY")
-    local globalInventoryRestored = false
-    local inventoryRestored = false
-
-    if canRestoreGlobalInventory and RARELOAD.GetPlayerSetting(ply, "retainGlobalInventory") then
-        timer.Simple(0.5, function()
-            if IsValid(ply) then
-                RARELOAD.RestoreGlobalInventory(ply)
-                if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
-                    DebugLog(ply, "INFO", 0, "Global inventory: Attempting to restore (priority)")
-                end
-            end
-        end)
-        globalInventoryRestored = true
-    elseif canRestoreInventory and RARELOAD.GetPlayerSetting(ply, "retainInventory") and SavedInfo.inventory then
-        RARELOAD.RestoreInventory(ply, SavedInfo)
-        if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
-            DebugLog(ply, "INFO", 0, "Using map-specific inventory (global inventory disabled)")
-        end
-        inventoryRestored = true
-    end
-
-    -- Restore advanced appearance (or fallback to legacy playermodel)
-    local permVal = hasPerm("RETAIN_APPEARANCE")
-    local setVal = RARELOAD.GetPlayerSetting(ply, "retainAppearance", true)
-    local hasData = (SavedInfo.appearance ~= nil) or (SavedInfo.playermodel ~= nil)
-    DebugLog(ply, "INFO", 0, "APPEARANCE RESTORE CHECK: hasPerm: " .. tostring(permVal) .. " | setting: " .. tostring(setVal) .. " | hasData: " .. tostring(hasData))
-
-    if permVal and setVal then
-        if hasData then
-            timer.Simple(1, function()
-                if not IsValid(ply) then return end
-
-                local savedModel = (SavedInfo.appearance and SavedInfo.appearance.model) or SavedInfo.playermodel
-                local beforeModel = ply:GetModel()
-                DebugLog(ply, "INFO", 0, "APPEARANCE RESTORE: Attempting to restore model: " .. tostring(savedModel) .. " | Model before restore: " .. tostring(beforeModel))
-
-                if SavedInfo.appearance and RARELOAD.RestoreAppearance then
-                    RARELOAD.RestoreAppearance(ply, SavedInfo.appearance)
-                else
-                    ply:SetModel(SavedInfo.playermodel)
-                    ply:SetupHands()
-                end
-
-                timer.Simple(0.1, function()
-                    if IsValid(ply) then
-                        DebugLog(ply, "INFO", 0, "APPEARANCE RESTORE RESULT: Actual model is now: " .. tostring(ply:GetModel()) .. " | Expected: " .. tostring(savedModel))
-                    end
-                end)
-            end)
-        end
-    end
-
-    if hasPerm("RETAIN_HEALTH_ARMOR") and RARELOAD.GetPlayerSetting(ply, "retainHealthArmor", true) then
-        timer.Simple(0.5, function()
-            if not IsValid(ply) then return end
-            ply:SetHealth(SavedInfo.health or ply:GetMaxHealth())
-            ply:SetArmor(SavedInfo.armor or 0)
-        end)
-    end
-
-    if hasPerm("RETAIN_AMMO") and RARELOAD.GetPlayerSetting(ply, "retainAmmo", true) and SavedInfo.ammo then
-        timer.Simple(1, function()
-            if not IsValid(ply) then return end
-            for weaponClass, ammoData in pairs(SavedInfo.ammo) do
-                local weapon = ply:GetWeapon(weaponClass)
-                if IsValid(weapon) then
-                    local primaryAmmoType = weapon:GetPrimaryAmmoType()
-                    local secondaryAmmoType = weapon:GetSecondaryAmmoType()
-                    if primaryAmmoType >= 0 then
-                        ply:SetAmmo(ammoData.primary, primaryAmmoType)
-                    end
-                    if secondaryAmmoType >= 0 then
-                        ply:SetAmmo(ammoData.secondary, secondaryAmmoType)
-                    end
-                    if ammoData.clip1 and ammoData.clip1 >= 0 then
-                        weapon:SetClip1(ammoData.clip1)
-                    end
-                    if ammoData.clip2 and ammoData.clip2 >= 0 then
-                        weapon:SetClip2(ammoData.clip2)
-                    end
-                    if RARELOAD.Debug and RARELOAD.Debug.BufferClipRestore then
-                        RARELOAD.Debug.BufferClipRestore(ammoData.clip1, ammoData.clip2, weapon)
-                    end
-                end
-            end
-            if RARELOAD.Debug and RARELOAD.Debug.FlushClipRestoreBuffer then
-                RARELOAD.Debug.FlushClipRestoreBuffer()
-            end
-        end)
-    end
-
-    if hasPerm("RESTORE_VEHICLES")
-        and (RARELOAD.GetPlayerSetting(ply, "retainVehicles", true) or (RARELOAD.settings and RARELOAD.settings.retainVehicles))
-        and SavedInfo.vehicles then
-        RARELOAD.RestoreVehicles(SavedInfo, ply)
-
-        if SavedInfo.vehicleState and SavedInfo.vehicleState.savedInVehicle then
-            RARELOAD.RestorePlayerVehicle(ply, SavedInfo)
-        end
-    end
-
-    if hasPerm("RESTORE_ENTITIES") and RARELOAD.GetPlayerSetting(ply, "retainMapEntities", true) and SavedInfo.entities then
-        RARELOAD.RestoreEntities(SavedInfo.pos, SavedInfo, ply)
-
-        timer.Simple(0.1, function()
-            if not IsValid(ply) then return end
-            local currentPos = ply:GetPos()
-            local rareloadEnts = {}
-            for _, ent in ipairs(ents.GetAll()) do
-                if IsValid(ent) and ent.SpawnedByRareload then
-                    rareloadEnts[#rareloadEnts + 1] = ent
-                    ent._rareloadSavedSolid = ent:GetSolid()
-                    ent:SetNotSolid(true)
-                end
-            end
-            ply:SetPos(currentPos)
-            timer.Simple(0.15, function()
-                for _, ent in ipairs(rareloadEnts) do
-                    if IsValid(ent) then
-                        ent:SetNotSolid(false)
-                        if ent._rareloadSavedSolid then
-                            ent:SetSolid(ent._rareloadSavedSolid)
-                            ent._rareloadSavedSolid = nil
-                        end
-                    end
-                end
-            end)
-        end)
-    end
-
-    if SavedInfo.crossConstraints and istable(SavedInfo.crossConstraints) then
-        timer.Simple(0.2, function()
-            local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
-            if DuplicatorBridge and DuplicatorBridge.RestoreCrossCategoryConstraints then
-                DuplicatorBridge.RestoreCrossCategoryConstraints(SavedInfo.crossConstraints)
-            end
-        end)
-    end
-
-    if hasPerm("RESTORE_NPCS") and RARELOAD.GetPlayerSetting(ply, "retainMapNPCs", true) and HasSnapshotData(SavedInfo.npcs) then
-        RARELOAD.RestoreNPCs(SavedInfo, ply)
-    end
-
-    if keepPlayerStates and SavedInfo.playerStates then
-        timer.Simple(0.1, function()
-            if not IsValid(ply) then return end
-            local states = SavedInfo.playerStates
-            local restoredStates = {}
-            if states.godmode then
-                ply:GodEnable()
-                table.insert(restoredStates, "godmode")
-            end
-            if states.notarget then
-                ply:SetNoTarget(true)
-                table.insert(restoredStates, "notarget")
-            end
-            if states.frozen then
-                ply:Freeze(true)
-                table.insert(restoredStates, "frozen")
-            end
-            if states.noclip and ply:GetMoveType() ~= MOVETYPE_NOCLIP then
-                ply:SetMoveType(MOVETYPE_NOCLIP)
-                table.insert(restoredStates, "noclip")
-            end
-            if RARELOAD.GetPlayerSetting(ply, "debugEnabled") and #restoredStates > 0 then
-                RARELOAD.Debug.SendToPlayer(ply,
-                    "[RARELOAD DEBUG] Restored player states: " .. table.concat(restoredStates, ", "))
-            end
-        end)
-    end
-
-    RestoreActiveWeapon(ply, SavedInfo, inventoryRestored, globalInventoryRestored)
+    -- All per-state restoration (inventory, appearance, health/armor, ammo,
+    -- vehicles, entities, cross-constraints, NPCs, player states, active weapon)
+    -- is scheduled by the registered state providers. ctx flags are populated by
+    -- the inventory provider and read by the active-weapon provider.
+    Registry.RunRestore(ply, SavedInfo, {})
 end

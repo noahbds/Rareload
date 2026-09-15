@@ -166,6 +166,10 @@ return function(ply)
     local GetOwnerSteamIDSafe = Ownership and Ownership.GetOwnerSteamIDSafe
     local SetOwner = Ownership and Ownership.SetOwner
 
+    if RARELOAD.Ownership and RARELOAD.Ownership.BeginResolveBatch then
+        RARELOAD.Ownership.BeginResolveBatch()
+    end
+
     for _, ent in ipairs(ents_GetAll()) do
         if not IsValid(ent) or ent:IsPlayer() or ent:IsNPC() or ent:IsWeapon() then continue end
 
@@ -226,6 +230,10 @@ return function(ply)
                 opStates[targetEnt:EntIndex()] = op
             end
         end
+    end
+
+    if RARELOAD.Ownership and RARELOAD.Ownership.EndResolveBatch then
+        RARELOAD.Ownership.EndResolveBatch()
     end
 
     local duplicatorSnapshot = DuplicatorBridge.CaptureSnapshotForPlayer(

@@ -3,12 +3,6 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 
-if not (RARELOAD.Util and RARELOAD.Util.GenerateDeterministicID) then
-    if file.Exists("rareload/core/rareload_state_utils.lua", "LUA") then
-        include("rareload/core/rareload_state_utils.lua")
-    end
-end
-
 local function safeInclude(path, fallback)
     local ok, mod = pcall(include, path)
     if not ok then
@@ -22,7 +16,6 @@ local DuplicatorBridge = safeInclude("rareload/core/save_helpers/rareload_duplic
 local SnapshotUtils   = safeInclude("rareload/shared/rareload_snapshot_utils.lua", {})
 local DebugState      = safeInclude("rareload/debug/sv_debug_state.lua", {})
 local DebugHelpers    = safeInclude("rareload/debug/sv_debug_helpers.lua", {})
-local EntityIdentity  = safeInclude("rareload/core/rareload_entity_identity.lua", {})
 local SnapshotRestore = safeInclude("rareload/core/respawn_handlers/sv_rareload_snapshot_restore.lua", {})
 
 -----------------------------------------------------------------
@@ -191,20 +184,22 @@ function RARELOAD.RestoreNPCs(savedInfo, requestingPlayer)
 
         -- Safe iteration of restored entities
         local created = res and res.entities
+        local npcStates = snapshot.npcStates or {}
         if created and istable(created) then
             for dupIndex, npc in pairs(created) do
                 if IsValid(npc) then
-                    npc.SpawnedByRareload   = true
-                    npc.SavedViaDuplicator = true
-
                     local savedID = indexToID[dupIndex]
-                    if savedID then
-                        EntityIdentity.SetID(npc, "RareloadNPCID", savedID)
+                    SnapshotRestore.FinalizeCreated(npc, savedID, "RareloadNPCID", targetOwner)
+
+                    -- Reapply saved health (NPCs respawn at default health).
+                    local st = savedID and npcStates[savedID]
+                    if st and st.maxHealth and isfunction(npc.SetMaxHealth) then
+                        npc:SetMaxHealth(st.maxHealth)
+                    end
+                    if st and st.health and isfunction(npc.SetHealth) then
+                        npc:SetHealth(st.health)
                     end
 
-                    if IsValid(targetOwner) and RARELOAD.Ownership then
-                        RARELOAD.Ownership.SetOwner(npc, targetOwner)
-                    end
                     stats.restored = stats.restored + 1
                 end
             end
@@ -239,16 +234,3 @@ hook.Add("RARELOAD_SaveEntities", "RARELOAD_MarkSavedNPCs", function()
         WriteNPCDebug("INFO", "NPCs marked for save", { "Total marked: " .. markedCount })
     end
 end)
-
------------------------------------------------------------------
--- Get Rareload ID of an NPC
------------------------------------------------------------------
-function RARELOAD.GetNPCID(npc)
-    if not IsValid(npc) then return nil end
-    if npc.RareloadUniqueID and npc.RareloadUniqueID ~= "" then return npc.RareloadUniqueID end
-    if npc.GetNWString then
-        local id = npc:GetNWString("RareloadID", "")
-        if id ~= "" then return id end
-    end
-    return nil
-end

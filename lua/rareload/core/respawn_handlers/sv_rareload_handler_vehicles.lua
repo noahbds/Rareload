@@ -359,20 +359,12 @@ function RARELOAD.RestoreVehicles(savedInfo, requestingPlayer)
 
     for dupIndex, ent in pairs(created) do
         if IsValid(ent) then
-            restoredCount          = restoredCount + 1
-            ent.SpawnedByRareload  = true
-            ent.SavedByRareload    = true
-            ent.SavedViaDuplicator = true
+            restoredCount = restoredCount + 1
 
-            local savedID          = indexToID[dupIndex]
-            if savedID then EntityIdentity.SetID(ent, "RareloadEntityID", savedID) end
-
-            if IsValid(targetOwner) and RARELOAD.Ownership then
-                RARELOAD.Ownership.SetOwner(ent, targetOwner)
-                ent.dOwnerEntLFS  = targetOwner
-                ent.LFSOwner      = targetOwner
-                ent.SpawnerPlayer = targetOwner
-            end
+            -- Marks + identity + owner (Ownership.SetOwner already sets the LFS/
+            -- SpawnerPlayer fields, so they no longer need setting here).
+            SnapshotRestore.FinalizeCreated(ent, indexToID[dupIndex], "RareloadEntityID", targetOwner)
+            ent.SavedByRareload = true
 
             StabilizeRestoredVehicle(ent, entityDefs[dupIndex] or entityDefs[tostring(dupIndex)])
             WAC.PatchEntity(ent)

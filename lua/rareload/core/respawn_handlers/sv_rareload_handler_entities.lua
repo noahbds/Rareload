@@ -5,16 +5,9 @@ local ENTITY_RESTORATION = {
     PROXIMITY_RADIUS = 150
 }
 
-if not (RARELOAD.Util and RARELOAD.Util.GenerateEntityStateHash) then
-    if file.Exists("rareload/core/rareload_state_utils.lua", "LUA") then
-        include("rareload/core/rareload_state_utils.lua")
-    end
-end
-
 local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 local DebugState = include("rareload/debug/sv_debug_state.lua")
-local EntityIdentity = include("rareload/core/rareload_entity_identity.lua")
 local SnapshotRestore = include("rareload/core/respawn_handlers/sv_rareload_snapshot_restore.lua")
 
 local function CountTableEntries(tbl)
@@ -126,19 +119,21 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
     end
 
     local radiusSq = ENTITY_RESTORATION.PROXIMITY_RADIUS * ENTITY_RESTORATION.PROXIMITY_RADIUS
+    local entityStates = snapshot.entityStates or {}
     for dupIndex, ent in pairs(created) do
         if IsValid(ent) then
-            ent.SpawnedByRareload = true
-            ent.SavedViaDuplicator = true
-
             local savedID = indexToID[dupIndex]
-            if savedID then
-                EntityIdentity.SetID(ent, "RareloadEntityID", savedID)
+            SnapshotRestore.FinalizeCreated(ent, savedID, "RareloadEntityID", targetOwner)
+
+            -- Reapply saved health (the duplicator does not carry current health).
+            local st = savedID and entityStates[savedID]
+            if st and st.maxHealth and isfunction(ent.SetMaxHealth) then
+                ent:SetMaxHealth(st.maxHealth)
+            end
+            if st and st.health and isfunction(ent.SetHealth) then
+                ent:SetHealth(st.health)
             end
 
-            if IsValid(targetOwner) and RARELOAD.Ownership then
-                RARELOAD.Ownership.SetOwner(ent, targetOwner)
-            end
             if spawnPos and ent.GetPos and (ent:GetPos():DistToSqr(spawnPos) <= radiusSq) then
                 spawnedClose = true
             end
