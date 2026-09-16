@@ -266,9 +266,22 @@ function SnapshotUtils.RemoveEntryByID(bucket, targetID, opts)
     local payload = deserializePayload(snapshot)
     if not payload or not payload.Entities then return false end
 
+    -- Frameworks (Glide/WAC) strip our id field from the dupe def, so the id shown
+    -- in the UI can come from snapshot.rareloadIDOverrides. Match against that too,
+    -- or delete/edit/flag can never find the def.
+    local overrides = snapshot.rareloadIDOverrides
+    local function effMatches(ent, dupIndex)
+        if matchesID(ent, targetID) then return true end
+        if overrides then
+            local ov = overrides[dupIndex] or overrides[tostring(dupIndex)] or overrides[tonumber(dupIndex) or -1]
+            if ov ~= nil and tostring(ov) == tostring(targetID) then return true end
+        end
+        return false
+    end
+
     local removed = false
     for dupIndex, ent in pairs(payload.Entities) do
-        if matchesID(ent, targetID) then
+        if effMatches(ent, dupIndex) then
             payload.Entities[dupIndex] = nil
             if snapshot._indexMap then
                 snapshot._indexMap[dupIndex] = nil

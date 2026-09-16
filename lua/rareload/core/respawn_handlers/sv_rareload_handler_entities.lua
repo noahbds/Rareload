@@ -33,11 +33,23 @@ function RARELOAD.RestoreEntities(playerSpawnPos, savedInfo, requestingPlayer)
         onRetry = function(err)
             WriteDebug(requestingPlayer, "WARNING", "Server-context restore failed, retrying with player context", tostring(err))
         end,
-        onCreated = function(ent, savedID)
+        onCreated = function(ent, savedID, dupIndex, entityDefs)
             -- Reapply saved health (the duplicator does not carry current health).
             local st = savedID and entityStates[savedID]
             if st and st.maxHealth and isfunction(ent.SetMaxHealth) then ent:SetMaxHealth(st.maxHealth) end
             if st and st.health and isfunction(ent.SetHealth) then ent:SetHealth(st.health) end
+
+            -- Honor a saved "disable gravity" flag: the duplicator restores Frozen
+            -- but not per-physobj gravity, so apply NoGrav ourselves (matches vehicles).
+            local def = entityDefs and dupIndex ~= nil and entityDefs[dupIndex]
+            if istable(def) and istable(def.PhysicsObjects) and isfunction(ent.GetPhysicsObjectNum) then
+                for boneIdx, p in pairs(def.PhysicsObjects) do
+                    if istable(p) and p.NoGrav == true then
+                        local phys = ent:GetPhysicsObjectNum(tonumber(boneIdx) or 0)
+                        if IsValid(phys) then phys:EnableGravity(false) end
+                    end
+                end
+            end
 
             if spawnPos and ent.GetPos and ent:GetPos():DistToSqr(spawnPos) <= PROXIMITY_RADIUS_SQR then
                 spawnedClose = true

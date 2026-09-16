@@ -159,3 +159,14 @@ concommand.Add("rareload_teleport_to", function(ply, cmd, args)
     ply:SetVelocity(Vector(0, 0, 0))
     ply:ChatPrint("[RARELOAD] Teleported to position: " .. tostring(safePos))
 end)
+
+-- Rotate the caller's view toward a world position (harmless — looking only).
+concommand.Add("rareload_look_at", function(ply, cmd, args)
+    if not IsValid(ply) or not ply:IsPlayer() then return end
+    if #args < 3 then return end
+    local x, y, z = tonumber(args[1]), tonumber(args[2]), tonumber(args[3])
+    if not (x and y and z) then return end
+    local dir = Vector(x, y, z) - ply:EyePos()
+    if dir:IsZero() then return end
+    ply:SetEyeAngles(dir:Angle())
+end)

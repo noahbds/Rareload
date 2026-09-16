@@ -543,10 +543,10 @@ function HP:UpdateDetail()
     end
 
     -- model
-    local dispModel = (e.mdl and util.IsValidModel(e.mdl)) and e.mdl or nil
+    local dispModel = UI.IsRenderableModel(e.mdl) and e.mdl or nil
     if not dispModel then
         local lp = LocalPlayer()
-        if IsValid(lp) and util.IsValidModel(lp:GetModel()) then dispModel = lp:GetModel() end
+        if IsValid(lp) and UI.IsRenderableModel(lp:GetModel()) then dispModel = lp:GetModel() end
     end
     if dispModel and D.model:GetModel() ~= dispModel then
         D.model:SetModel(dispModel)

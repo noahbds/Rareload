@@ -90,6 +90,14 @@ function UI.StyleScrollbar(scroll)
 end
 
 -- Frame a DModelPanel's camera onto its model's render bounds.
+-- Whether a model path is worth putting in a DModelPanel. util.IsValidModel is
+-- unreliable here (it returns false even for stock models like models/buggy.mdl),
+-- so trust it OR a mounted file on disk; either means the model will render.
+function UI.IsRenderableModel(m)
+    if not isstring(m) or m == "" then return false end
+    return util.IsValidModel(m) or file.Exists(m, "GAME")
+end
+
 function UI.FrameModelPanel(mp)
     local ent = mp:GetEntity()
     if not IsValid(ent) then return end

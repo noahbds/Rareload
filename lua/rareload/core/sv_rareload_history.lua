@@ -1,14 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- Save Timeline — server net + restore (4.0 · Phase 3)
---
--- Sends each player a COMPACT summary of their own save history (the heavy
--- entity/NPC blobs stay server-side and are only touched on restore) and handles
--- the panel's actions: pin, note, delete, clear, teleport-to and restore.
---
--- Restore reuses the existing respawn primitives (RestoreInventory,
--- RestoreAppearance, RestoreEntities, RestoreNPCs, …) so a history entry is
--- applied to the living player exactly the way the reload key applies the active
--- save — component by component, so partial restore is precise.
+-- Save Timeline
 -- ─────────────────────────────────────────────────────────────────────────────
 
 if not SERVER then return end
@@ -17,8 +8,8 @@ util.AddNetworkString("RareloadHistory_Request")
 util.AddNetworkString("RareloadHistory_Data")
 util.AddNetworkString("RareloadHistory_Action")
 util.AddNetworkString("RareloadHistory_Preview")
-util.AddNetworkString("RareloadHistory_Objects")   -- serve one save's full object list
-util.AddNetworkString("RareloadHistory_ObjAction") -- edit / flag / delete an object in a save
+util.AddNetworkString("RareloadHistory_Objects")
+util.AddNetworkString("RareloadHistory_ObjAction")
 
 local SnapshotUtils = RARELOAD.SnapshotUtils
 if not SnapshotUtils then
@@ -504,14 +495,6 @@ net.Receive("RareloadHistory_Action", function(_, ply)
     end
 end)
 
--- ── per-save object browser (entity viewer / JSON editor over any save) ──────────
---
--- The Save Timeline's "Objects" overlay reuses the entity-viewer UI, but scoped to
--- ONE history entry instead of the live current save. The server serves that
--- entry's full object records on demand and applies edit/flag/delete back into the
--- history store (with copy-on-write so shared, deduped heavy buckets aren't
--- corrupted). Guarded by MANAGE_ENTITIES, same as the live entity viewer.
-
 local function HasEntityPerm(ply)
     if RARELOAD.CheckPermission then return RARELOAD.CheckPermission(ply, "MANAGE_ENTITIES") end
     if RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
@@ -520,9 +503,6 @@ local function HasEntityPerm(ply)
     return IsValid(ply) and ply:IsAdmin()
 end
 
--- Flatten a history entry's entities/npcs/vehicles into viewer-ready records. Each
--- GetSummary record is a full copy of the stored def (so the JSON editor has every
--- field) plus id/class/model/pos/ang; we only tag its bucket + isNPC.
 local function BuildEntryObjects(steamID, mapName, id)
     local e = RARELOAD.GetHistoryEntryById(steamID, mapName, id)
     if not e then return nil end
@@ -575,19 +555,25 @@ end)
 -- and hand it to modifyFn (top-level map or duplicator payload).
 local function ModifyDefInBucket(bucket, targetId, modifyFn)
     if not istable(bucket) then return false end
-    local function isMatch(record, key)
+    local function isMatch(record, key, overrides)
         if tostring(key) == targetId then return true end
         if istable(record) then
             if tostring(record.RareloadNPCID or "") == targetId then return true end
             if tostring(record.RareloadEntityID or "") == targetId then return true end
             if tostring(record.RareloadID or "") == targetId then return true end
         end
+        -- Frameworks strip our id from the dupe def; the UI id may come from the
+        -- override map, so match that too (mirrors SnapshotUtils.RemoveEntryByID).
+        if overrides then
+            local ov = overrides[key] or overrides[tostring(key)] or overrides[tonumber(key) or -1]
+            if ov ~= nil and tostring(ov) == targetId then return true end
+        end
         return false
     end
-    local function tryMap(map)
+    local function tryMap(map, overrides)
         if not istable(map) then return false end
         for k, v in pairs(map) do
-            if k ~= "__duplicator" and istable(v) and isMatch(v, k) then
+            if k ~= "__duplicator" and istable(v) and isMatch(v, k, overrides) then
                 modifyFn(v); return true
             end
         end
@@ -596,7 +582,7 @@ local function ModifyDefInBucket(bucket, targetId, modifyFn)
     if tryMap(bucket) then return true end
     local dup = bucket.__duplicator
     if istable(dup) and istable(dup.payload) and istable(dup.payload.Entities) then
-        if tryMap(dup.payload.Entities) then return true end
+        if tryMap(dup.payload.Entities, dup.rareloadIDOverrides) then return true end
     end
     return false
 end
@@ -611,7 +597,15 @@ local OBJ_FLAG_HANDLERS = {
     gravity_disabled = function(v, value)
         v.gravity_disabled = value
         if istable(v.PhysicsObjects) then
-            for _, p in pairs(v.PhysicsObjects) do if istable(p) then p.GravityEnabled = not value end end
+            -- The restore paths read NoGrav (vehicle handler calls EnableGravity(false)
+            -- on NoGrav), while the client checkbox reads GravityEnabled; set both so the
+            -- flag both displays and actually takes effect on restore.
+            for _, p in pairs(v.PhysicsObjects) do
+                if istable(p) then
+                    p.NoGrav = value
+                    p.GravityEnabled = not value
+                end
+            end
         end
     end,
 }

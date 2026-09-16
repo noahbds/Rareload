@@ -36,8 +36,6 @@ local function GetRootVehicle(ent)
     return (DataUtils and DataUtils.GetRootVehicle(ent)) or ent
 end
 
--- True when the player is seated anywhere in the given root vehicle. Relies on
--- the generic GetRootVehicle to resolve whatever seat/pod they're in.
 local function PlayerOccupiesVehicle(ply, root)
     if not (IsValid(ply) and IsValid(root)) then return false end
     local veh = ply:GetVehicle()
@@ -94,10 +92,6 @@ local function CaptureOperationalState(veh)
         if ok and isbool(val) then op.handbrake = val end
     end
 
-    -- Render color + skin. Frameworks that randomize their paint on spawn (Glide
-    -- rolls GetSpawnColor() every Initialize) don't reliably honor the duplicator's
-    -- "colour" modifier on paste, so we snapshot the live values and re-apply them
-    -- explicitly on restore. Stored as plain fields (survives JSON round-trip).
     if isfunction(veh.GetColor) then
         local ok, col = pcall(veh.GetColor, veh)
         if ok and istable(col) then
@@ -170,13 +164,8 @@ return function(ply)
 
     for _, ent in ipairs(ents_GetAll()) do
         if not IsValid(ent) or ent:IsPlayer() or ent:IsNPC() or ent:IsWeapon() then continue end
-
-        -- Only consider things that can BE a vehicle root or a drivable seat; the
-        -- cheap class/IsVehicle test avoids running the part-graph on every prop.
         if not (IsRootVehicle(ent) or ent:IsVehicle()) then continue end
 
-        -- Map any seat/part to the framework's actual root, then drop it if it is
-        -- still a structural part (never target a wheel/rotor as a "vehicle").
         local targetEnt = GetRootVehicle(ent) or ent
         if not IsValid(targetEnt) or targetEnt:IsPlayer() or targetEnt:IsNPC() or targetEnt:IsWeapon() then continue end
         if DataUtils and DataUtils.IsVehiclePart(targetEnt) then continue end
@@ -184,11 +173,6 @@ return function(ply)
         local owner = ResolveOwner and ResolveOwner(targetEnt) or nil
         local ownerValid = IsOwnedByPlayerSafe and IsOwnedByPlayerSafe(targetEnt, ply)
 
-        -- Frameworks that assign no creator/CPPI owner (some LFS setups) leave a
-        -- vehicle looking unowned. Claim a genuinely unowned vehicle for the saver
-        -- only when they are clearly its operator — occupying or driving it — so we
-        -- never grab someone else's vehicle. Proper owner fields (dOwnerEntLFS, …)
-        -- are already resolved by Ownership.ResolveOwner.
         if not ownerValid and not IsValid(owner) then
             local claimable = PlayerOccupiesVehicle(ply, targetEnt)
                 or (isfunction(targetEnt.GetDriver) and targetEnt:GetDriver() == ply)
@@ -216,9 +200,6 @@ return function(ply)
 
             if sid then targetEnt.OriginalSpawner = sid end
 
-            -- Record EntIndex → live id so frameworks that strip unknown fields
-            -- from their duplicator table (Glide) still get a stable, matchable id
-            -- in the snapshot instead of a synthetic "vehicle_<idx>" fallback.
             if id then
                 idOverrides[targetEnt:EntIndex()] = id
             end

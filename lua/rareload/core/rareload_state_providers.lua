@@ -94,11 +94,15 @@ R.Register({
     restoreOrder      = 80,
     restoreDelay      = 0.1,
     save = function(ply, pd)
+        local vel = ply:GetVelocity()
         pd.playerStates = {
-            godmode  = ply:HasGodMode(),
-            notarget = ply:IsFlagSet(FL_NOTARGET),
-            frozen   = ply:IsFrozen(),
-            noclip   = ply:GetMoveType() == MOVETYPE_NOCLIP,
+            godmode    = ply:HasGodMode(),
+            notarget   = ply:IsFlagSet(FL_NOTARGET),
+            frozen     = ply:IsFrozen(),
+            noclip     = ply:GetMoveType() == MOVETYPE_NOCLIP,
+            flashlight = ply:FlashlightIsOn(),
+            -- Vectors are stored as plain tables so they survive the JSON round-trip.
+            velocity   = vel and { x = vel.x, y = vel.y, z = vel.z } or nil,
         }
         if DebugOn(ply) then
             local states = {}
@@ -106,6 +110,7 @@ R.Register({
             if pd.playerStates.notarget then table.insert(states, "notarget") end
             if pd.playerStates.frozen then table.insert(states, "frozen") end
             if pd.playerStates.noclip then table.insert(states, "noclip") end
+            if pd.playerStates.flashlight then table.insert(states, "flashlight") end
             if #states > 0 then
                 print("[RARELOAD DEBUG] Saved player states: " .. table.concat(states, ", "))
             end
@@ -120,6 +125,14 @@ R.Register({
         if states.frozen then ply:Freeze(true); table.insert(restored, "frozen") end
         if states.noclip and ply:GetMoveType() ~= MOVETYPE_NOCLIP then
             ply:SetMoveType(MOVETYPE_NOCLIP); table.insert(restored, "noclip")
+        end
+        if states.flashlight then
+            ply:AllowFlashlight(true); ply:Flashlight(true); table.insert(restored, "flashlight")
+        end
+        local v = states.velocity
+        if istable(v) then
+            local vec = Vector(v.x or 0, v.y or 0, v.z or 0)
+            if not vec:IsZero() then ply:SetVelocity(vec); table.insert(restored, "velocity") end
         end
         if DebugOn(ply) and #restored > 0 and RARELOAD.Debug and RARELOAD.Debug.SendToPlayer then
             RARELOAD.Debug.SendToPlayer(ply, "[RARELOAD DEBUG] Restored player states: " .. table.concat(restored, ", "))

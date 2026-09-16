@@ -210,10 +210,11 @@ function EntityViewer:BuildDetail(host)
     -- self-drawn fields block
     local fields = vgui.Create("DPanel", host)
     D.fields = fields
-    fields:Dock(TOP); fields:SetTall(sc(170)); fields:DockMargin(0, 0, 0, sc(8))
+    fields:Dock(TOP); fields:SetTall(sc(222)); fields:DockMargin(0, 0, 0, sc(8))
     fields.Paint = function(_, w, h)
         draw.RoundedBox(sc(10), 0, 0, w, h, THEME.surface)
         local e = self:Selected(); if not e then return end
+        local lp = LocalPlayer()
         local rows = {
             { L("inspector.row.id"), tostring(ObjID(e) or "?") },
             { L("inspector.row.class"), tostring(e.class or "?") },
@@ -221,7 +222,9 @@ function EntityViewer:BuildDetail(host)
             { L("inspector.row.health"), (e.health and tostring(math.floor(e.health)) or "-") ..
                 (e.maxHealth and (" / " .. math.floor(e.maxHealth)) or "") },
             { L("inspector.row.position"), e.pos and string.format("%.0f, %.0f, %.0f", e.pos.x, e.pos.y, e.pos.z) or "-" },
+            { L("inspector.row.angles"), e.ang and string.format("%.0f, %.0f, %.0f", e.ang.p, e.ang.y, e.ang.r) or "-" },
             { L("inspector.row.skin"), tostring(e.skin or 0) },
+            { L("inspector.row.distance"), (e.pos and IsValid(lp)) and tostring(math.Round(lp:GetPos():Distance(e.pos))) or "-" },
         }
         local y, rh = sc(8), sc(26)
         for i, r in ipairs(rows) do
@@ -256,6 +259,64 @@ function EntityViewer:BuildDetail(host)
         self:SendHistoryObjAction("flag", ObjID(e), e.isNPC, { flag = "gravity_disabled", value = v })
     end
 
+    -- ── quick actions: locate in world / copy fields ─────────────────────────
+    local SED = RARELOAD.SavedEntityDisplay or _G.SED
+    local function actionRow(parent)
+        local row = vgui.Create("DPanel", parent)
+        row:Dock(TOP); row:DockMargin(0, sc(2), 0, sc(6)); row:SetTall(sc(30))
+        row.Paint = function() end
+        row.PerformLayout = function(_, w, h)
+            local gap = sc(6)
+            local bw = (w - gap) / 2
+            local i = 0
+            for _, c in ipairs(row:GetChildren()) do
+                c:SetSize(bw, h); c:SetPos(i * (bw + gap), 0); i = i + 1
+            end
+        end
+        return row
+    end
+    local function copyTo(value, label)
+        SetClipboardText(tostring(value or ""))
+        ShowNotification(L("inspector.copied", label), NOTIFY_GENERIC, 2)
+    end
+
+    local r1 = actionRow(host); D.actionRow1 = r1
+    D.hlBtn = UI.Button(r1, L("inspector.highlight"), THEME.info, function()
+        local e = self:Selected(); if not e or not (SED and SED.Highlight) then return end
+        local on = SED.Highlight.ToggleSaved(ObjID(e), e.isNPC)
+        ShowNotification(L(on and "inspector.highlight_on" or "inspector.highlight_off"), NOTIFY_GENERIC, 2)
+        self:UpdateDetail()
+    end)
+    D.tpBtn = UI.Button(r1, L("inspector.teleport"), THEME.info, function()
+        local e = self:Selected(); if not e then return end
+        if not e.pos then ShowNotification(L("inspector.no_position"), NOTIFY_ERROR); return end
+        RunConsoleCommand("rareload_teleport_to", tostring(e.pos.x), tostring(e.pos.y), tostring(e.pos.z))
+        ShowNotification(L("inspector.teleporting"), NOTIFY_GENERIC, 2)
+    end)
+
+    local r2 = actionRow(host); D.actionRow2 = r2
+    D.camBtn = UI.Button(r2, L("inspector.look_at"), THEME.info, function()
+        local e = self:Selected(); if not e then return end
+        if not e.pos then ShowNotification(L("inspector.no_position"), NOTIFY_ERROR); return end
+        RunConsoleCommand("rareload_look_at", tostring(e.pos.x), tostring(e.pos.y), tostring(e.pos.z))
+    end)
+    D.copyBtn = UI.Button(r2, L("inspector.copy"), THEME.primary, function()
+        local e = self:Selected(); if not e then return end
+        local m = DermaMenu()
+        m:AddOption(L("inspector.copy.id"), function() copyTo(ObjID(e), L("inspector.row.id")) end)
+        m:AddOption(L("inspector.copy.model"), function() copyTo(e.model, L("inspector.row.model")) end)
+        m:AddOption(L("inspector.copy.class"), function() copyTo(e.class, L("inspector.row.class")) end)
+        m:AddOption(L("inspector.copy.health"), function()
+            copyTo((e.health and math.floor(e.health) or "-") ..
+                (e.maxHealth and (" / " .. math.floor(e.maxHealth)) or ""), L("inspector.row.health"))
+        end)
+        m:AddOption(L("inspector.copy.position"), function()
+            copyTo(e.pos and string.format("%.2f %.2f %.2f", e.pos.x, e.pos.y, e.pos.z) or "-", L("inspector.row.position"))
+        end)
+        m:AddOption(L("inspector.copy.json"), function() copyTo(util.TableToJSON(e.rawData or {}), "JSON") end)
+        m:Open()
+    end)
+
     -- actions
     D.editBtn = UI.Button(host, L("ev.edit_json"), THEME.primary, function()
         local e = self:Selected(); if e then self:OpenJSONEditor(e) end
@@ -283,13 +344,19 @@ function EntityViewer:UpdateDetail()
     local D = self.D; if not D then return end
     local e = self:Selected()
     local has = e ~= nil
-    for _, k in ipairs({ "model", "fields", "freeze", "gravity", "editBtn", "delBtn" }) do
+    for _, k in ipairs({ "model", "fields", "freeze", "gravity", "actionRow1", "actionRow2", "editBtn", "delBtn" }) do
         if IsValid(D[k]) then D[k]:SetVisible(has) end
     end
     if IsValid(D.empty) then D.empty:SetVisible(not has) end
     if not has then return end
 
-    local m = (e.model and util.IsValidModel(e.model)) and e.model or "models/error.mdl"
+    if IsValid(D.hlBtn) then
+        local SED = RARELOAD.SavedEntityDisplay or _G.SED
+        local active = SED and SED.Highlight and SED.Highlight.IsActive and SED.Highlight.IsActive("saved", ObjID(e))
+        D.hlBtn:SetText2(active and ("● " .. L("inspector.highlight")) or L("inspector.highlight"))
+    end
+
+    local m = UI.IsRenderableModel(e.model) and e.model or "models/error.mdl"
     if D.model:GetModel() ~= m then
         D.model:SetModel(m)
         timer.Simple(0, function() if IsValid(D.model) then UI.FrameModelPanel(D.model) end end)
@@ -332,7 +399,7 @@ local function BuildCard(viewer, parent, ent)
     previewBg:SetPos(sc(8), sc(8)); previewBg:SetSize(sc(152), sc(108))
     previewBg.Paint = function(_, w, h) draw.RoundedBox(sc(8), 0, 0, w, h, THEME.backgroundDark) end
 
-    if ent.model and util.IsValidModel(ent.model) then
+    if UI.IsRenderableModel(ent.model) then
         local mp = vgui.Create("DModelPanel", previewBg)
         mp:SetPos(0, 0); mp:SetSize(sc(152), sc(108))
         mp:SetModel(ent.model); mp:SetMouseInputEnabled(false)
