@@ -6,7 +6,6 @@ if not RARELOAD.Ownership then
 end
 
 local EntityIdentity = include("rareload/core/rareload_entity_identity.lua")
-local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 local DebugHelpers = include("rareload/debug/sv_debug_helpers.lua")
 
@@ -148,7 +147,6 @@ return function(ply)
     if not IsValid(ply) then return {} end
 
     local count = 0
-    local startTime = SysTime()
 
     local duplicatorTargets = {}
     local duplicatorSeen = {}
@@ -236,29 +234,19 @@ return function(ply)
         RARELOAD.Ownership.EndResolveBatch()
     end
 
-    local duplicatorSnapshot = DuplicatorBridge.CaptureSnapshotForPlayer(
-        duplicatorTargets,
-        ply,
-        function(err)
-            WriteVehicleSaveDebug(ply, "WARNING", "Duplicator vehicle snapshot capture failed", tostring(err))
+    local result = SnapshotUtils.BuildOwnedBucket(ply, duplicatorTargets, {
+        captureOpts = { category = "vehicle" },
+        indexMap    = { category = "vehicle", idPrefix = "vehicle" },
+        extras      = { rareloadIDOverrides = idOverrides, operationalStates = opStates },
+        keepTargets = true,
+        onError     = function(err) WriteVehicleSaveDebug(ply, "WARNING", "Duplicator vehicle snapshot capture failed", tostring(err)) end,
+        onFail      = function()
+            WriteVehicleSaveDebug(ply, (count > 0) and "WARNING" or "VERBOSE",
+                (count > 0) and "Duplicator vehicle snapshot unavailable" or "No vehicle candidates to snapshot",
+                string.format("Found %d owned vehicles (no snapshot)", count))
         end,
-        { category = "vehicle" }
-    )
-
-    if not duplicatorSnapshot then
-        local level = (count > 0) and "WARNING" or "VERBOSE"
-        local reason = (count > 0) and "Duplicator vehicle snapshot unavailable" or "No vehicle candidates to snapshot"
-        WriteVehicleSaveDebug(ply, level, reason, string.format("Found %d owned vehicles (no snapshot)", count))
-        return {}
-    end
-
-    if next(idOverrides) then duplicatorSnapshot.rareloadIDOverrides = idOverrides end
-    if next(opStates) then duplicatorSnapshot.operationalStates = opStates end
-
-    SnapshotUtils.EnsureIndexMap(duplicatorSnapshot, { category = "vehicle", idPrefix = "vehicle" })
-
-    local result = { _targets = duplicatorTargets }
-    rawset(result, "__duplicator", duplicatorSnapshot)
+    })
+    if not SnapshotUtils.HasSnapshot(result) then return result end
 
     local currentVehicle = ply:GetVehicle()
     if IsValid(currentVehicle) then
@@ -279,12 +267,6 @@ return function(ply)
             }
         end
     end
-
-    WriteVehicleSaveDebug(ply, "INFO", "Vehicle save completed", {
-        string.format("Saved %d vehicles in %d ms", count, math.Round((SysTime() - startTime) * 1000)),
-        string.format("Duplicator snapshot captured (%d entities, %d constraints)", duplicatorSnapshot.entityCount or 0,
-            duplicatorSnapshot.constraintCount or 0)
-    })
 
     return result
 end

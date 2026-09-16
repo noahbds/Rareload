@@ -13,12 +13,11 @@ end)
 
 hook.Add("RareloadPlayerPositionsUpdated", "RARELOAD_SEDRefreshSavedLookup", function(mapName)
     if mapName ~= game.GetMap() then return end
-    if not (SED and SED.RebuildSavedLookup) then return end
+    if not SED then return end
 
-    SED.RebuildSavedLookup()
-    if SED.PruneMissingTrackedEntities then
-        SED.PruneMissingTrackedEntities()
-    end
+    -- Mark the lookup dirty; the render path rebuilds it once (and prunes) on the
+    -- next frame, instead of doing it inline here on every sync.
+    SED.SavedLookupDirty = true
 
     SED.EntityPanelCache = {}
     SED.NPCPanelCache = {}

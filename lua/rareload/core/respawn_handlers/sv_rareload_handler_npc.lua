@@ -12,20 +12,12 @@ local function safeInclude(path, fallback)
     return mod
 end
 
-local DuplicatorBridge = safeInclude("rareload/core/save_helpers/rareload_duplicator_utils.lua", {})
-local SnapshotUtils   = safeInclude("rareload/shared/rareload_snapshot_utils.lua", {})
-local DebugState      = safeInclude("rareload/debug/sv_debug_state.lua", {})
 local DebugHelpers    = safeInclude("rareload/debug/sv_debug_helpers.lua", {})
 local SnapshotRestore = safeInclude("rareload/core/respawn_handlers/sv_rareload_snapshot_restore.lua", {})
 
------------------------------------------------------------------
--- Debug helper
------------------------------------------------------------------
-local function WriteNPCDebug(level, message, details, context)
-    if DebugHelpers and DebugHelpers.Write then
-        DebugHelpers.Write("npc_respawn", level, message, details, context)
-    end
-end
+local WriteDebug = (DebugHelpers and DebugHelpers.MakeWriter)
+    and DebugHelpers.MakeWriter("npc_respawn", { gate = true, allowPrintFallback = true, printPrefix = "[RARELOAD DEBUG] " })
+    or function() end
 
 -----------------------------------------------------------------
 -- Map ready state and NPC restore queue
@@ -33,6 +25,10 @@ end
 RARELOAD._MapReady      = RARELOAD._MapReady or false
 RARELOAD._MapReadyTime  = RARELOAD._MapReadyTime or 0
 RARELOAD._NPCSpawnQueue = RARELOAD._NPCSpawnQueue or {}
+
+function RARELOAD.IsMapReady()
+    return RARELOAD._MapReady == true
+end
 
 local function ProcessNPCSpawnQueue()
     if not RARELOAD.IsMapReady() then return end
@@ -47,173 +43,66 @@ local function ProcessNPCSpawnQueue()
     end
 end
 
-hook.Add("InitPostEntity", "RARELOAD_MapReady", function()
+local function MarkMapReady()
     RARELOAD._MapReady = true
     RARELOAD._MapReadyTime = CurTime()
-
-    if DebugState and DebugState.IsAnyEnabled and DebugState.IsAnyEnabled() then
-        WriteNPCDebug("INFO", "Map ready", {
-            "InitPostEntity fired",
-            "Ready time: " .. RARELOAD._MapReadyTime
-        })
-    end
-
     ProcessNPCSpawnQueue()
-end)
-
-hook.Add("PostCleanupMap", "RARELOAD_MapReadyAfterCleanup", function()
-    timer.Simple(0, function()
-        RARELOAD._MapReady = true
-        RARELOAD._MapReadyTime = CurTime()
-
-        if DebugState and DebugState.IsAnyEnabled and DebugState.IsAnyEnabled() then
-            WriteNPCDebug("INFO", "Map ready after cleanup", {
-                "PostCleanupMap processed",
-                "Ready time: " .. RARELOAD._MapReadyTime
-            })
-        end
-
-        ProcessNPCSpawnQueue()
-    end)
-end)
-
-function RARELOAD.IsMapReady()
-    return RARELOAD._MapReady == true
 end
+
+hook.Add("InitPostEntity", "RARELOAD_MapReady", MarkMapReady)
+hook.Add("PostCleanupMap", "RARELOAD_MapReadyAfterCleanup", function() timer.Simple(0, MarkMapReady) end)
 
 -----------------------------------------------------------------
 -- NPC restoration
 -----------------------------------------------------------------
 function RARELOAD.RestoreNPCs(savedInfo, requestingPlayer)
-    local debugEnabled = DebugState and DebugState.IsEnabledForPlayer and
-                         DebugState.IsEnabledForPlayer(requestingPlayer)
-
-    if not savedInfo or not istable(savedInfo.npcs) then
-        if debugEnabled then
-            WriteNPCDebug("INFO", "NPC restoration skipped", "No NPCs to restore", { entity = requestingPlayer })
-        end
-        return
-    end
-
+    if not savedInfo or not istable(savedInfo.npcs) then return end
     local snapshot = savedInfo.npcs.__duplicator
     if not snapshot then
-        if debugEnabled then
-            WriteNPCDebug("WARNING", "No duplicator snapshot found in savedInfo.npcs", nil,
-                { entity = requestingPlayer })
-        end
+        WriteDebug(requestingPlayer, "WARNING", "No duplicator snapshot found in savedInfo.npcs")
         return
     end
 
-    SnapshotUtils.EnsureIndexMap(snapshot, {
-        category = "npc",
-        idPrefix = "npc"
-    })
-
-    -- Defer if map not ready – now using the queue
+    -- Defer until the map (and its NPC factories) are ready.
     if not RARELOAD.IsMapReady() then
-        if debugEnabled then
-            WriteNPCDebug("WARNING", "Map not ready", "Queueing NPC restoration", { entity = requestingPlayer })
-        end
-
-        table.insert(RARELOAD._NPCSpawnQueue, {
-            savedInfo = savedInfo,
-            requestingPlayer = requestingPlayer
-        })
+        WriteDebug(requestingPlayer, "INFO", "Map not ready; queueing NPC restoration")
+        table.insert(RARELOAD._NPCSpawnQueue, { savedInfo = savedInfo, requestingPlayer = requestingPlayer })
         return
     end
 
-    local delay = RARELOAD.settings.npcRestoreDelay or 1
+    timer.Simple(RARELOAD.settings.npcRestoreDelay or 1, function()
+        local npcStates = snapshot.npcStates or {}
+        local startTime = SysTime()
 
-    if debugEnabled then
-        WriteNPCDebug("INFO", "NPC restoration started", {
-            "Total NPCs: " .. (snapshot.entityCount or 0),
-            "Initial delay: " .. delay .. "s"
-        }, { entity = requestingPlayer })
-    end
+        local ok, info = SnapshotRestore.RestoreCategory({
+            bucket = savedInfo.npcs,
+            fieldName = "RareloadNPCID",
+            indexMap = { category = "npc", idPrefix = "npc" },
+            requestingPlayer = requestingPlayer,
+            onRetry = function(err)
+                WriteDebug(requestingPlayer, "WARNING", "Server-context NPC restore failed, retrying with player context", tostring(err))
+            end,
+            onCreated = function(npc, savedID)
+                -- Reapply saved health (NPCs respawn at default health).
+                local st = savedID and npcStates[savedID]
+                if st and st.maxHealth and isfunction(npc.SetMaxHealth) then npc:SetMaxHealth(st.maxHealth) end
+                if st and st.health and isfunction(npc.SetHealth) then npc:SetHealth(st.health) end
+            end,
+        })
 
-    timer.Simple(delay, function()
-        debugEnabled = DebugState and DebugState.IsEnabledForPlayer and
-                       DebugState.IsEnabledForPlayer(requestingPlayer)
-
-        local stats = {
-            total    = snapshot.entityCount or 0,
-            restored = 0,
-            startTime = SysTime(),
-            endTime   = 0
-        }
-
-        local indexToID  = snapshot._indexMap or {}
-        local targetOwner = IsValid(requestingPlayer) and requestingPlayer or
-                            (DuplicatorBridge.FindSnapshotOwner and
-                             DuplicatorBridge.FindSnapshotOwner(snapshot) or nil)
-
-        if debugEnabled then
-            WriteNPCDebug("INFO", "Restoring NPCs from duplicator snapshot", {
-                "NPC count: " .. (snapshot.entityCount or 0),
-                "Target owner: " .. (IsValid(targetOwner) and targetOwner:Nick() or "none")
-            }, { entity = targetOwner })
+        if info.skipped > 0 then
+            WriteDebug(info.targetOwner, "INFO", string.format("Skipped %d existing NPCs (already on map)", info.skipped))
         end
 
-        local ok, res, skippedNPCs = SnapshotRestore.RestoreWithExistingIDFilter(
-            snapshot,
-            indexToID,
-            "RareloadNPCID",
-            requestingPlayer,
-            function(err)
-                if debugEnabled then
-                    WriteNPCDebug("WARNING", "Server-context NPC restore failed, retrying with player context",
-                        tostring(err), { entity = requestingPlayer })
-                end
-            end
-        )
-
-        local skippedCount = (skippedNPCs and #skippedNPCs) or 0
-        if debugEnabled and skippedCount > 0 then
-            WriteNPCDebug("INFO", "Skipped existing NPCs",
-                "Skipped " .. skippedCount .. " NPCs (already on map)", { entity = targetOwner })
-        end
-
+        local stats = { total = snapshot.entityCount or 0, restored = info.restored, skipped = info.skipped }
         if not ok then
-            stats.endTime = SysTime()
-            if debugEnabled then
-                WriteNPCDebug("ERROR", "Duplicator NPC restore failed", tostring(res), { entity = targetOwner })
-            end
+            WriteDebug(info.targetOwner, "ERROR", "Duplicator NPC restore failed", tostring(info.error))
             hook.Run("RareloadNPCsRestored", stats)
             return
         end
 
-        -- Safe iteration of restored entities
-        local created = res and res.entities
-        local npcStates = snapshot.npcStates or {}
-        if created and istable(created) then
-            for dupIndex, npc in pairs(created) do
-                if IsValid(npc) then
-                    local savedID = indexToID[dupIndex]
-                    SnapshotRestore.FinalizeCreated(npc, savedID, "RareloadNPCID", targetOwner)
-
-                    -- Reapply saved health (NPCs respawn at default health).
-                    local st = savedID and npcStates[savedID]
-                    if st and st.maxHealth and isfunction(npc.SetMaxHealth) then
-                        npc:SetMaxHealth(st.maxHealth)
-                    end
-                    if st and st.health and isfunction(npc.SetHealth) then
-                        npc:SetHealth(st.health)
-                    end
-
-                    stats.restored = stats.restored + 1
-                end
-            end
-        end
-
-        stats.endTime = SysTime()
-
-        if debugEnabled then
-            WriteNPCDebug("INFO", "NPC restoration completed", {
-                "Restored: " .. stats.restored .. "/" .. stats.total,
-                "Time: " .. string.format("%.2f", stats.endTime - stats.startTime) .. "s"
-            }, { entity = targetOwner })
-        end
-
+        WriteDebug(info.targetOwner, "INFO",
+            string.format("NPC restoration completed in %.2fs (%d/%d)", SysTime() - startTime, info.restored, stats.total))
         hook.Run("RareloadNPCsRestored", stats)
     end)
 end
@@ -222,15 +111,9 @@ end
 -- Mark all NPCs as saved by Rareload (called on map save)
 -----------------------------------------------------------------
 hook.Add("RARELOAD_SaveEntities", "RARELOAD_MarkSavedNPCs", function()
-    local markedCount = 0
     for _, npc in ipairs(ents.GetAll()) do
         if IsValid(npc) and npc:IsNPC() then
             npc.SavedByRareload = true
-            markedCount = markedCount + 1
         end
-    end
-
-    if DebugState and DebugState.IsAnyEnabled and DebugState.IsAnyEnabled() then
-        WriteNPCDebug("INFO", "NPCs marked for save", { "Total marked: " .. markedCount })
     end
 end)

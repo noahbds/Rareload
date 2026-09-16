@@ -46,6 +46,28 @@ function SnapshotUtils.NormalizeBucketForSave(bucket)
     return normalized
 end
 
+function SnapshotUtils.BuildOwnedBucket(ply, targets, opts)
+    opts = opts or {}
+    local snapshot = DuplicatorBridge.CaptureSnapshotForPlayer(targets, ply, opts.onError, opts.captureOpts)
+    if not snapshot then
+        if opts.onFail then opts.onFail() end
+        return {}
+    end
+
+    if istable(opts.extras) then
+        for key, tbl in pairs(opts.extras) do
+            if istable(tbl) and next(tbl) then snapshot[key] = tbl end
+        end
+    end
+
+    if opts.indexMap then SnapshotUtils.EnsureIndexMap(snapshot, opts.indexMap) end
+
+    local result = {}
+    if opts.keepTargets then result._targets = targets end
+    rawset(result, "__duplicator", snapshot)
+    return result
+end
+
 local function iterateSnapshot(snapshot, opts, callback)
     if type(callback) ~= "function" then return end
     local payload = deserializePayload(snapshot)
@@ -56,9 +78,6 @@ local function iterateSnapshot(snapshot, opts, callback)
 
     if payload.Entities then
         for dupIndex, entityDef in pairs(payload.Entities) do
-            -- Prefer the save-time id override (see rareload_save_vehicles): some
-            -- framework dupe tables strip our RareloadEntityID field, so trust the
-            -- EntIndex→id map captured from the live entity when present.
             local override = snapshot.rareloadIDOverrides and
                 (snapshot.rareloadIDOverrides[dupIndex]
                     or snapshot.rareloadIDOverrides[tostring(dupIndex)]

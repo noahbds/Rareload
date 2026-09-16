@@ -83,9 +83,30 @@ function ObjectPhantom.CreateModel(rec)
     return phantom, subPhantoms, pos, ang
 end
 
+-- Signature of the visual state a phantom is built from. If it is unchanged we
+-- keep the existing clientside model instead of destroying and recreating it, so
+-- a position sync that didn't touch this saved record costs nothing.
+local function RecSig(rec)
+    local p = rec.pos or rec.Pos
+    local a = rec.ang or rec.Angle or rec.Ang
+    local function r(v) return v and math.Round(v) or 0 end
+    local px, py, pz, ap, ay, ar = 0, 0, 0, 0, 0, 0
+    if istable(p) then px, py, pz = r(p.x or p[1]), r(p.y or p[2]), r(p.z or p[3]) end
+    if istable(a) then ap, ay, ar = r(a.p or a[1]), r(a.y or a[2]), r(a.r or a[3]) end
+    return table.concat({ rec.model or rec.Model or "", px, py, pz, ap, ay, ar,
+        rec.skin or rec.Skin or 0, rec.material or "" }, "|")
+end
+
 local function EnsurePhantom(id, rec, isNPC)
+    local sig = RecSig(rec)
     local existing = SED.ObjectPhantoms[id]
-    if existing and IsValid(existing.phantom) then return existing end
+    if existing and IsValid(existing.phantom) and existing.sig == sig then
+        return existing
+    end
+    if existing then
+        RemovePhantomEntry(existing)
+        SED.ObjectPhantoms[id] = nil
+    end
 
     local phantom, subPhantoms, pos, ang = ObjectPhantom.CreateModel(rec)
     if not phantom then return nil end
@@ -99,6 +120,7 @@ local function EnsurePhantom(id, rec, isNPC)
         ang         = ang,
         class       = rec.class,
         model       = rec.model or rec.Model,
+        sig         = sig,
     }
     SED.ObjectPhantoms[id] = data
     return data
@@ -191,7 +213,9 @@ end)
 
 hook.Add("RareloadPlayerPositionsUpdated", "RARELOAD_ObjectPhantom_Reset", function(mapName)
     if mapName ~= game.GetMap() then return end
-    ObjectPhantom.RemoveAll()
+    -- Reconcile promptly, but incrementally: Refresh() keeps phantoms whose record
+    -- is unchanged (same model/pos/ang/skin) and only rebuilds changed or new ones,
+    -- so a routine position sync no longer destroys and recreates every phantom.
     nextRefresh = 0
 end)
 

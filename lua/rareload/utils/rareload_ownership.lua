@@ -1,6 +1,3 @@
----@diagnostic disable: inject-field
-
----@class RARELOAD
 RARELOAD = RARELOAD or {}
 RARELOAD.Ownership = RARELOAD.Ownership or {}
 
@@ -13,17 +10,9 @@ local CONFIG = {
     STEAMID_VAR_KEY = "RareloadOwnerSteamID",
     CACHE_CLEANUP_INTERVAL = 60,
     DEBUG = false,
-    VERBOSE_LOGGING = false -- Set to true to log every ownership change
+    VERBOSE_LOGGING = false
 }
 
--- ---------------------------------------------------------------------------
--- Per-pass resolve batch. Save loops call GetOwner (directly and via
--- IsOwnedByPlayerSafe/ResolveOwner) several times for every entity on the map.
--- The two expensive fallbacks — scanning every player's CleanupList and the
--- whole undo table — are otherwise re-run per entity. BeginResolveBatch builds
--- those reverse indices once and memoizes each entity's resolved owner for the
--- duration, turning an O(entities x (undo+cleanup)) pass into O(entities+undo).
--- ---------------------------------------------------------------------------
 local batch = nil
 local batchDepth = 0
 
@@ -34,7 +23,6 @@ local function DebugLog(msg, ...)
     end
 end
 
--- Verbose logging for individual entity ownership (disabled by default to reduce spam)
 local function VerboseLog(msg, ...)
     if CONFIG.VERBOSE_LOGGING then
         DebugLog(msg, ...)

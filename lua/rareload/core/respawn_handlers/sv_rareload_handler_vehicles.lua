@@ -8,7 +8,6 @@ RARELOAD.settings      = RARELOAD.settings or {}
 local EntityIdentity   = include("rareload/core/rareload_entity_identity.lua")
 local DebugState       = include("rareload/debug/sv_debug_state.lua")
 local DebugHelpers     = include("rareload/debug/sv_debug_helpers.lua")
-local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
 local SnapshotUtils    = include("rareload/shared/rareload_snapshot_utils.lua")
 local SnapshotRestore  = include("rareload/core/respawn_handlers/sv_rareload_snapshot_restore.lua")
 local WAC              = include("rareload/core/respawn_handlers/sv_rareload_wac_compat.lua")
@@ -273,124 +272,66 @@ function RARELOAD.RestoreVehicles(savedInfo, requestingPlayer)
         return false
     end
 
-    local stats = {
-        startTime = SysTime(),
-        endTime = 0,
-        total = snapshot.entityCount or 0,
-        restored = 0,
-        skipped = 0,
-        failed = 0,
-    }
-
-    SnapshotUtils.EnsureIndexMap(snapshot, { category = "vehicle", idPrefix = "vehicle" })
-
-    local debugEnabled = (DebugState and DebugState.IsEnabledForPlayer and DebugState.IsEnabledForPlayer(requestingPlayer))
-        or (DebugState and DebugState.IsAnyEnabled and DebugState.IsAnyEnabled())
-
-    local targetOwner = IsValid(requestingPlayer) and requestingPlayer or DuplicatorBridge.FindSnapshotOwner(snapshot)
-
-    if debugEnabled then
-        WriteVehicleDebug(targetOwner, "INFO", "Restoring vehicles from duplicator snapshot",
-            string.format("%d entities, owner: %s", snapshot.entityCount or 0,
-                IsValid(targetOwner) and targetOwner:Nick() or "none"))
-    end
-
-    local indexToID = snapshot._indexMap or {}
-    local validateClass = RARELOAD.DataUtils and RARELOAD.DataUtils.IsClassSpawnable or nil
-
-    -- Per-player vehicle restore limit / cap (Tier 4.3)
-    local maxVehicles = 0
-    if RARELOAD.GetPlayerSetting then
-        maxVehicles = RARELOAD.GetPlayerSetting(requestingPlayer, "maxRestoredVehicles", 0)
-    elseif RARELOAD.settings and RARELOAD.settings.maxRestoredVehicles then
-        maxVehicles = RARELOAD.settings.maxRestoredVehicles
-    end
-    maxVehicles = tonumber(maxVehicles) or 0
-
-    local acceptedCount = 0
-    local filterFn = nil
-    if maxVehicles > 0 then
-        filterFn = function(index, _)
-            if acceptedCount >= maxVehicles then
-                return false
-            end
-            acceptedCount = acceptedCount + 1
-            return true
-        end
-    end
-
-    local ok, res, skippedEntities = SnapshotRestore.RestoreWithExistingIDFilter(
-        snapshot,
-        indexToID,
-        "RareloadEntityID",
-        requestingPlayer,
-        function(err)
-            if debugEnabled then
-                WriteVehicleDebug(targetOwner, "WARNING",
-                    "Vehicle paste failed, retrying with alternate context", tostring(err))
-            end
-        end,
-        {
-            preferPlayerContext = true,
-            validateClass = validateClass,
-            filter = filterFn
-        }
-    )
-
-    stats.skipped = (istable(skippedEntities) and #skippedEntities) or 0
-
-    if debugEnabled and stats.skipped > 0 then
-        WriteVehicleDebug(targetOwner, "VERBOSE", "Skipped existing vehicles (already on map)",
-            string.format("%d skipped", stats.skipped))
-    end
-
-    if not ok then
-        stats.failed = math.max(0, stats.total - stats.skipped)
-        stats.endTime = SysTime()
-        WriteVehicleDebug(targetOwner, "WARNING", "Duplicator vehicle restore failed", tostring(res))
-        hook.Run("RareloadVehiclesRestored", stats, requestingPlayer)
-        return false
-    end
-
-    local created = res and res.entities or {}
-    local entityDefs = res and res.entityDefs or {}
+    local startTime = SysTime()
+    local total = snapshot.entityCount or 0
     local operationalStates = snapshot.operationalStates or {}
-    local restoredCount = 0
 
-    for dupIndex, ent in pairs(created) do
-        if IsValid(ent) then
-            restoredCount = restoredCount + 1
+    -- Per-player vehicle restore cap.
+    local maxVehicles = tonumber(
+        (RARELOAD.GetPlayerSetting and RARELOAD.GetPlayerSetting(requestingPlayer, "maxRestoredVehicles", 0))
+        or (RARELOAD.settings and RARELOAD.settings.maxRestoredVehicles) or 0) or 0
+    local acceptedCount = 0
+    local filterFn = maxVehicles > 0 and function()
+        if acceptedCount >= maxVehicles then return false end
+        acceptedCount = acceptedCount + 1
+        return true
+    end or nil
 
-            -- Marks + identity + owner (Ownership.SetOwner already sets the LFS/
-            -- SpawnerPlayer fields, so they no longer need setting here).
-            SnapshotRestore.FinalizeCreated(ent, indexToID[dupIndex], "RareloadEntityID", targetOwner)
+    local ok, info = SnapshotRestore.RestoreCategory({
+        bucket = savedInfo.vehicles,
+        fieldName = "RareloadEntityID",
+        indexMap = { category = "vehicle", idPrefix = "vehicle" },
+        requestingPlayer = requestingPlayer,
+        restoreOpts = {
+            preferPlayerContext = true,
+            validateClass = RARELOAD.DataUtils and RARELOAD.DataUtils.IsClassSpawnable or nil,
+            filter = filterFn,
+        },
+        onRetry = function(err)
+            WriteVehicleDebug(requestingPlayer, "WARNING", "Vehicle paste failed, retrying with alternate context", tostring(err))
+        end,
+        onCreated = function(ent, _, dupIndex, entityDefs)
             ent.SavedByRareload = true
-
             StabilizeRestoredVehicle(ent, entityDefs[dupIndex] or entityDefs[tostring(dupIndex)])
             WAC.PatchEntity(ent)
 
             local op = operationalStates[dupIndex] or operationalStates[tostring(dupIndex)]
             if op then
-                local target = ent
-                timer.Simple(0.3, function()
-                    if IsValid(target) then RestoreOperationalState(target, op) end
-                end)
+                timer.Simple(0.3, function() if IsValid(ent) then RestoreOperationalState(ent, op) end end)
             end
-        end
+        end,
+    })
+
+    local stats = {
+        total = total, restored = info.restored, skipped = info.skipped,
+        failed = math.max(0, total - info.restored - info.skipped),
+    }
+
+    if info.skipped > 0 then
+        WriteVehicleDebug(info.targetOwner, "VERBOSE", string.format("Skipped %d existing vehicles (already on map)", info.skipped))
     end
 
-    stats.restored = restoredCount
-    stats.failed = math.max(0, stats.total - stats.restored - stats.skipped)
-    stats.endTime = SysTime()
-
-    if debugEnabled then
-        WriteVehicleDebug(targetOwner, "INFO", "Vehicle restore completed",
-            string.format("%d vehicles created in %.2fs (%d skipped, %d failed)",
-                restoredCount, stats.endTime - stats.startTime, stats.skipped, stats.failed))
+    if not ok then
+        stats.failed = math.max(0, total - info.skipped)
+        WriteVehicleDebug(info.targetOwner, "WARNING", "Duplicator vehicle restore failed", tostring(info.error))
+        hook.Run("RareloadVehiclesRestored", stats, requestingPlayer)
+        return false
     end
 
+    WriteVehicleDebug(info.targetOwner, "INFO",
+        string.format("Vehicle restore completed: %d created in %.2fs (%d skipped, %d failed)",
+            stats.restored, SysTime() - startTime, stats.skipped, stats.failed))
     hook.Run("RareloadVehiclesRestored", stats, requestingPlayer)
-
     return true
 end
 

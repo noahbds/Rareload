@@ -411,9 +411,5 @@ function RARELOAD.HandlePlayerSpawn(ply)
         DebugLog(ply, "VERBOSE", 0, "Anti-stuck disabled; used saved position and angles directly")
     end
 
-    -- All per-state restoration (inventory, appearance, health/armor, ammo,
-    -- vehicles, entities, cross-constraints, NPCs, player states, active weapon)
-    -- is scheduled by the registered state providers. ctx flags are populated by
-    -- the inventory provider and read by the active-weapon provider.
     Registry.RunRestore(ply, SavedInfo, {})
 end
