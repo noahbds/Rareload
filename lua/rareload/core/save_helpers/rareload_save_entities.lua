@@ -7,7 +7,6 @@ end
 
 local EntityIdentity = include("rareload/core/rareload_entity_identity.lua")
 
-local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 local DebugHelpers = include("rareload/debug/sv_debug_helpers.lua")
 
@@ -33,13 +32,20 @@ return function(ply)
     if not IsValid(ply) then return {} end
 
     local count = 0
-    local startTime = SysTime()
     local duplicatorTargets = {}
     local duplicatorSeen = {}
     local vehCheckCache = {}
+    -- Per-entity live state the duplicator does not carry (current health), keyed
+    -- by RareloadEntityID and reapplied on restore.
+    local entityStates = {}
 
     local DataUtils = RARELOAD.DataUtils
     local IsVehicleEntity = DataUtils and DataUtils.IsVehicleEntity
+
+    -- Resolve every entity's owner against one-time reverse indices for this pass.
+    if RARELOAD.Ownership and RARELOAD.Ownership.BeginResolveBatch then
+        RARELOAD.Ownership.BeginResolveBatch()
+    end
 
     for _, ent in ipairs(ents.GetAll()) do
         if IsValid(ent) and not ent:IsPlayer() and not ent:IsNPC() then
@@ -72,11 +78,18 @@ return function(ply)
             if ownerValid then
                 count = count + 1
 
-                EntityIdentity.EnsureID(ent, "RareloadEntityID", "ent_legacyid")
+                local id = EntityIdentity.EnsureID(ent, "RareloadEntityID", "ent_legacyid")
 
                 if not duplicatorSeen[ent] then
                     duplicatorSeen[ent] = true
                     duplicatorTargets[#duplicatorTargets + 1] = ent
+
+                    if id and isfunction(ent.GetMaxHealth) then
+                        local maxHP = ent:GetMaxHealth() or 0
+                        if maxHP > 0 then
+                            entityStates[id] = { health = ent:Health(), maxHealth = maxHP }
+                        end
+                    end
                 end
 
                 local sid = (RARELOAD.Ownership and RARELOAD.Ownership.GetPlayerSteamIDSafe and
@@ -91,35 +104,20 @@ return function(ply)
         end
     end
 
-    local duplicatorSnapshot = DuplicatorBridge.CaptureSnapshotForPlayer(duplicatorTargets, ply, function(err)
-        WriteEntitySaveDebug(ply, "WARNING", "Duplicator snapshot capture failed", tostring(err))
-    end, { category = "entity" })
-    if not duplicatorSnapshot then
-        local level = (count > 0) and "WARNING" or "VERBOSE"
-        local reason = (count > 0)
-            and "Duplicator snapshot unavailable"
-            or "No entity candidates to snapshot"
-
-        WriteEntitySaveDebug(ply, level, reason,
-            string.format("Saved %d entity candidates (no snapshot)", count))
-
-        return {}
+    if RARELOAD.Ownership and RARELOAD.Ownership.EndResolveBatch then
+        RARELOAD.Ownership.EndResolveBatch()
     end
 
-    SnapshotUtils.EnsureIndexMap(duplicatorSnapshot, {
-        category = "entity",
-        idPrefix = "entity"
+    return SnapshotUtils.BuildOwnedBucket(ply, duplicatorTargets, {
+        captureOpts = { category = "entity" },
+        indexMap    = { category = "entity", idPrefix = "entity" },
+        extras      = { entityStates = entityStates },
+        keepTargets = true,
+        onError     = function(err) WriteEntitySaveDebug(ply, "WARNING", "Duplicator snapshot capture failed", tostring(err)) end,
+        onFail      = function()
+            WriteEntitySaveDebug(ply, (count > 0) and "WARNING" or "VERBOSE",
+                (count > 0) and "Duplicator snapshot unavailable" or "No entity candidates to snapshot",
+                string.format("Saved %d entity candidates (no snapshot)", count))
+        end,
     })
-
-    local result = { _targets = duplicatorTargets }
-    rawset(result, "__duplicator", duplicatorSnapshot)
-
-    WriteEntitySaveDebug(ply, "INFO", "Entity save completed", {
-        string.format("Saved %d entities in %d ms", count, math.Round((SysTime() - startTime) * 1000)),
-        string.format("Duplicator snapshot captured (%d entities, %d constraints)",
-            duplicatorSnapshot.entityCount or 0,
-            duplicatorSnapshot.constraintCount or 0)
-    })
-
-    return result
 end

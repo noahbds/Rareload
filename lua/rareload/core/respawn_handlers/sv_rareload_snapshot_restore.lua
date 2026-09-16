@@ -4,6 +4,56 @@ RARELOAD.SnapshotRestore = RARELOAD.SnapshotRestore or {}
 local SnapshotRestore = RARELOAD.SnapshotRestore
 local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
 local EntityIdentity = include("rareload/core/rareload_entity_identity.lua")
+local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
+
+function SnapshotRestore.FinalizeCreated(ent, savedID, fieldName, targetOwner)
+    if not IsValid(ent) then return end
+    ent.SpawnedByRareload  = true
+    ent.SavedViaDuplicator = true
+    if savedID then
+        EntityIdentity.SetID(ent, fieldName, savedID)
+    end
+    if IsValid(targetOwner) and RARELOAD.Ownership then
+        RARELOAD.Ownership.SetOwner(ent, targetOwner)
+    end
+end
+
+function SnapshotRestore.RestoreCategory(opts)
+    local bucket = opts.bucket
+    local snapshot = istable(bucket) and bucket.__duplicator or nil
+    if not snapshot then return false, { reason = "no snapshot" } end
+
+    local fieldName = opts.fieldName
+    SnapshotUtils.EnsureIndexMap(snapshot, opts.indexMap)
+    local indexToID = snapshot._indexMap or {}
+
+    local requestingPlayer = opts.requestingPlayer
+    local targetOwner = (IsValid(requestingPlayer) and requestingPlayer)
+        or DuplicatorBridge.FindSnapshotOwner(snapshot)
+
+    local ok, res, skipped = SnapshotRestore.RestoreWithExistingIDFilter(
+        snapshot, indexToID, fieldName, requestingPlayer, opts.onRetry, opts.restoreOpts or {})
+
+    local info = {
+        snapshot = snapshot, targetOwner = targetOwner,
+        skipped = (istable(skipped) and #skipped) or 0, restored = 0, created = {},
+    }
+    if not ok then info.error = res; return false, info end
+
+    local created = res and res.entities or {}
+    local entityDefs = (res and res.entityDefs) or {}
+    info.created = created
+    info.entityDefs = entityDefs
+    for dupIndex, ent in pairs(created) do
+        if IsValid(ent) then
+            local savedID = indexToID[dupIndex]
+            SnapshotRestore.FinalizeCreated(ent, savedID, fieldName, targetOwner)
+            if opts.onCreated then opts.onCreated(ent, savedID, dupIndex, entityDefs) end
+            info.restored = info.restored + 1
+        end
+    end
+    return true, info
+end
 
 function SnapshotRestore.BuildExistingIDSet(fieldName)
     local existingIDs = {}
@@ -41,9 +91,6 @@ function SnapshotRestore.RestoreWithExistingIDFilter(snapshot, indexToID, fieldN
 
     local restoreOptions = {
         player = nil,
-        -- Category-appropriate "is this class still loadable?" test (vehicles pass
-        -- DataUtils.IsClassSpawnable) so RestoreSnapshot can drop defs from
-        -- uninstalled addons.
         validateClass = opts.validateClass,
         filter = function(index, def)
             local id = indexToID[index]
@@ -51,9 +98,6 @@ function SnapshotRestore.RestoreWithExistingIDFilter(snapshot, indexToID, fieldN
                 table.insert(skippedIDs, id)
                 return false
             end
-            -- Chain the caller's filter (e.g. the per-player restore cap). It runs
-            -- AFTER the existing-ID skip, so already-present vehicles never consume
-            -- a cap slot.
             if callerFilter and not callerFilter(index, def) then
                 return false
             end
@@ -62,17 +106,10 @@ function SnapshotRestore.RestoreWithExistingIDFilter(snapshot, indexToID, fieldN
     }
 
     local hasPlayer = IsValid(requestingPlayer) and requestingPlayer:IsPlayer()
-
-    -- Preferred paste context. Vehicle restores set preferPlayerContext because
-    -- some frameworks (e.g. Glide) refuse to spawn from their duplicator factory
-    -- when the paste player is invalid, so a server-context paste silently drops
-    -- them (and, since other entities still paste, the overall result looks OK).
     local usePlayerFirst = opts.preferPlayerContext and hasPlayer
     restoreOptions.player = usePlayerFirst and requestingPlayer or nil
-
     local ok, res = DuplicatorBridge.RestoreSnapshot(snapshot, restoreOptions)
 
-    -- On a hard failure, try the opposite paste context once.
     if (not ok) and hasPlayer then
         if isfunction(onRetry) then
             onRetry(res)

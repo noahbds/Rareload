@@ -61,6 +61,7 @@ function SED.RebuildSavedLookup()
         end
     end
     SED.MAP_LAST_BUILD = CurTime()
+    SED.SavedLookupDirty = false
 end
 
 function SED.PruneMissingTrackedEntities()
@@ -92,8 +93,9 @@ function SED.PruneMissingTrackedEntities()
 end
 
 function SED.EnsureSavedLookup()
-    if CurTime() - SED.MAP_LAST_BUILD > SED.SAVED_LOOKUP_INTERVAL then
+    if SED.SavedLookupDirty or (CurTime() - SED.MAP_LAST_BUILD > (SED.SAVED_LOOKUP_FALLBACK or 10)) then
         SED.RebuildSavedLookup()
+        if SED.PruneMissingTrackedEntities then SED.PruneMissingTrackedEntities() end
     end
 end
 

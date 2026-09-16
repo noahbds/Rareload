@@ -1,51 +1,6 @@
 RARELOAD = RARELOAD or {}
 RARELOAD.Util = RARELOAD.Util or {}
 
--- Generate a hash representing the state of an entity, based on its properties.
--- This is used to detect changes in entity state for tracking purposes.
-function RARELOAD.Util.GenerateEntityStateHash(data)
-    if not data or type(data) ~= "table" then return "invalid" end
-
-    local parts = {}
-    local function add(v)
-        parts[#parts + 1] = tostring(v ~= nil and v or "")
-    end
-
-    add(data.material)
-    add(data.model or "")
-    add(data.skin or 0)
-    add(data.health or 0)
-    add(data.maxHealth or 0)
-    add(data.modelScale or 1)
-    add(data.collisionGroup or 0)
-    add(data.moveType or 0)
-    add(data.solidType or 0)
-    add(data.spawnFlags or 0)
-
-    if data.color then
-        add(data.color.r or 255); add(data.color.g or 255); add(data.color.b or 255); add(data.color.a or 255)
-    else
-        add(255); add(255); add(255); add(255)
-    end
-
-    if data.bodygroups then
-        local ids = {}
-        for id in pairs(data.bodygroups) do ids[#ids + 1] = id end
-        table.sort(ids, function(a, b) return tonumber(a) < tonumber(b) end)
-        for _, id in ipairs(ids) do
-            parts[#parts + 1] = (tostring(id) .. "=" .. tostring(data.bodygroups[id]))
-        end
-    end
-
-    add(data.physicsMaterial or "")
-    add(data.gravityEnabled == false and 0 or 1)
-    add(data.elasticity or 0)
-    add(data.frozen and 1 or 0)
-    add(data.mass or 0)
-
-    return util and util.CRC and util.CRC(table.concat(parts, "|")) or tostring(#parts)
-end
-
 -- Deterministic coarse spatial+appearance unique ID. Avoid including mutable runtime state (health changes etc.)
 function RARELOAD.Util.GenerateDeterministicID(ent)
     if not IsValid(ent) then return "invalid_" .. tostring(ent) end
@@ -71,12 +26,23 @@ function RARELOAD.Util.GenerateDeterministicID(ent)
         end
     end
 
+    -- Per-entity uniqueness component: two identical props at the same spot share
+    -- every spatial/appearance field, so without this they would hash to the same
+    -- id and collide (the second would be skipped on restore / removed by id). The
+    -- CreationID is unique per entity within a session; the generated id is stored
+    -- and networked once by EnsureID, so it stays stable across saves afterwards.
+    local creationID = 0
+    if isfunction(ent.GetCreationID) then
+        local ok, cid = pcall(ent.GetCreationID, ent)
+        if ok and isnumber(cid) then creationID = cid end
+    end
+
     local gx, gy, gz = math.floor(pos.x / 16), math.floor(pos.y / 16), math.floor(pos.z / 16)
     local base = table.concat({
         class, model, skin,
         gx, gy, gz,
         string.format("%.1f", ang.p or 0), string.format("%.1f", ang.y or 0), string.format("%.1f", ang.r or 0),
-        targetname, squad, table.concat(bgParts, ",")
+        targetname, squad, table.concat(bgParts, ","), creationID
     }, "|")
 
     local hash = util and util.CRC and util.CRC(base) or tostring(#base)

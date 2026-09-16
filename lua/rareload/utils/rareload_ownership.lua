@@ -1,6 +1,3 @@
----@diagnostic disable: inject-field
-
----@class RARELOAD
 RARELOAD = RARELOAD or {}
 RARELOAD.Ownership = RARELOAD.Ownership or {}
 
@@ -13,8 +10,11 @@ local CONFIG = {
     STEAMID_VAR_KEY = "RareloadOwnerSteamID",
     CACHE_CLEANUP_INTERVAL = 60,
     DEBUG = false,
-    VERBOSE_LOGGING = false -- Set to true to log every ownership change
+    VERBOSE_LOGGING = false
 }
+
+local batch = nil
+local batchDepth = 0
 
 local function DebugLog(msg, ...)
     if CONFIG.DEBUG or (RARELOAD.settings and RARELOAD.settings.debugEnabled) then
@@ -23,7 +23,6 @@ local function DebugLog(msg, ...)
     end
 end
 
--- Verbose logging for individual entity ownership (disabled by default to reduce spam)
 local function VerboseLog(msg, ...)
     if CONFIG.VERBOSE_LOGGING then
         DebugLog(msg, ...)
@@ -111,6 +110,7 @@ end
 
 local function GetUndoOwner(ent)
     if not IsValid(ent) then return nil end
+    if batch then return batch.undo[ent] end
     if not (istable(undo) and isfunction(undo.GetTable)) then return nil end
 
     local utab = undo.GetTable()
@@ -154,6 +154,11 @@ function RARELOAD.Ownership.SetOwner(ent, owner)
 
         VerboseLog("Cleared ownership for entity %d (%s)", entIndex, ent:GetClass())
         return true
+    end
+
+    if batch then
+        batch.resolved[entIndex] = nil; batch.result[entIndex] = nil
+        batch.resolveDone[entIndex] = nil; batch.resolveResult[entIndex] = nil
     end
 
     local steamID = owner:SteamID()
@@ -207,9 +212,7 @@ function RARELOAD.Ownership.SetOwner(ent, owner)
     return true
 end
 
-function RARELOAD.Ownership.GetOwner(ent)
-    if not IsValid(ent) then return nil end
-
+local function GetOwnerResolved(ent)
     local entIndex = ent:EntIndex()
 
     if ent.GetCreator then
@@ -247,13 +250,18 @@ function RARELOAD.Ownership.GetOwner(ent)
     end
 
     -- Sandbox CleanupList
-    for _, ply in ipairs(player.GetAll()) do
-        if istable(ply.CleanupList) then
-            for _, entList in pairs(ply.CleanupList) do
-                if istable(entList) then
-                    for _, cleanedEnt in pairs(entList) do
-                        if cleanedEnt == ent then
-                            return ply
+    if batch then
+        local co = batch.cleanup[ent]
+        if IsValid(co) then return co end
+    else
+        for _, ply in ipairs(player.GetAll()) do
+            if istable(ply.CleanupList) then
+                for _, entList in pairs(ply.CleanupList) do
+                    if istable(entList) then
+                        for _, cleanedEnt in pairs(entList) do
+                            if cleanedEnt == ent then
+                                return ply
+                            end
                         end
                     end
                 end
@@ -311,6 +319,78 @@ function RARELOAD.Ownership.GetOwner(ent)
     end
 
     return nil
+end
+
+-- Public entry point: memoizes per entity while a resolve batch is active.
+function RARELOAD.Ownership.GetOwner(ent)
+    if not IsValid(ent) then return nil end
+    if not batch then return GetOwnerResolved(ent) end
+
+    local idx = ent:EntIndex()
+    if batch.resolved[idx] then return batch.result[idx] end
+    local owner = GetOwnerResolved(ent)
+    batch.resolved[idx] = true
+    batch.result[idx] = owner
+    return owner
+end
+
+-- Build the reverse index of the undo table once (entity -> owning player).
+local function buildUndoMap()
+    local map = {}
+    if istable(undo) and isfunction(undo.GetTable) then
+        local utab = undo.GetTable()
+        if istable(utab) then
+            for _, plyTab in pairs(utab) do
+                if istable(plyTab) then
+                    for _, uEntry in pairs(plyTab) do
+                        if istable(uEntry) and istable(uEntry.Entities)
+                            and IsValid(uEntry.Owner) and uEntry.Owner:IsPlayer() then
+                            for _, uEnt in pairs(uEntry.Entities) do
+                                if IsValid(uEnt) and map[uEnt] == nil then map[uEnt] = uEntry.Owner end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return map
+end
+
+-- Build the reverse index of every player's CleanupList once (entity -> player).
+local function buildCleanupMap()
+    local map = {}
+    for _, ply in ipairs(player.GetAll()) do
+        if istable(ply.CleanupList) then
+            for _, entList in pairs(ply.CleanupList) do
+                if istable(entList) then
+                    for _, ent in pairs(entList) do
+                        if IsValid(ent) and map[ent] == nil then map[ent] = ply end
+                    end
+                end
+            end
+        end
+    end
+    return map
+end
+
+-- Begin/End a resolve batch. Nesting is reference-counted, so helpers can wrap
+-- their own loops without worrying about an outer batch already being active.
+function RARELOAD.Ownership.BeginResolveBatch()
+    batchDepth = batchDepth + 1
+    if batchDepth == 1 then
+        batch = {
+            result = {}, resolved = {},
+            resolveResult = {}, resolveDone = {},
+            undo = buildUndoMap(), cleanup = buildCleanupMap(),
+        }
+    end
+    return batch
+end
+
+function RARELOAD.Ownership.EndResolveBatch()
+    if batchDepth > 0 then batchDepth = batchDepth - 1 end
+    if batchDepth == 0 then batch = nil end
 end
 
 function RARELOAD.Ownership.GetOwnerSteamID(ent)
@@ -382,9 +462,7 @@ function RARELOAD.Ownership.GetPlayerSteamIDSafe(owner)
     return nil
 end
 
-function RARELOAD.Ownership.ResolveOwner(ent)
-    if not IsValid(ent) then return nil end
-
+local function ResolveOwnerImpl(ent)
     local ok, owner = pcall(RARELOAD.Ownership.GetOwner, ent)
     if ok and owner and IsValid(owner) and owner:IsPlayer() then
         return owner
@@ -434,6 +512,21 @@ function RARELOAD.Ownership.ResolveOwner(ent)
     end
 
     return nil
+end
+
+-- Public entry point: memoizes per entity while a resolve batch is active
+-- (ResolveOwnerImpl walks the vehicle parent/constraint graph, which is the
+-- dominant per-entity cost once GetOwner itself is cached).
+function RARELOAD.Ownership.ResolveOwner(ent)
+    if not IsValid(ent) then return nil end
+    if not batch then return ResolveOwnerImpl(ent) end
+
+    local idx = ent:EntIndex()
+    if batch.resolveDone[idx] then return batch.resolveResult[idx] end
+    local owner = ResolveOwnerImpl(ent)
+    batch.resolveDone[idx] = true
+    batch.resolveResult[idx] = owner
+    return owner
 end
 
 function RARELOAD.Ownership.GetOwnerSteamIDSafe(ent)

@@ -15,15 +15,12 @@ local function listsEqualAsMultisets(t1, t2)
     return true
 end
 
--- Thoses are the save helpers that handle saving different aspects of the player's state and world state.
+-- Save helpers still used directly by the core path (inventory drives both the
+-- unchanged-check and the ammo provider); the per-state capture bodies now live
+-- in the state registry.
 local save_inventory = include("rareload/core/save_helpers/rareload_save_inventory.lua")
-local save_vehicles = include("rareload/core/save_helpers/rareload_save_vehicles.lua") -- off by default (retainVehicles)
-local save_entities = include("rareload/core/save_helpers/rareload_save_entities.lua")
-local save_npcs = include("rareload/core/save_helpers/rareload_save_npcs.lua")
-local save_ammo = include("rareload/core/save_helpers/rareload_save_ammo.lua")
-local save_appearance = include("rareload/core/save_helpers/rareload_save_appearance.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
-local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
+local Registry = include("rareload/core/rareload_state_providers.lua")
 
 local function NeedsDuplicatorUpgrade(bucket)
     if not SnapshotUtils.HasSnapshot(bucket) then
@@ -133,121 +130,34 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     end
 
     local playerData = {
+        version = RARELOAD.SAVE_SCHEMA_VERSION or 1,
         pos = newPos,
         ang = newAng,
         moveType = ply:GetMoveType(),
         playermodel = ply:GetModel(), -- Legacy fallback
-        appearance = RARELOAD.CheckPermission(ply, "SAVE_APPEARANCE") and save_appearance(ply) or nil,
         activeWeapon = newActiveWeapon,
         inventory = RARELOAD.CheckPermission(ply, "SAVE_INVENTORY") and newInventory or nil,
     }
-
-    if RARELOAD.GetPlayerSetting(ply, "retainPlayerStates") and RARELOAD.CheckPermission(ply, "SAVE_STATES") then
-        playerData.playerStates = {
-            godmode = ply:HasGodMode(),
-            notarget = ply:IsFlagSet(FL_NOTARGET),
-            frozen = ply:IsFrozen(),
-            noclip = ply:GetMoveType() == MOVETYPE_NOCLIP,
-            -- additional states can be added here as needed
-        }
-
-        -- TODO : Rename to flags to avoid confusion with the "player states" terminology
-        if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
-            local states = {}
-            if playerData.playerStates.godmode then table.insert(states, "godmode") end
-            if playerData.playerStates.notarget then table.insert(states, "notarget") end
-            if playerData.playerStates.frozen then table.insert(states, "frozen") end
-            if playerData.playerStates.noclip then table.insert(states, "noclip") end
-            if #states > 0 then
-                print("[RARELOAD DEBUG] Saved player states: " .. table.concat(states, ", "))
-            end
-        end
-    end
-
-    if RARELOAD.GetPlayerSetting(ply, "retainHealthArmor") and RARELOAD.CheckPermission(ply, "SAVE_HEALTH_ARMOR") then
-        playerData.health = ply:Health()
-        playerData.armor = ply:Armor()
-    end
-
-    if RARELOAD.GetPlayerSetting(ply, "retainAmmo") and RARELOAD.CheckPermission(ply, "SAVE_AMMO") then
-        playerData.ammo = save_ammo(ply, newInventory)
-    end
 
     -- Honor either the per-player setting or the global convar (the tool-menu toggle sets the
     -- convar), so enabling "Keep Vehicles" from the menu actually takes effect.
     local wantVehicles = RARELOAD.GetPlayerSetting(ply, "retainVehicles", true)
         or (RARELOAD.settings and RARELOAD.settings.retainVehicles)
-    if wantVehicles and RARELOAD.CheckPermission(ply, "SAVE_VEHICLES") then
-        local vehicleResult = save_vehicles(ply)
-        playerData.vehicles = vehicleResult
 
-        -- Propagate the seated-vehicle reference so the restore side can
-        -- re-seat the player.  save_vehicles now embeds this when the player
-        -- is inside one of their saved vehicles at save time.
-        if istable(vehicleResult) and istable(vehicleResult.vehicleState) then
-            playerData.vehicleState = vehicleResult.vehicleState
-        end
-    end
-    if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
-        local vehCount = 0
-        if istable(playerData.vehicles) and playerData.vehicles.__duplicator then
-            vehCount = playerData.vehicles.__duplicator.entityCount or 0
-        end
-        print(string.format("[RARELOAD DEBUG] Vehicle save: want=%s perm=%s saved=%d seated=%s",
-            tostring(wantVehicles), tostring(RARELOAD.CheckPermission(ply, "SAVE_VEHICLES")),
-            vehCount,
-            tostring(playerData.vehicleState ~= nil)))
-    end
-
-    local autoOverwrite = RARELOAD.GetPlayerSetting(ply, "autoOverwriteModified", false)
-
-    local function captureBucket(captureFn, oldBucket, category)
-        local fresh = SnapshotUtils.NormalizeBucketForSave(captureFn(ply))
-        if autoOverwrite then
-            return fresh
-        end
-        if fresh and oldBucket and SnapshotUtils.HasSnapshot(oldBucket) then
-            return SnapshotUtils.MergePreserveExisting(oldBucket, fresh, category)
-        end
-        return fresh or oldBucket
-    end
-
-    if opts.skipWorldSnapshot and not autoOverwrite then
-        if oldData then
-            if shouldSaveMapEntities then playerData.entities = oldData.entities end
-            if shouldSaveMapNPCs then playerData.npcs = oldData.npcs end
-            if oldData.crossConstraints then playerData.crossConstraints = oldData.crossConstraints end
-        end
-    else
-        local rawEntitiesResult = nil
-        if shouldSaveMapEntities then
-            rawEntitiesResult = save_entities(ply)
-            local fresh = SnapshotUtils.NormalizeBucketForSave(rawEntitiesResult)
-            if autoOverwrite then
-                playerData.entities = fresh
-            elseif fresh and oldData and oldData.entities and SnapshotUtils.HasSnapshot(oldData.entities) then
-                playerData.entities = SnapshotUtils.MergePreserveExisting(oldData.entities, fresh, "entity")
-            else
-                playerData.entities = fresh or (oldData and oldData.entities)
-            end
-        end
-
-        if shouldSaveMapNPCs then
-            playerData.npcs = captureBucket(save_npcs, oldData and oldData.npcs, "npc")
-        end
-
-        -- Capture cross-category constraints (props welded/roped to vehicles)
-        if shouldSaveMapEntities and wantVehicles and DuplicatorBridge and DuplicatorBridge.CaptureCrossCategoryConstraints then
-            local rawEnts = rawEntitiesResult and rawEntitiesResult._targets
-            local rawVehs = (istable(playerData.vehicles) and playerData.vehicles._targets)
-            if rawEnts and rawVehs then
-                local cross = DuplicatorBridge.CaptureCrossCategoryConstraints(rawEnts, rawVehs)
-                if cross then
-                    playerData.crossConstraints = cross
-                end
-            end
-        end
-    end
+    -- Everything else (appearance, states, health/armor, ammo, vehicles, world
+    -- entities/NPCs, cross-category constraints) is captured by the registered
+    -- state providers. ctx carries the cross-cutting flags they need.
+    local ctx = {
+        mapName               = mapName,
+        oldData               = oldData,
+        newInventory          = newInventory,
+        autoOverwrite         = RARELOAD.GetPlayerSetting(ply, "autoOverwriteModified", false),
+        skipWorldSnapshot     = opts.skipWorldSnapshot or false,
+        wantVehicles          = wantVehicles,
+        shouldSaveMapEntities = shouldSaveMapEntities,
+        shouldSaveMapNPCs     = shouldSaveMapNPCs,
+    }
+    Registry.RunSave(ply, playerData, ctx)
 
     RARELOAD.playerPositions[mapName][ply:SteamID()] = playerData
 
@@ -257,15 +167,7 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
         RARELOAD.CacheCurrentPositionData(ply:SteamID(), mapName)
     end
 
-    local success, err
-    if RARELOAD.SavePlayerPositionEntry then
-        success, err = RARELOAD.SavePlayerPositionEntry(ply, playerData)
-    else
-        success, err = pcall(function()
-            file.Write("rareload/player_positions_" .. mapName .. ".json",
-                util.TableToJSON(RARELOAD.playerPositions, true))
-        end)
-    end
+    local success, err = RARELOAD.SavePlayerPositionEntry(ply, playerData)
 
     if not success then
         print("[RARELOAD] Failed to save position data: " .. tostring(err))

@@ -7,8 +7,8 @@ local CONFIG = {
     DEBUG = false,
     SAVE_PLAYER_OWNED_ONLY = true,
     MAX_NPCS_TO_SAVE = 500,
-    SAVE_NPC_NPC_RELATIONS = true,
-    MAX_RELATION_NPCS = 128,
+    -- NOTE: KEY_VALUES_TO_SAVE is not currently consumed (the duplicator captures
+    -- NPC keyvalues); left in place as it is unrelated to this change.
     KEY_VALUES_TO_SAVE = {
         "squadname", "targetname",
         "wakeradius", "sleepstate",
@@ -52,12 +52,9 @@ if not RARELOAD or not RARELOAD.Ownership then
 end
 local EntityIdentity = include("rareload/core/rareload_entity_identity.lua")
 
-local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 
 return function(ply)
-    local startTime = SysTime()
-
     local allNPCs = {}
     do
         local entsAll = ents.GetAll()
@@ -71,6 +68,11 @@ return function(ply)
 
     local npcCount = #allNPCs
     DebugLog(ply, "INFO", "Found %d NPCs on the map", npcCount)
+
+    -- Resolve owners against one-time reverse indices (covers the sort + main loop).
+    if RARELOAD.Ownership and RARELOAD.Ownership.BeginResolveBatch then
+        RARELOAD.Ownership.BeginResolveBatch()
+    end
 
     table.sort(allNPCs, function(a, b)
         local ao = RARELOAD.Ownership and RARELOAD.Ownership.ResolveOwner and RARELOAD.Ownership.ResolveOwner(a) or nil
@@ -87,6 +89,9 @@ return function(ply)
     local savedCount = 0
     local duplicatorTargets = {}
     local duplicatorSeen = {}
+    -- Current health per NPC (keyed by RareloadNPCID); the duplicator respawns
+    -- NPCs at default health, so we reapply this on restore.
+    local npcStates = {}
 
     for i = 1, #allNPCs do
         local npc = allNPCs[i]
@@ -97,42 +102,33 @@ return function(ply)
             or not CONFIG.SAVE_PLAYER_OWNED_ONLY
         if not shouldSave then continue end
 
-        EntityIdentity.EnsureID(npc, "RareloadNPCID", "npc_legacyid")
+        local id = EntityIdentity.EnsureID(npc, "RareloadNPCID", "npc_legacyid")
 
         if not duplicatorSeen[npc] then
             duplicatorSeen[npc] = true
             duplicatorTargets[#duplicatorTargets + 1] = npc
             savedCount = savedCount + 1
+
+            if id and isfunction(npc.GetMaxHealth) then
+                local maxHP = npc:GetMaxHealth() or 0
+                if maxHP > 0 then
+                    npcStates[id] = { health = npc:Health(), maxHealth = maxHP }
+                end
+            end
         end
     end
 
-    local endTime = SysTime()
-    DebugLog(ply, "INFO", "Saved %d/%d NPCs in %.3f seconds", savedCount, npcCount, endTime - startTime)
-
-    local duplicatorSnapshot = DuplicatorBridge.CaptureSnapshotForPlayer(duplicatorTargets, ply, function(err)
-        DebugLog(ply, "WARNING", "Duplicator snapshot capture failed: %s", tostring(err))
-    end)
-    if not duplicatorSnapshot then
-        local level = (savedCount > 0) and "WARNING" or "VERBOSE"
-        local reason = (savedCount > 0)
-            and "Duplicator snapshot unavailable, saved %d NPC candidates (no snapshot)"
-            or "No NPC candidates to snapshot (saved %d)"
-
-        DebugLog(ply, level, reason, savedCount)
-        return {}
+    if RARELOAD.Ownership and RARELOAD.Ownership.EndResolveBatch then
+        RARELOAD.Ownership.EndResolveBatch()
     end
 
-    SnapshotUtils.EnsureIndexMap(duplicatorSnapshot, {
-        category = "npc",
-        idPrefix = "npc"
+    return SnapshotUtils.BuildOwnedBucket(ply, duplicatorTargets, {
+        indexMap = { category = "npc", idPrefix = "npc" },
+        extras   = { npcStates = npcStates },
+        onError  = function(err) DebugLog(ply, "WARNING", "Duplicator snapshot capture failed: %s", tostring(err)) end,
+        onFail   = function()
+            DebugLog(ply, (savedCount > 0) and "WARNING" or "VERBOSE",
+                "No NPC snapshot captured (%d candidates)", savedCount)
+        end,
     })
-
-    local result = {}
-    rawset(result, "__duplicator", duplicatorSnapshot)
-
-    DebugLog(ply, "INFO", "Duplicator snapshot captured (%d NPCs, %d constraints)",
-        duplicatorSnapshot.entityCount or 0,
-        duplicatorSnapshot.constraintCount or 0)
-
-    return result
 end
