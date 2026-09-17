@@ -29,6 +29,23 @@ function PB.populateCategories(ctx)
     local isNPC = ctx.isNPC
     local add = ctx.add
 
+    -- Guarded-emit helpers for the common field shapes. Each preserves the exact
+    -- guard and formatting of the inline code it replaces:
+    --   addStr  -> if val and val ~= "" then add(...) end        (non-empty value)
+    --   addPos  -> if val and tonumber(val) > 0 then add(...) end (positive number, tostring .. suffix)
+    --   addYesNo-> if val ~= nil then add(..., BoolToYesNo(val)) end
+    local function addStr(cat, label, val, color)
+        if val and val ~= "" then add(cat, label, val, color) end
+    end
+    local function addPos(cat, label, val, suffix, color)
+        if val and tonumber(val) and tonumber(val) > 0 then
+            add(cat, label, tostring(val) .. (suffix or ""), color)
+        end
+    end
+    local function addYesNo(cat, label, val, color)
+        if val ~= nil then add(cat, label, RARELOAD.TextUtils.BoolToYesNo(val), color) end
+    end
+
     local function addPrefixedSummaries(cat, prefix, limit, col, summarizeFn)
         local rows = {}
         for k, v in pairs(saved) do
@@ -161,23 +178,13 @@ function PB.populateCategories(ctx)
         add("basic", "Framework", frameworkName, Color(0, 220, 255))
         add("basic", "Type", typeName, Color(140, 230, 255))
 
-        if saved.Base and saved.Base ~= "" then
-            add("basic", "Base", saved.Base, Color(180, 200, 220))
-        end
+        addStr("basic", "Base", saved.Base, Color(180, 200, 220))
         local vehCat = saved.Category or saved.VehicleCategory
-        if vehCat and vehCat ~= "" then
-            add("basic", "Category", vehCat, Color(200, 220, 255))
-        end
-        if saved.VehicleSubCategory and saved.VehicleSubCategory ~= "" then
-            add("basic", "SubCategory", saved.VehicleSubCategory, Color(170, 210, 255))
-        end
-        if saved.Author and saved.Author ~= "" then
-            add("basic", "Author", saved.Author, Color(220, 220, 180))
-        end
+        addStr("basic", "Category", vehCat, Color(200, 220, 255))
+        addStr("basic", "SubCategory", saved.VehicleSubCategory, Color(170, 210, 255))
+        addStr("basic", "Author", saved.Author, Color(220, 220, 180))
         local vehInfo = saved.Information or saved.Instructions or saved.Purpose
-        if vehInfo and vehInfo ~= "" then
-            add("basic", "Info", vehInfo, Color(200, 200, 200))
-        end
+        addStr("basic", "Info", vehInfo, Color(200, 200, 200))
     end
 
     if modelPath then
@@ -264,15 +271,9 @@ function PB.populateCategories(ctx)
 
         if isVJBase then
             add("vjbase", "VJ Base NPC", "Detected", Color(100, 255, 150))
-            if saved.PrintName and saved.PrintName ~= "" then
-                add("vjbase", "Name", saved.PrintName, Color(255, 220, 100))
-            end
-            if saved.Category and saved.Category ~= "" then
-                add("vjbase", "Category", saved.Category, Color(200, 220, 255))
-            end
-            if saved.Base and saved.Base ~= "" then
-                add("vjbase", "Base", saved.Base, Color(180, 200, 220))
-            end
+            addStr("vjbase", "Name", saved.PrintName, Color(255, 220, 100))
+            addStr("vjbase", "Category", saved.Category, Color(200, 220, 255))
+            addStr("vjbase", "Base", saved.Base, Color(180, 200, 220))
 
             local immunities = {}
             local immunityLabels = {
@@ -333,15 +334,9 @@ function PB.populateCategories(ctx)
             if saved.CallForHelp then
                 add("ai", "Call For Help", "Enabled", Color(200, 220, 255))
             end
-            if saved.CanInvestigate ~= nil then
-                add("ai", "Can Investigate", RARELOAD.TextUtils.BoolToYesNo(saved.CanInvestigate), Color(200, 220, 255))
-            end
-            if saved.CanOpenDoors ~= nil then
-                add("ai", "Can Open Doors", RARELOAD.TextUtils.BoolToYesNo(saved.CanOpenDoors), Color(200, 220, 255))
-            end
-            if saved.CanReceiveOrders ~= nil then
-                add("ai", "Can Receive Orders", RARELOAD.TextUtils.BoolToYesNo(saved.CanReceiveOrders), Color(200, 220, 255))
-            end
+            addYesNo("ai", "Can Investigate", saved.CanInvestigate, Color(200, 220, 255))
+            addYesNo("ai", "Can Open Doors", saved.CanOpenDoors, Color(200, 220, 255))
+            addYesNo("ai", "Can Receive Orders", saved.CanReceiveOrders, Color(200, 220, 255))
             if saved.AIState ~= nil then
                 add("state", "AI State", tostring(saved.AIState), Color(220, 190, 130))
             end
@@ -420,9 +415,7 @@ function PB.populateCategories(ctx)
                 add("sounds", "Pitch", saved.MainSoundPitchValue, Color(180, 200, 255))
             end
 
-            if saved.BloodColor and saved.BloodColor ~= "" then
-                add("visual", "Blood", saved.BloodColor, Color(200, 100, 100))
-            end
+            addStr("visual", "Blood", saved.BloodColor, Color(200, 100, 100))
             if saved.CanGibOnDeath then
                 add("visual", "Can Gib", "Yes", Color(255, 150, 100))
             end
@@ -466,18 +459,10 @@ function PB.populateCategories(ctx)
         -- ====================================================================
         add("vehicle", "Framework", frameworkName, Color(0, 220, 255))
         add("vehicle", "Type", typeName, Color(140, 230, 255))
-        if displayName and displayName ~= "" then
-            add("vehicle", "Display Name", displayName, Color(255, 220, 100))
-        end
-        if vehCat and vehCat ~= "" then
-            add("vehicle", "Category", vehCat, Color(200, 220, 255))
-        end
-        if saved.VehicleSubCategory and saved.VehicleSubCategory ~= "" then
-            add("vehicle", "SubCategory", saved.VehicleSubCategory, Color(170, 210, 255))
-        end
-        if saved.Author and saved.Author ~= "" then
-            add("vehicle", "Author", saved.Author, Color(220, 220, 180))
-        end
+        addStr("vehicle", "Display Name", displayName, Color(255, 220, 100))
+        addStr("vehicle", "Category", vehCat, Color(200, 220, 255))
+        addStr("vehicle", "SubCategory", saved.VehicleSubCategory, Color(170, 210, 255))
+        addStr("vehicle", "Author", saved.Author, Color(220, 220, 180))
 
         local topSpeed = saved.MaxVelocity or saved.MaxSpeed or saved.maxspeed or saved.TopSpeed or (saved.Walkspeed and saved.Sprintspeed and (saved.Sprintspeed * 10))
         if topSpeed and tonumber(topSpeed) and tonumber(topSpeed) > 0 then
@@ -491,12 +476,8 @@ function PB.populateCategories(ctx)
             add("vehicle", "Speeds", string.format("Walk: %d | Sprint: %d", saved.Walkspeed, saved.Sprintspeed), Color(180, 255, 180))
         end
 
-        if saved.MaxThrust and tonumber(saved.MaxThrust) and tonumber(saved.MaxThrust) > 0 then
-            add("vehicle", "Max Thrust", tostring(saved.MaxThrust) .. " N", Color(255, 200, 100))
-        end
-        if saved.ThrustVtol and tonumber(saved.ThrustVtol) and tonumber(saved.ThrustVtol) > 0 then
-            add("vehicle", "VTOL Thrust", tostring(saved.ThrustVtol) .. " N", Color(255, 180, 120))
-        end
+        addPos("vehicle", "Max Thrust", saved.MaxThrust, " N", Color(255, 200, 100))
+        addPos("vehicle", "VTOL Thrust", saved.ThrustVtol, " N", Color(255, 180, 120))
 
         if saved.TurnRatePitch or saved.TurnRateYaw or saved.TurnRateRoll then
             local p = saved.TurnRatePitch and tostring(saved.TurnRatePitch) .. "°" or "-"
@@ -507,9 +488,7 @@ function PB.populateCategories(ctx)
             add("vehicle", "Turn Rate", tostring(saved.Turnrate) .. "°/s", Color(150, 220, 255))
         end
 
-        if saved.HeadTurnrate and tonumber(saved.HeadTurnrate) and tonumber(saved.HeadTurnrate) > 0 then
-            add("vehicle", "Head Turn Rate", tostring(saved.HeadTurnrate) .. "°/s", Color(180, 220, 255))
-        end
+        addPos("vehicle", "Head Turn Rate", saved.HeadTurnrate, "°/s", Color(180, 220, 255))
 
         if saved.MaxPitch or saved.MaxRoll then
             local mp = saved.MaxPitch and (tostring(saved.MaxPitch) .. "°") or "-"
@@ -593,9 +572,7 @@ function PB.populateCategories(ctx)
             add("drivetrain", "Fast Shift", ft and "Enabled" or "Standard", ft and Color(100, 255, 150) or Color(180, 180, 180))
         end
 
-        if saved.HorsePower and tonumber(saved.HorsePower) and tonumber(saved.HorsePower) > 0 then
-            add("drivetrain", "Horse Power", tostring(saved.HorsePower) .. " HP", Color(255, 150, 100))
-        end
+        addPos("drivetrain", "Horse Power", saved.HorsePower, " HP", Color(255, 150, 100))
 
         local peakTorque = saved.PeakTorque or dt.MaxRPMTorque or saved.MaxRPMTorque
         if peakTorque and tonumber(peakTorque) and tonumber(peakTorque) > 0 then
@@ -612,14 +589,10 @@ function PB.populateCategories(ctx)
         end
 
         local brakePower = dt.BrakePower or saved.BrakePower
-        if brakePower and tonumber(brakePower) and tonumber(brakePower) > 0 then
-            add("drivetrain", "Brake Power", tostring(brakePower) .. " N", Color(255, 120, 120))
-        end
+        addPos("drivetrain", "Brake Power", brakePower, " N", Color(255, 120, 120))
 
         local steerAng = saved.SteerAngle or (dt.MaxSteerAngle and math.floor(dt.MaxSteerAngle))
-        if steerAng and tonumber(steerAng) and tonumber(steerAng) > 0 then
-            add("drivetrain", "Steer Angle", tostring(steerAng) .. "°", Color(150, 200, 255))
-        end
+        addPos("drivetrain", "Steer Angle", steerAng, "°", Color(150, 200, 255))
 
         if dt.CounterSteer and tonumber(dt.CounterSteer) and tonumber(dt.CounterSteer) > 0 then
             add("drivetrain", "Counter Steer", string.format("%.2f Assist", dt.CounterSteer), Color(180, 220, 255))
