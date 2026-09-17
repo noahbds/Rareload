@@ -18,6 +18,12 @@ local EXCLUDED_ENTITY_CLASSES = {
     ["physgun_beam"]        = true,
     ["player_ragdoll"]      = true,
     ["gmod_gamerules"]      = true,
+    ['env_projectedtexture'] = true,
+    ['env_texturetoggle']   = true,
+    ['env_sprite']          = true,
+    ['env_sun']             = true,
+    ['env_tonemap_controller'] = true,
+    ['env_fog_controller']  = true,
 }
 
 local WriteEntitySaveDebug = (DebugHelpers and DebugHelpers.MakeWriter)

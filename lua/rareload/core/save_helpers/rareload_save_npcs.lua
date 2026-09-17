@@ -122,6 +122,55 @@ return function(ply)
         RARELOAD.Ownership.EndResolveBatch()
     end
 
+    -- Second pass (all RareloadNPCIDs now assigned): capture AI state so restored
+    -- NPCs resume behaviour instead of standing inert. Enemy is stored as a portable
+    -- ref ("ply:<steamid>" / "npc:<RareloadNPCID>") resolved back on restore.
+    for i = 1, #duplicatorTargets do
+        local npc = duplicatorTargets[i]
+        if not IsValid(npc) then continue end
+        local id = EntityIdentity.GetID(npc, "RareloadNPCID")
+        if not id then continue end
+        local st = npcStates[id] or {}
+
+        if isfunction(npc.GetNPCState) then st.aiState = npc:GetNPCState() end
+        if isfunction(npc.GetCurrentSchedule) then
+            local ok, sched = pcall(npc.GetCurrentSchedule, npc)
+            if ok and isnumber(sched) and sched >= 0 then st.schedule = sched end
+        end
+        if isfunction(npc.GetInternalVariable) then
+            local squad = npc:GetInternalVariable("m_SquadName")
+            if isstring(squad) and squad ~= "" then st.squad = squad end
+        end
+        if isfunction(npc.GetEnemy) then
+            local enemy = npc:GetEnemy()
+            -- GetEnemy() is frequently NULL mid-combat (NPCs reacquire targets every
+            -- few ticks), so a straight read misses almost every fight. If the NPC is
+            -- actively in combat, fall back to the nearest player it is hostile to, so
+            -- the fight actually resumes on restore.
+            if not IsValid(enemy) and isfunction(npc.GetNPCState) and isfunction(npc.Disposition)
+                and npc:GetNPCState() == NPC_STATE_COMBAT then
+                local npos, best, bestD = npc:GetPos(), nil, nil
+                for _, p in ipairs(player.GetAll()) do
+                    if IsValid(p) and p:Alive() and npc:Disposition(p) == D_HT then
+                        local dsq = npos:DistToSqr(p:GetPos())
+                        if not bestD or dsq < bestD then best, bestD = p, dsq end
+                    end
+                end
+                enemy = best
+            end
+            if IsValid(enemy) then
+                if enemy:IsPlayer() then
+                    st.enemy = "ply:" .. enemy:SteamID()
+                elseif enemy:IsNPC() then
+                    local eid = EntityIdentity.GetID(enemy, "RareloadNPCID")
+                    if eid then st.enemy = "npc:" .. tostring(eid) end
+                end
+            end
+        end
+
+        npcStates[id] = st
+    end
+
     return SnapshotUtils.BuildOwnedBucket(ply, duplicatorTargets, {
         indexMap = { category = "npc", idPrefix = "npc" },
         extras   = { npcStates = npcStates },

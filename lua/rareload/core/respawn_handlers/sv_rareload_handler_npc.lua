@@ -73,6 +73,7 @@ function RARELOAD.RestoreNPCs(savedInfo, requestingPlayer)
     timer.Simple(RARELOAD.settings.npcRestoreDelay or 1, function()
         local npcStates = snapshot.npcStates or {}
         local startTime = SysTime()
+        local spawned = {} -- tostring(savedID) -> { npc, st } for the AI relink pass
 
         local ok, info = SnapshotRestore.RestoreCategory({
             bucket = savedInfo.npcs,
@@ -85,10 +86,43 @@ function RARELOAD.RestoreNPCs(savedInfo, requestingPlayer)
             onCreated = function(npc, savedID)
                 -- Reapply saved health (NPCs respawn at default health).
                 local st = savedID and npcStates[savedID]
-                if st and st.maxHealth and isfunction(npc.SetMaxHealth) then npc:SetMaxHealth(st.maxHealth) end
-                if st and st.health and isfunction(npc.SetHealth) then npc:SetHealth(st.health) end
+                if not st then return end
+                if st.maxHealth and isfunction(npc.SetMaxHealth) then npc:SetMaxHealth(st.maxHealth) end
+                if st.health and isfunction(npc.SetHealth) then npc:SetHealth(st.health) end
+                -- squad must be set as a keyvalue before AI init; state/schedule/enemy
+                -- are applied in the post-restore pass below (once every NPC exists).
+                if st.squad and isfunction(npc.SetKeyValue) then npc:SetKeyValue("squadname", st.squad) end
+                spawned[tostring(savedID)] = { npc = npc, st = st }
             end,
         })
+
+        -- Reapply AI state and relink enemies once all NPCs exist. Best-effort: the
+        -- NPC's own AI re-evaluates on its next think, so we let it settle a moment
+        -- and set state/enemy-memory (the durable parts) rather than fight the scheduler.
+        timer.Simple(0.15, function()
+            for _, rec in pairs(spawned) do
+                local npc, st = rec.npc, rec.st
+                if not IsValid(npc) then continue end
+                if st.aiState and isfunction(npc.SetNPCState) then npc:SetNPCState(st.aiState) end
+                if st.schedule and isfunction(npc.SetSchedule) then npc:SetSchedule(st.schedule) end
+                if st.enemy then
+                    local kind, key = string.match(st.enemy, "^(%a+):(.+)$")
+                    local target
+                    if kind == "ply" then
+                        target = player.GetBySteamID(key)
+                    elseif kind == "npc" then
+                        local er = spawned[key]
+                        target = er and er.npc
+                    end
+                    if IsValid(target) then
+                        if isfunction(npc.AddEntityRelationship) then npc:AddEntityRelationship(target, D_HT, 99) end
+                        if isfunction(npc.SetEnemy) then npc:SetEnemy(target) end
+                        if isfunction(npc.UpdateEnemyMemory) then npc:UpdateEnemyMemory(target, target:GetPos()) end
+                        if isfunction(npc.SetNPCState) then npc:SetNPCState(NPC_STATE_COMBAT) end
+                    end
+                end
+            end
+        end)
 
         if info.skipped > 0 then
             WriteDebug(info.targetOwner, "INFO", string.format("Skipped %d existing NPCs (already on map)", info.skipped))
