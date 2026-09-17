@@ -100,25 +100,11 @@ function PB.populateCategories(ctx)
     local isGlide = isVeh and (saved.IsGlideVehicle or (IsValid(ent) and ent.IsGlideVehicle) or (className and string.find(className, "^glide_")))
     local isSCar = isVeh and (saved.IsSCar or (IsValid(ent) and ent.IsSCar) or (className and string.find(className, "^sent_sakarias_car")))
 
-    add("basic", isNPC and "NPC ID" or (isVeh and "Vehicle ID" or "Entity ID"), primaryID)
-    if saved.RareloadNPCID and saved.RareloadNPCID ~= primaryID then
-        add("basic", "Rareload NPC ID", saved.RareloadNPCID)
-    end
-    if saved.RareloadEntityID and saved.RareloadEntityID ~= primaryID then
-        add("basic", "Rareload Entity ID", saved.RareloadEntityID)
-    end
-    add("basic", "Class", className)
-    if saved.ClassName and saved.ClassName ~= className then
-        add("basic", "Class Name", saved.ClassName)
-    end
-    if isNPC then
-        add("basic", "NPC Name", PB.firstValue(saved, "NPCName", "npcName"))
-    end
-    if displayName and displayName ~= className then
-        add("basic", "Display Name", displayName)
-    end
-
-    if isVeh then
+    -- Derives the vehicle framework label and a coarse type from the class name
+    -- and detected framework flags. Used for both the "basic" identity section
+    -- and the detailed "vehicle" section, which previously each had their own
+    -- (drift-prone) copy of this logic.
+    local function classifyVehicle()
         local frameworkName = isLVS and "[LVS] Luna Vehicle System"
             or (isLFS and "[LFS] Luna's Flight School")
             or (isSimfphys and "[Simfphys] Physics Vehicle")
@@ -126,8 +112,6 @@ function PB.populateCategories(ctx)
             or (isGlide and "[Glide] Vehicle")
             or (isSCar and "[SCars] Vehicle")
             or "Source Engine Vehicle"
-
-        add("basic", "Framework", frameworkName, Color(0, 220, 255))
 
         local typeName = "Vehicle"
         local lowerClass = string.lower(className or "")
@@ -151,6 +135,30 @@ function PB.populateCategories(ctx)
         elseif string.find(lowerClass, "pod") or string.find(lowerClass, "seat") or string.find(lowerClass, "chair") then
             typeName = "Vehicle Pod / Seat"
         end
+        return frameworkName, typeName
+    end
+
+    add("basic", isNPC and "NPC ID" or (isVeh and "Vehicle ID" or "Entity ID"), primaryID)
+    if saved.RareloadNPCID and saved.RareloadNPCID ~= primaryID then
+        add("basic", "Rareload NPC ID", saved.RareloadNPCID)
+    end
+    if saved.RareloadEntityID and saved.RareloadEntityID ~= primaryID then
+        add("basic", "Rareload Entity ID", saved.RareloadEntityID)
+    end
+    add("basic", "Class", className)
+    if saved.ClassName and saved.ClassName ~= className then
+        add("basic", "Class Name", saved.ClassName)
+    end
+    if isNPC then
+        add("basic", "NPC Name", PB.firstValue(saved, "NPCName", "npcName"))
+    end
+    if displayName and displayName ~= className then
+        add("basic", "Display Name", displayName)
+    end
+
+    if isVeh then
+        local frameworkName, typeName = classifyVehicle()
+        add("basic", "Framework", frameworkName, Color(0, 220, 255))
         add("basic", "Type", typeName, Color(140, 230, 255))
 
         if saved.Base and saved.Base ~= "" then
@@ -449,38 +457,7 @@ function PB.populateCategories(ctx)
         local physObjs = saved.PhysicsObjects or {}
         local rootPhys = physObjs[0] or physObjs["0"] or physObjs[1] or {}
 
-        -- Framework Name
-        local frameworkName = isLVS and "[LVS] Luna Vehicle System"
-            or (isLFS and "[LFS] Luna's Flight School")
-            or (isSimfphys and "[Simfphys] Physics Vehicle")
-            or (isWAC and "[WAC] Aircraft")
-            or (isGlide and "[Glide] Vehicle")
-            or (isSCar and "[SCars] Vehicle")
-            or "Source Engine Vehicle"
-
-        -- Vehicle Type Classification
-        local typeName = "Vehicle"
-        local lowerClass = string.lower(className or "")
-        local lowerBase = string.lower(tostring(saved.Base or ""))
-        if string.find(lowerClass, "atat") or string.find(lowerClass, "atte") or string.find(lowerClass, "walker") or string.find(lowerBase, "walker") or string.find(lowerBase, "atte") then
-            typeName = "Walker / Heavy Armor"
-        elseif string.find(lowerClass, "gunship") or string.find(lowerClass, "laat") or string.find(lowerClass, "dropship") then
-            typeName = "Gunship / Transport"
-        elseif string.find(lowerClass, "starfighter") or string.find(lowerClass, "xwing") or string.find(lowerClass, "tie") or string.find(lowerClass, "fighter") or isLFS then
-            typeName = "Starfighter / Aircraft"
-        elseif string.find(lowerClass, "speeder") or string.find(lowerClass, "hover") then
-            typeName = "Speeder / Hovercraft"
-        elseif string.find(lowerClass, "heli") or string.find(lowerClass, "wac_hc") or string.find(lowerClass, "chopper") then
-            typeName = "Helicopter"
-        elseif string.find(lowerClass, "plane") or string.find(lowerClass, "wac_pl") then
-            typeName = "Airplane"
-        elseif string.find(lowerClass, "police") or string.find(lowerClass, "cruiser") or string.find(lowerClass, "cop") then
-            typeName = "Police / Emergency Vehicle"
-        elseif isSimfphys or isGlide or string.find(lowerClass, "car") or string.find(lowerClass, "truck") or string.find(lowerClass, "sedan") then
-            typeName = "Automobile / Wheeled Vehicle"
-        elseif string.find(lowerClass, "pod") or string.find(lowerClass, "seat") or string.find(lowerClass, "chair") then
-            typeName = "Vehicle Pod / Seat"
-        end
+        local frameworkName, typeName = classifyVehicle()
 
         local vehCat = saved.Category or saved.VehicleCategory
 
