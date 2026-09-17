@@ -78,28 +78,3 @@ hook.Add("PlayerSpawn", "RARELOAD_RestoreGlobalInventory", function(ply)
         RARELOAD.RestoreGlobalInventory(ply)
     end)
 end)
-
-function RARELOAD.ClearGlobalInventory(ply)
-    local steamID = IsValid(ply) and ply:SteamID() or ply
-
-    if type(steamID) ~= "string" then
-        print("[RARELOAD] Invalid player or SteamID provided to clear global inventory")
-        return false
-    end
-
-    if RARELOAD.globalInventory[steamID] then
-        RARELOAD.globalInventory[steamID] = nil
-        SaveGlobalInventory()
-
-        local debugEnabled = (IsValid(ply) and RARELOAD.GetPlayerSetting and RARELOAD.GetPlayerSetting(ply, "debugEnabled", false))
-            or (DEBUG_CONFIG and DEBUG_CONFIG.ENABLED and DEBUG_CONFIG.ENABLED())
-            or (RARELOAD.settings and RARELOAD.settings.debugEnabled)
-
-        if debugEnabled then
-            print("[RARELOAD DEBUG] Cleared global inventory for " .. steamID)
-        end
-        return true
-    end
-
-    return false
-end

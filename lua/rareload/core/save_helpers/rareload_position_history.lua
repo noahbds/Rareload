@@ -372,15 +372,6 @@ function RARELOAD.ClearPositionHistory(steamID, mapName)
     end
 end
 
-function RARELOAD.SetMaxHistorySize(size)
-    if type(size) == "number" and size > 0 then
-        RARELOAD.settings.maxHistorySize = math.floor(size)
-        return true
-    end
-    print("[RARELOAD ERROR] Invalid max history size. Must be a positive number.")
-    return false
-end
-
 -- ── lifecycle ──────────────────────────────────────────────────────────────────
 
 hook.Add("InitPostEntity", "RARELOAD_LoadPositionHistory", function()

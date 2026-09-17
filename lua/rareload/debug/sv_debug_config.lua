@@ -104,11 +104,6 @@ local function UpdateDebugLevel()
     end
 end
 
-function DEBUG_CONFIG.ShouldLog(level, context)
-    local levelConfig = DEBUG_CONFIG.LEVELS[level]
-    return DEBUG_CONFIG.ENABLED(context) and levelConfig and levelConfig.value <= currentDebugLevel
-end
-
 function DEBUG_CONFIG.GetCurrentLevel()
     for name, config in pairs(DEBUG_CONFIG.LEVELS) do
         if config.value == currentDebugLevel then
@@ -152,14 +147,6 @@ function DEBUG_CONFIG.CheckRateLimit(moduleName, messageKey)
     else
         moduleHistory[messageKey] = { count = 1, firstTime = now }
         return true, 0
-    end
-end
-
-function DEBUG_CONFIG.ClearRateLimitHistory(moduleName)
-    if moduleName then
-        rateLimitHistory[moduleName] = nil
-    else
-        table.Empty(rateLimitHistory)
     end
 end
 

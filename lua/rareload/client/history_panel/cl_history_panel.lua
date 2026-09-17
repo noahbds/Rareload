@@ -835,6 +835,4 @@ end
 concommand.Add("rareload_history", function() HP:Open() end)
 concommand.Add("rareload_save_timeline", function() HP:Open() end)
 
-function OpenPositionHistory() HP:Open() end
-
 RARELOAD.HistoryPanel = HP

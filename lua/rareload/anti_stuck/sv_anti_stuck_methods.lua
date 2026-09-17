@@ -115,14 +115,6 @@ function AntiStuck.ExecuteMethod(methodName, originalPos, ply)
     end
 end
 
-function AntiStuck.GetMethodStats(methodName)
-    if methodName then
-        return AntiStuck.methodStats[methodName]
-    else
-        return AntiStuck.methodStats
-    end
-end
-
 function AntiStuck.ResetMethodStats(methodName)
     if methodName then
         AntiStuck.methodStats[methodName] = newStats()

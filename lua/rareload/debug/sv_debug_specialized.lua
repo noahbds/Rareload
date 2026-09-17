@@ -69,51 +69,6 @@ local function ValidatePlayer(ply, functionName)
     end
     return true
 end
-
-
-function RARELOAD.Debug.LogSpawnInfo(ply)
-    if not DEBUG_CONFIG.ENABLED() then return end
-    if not IsValid(ply) then return end
-
-    local spawnInfo = {
-        "Player: " .. ply:Nick() .. " (" .. ply:SteamID() .. ")",
-        "Position: " .. tostring(ply:GetPos()),
-        "Health: " .. ply:Health(),
-        "Armor: " .. ply:Armor(),
-        "Model: " .. ply:GetModel(),
-        "Team: " .. team.GetName(ply:Team()),
-        "Admin Status: " .. (ply:IsSuperAdmin() and "SuperAdmin" or (ply:IsAdmin() and "Admin" or "Player"))
-    }
-
-    WriteLines("respawn", "INFO", "Player spawn information", spawnInfo, { entity = ply })
-end
-
-function RARELOAD.Debug.LogInventory(ply)
-    if not DEBUG_CONFIG.ENABLED() then return end
-    if not IsValid(ply) then return end
-
-    local weapons = ply:GetWeapons()
-    local weaponList = {}
-
-    for i, weapon in ipairs(weapons) do
-        if IsValid(weapon) then
-            table.insert(weaponList, string.format("%d. %s", i, weapon:GetClass()))
-        end
-    end
-
-    if #weaponList == 0 then
-        weaponList = { "No weapons" }
-    end
-
-    local activeWeapon = ply:GetActiveWeapon()
-    local activeWeaponClass = IsValid(activeWeapon) and activeWeapon:GetClass() or "None"
-
-    table.insert(weaponList, 1, "Active Weapon: " .. activeWeaponClass)
-    table.insert(weaponList, 2, "Total Weapons: " .. (#weaponList - 2))
-
-    WriteLines("inventory", "VERBOSE", "Player inventory", weaponList, { entity = ply })
-end
-
 function RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
     RARELOAD._weaponLogCooldown = RARELOAD._weaponLogCooldown or {}
     local key = "global"
@@ -194,38 +149,6 @@ function RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
         WriteLines("inventory", "INFO", "Weapon restoration summary", logEntries)
     end
 end
-
-function RARELOAD.Debug.LogPositionSave(ply, position, reason)
-    if not DEBUG_CONFIG.ENABLED() then return end
-    if not IsValid(ply) or not position then return end
-
-    local saveInfo = {
-        "Reason: " .. (reason or "Manual save"),
-        "Position: " .. tostring(position),
-        "Map: " .. game.GetMap(),
-        "Timestamp: " .. os.date("%Y-%m-%d %H:%M:%S")
-    }
-
-    LogStructured("position_save", "VERBOSE", "Position Saved", saveInfo, ply)
-end
-
-function RARELOAD.Debug.LogAutoSave(ply, interval)
-    if not DEBUG_CONFIG.ENABLED() then return end
-    if not IsValid(ply) then return end
-
-    ply.rareloadAutoSaveCount = (ply.rareloadAutoSaveCount or 0) + 1
-
-    if ply.rareloadAutoSaveCount % 10 == 0 then
-        local autoSaveInfo = {
-            "Auto-save #" .. ply.rareloadAutoSaveCount,
-            "Interval: " .. (interval or "Unknown") .. " seconds",
-            "Position: " .. tostring(ply:GetPos())
-        }
-
-        LogStructured("autosave", "VERBOSE", "Auto-Save Checkpoint", autoSaveInfo, ply)
-    end
-end
-
 function RARELOAD.Debug.LogAntiStuckResult(ply, originalPos, finalPos, method, success)
     if not DEBUG_CONFIG.ENABLED() then return end
     if not IsValid(ply) then return end
@@ -241,24 +164,6 @@ function RARELOAD.Debug.LogAntiStuckResult(ply, originalPos, finalPos, method, s
     local level = success and "INFO" or "WARNING"
     LogStructured("anti_stuck", level, "Anti-Stuck Resolution", stuckInfo, ply)
 end
-
-function RARELOAD.Debug.LogPermissionCheck(ply, permission, granted, reason)
-    if not DEBUG_CONFIG.ENABLED() then return end
-    if not IsValid(ply) then return end
-
-    if not granted or permission:find("ADMIN") then
-        local permInfo = {
-            "Permission: " .. permission,
-            "Granted: " .. RARELOAD.TextUtils.BoolToYesNo(granted),
-            "Reason: " .. (reason or "Standard check"),
-            "Admin Level: " .. (ply:IsSuperAdmin() and "SuperAdmin" or (ply:IsAdmin() and "Admin" or "Player"))
-        }
-
-        local level = granted and "INFO" or "WARNING"
-        LogStructured("permissions", level, "Permission Check", permInfo, ply)
-    end
-end
-
 function RARELOAD.Debug.BufferClipRestore(clip1, clip2, weapon)
     if not DEBUG_CONFIG.ENABLED() then return end
 
@@ -291,15 +196,6 @@ function RARELOAD.Debug.FlushClipRestoreBuffer()
 
     clipRestoreBuffer = {}
 end
-
-function RARELOAD.Debug.LogClipRestore(clip1, clip2, weapon)
-    RARELOAD.Debug.BufferClipRestore(clip1, clip2, weapon)
-
-    if #clipRestoreBuffer >= 10 then
-        RARELOAD.Debug.FlushClipRestoreBuffer()
-    end
-end
-
 function RARELOAD.Debug.SavePosDataInfo(ply, oldPosData, playerData)
     DelayedDebugCheck(0.8, function()
         if not ValidatePlayer(ply, "SavePosDataInfo") then return end
@@ -381,97 +277,6 @@ function RARELOAD.Debug.SavePosDataInfo(ply, oldPosData, playerData)
         end
     end)
 end
-
-function RARELOAD.Debug.LogSquadInfo(squadName, members, removedNPCs)
-    DelayedDebugCheck(0.9, function()
-        if not squadName or not members then
-            LogStructured("npc_save", "ERROR", "Squad Info", "Missing required parameters")
-            return
-        end
-
-        local squadInfo = {
-            string_format("Squad: %s", squadName),
-            string_format("Members: %d", #members),
-            "Members Details:"
-        }
-
-        local memberDetails = {}
-        for i, npc in ipairs(members) do
-            if IsValid(npc) then
-                table_insert(memberDetails, {
-                    class = npc:GetClass(),
-                    id = npc.RareloadUniqueID or "unknown",
-                    pos = VectorToDetailedString(npc:GetPos()),
-                    health = string_format("%d/%d", npc:Health(), npc:GetMaxHealth())
-                })
-            else
-                table_insert(memberDetails, {
-                    info = string_format("Invalid NPC at index %d", i)
-                })
-            end
-        end
-
-        RARELOAD.Debug.LogSquadFileOnly("Squad Information", "INFO", {
-            {
-                header = squadName,
-                messages = {
-                    squadInfo,
-                    "Member Details:", memberDetails,
-                    string_format("NPCs removed due to enemy relations: %d", removedNPCs or 0)
-                }
-            }
-        })
-    end)
-end
-
-function RARELOAD.Debug.TestSystemState()
-    DelayedDebugCheck(1.4, function()
-        local state = {
-            version = RARELOAD.version or "Unknown",
-            settings = table.Copy(RARELOAD.settings or {}),
-            hooks = {},
-            players = {},
-            serverInfo = {
-                map = game.GetMap(),
-                gamemode = engine.ActiveGamemode(),
-                tickInterval = engine.TickInterval(),
-                uptime = math.floor(SysTime() / 60) .. " minutes"
-            }
-        }
-
-        local hooksToCheck = { "PlayerSpawn", "PlayerDeath", "PlayerInitialSpawn" }
-        for _, hookName in pairs(hooksToCheck) do
-            local hooks = hook.GetTable()[hookName] or {}
-            local rareloadHooks = {}
-
-            for name, _ in pairs(hooks) do
-                if string.find(name, "RARELOAD") then
-                    table_insert(rareloadHooks, name)
-                end
-            end
-
-            state.hooks[hookName] = rareloadHooks
-        end
-
-        for _, ply in ipairs(player.GetAll()) do
-            if IsValid(ply) then
-                table_insert(state.players, {
-                    name = ply:Nick(),
-                    steamID = ply:SteamID(),
-                    health = ply:Health(),
-                    armor = ply:Armor(),
-                    weapons = #ply:GetWeapons(),
-                    alive = ply:Alive(),
-                    position = VectorToDetailedString(ply:GetPos())
-                })
-            end
-        end
-
-        LogStructured("system", "INFO", "Rareload System State", state)
-        return state
-    end)
-end
-
 function RARELOAD.Debug.LogAntiStuckOperation(operation, methodName, data, ply)
     if not DEBUG_CONFIG or not DEBUG_CONFIG.ENABLED() then return end
 

@@ -52,12 +52,6 @@ local function SortRenderItems(a, b)
     return a[2] > b[2]
 end
 
-function DepthRenderer.SetMaxDistance(dist)
-    dist = tonumber(dist) or DepthRenderer.MAX_DISTANCE
-    DepthRenderer.MAX_DISTANCE = dist
-    maxDistSqr = dist * dist
-end
-
 function DepthRenderer.AddRenderItem(pos, renderFunction, itemType, priorityOrOpts)
     if not pos or not renderFunction then return end
 
@@ -157,17 +151,6 @@ function DepthRenderer.ProcessRenderQueue()
     end
 
     for i = n, 1, -1 do
-        local item = renderQueue[i]
-        item[1] = nil
-        poolSize = poolSize + 1
-        itemPool[poolSize] = item
-        renderQueue[i] = nil
-    end
-    queueSize = 0
-end
-
-function DepthRenderer.ClearQueue()
-    for i = queueSize, 1, -1 do
         local item = renderQueue[i]
         item[1] = nil
         poolSize = poolSize + 1

@@ -67,13 +67,6 @@ local function AsPositionTable(pos)
     return RARELOAD.DataUtils.ToPositionTable(pos)
 end
 
-local function AsAngleTable(ang)
-    if istable(ang) and ang.p ~= nil and ang.y ~= nil and ang.r ~= nil then
-        if RARELOAD.DataUtils.IsValidAngle(ang) then return { p = ang.p, y = ang.y, r = ang.r } end
-    end
-    return RARELOAD.DataUtils.ToAngleTable(ang)
-end
-
 -- ===========================================================================
 -- POSITION / VECTOR CONVERSIONS
 -- ===========================================================================
@@ -147,15 +140,6 @@ function RARELOAD.DataUtils.ParsePositionString(str)
     return nil
 end
 
-function RARELOAD.DataUtils.PositionToString(pos, precision)
-    local t = AsPositionTable(pos)
-    if t then
-        local fmt = "%." .. (precision or 4) .. "f"
-        return string.format("[" .. fmt .. " " .. fmt .. " " .. fmt .. "]", t.x, t.y, t.z)
-    end
-    return nil
-end
-
 function RARELOAD.DataUtils.ExtractVectorComponents(pos)
     local t = AsPositionTable(pos)
     if t then return t.x, t.y, t.z end
@@ -210,15 +194,6 @@ function RARELOAD.DataUtils.ParseAngleString(str)
     p, y, r = string.match(str, "%[%s*([%-%d%.]+)%s*,%s*([%-%d%.]+)%s*,%s*([%-%d%.]+)%s*%]")
     if p and y and r then return { p = tonumber(p), y = tonumber(y), r = tonumber(r) } end
 
-    return nil
-end
-
-function RARELOAD.DataUtils.AngleToString(ang, precision)
-    local t = AsAngleTable(ang)
-    if t then
-        local fmt = "%." .. (precision or 4) .. "f"
-        return string.format("{" .. fmt .. " " .. fmt .. " " .. fmt .. "}", t.p, t.y, t.r)
-    end
     return nil
 end
 
@@ -277,14 +252,6 @@ function RARELOAD.DataUtils.FormatVectorDetailed(vec)
         return string.format("X: %.2f, Y: %.2f, Z: %.2f", x, y, z)
     end
     return "Invalid Vector"
-end
-
-function RARELOAD.DataUtils.FormatAngleDetailed(ang)
-    local t = AsAngleTable(ang)
-    if t then
-        return string.format("P: %.2f, Y: %.2f, R: %.2f", t.p, t.y, t.r)
-    end
-    return "Invalid Angle"
 end
 
 function RARELOAD.DataUtils.FormatVectorLike(pos, precision)

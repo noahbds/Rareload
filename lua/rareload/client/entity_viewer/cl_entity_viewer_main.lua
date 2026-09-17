@@ -651,8 +651,3 @@ net.Receive("RareloadHistory_Objects", function()
         parent = parent, label = label,
     })
 end)
-
-function OpenEntityViewer()
-    -- kept for back-compat: the viewer now lives inside the Save Timeline
-    if RARELOAD.HistoryPanel then RARELOAD.HistoryPanel:Open() end
-end

@@ -298,37 +298,6 @@ function SnapshotUtils.RemoveEntryByID(bucket, targetID, opts)
     return savePayload(snapshot, payload)
 end
 
-function SnapshotUtils.RemoveEntryByClassAndPos(bucket, className, targetPos, tolSqr)
-    if not SnapshotUtils.HasSnapshot(bucket) or not className or not targetPos then return false end
-    local snapshot = bucket.__duplicator
-    local payload = deserializePayload(snapshot)
-    if not payload or not payload.Entities then return false end
-
-    tolSqr = tolSqr or 16
-
-    -- Use DataUtils to safely extract coordinates from any format
-    local posTable = RARELOAD.DataUtils.ToPositionTable(targetPos)
-    if not posTable then return false end
-
-    local tx, ty, tz = posTable.x, posTable.y, posTable.z
-
-    for dupIndex, ent in pairs(payload.Entities) do
-        local class = ent.Class or ent.NPCName or ent.class
-        local p = RARELOAD.DataUtils.ToPositionTable(ent.Pos)   -- safe extraction
-        if class == className and p then
-            local dx, dy, dz = (p.x or 0) - tx, (p.y or 0) - ty, (p.z or 0) - tz
-            if (dx * dx + dy * dy + dz * dz) <= tolSqr then
-                payload.Entities[dupIndex] = nil
-                if snapshot._indexMap then snapshot._indexMap[dupIndex] = nil end
-                snapshot.entityCount = math.max((snapshot.entityCount or 1) - 1, 0)
-                return savePayload(snapshot, payload)
-            end
-        end
-    end
-
-    return false
-end
-
 function SnapshotUtils.MergePreserveExisting(oldBucket, freshBucket, category)
     if not SnapshotUtils.HasSnapshot(freshBucket) then return freshBucket end
     if not SnapshotUtils.HasSnapshot(oldBucket) then return freshBucket end

@@ -70,36 +70,6 @@ function SS.CullFOV(worldPos, eyePos, eyeForward, distSqr_ignored)
     return dot > 0 and (dot * dot) >= (fovCosSqr * distSqr)
 end
 
--- NEW: uses closest point on OBB to the camera – works perfectly for any entity size
-function SS.PanelAimPos(ent, renderParams, eyePos)
-    if not IsValid(ent) then return eyePos end
-    if not renderParams then return ent:GetPos() end
-
-    local pos = ent:GetPos()
-    local ang = ent:GetAngles()
-
-    -- Convert eye position into entity local space
-    local localEye = WorldToLocal(eyePos, Angle(0, 0, 0), pos, ang)
-
-    -- Clamp to the OBB extents -> closest point on the box surface
-    local clamped = Vector(
-        math.Clamp(localEye.x, renderParams.obbMin.x, renderParams.obbMax.x),
-        math.Clamp(localEye.y, renderParams.obbMin.y, renderParams.obbMax.y),
-        math.Clamp(localEye.z, renderParams.obbMin.z, renderParams.obbMax.z)
-    )
-
-    local closestWorld = LocalToWorld(clamped, Angle(0, 0, 0), pos, ang)
-
-    -- Direction from surface towards the player (outward)
-    local dirToEye = (eyePos - closestWorld):GetNormalized()
-    if dirToEye:LengthSqr() < 1e-8 then
-        dirToEye = (ang:Forward() * -1)
-    end
-
-    -- Offset slightly outward to avoid z‑fighting and ensure readability
-    return closestWorld + dirToEye * 12
-end
-
 -- Where a panel is drawn for `ent`, facing the player: just in FRONT of the model's near surface,
 -- at the player's eye height. The reach toward the eye is measured HORIZONTALLY only (the OBB
 -- support function in the horizontal view direction) so a tall model's height doesn't inflate it --

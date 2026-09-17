@@ -562,50 +562,6 @@ function RARELOAD.Ownership.IsOwnedByPlayerSafe(ent, ply)
     return IsValid(owner) and owner == ply
 end
 
-function RARELOAD.Ownership.GetPlayerEntities(ply)
-    if not IsValid(ply) then return {} end
-
-    local steamID = ply:SteamID()
-    local entities = {}
-
-    if OwnershipBySteamID[steamID] then
-        for entIndex, _ in pairs(OwnershipBySteamID[steamID]) do
-            local ent = Entity(entIndex)
-            if IsValid(ent) then
-                table.insert(entities, ent)
-            end
-        end
-    end
-
-    return entities
-end
-
-function RARELOAD.Ownership.Transfer(ent, newOwner)
-    if not IsValid(ent) then return false end
-
-    local oldOwner = RARELOAD.Ownership.GetOwner(ent)
-    local success = RARELOAD.Ownership.SetOwner(ent, newOwner)
-
-    if success then
-        local oldOwnerName = "nobody"
-        if oldOwner and IsValid(oldOwner) then
-            oldOwnerName = oldOwner:Nick()
-        end
-
-        local newOwnerName = "nobody"
-        if newOwner and IsValid(newOwner) then
-            newOwnerName = newOwner:Nick()
-        end
-
-        DebugLog("Transferred entity %d from %s to %s",
-            ent:EntIndex(),
-            oldOwnerName,
-            newOwnerName)
-    end
-
-    return success
-end
-
 function RARELOAD.Ownership.CleanupCache()
     local removedCount = 0
 

@@ -1,20 +1,5 @@
 util.AddNetworkString("RareloadDebugMessage")
 
-MoveTypeNames = {
-    [0] = "MOVETYPE_NONE",
-    [1] = "MOVETYPE_ISOMETRIC",
-    [2] = "MOVETYPE_WALK",
-    [3] = "MOVETYPE_STEP",
-    [4] = "MOVETYPE_FLY",
-    [5] = "MOVETYPE_FLYGRAVITY",
-    [6] = "MOVETYPE_VPHYSICS",
-    [7] = "MOVETYPE_PUSH",
-    [8] = "MOVETYPE_NOCLIP",
-    [9] = "MOVETYPE_LADDER",
-    [10] = "MOVETYPE_OBSERVER",
-    [11] = "MOVETYPE_CUSTOM",
-}
-
 function TableToString(tbl, indent)
     if not tbl then return "nil" end
 
@@ -35,31 +20,6 @@ function TableToString(tbl, indent)
 
     return table.concat(result, "\n")
 end
-
-function MoveTypeToString(moveType)
-    return MoveTypeNames[moveType] or ("MOVETYPE_UNKNOWN (" .. tostring(moveType) .. ")")
-end
-
-function RARELOAD.Debug.GetPlayerInfoString(ply)
-    if not IsValid(ply) then return "Invalid Player" end
-    return string.format("%s (%s) [%s]",
-        ply:Nick(),
-        ply:SteamID(),
-        ply:IsSuperAdmin() and "SuperAdmin" or (ply:IsAdmin() and "Admin" or "Player")
-    )
-end
-
-function RARELOAD.Debug.FormatPosition(pos, includeDistance, ply)
-    if not pos then return "No Position" end
-    local result = string.format("%.1f, %.1f, %.1f", pos.x, pos.y, pos.z)
-    if includeDistance and IsValid(ply) then
-        local distance = pos:Distance(ply:GetPos())
-        result = result .. string.format(" (%.1fm away)", distance)
-    end
-    return result
-end
-
-local debugPerformance = {}
 
 local function WriteUtilityDebug(category, level, header, messages, context, entityFallback)
     if RARELOAD.Debug and RARELOAD.Debug.Write then
@@ -93,86 +53,6 @@ local function WriteUtilityDebug(category, level, header, messages, context, ent
     elseif messages ~= nil and messages ~= "" then
         print("[RARELOAD DEBUG] " .. tostring(messages))
     end
-end
-
-function RARELOAD.Debug.StartPerfTimer(operation)
-    debugPerformance[operation] = SysTime()
-end
-
-function RARELOAD.Debug.EndPerfTimer(operation, warnThreshold)
-    if not debugPerformance[operation] then return 0 end
-    local elapsed = SysTime() - debugPerformance[operation]
-    debugPerformance[operation] = nil
-    warnThreshold = warnThreshold or 0.1
-    if elapsed > warnThreshold then
-        WriteUtilityDebug("system", "WARNING", "Performance Issue", {
-            "Operation: " .. operation,
-            "Time Taken: " .. string.format("%.3f seconds", elapsed),
-            "Threshold: " .. string.format("%.3f seconds", warnThreshold)
-        })
-    end
-    return elapsed
-end
-
-function RARELOAD.Debug.LogMemoryUsage(context)
-    if not DEBUG_CONFIG.ENABLED() then return end
-    local memInfo = {
-        "Context: " .. (context or "Unknown"),
-        "Lua Memory: " .. string.format("%.2f MB", collectgarbage("count") / 1024),
-        "Player Positions Size: " .. table.Count(RARELOAD.playerPositions or {}),
-        "Phantom Count: " .. table.Count(RARELOAD.Phantom or {}),
-        "Global Inventory Size: " .. table.Count(RARELOAD.globalInventory or {})
-    }
-    WriteUtilityDebug("system", "VERBOSE", "Memory Usage", memInfo)
-end
-
-function RARELOAD.Debug.ValidateJsonFile(filePath)
-    if not file.Exists(filePath, "DATA") then
-        return false, "File does not exist"
-    end
-    local data = file.Read(filePath, "DATA")
-    if not data or data == "" then
-        return false, "File is empty"
-    end
-    local success, result = pcall(util.JSONToTable, data)
-    if not success then
-        return false, "Invalid JSON: " .. tostring(result)
-    end
-    return true, result
-end
-
-function RARELOAD.Debug.SystemHealthCheck()
-    if not DEBUG_CONFIG.ENABLED() then return end
-    local issues = {}
-    if not RARELOAD.playerPositions then
-        table.insert(issues, "RARELOAD.playerPositions is nil")
-    end
-    if not RARELOAD.settings then
-        table.insert(issues, "RARELOAD.settings is nil")
-    end
-    local testFile = "rareload/health_check.txt"
-    local success = pcall(file.Write, testFile, "test")
-    if not success then
-        table.insert(issues, "Cannot write to data folder")
-    else
-        file.Delete(testFile)
-    end
-    local requiredNetStrings = {
-        "SyncData", "SyncPlayerPositions", "RareloadTeleportTo",
-        "RareloadReloadData", "CreatePlayerPhantom", "RemovePlayerPhantom",
-        "SyncPlayerPositionsChunk"
-    }
-    for _, netString in ipairs(requiredNetStrings) do
-        if not util.NetworkStringToID(netString) then
-            table.insert(issues, "Network string not registered: " .. netString)
-        end
-    end
-    if #issues == 0 then
-        WriteUtilityDebug("system", "INFO", "System Health Check", { "All systems operational" })
-    else
-        WriteUtilityDebug("system", "ERROR", "System Health Check Failed", issues)
-    end
-    return #issues == 0
 end
 
 function RARELOAD.Debug.AntiStuck(header, messages, entity, logLevel)
