@@ -90,6 +90,7 @@ if SERVER then
     include("rareload/debug/sv_debug_core.lua")
     include("rareload/debug/sv_debug_net.lua")
     include("rareload/debug/sv_debug_commands.lua")
+    include("rareload/debug/sv_debug_api.lua")
     include("rareload/utils/rareload_autosave.lua")
     include("rareload/utils/rareload_position_cache.lua")
     include("rareload/utils/rareload_reload_data.lua")
