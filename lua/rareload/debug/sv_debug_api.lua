@@ -178,3 +178,15 @@ function Debug.SavePosDataInfo(ply, _oldPosData, playerData)
         })
     end)
 end
+
+-- Default watches so the HUD's WATCHES panel is useful out of the box.
+-- Add your own anywhere with RARELOAD.Debug.Watch(name, function() return value end).
+if Debug.Watch then
+    Debug.Watch("players", function() return #player.GetHumans() end)
+    Debug.Watch("saved(map)", function()
+        local pp = RARELOAD.playerPositions and RARELOAD.playerPositions[game.GetMap()]
+        local n = 0
+        if istable(pp) then for _ in pairs(pp) do n = n + 1 end end
+        return n
+    end)
+end
