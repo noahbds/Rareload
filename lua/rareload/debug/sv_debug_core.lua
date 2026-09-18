@@ -196,6 +196,11 @@ end
 --------------------------------------------------------------------------------
 -- Core Log
 --------------------------------------------------------------------------------
+-- Running counters (surfaced by the HUD error/warn badge).
+Debug.stats = Debug.stats or { errors = 0, warns = 0, total = 0 }
+local lastEv = nil
+local COLLAPSE_WINDOW = 5 -- seconds
+
 -- Debug.Log(category, level, message, data)
 --   category : string bucket ("respawn", "anti_stuck", "inventory", ...)
 --   level    : "ERROR"|"WARN"|"INFO"|"VERBOSE" (or legacy "WARNING"/1..4)
@@ -205,21 +210,42 @@ function Debug.Log(category, level, message, data)
     local lv = resolveLevel(level)
     if lv.n > Debug.MinLevel() then return end
     if not anyoneListening() then return end
+    category = tostring(category or "system")
+    message = tostring(message or "")
+
+    -- Flood control: an identical message repeated within the window collapses
+    -- onto the previous event as a count instead of adding a new line.
+    if lastEv and lastEv.category == category and lastEv.level == lv.n
+        and lastEv.message == message and (os.time() - lastEv.time) <= COLLAPSE_WINDOW then
+        lastEv.count = (lastEv.count or 1) + 1
+        lastEv.time = os.time()
+        local d = sanitizeData(data)
+        if d then lastEv.data = d end
+        if Debug.Enqueue then Debug.Enqueue(lastEv) end
+        return lastEv
+    end
 
     ringHead = ringHead + 1
     local ev = {
         seq = ringHead,
         time = os.time(),
-        category = tostring(category or "system"),
+        count = 1,
+        category = category,
         level = lv.n,
         levelName = lv.label,
-        message = tostring(message or ""),
+        message = message,
         data = sanitizeData(data),
     }
     ring[((ringHead - 1) % Debug.RING_MAX) + 1] = ev
+    lastEv = ev
+
+    Debug.stats.total = Debug.stats.total + 1
+    if lv.n == 1 then Debug.stats.errors = Debug.stats.errors + 1
+    elseif lv.n == 2 then Debug.stats.warns = Debug.stats.warns + 1 end
 
     consoleWrite(ev, lv)
-    if Debug.Broadcast then Debug.Broadcast(ev) end
+    if Debug.Enqueue then Debug.Enqueue(ev)
+    elseif Debug.Broadcast then Debug.Broadcast(ev) end
     return ev
 end
 
@@ -292,4 +318,62 @@ function Debug.Session(category, meta)
     end
 
     return sess
+end
+
+--------------------------------------------------------------------------------
+-- Profiler: local t = Debug.Time("restore"); ...; t:stop()  -> ms (logs it)
+--------------------------------------------------------------------------------
+function Debug.Time(label, category)
+    return {
+        label = tostring(label or "block"),
+        category = category or "perf",
+        t0 = SysTime(),
+        stop = function(self, extra)
+            local ms = (SysTime() - self.t0) * 1000
+            Debug.Log(self.category, ms > 100 and "WARN" or "VERBOSE",
+                string.format("%s took %.1fms", self.label, ms), extra)
+            return ms
+        end,
+    }
+end
+
+-- Time a function call and return its results plus the elapsed ms.
+function Debug.TimeFn(label, fn, ...)
+    local t = Debug.Time(label)
+    local r = { fn(...) }
+    t:stop()
+    return unpack(r)
+end
+
+--------------------------------------------------------------------------------
+-- Watches: pin a live server value to the HUD. fn() is polled and networked.
+--------------------------------------------------------------------------------
+Debug.watches = Debug.watches or {}
+Debug.watchOrder = Debug.watchOrder or {}
+
+function Debug.Watch(name, fn)
+    name = tostring(name)
+    if not Debug.watches[name] then Debug.watchOrder[#Debug.watchOrder + 1] = name end
+    Debug.watches[name] = fn
+end
+
+function Debug.Unwatch(name)
+    name = tostring(name)
+    Debug.watches[name] = nil
+    for i, n in ipairs(Debug.watchOrder) do
+        if n == name then table.remove(Debug.watchOrder, i) break end
+    end
+end
+
+-- Evaluate all watches into an ordered {name, value} list (guarded).
+function Debug.EvalWatches()
+    local out = {}
+    for _, name in ipairs(Debug.watchOrder) do
+        local fn = Debug.watches[name]
+        if fn then
+            local ok, val = pcall(fn)
+            out[#out + 1] = { name, ok and tostring(val) or "<error>" }
+        end
+    end
+    return out
 end
