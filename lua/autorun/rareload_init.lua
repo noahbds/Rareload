@@ -45,6 +45,7 @@ if SERVER then
     AddCSLuaFile("rareload/client/saved_entity_display/SED_object_phantom.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_highlight.lua")
     AddCSLuaFile("rareload/client/saved_entity_display/SED_hooks.lua")
+    AddCSLuaFile("rareload/debug/cl_debug_hud.lua")
 end
 
 include("rareload/shared/sh_lang.lua")
@@ -85,6 +86,10 @@ if SERVER then
     include("rareload/debug/sv_debug_specialized.lua")
     include("rareload/debug/sv_debug_utils.lua")
     include("rareload/debug/sv_rareload_debug.lua")
+    -- Debug engine v2 (coexists with the above during migration)
+    include("rareload/debug/sv_debug_core.lua")
+    include("rareload/debug/sv_debug_net.lua")
+    include("rareload/debug/sv_debug_commands.lua")
     include("rareload/utils/rareload_autosave.lua")
     include("rareload/utils/rareload_position_cache.lua")
     include("rareload/utils/rareload_reload_data.lua")
@@ -145,6 +150,7 @@ elseif CLIENT then
     include("rareload/client/saved_entity_display/SED_object_phantom.lua")
     include("rareload/client/saved_entity_display/SED_highlight.lua")
     include("rareload/client/saved_entity_display/SED_hooks.lua")
+    include("rareload/debug/cl_debug_hud.lua")
 
     net.Receive("RareloadDebugMessage", function()
         print(net.ReadString())
