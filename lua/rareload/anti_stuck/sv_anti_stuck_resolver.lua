@@ -114,7 +114,8 @@ if SERVER then
 
         local startTime = SysTime()
         local session = nil
-        if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.StartAntiStuckSession and DEBUG_CONFIG and DEBUG_CONFIG.ENABLED and DEBUG_CONFIG.ENABLED({ entity = ply }) then
+        if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.StartAntiStuckSession
+            and RARELOAD.Debug.EnabledFor and RARELOAD.Debug.EnabledFor(ply) then
             session = RARELOAD.Debug.StartAntiStuckSession(ply, originalPos)
         end
         AntiStuck._currentSession = session

@@ -32,8 +32,8 @@ local function IsDebugEnabledForSteamID(steamID)
             end
         end
     end
-    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then
-        return DEBUG_CONFIG.ENABLED()
+    if RARELOAD.Debug and RARELOAD.Debug.AnyoneListening then
+        return RARELOAD.Debug.AnyoneListening()
     end
     return RARELOAD.settings and RARELOAD.settings.debugEnabled or false
 end

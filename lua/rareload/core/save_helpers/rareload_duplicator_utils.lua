@@ -125,7 +125,9 @@ local function resetDuplicatorFrame()
 end
 
 local function IsDuplicatorDebugEnabled()
-    if DEBUG_CONFIG and DEBUG_CONFIG.ENABLED then return DEBUG_CONFIG.ENABLED() end
+    if RARELOAD and RARELOAD.Debug and RARELOAD.Debug.AnyoneListening then
+        return RARELOAD.Debug.AnyoneListening()
+    end
     return RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled or false
 end
 

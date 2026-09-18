@@ -80,13 +80,7 @@ if SERVER then
     include("rareload/core/respawn_handlers/sv_rareload_handler_player_spawn.lua")
     include("rareload/core/respawn_handlers/sv_rareload_handler_vehicles.lua")
     include("rareload/core/commands/save_position.lua")
-    include("rareload/debug/sv_debug_config.lua")
-    include("rareload/debug/sv_debug_formatters.lua")
-    include("rareload/debug/sv_debug_logging.lua")
-    include("rareload/debug/sv_debug_specialized.lua")
-    include("rareload/debug/sv_debug_utils.lua")
-    include("rareload/debug/sv_rareload_debug.lua")
-    -- Debug engine v2 (coexists with the above during migration)
+    -- Debug system (v2)
     include("rareload/debug/sv_debug_core.lua")
     include("rareload/debug/sv_debug_net.lua")
     include("rareload/debug/sv_debug_commands.lua")
@@ -152,10 +146,6 @@ elseif CLIENT then
     include("rareload/client/saved_entity_display/SED_highlight.lua")
     include("rareload/client/saved_entity_display/SED_hooks.lua")
     include("rareload/debug/cl_debug_hud.lua")
-
-    net.Receive("RareloadDebugMessage", function()
-        print(net.ReadString())
-    end)
 
     -- Guard WAC aircraft client hooks from crashing if LocalPlayer():InVehicle() is true before WAC networking arrives
     local function EnsureWACClientTable()
