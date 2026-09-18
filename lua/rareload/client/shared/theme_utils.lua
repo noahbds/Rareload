@@ -74,67 +74,6 @@ function RARELOAD.Theme.BuildMainTheme()
     }
 end
 
-function RARELOAD.Theme.BuildAdminColors()
-    local t = THEMES.dark
-    return {
-        background = t.bg,
-        header = t.panelAlt,
-        panel = t.panel,
-        panelLight = t.button.hover,
-        panelHover = t.button.active,
-
-        text = t.textPrimary,
-        textSecondary = t.textSecondary,
-        textHighlight = Color(255, 255, 255),
-        textDark = t.textPrimary,
-
-        accent = t.accent,
-        accentDark = t.accentHover,
-        accentLight = t.accentHover,
-        success = t.success,
-        warning = t.warning,
-        danger = t.danger,
-
-        admin = Color(80, 170, 245),
-        superadmin = Color(255, 175, 75),
-        player = t.textSecondary,
-
-        shadow = t.shadow,
-        overlay = t.overlay,
-        glow = Color(100, 140, 255, 40)
-    }
-end
-
-function RARELOAD.Theme.BuildAntiStuckTheme()
-    local t = THEMES.dark
-    return {
-        background = t.bg,
-        header = t.panelAlt,
-        panel = t.panel,
-        panelLight = t.button.hover,
-        panelHover = t.button.active,
-        panelSelected = t.button.active,
-
-        text = t.textPrimary,
-        textSecondary = t.textSecondary,
-        textHighlight = Color(255, 255, 255),
-
-        accent = t.accent,
-        accentHover = t.accentHover,
-        success = t.success,
-        info = Color(185, 170, 255),
-        warning = t.warning,
-        danger = t.danger,
-
-        shadow = t.shadow,
-        glow = Color(100, 140, 255, 55),
-        overlay = t.overlay,
-
-        gradientStart = t.panel,
-        gradientEnd = t.panelAlt
-    }
-end
-
 function RARELOAD.Theme.BuildToolscreenColors()
     local t = THEMES.dark
     return {

@@ -210,16 +210,6 @@ function RARELOAD.DataUtils.IsValidPosition(pos)
     return false
 end
 
-function RARELOAD.DataUtils.IsValidAngle(ang)
-    if isangle(ang) then return true end
-    if istable(ang) then
-        if ang.p ~= nil and ang.y ~= nil and ang.r ~= nil then return type(ang.p) == "number" and type(ang.y) == "number" and type(ang.r) == "number" end
-        if ang[1] ~= nil and ang[2] ~= nil and ang[3] ~= nil then return type(ang[1]) == "number" and type(ang[2]) == "number" and type(ang[3]) == "number" end
-    end
-    if isstring(ang) then return RARELOAD.DataUtils.ParseAngleString(ang) ~= nil end
-    return false
-end
-
 function RARELOAD.DataUtils.AnglesEqual(ang1, ang2, tolerance)
     tolerance = tolerance or 0.1
     local a1 = RARELOAD.DataUtils.ToAngleTable(ang1)
@@ -246,14 +236,6 @@ function RARELOAD.DataUtils.FormatVectorCompact(vec)
     return "nil"
 end
 
-function RARELOAD.DataUtils.FormatVectorDetailed(vec)
-    local x, y, z = RARELOAD.DataUtils.ExtractVectorComponents(vec)
-    if x and y and z then
-        return string.format("X: %.2f, Y: %.2f, Z: %.2f", x, y, z)
-    end
-    return "Invalid Vector"
-end
-
 function RARELOAD.DataUtils.FormatVectorLike(pos, precision)
     local t = RARELOAD.DataUtils.ToPositionTable(pos)
     if not t then return nil end
@@ -268,21 +250,6 @@ function RARELOAD.DataUtils.FormatAngleLike(ang, precision)
 
     local fmt = "%0." .. tostring(precision or 1) .. "f"
     return string.format(fmt .. ", " .. fmt .. ", " .. fmt, t.p, t.y, t.r)
-end
-
-function RARELOAD.DataUtils.FormatValue(val)
-    if isvector(val) then return RARELOAD.DataUtils.FormatVectorCompact(val) end
-    if isangle(val) then return RARELOAD.DataUtils.FormatAngleCompact(val) end
-
-    if istable(val) then
-        if RARELOAD.DataUtils.IsValidPosition(val) then return RARELOAD.DataUtils.FormatVectorCompact(val) end
-        if RARELOAD.DataUtils.IsValidAngle(val) then return RARELOAD.DataUtils.FormatAngleCompact(val) end
-        return "Table: " .. tostring(table.Count(val)) .. " elements"
-    end
-
-    if val == nil then return "nil" end
-    if IsValid(val) then return tostring(val) .. " (" .. val:GetClass() .. ")" end
-    return tostring(val)
 end
 
 function RARELOAD.EnsureFolderExists(folderPath)
