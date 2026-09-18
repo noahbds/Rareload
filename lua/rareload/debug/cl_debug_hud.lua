@@ -138,8 +138,9 @@ local function drawToast()
         TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
     draw.SimpleText(r.title ~= "" and r.title or r.category:upper(), "RareloadHeading", x + 60, y + 14, A(WHITE))
-    local status = (r.success and "SUCCESS" or "FAILURE") .. "  ·  " .. r.elapsed
-        .. "  ·  " .. #steps .. " step" .. (#steps == 1 and "" or "s")
+    local L = RARELOAD.L
+    local status = (r.success and L("toast.success") or L("toast.failure")) .. "  ·  " .. r.elapsed
+        .. "  ·  " .. L("toast.steps", #steps)
     draw.SimpleText(status, FONT_SM, x + 62, y + 43, A(accent))
 
     -- Category chip, right-aligned in the header.

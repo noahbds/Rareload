@@ -28,12 +28,10 @@ local HP = {
 }
 HP.Comps = { position = true, health = true, inventory = true, ammo = true, appearance = true, states = true, world = true }
 -- What the tool-gun reload key (R) does. Pushed to the server so TOOL:Reload acts.
+-- Labels are resolved via L("sth.reload_mode.<id>") at draw time.
 HP.ReloadMode = HP.ReloadMode or "set_previous"
-local RELOAD_MODES = {
-    { "set_previous", "Set previous save as restore point" },
-    { "restore_current", "Restore the current save (checked parts)" },
-    { "restore_previous", "Restore the previous save (checked parts)" },
-}
+local RELOAD_MODES = { "set_previous", "restore_current", "restore_previous" }
+local function ReloadModeLabel(id) return L("sth.reload_mode." .. (id or "set_previous")) end
 
 -- ── networking ──────────────────────────────────────────────────────────────
 
@@ -535,15 +533,9 @@ function HP:BuildDetail(host)
     rlHeader:Dock(TOP); rlHeader:DockMargin(pad, sc(6), pad, sc(3)); rlHeader:SetTall(sc(16))
     rlHeader.Paint = function(_, w, h)
         local kb = input.LookupBinding("+reload") or "R"
-        draw.SimpleText("What the Reload key (" .. kb .. ") does when holding rareload toolgun", "RH_Tiny", 0, h / 2, THEME.textTertiary, ALIGN_L, ALIGN_M)
+        draw.SimpleText(L("sth.reload_hdr", kb), "RH_Tiny", 0, h / 2, THEME.textTertiary, ALIGN_L, ALIGN_M)
     end
 
-    local function reloadModeLabel()
-        for _, m in ipairs(RELOAD_MODES) do
-            if m[1] == HP.ReloadMode then return m[2] end
-        end
-        return RELOAD_MODES[1][2]
-    end
     local rlCombo = vgui.Create("DButton", host)
     D.rlCombo = rlCombo
     rlCombo:Dock(TOP); rlCombo:DockMargin(pad, 0, pad, sc(8)); rlCombo:SetTall(sc(30)); rlCombo:SetText("")
@@ -551,14 +543,14 @@ function HP:BuildDetail(host)
         local bg = selfp:IsHovered() and ColorAlpha(THEME.primary, 40) or THEME.surface
         draw.RoundedBox(sc(6), 0, 0, bw, bh, bg)
         draw.RoundedBox(sc(3), sc(10), bh / 2 - sc(3), sc(6), sc(6), THEME.primary) -- accent dot
-        draw.SimpleText(reloadModeLabel(), "RH_Small", sc(22), bh / 2, THEME.textSecondary, ALIGN_L, ALIGN_M)
+        draw.SimpleText(ReloadModeLabel(HP.ReloadMode), "RH_Small", sc(22), bh / 2, THEME.textSecondary, ALIGN_L, ALIGN_M)
         draw.SimpleText("▾", "RH_Small", bw - sc(10), bh / 2, THEME.textTertiary, ALIGN_R, ALIGN_M)
     end
     rlCombo.DoClick = function()
         local m = DermaMenu()
         for _, mode in ipairs(RELOAD_MODES) do
-            m:AddOption(mode[2], function()
-                HP.ReloadMode = mode[1]
+            m:AddOption(ReloadModeLabel(mode), function()
+                HP.ReloadMode = mode
                 SendReloadConfig()
             end)
         end

@@ -126,6 +126,26 @@ return {
     ["screen.no_saves"] = "No Saves Yet",
     ["screen.no_permission"] = "No Permission",
 
+    -- Reload-key selector (Save Timeline) + tool reload feedback
+    ["sth.reload_hdr"] = "What the Reload key (%s) does with the Rareload toolgun",
+    ["sth.reload_mode.set_previous"] = "Set previous save as restore point",
+    ["sth.reload_mode.restore_current"] = "Restore the current save (checked parts)",
+    ["sth.reload_mode.restore_previous"] = "Restore the previous save (checked parts)",
+    ["tool.reload.no_saves"] = "You have no saved positions yet.",
+    ["tool.reload.no_current"] = "No current save to reload.",
+    ["tool.reload.no_previous"] = "No previous save — you're at the oldest.",
+    ["tool.reload.did_current"] = "Reloaded the current save.",
+    ["tool.reload.did_previous"] = "Reloaded the previous save.",
+    ["tool.reload.did_set_previous"] = "Previous save set as your restore point.",
+    ["tool.reload.fail_current"] = "Failed to reload the current save.",
+    ["tool.reload.fail_previous"] = "Failed to reload the previous save.",
+    ["tool.reload.fail_set_previous"] = "Failed to set the previous save as restore point.",
+
+    -- Restore/save toast chrome
+    ["toast.success"] = "SUCCESS",
+    ["toast.failure"] = "FAILURE",
+    ["toast.steps"] = "%d step(s)",
+
     -- Parameters (tunables) menu
     ["params.title"] = "Rareload - Parameters",
     ["params.note"] = "Changes apply server-wide and persist. Admin only.",

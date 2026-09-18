@@ -239,8 +239,15 @@ local function SafeTeleport(ply, pos, ang)
     if not pos then return end
     if ply:InVehicle() then ply:ExitVehicle() end
 
+    -- Honor the anti-stuck (spawn-mode) setting: when it is disabled, restore to the
+    -- EXACT saved position and never relocate. Mirrors the respawn handler's gate
+    -- (per-player setting → global convar → default true).
+    local antiStuckOn = RARELOAD.GetPlayerSetting and RARELOAD.GetPlayerSetting(ply, "spawnModeEnabled")
+    if antiStuckOn == nil then antiStuckOn = RARELOAD.settings and RARELOAD.settings.spawnModeEnabled end
+    if antiStuckOn == nil then antiStuckOn = true end
+
     local finalPos = pos
-    if RARELOAD.AntiStuck and RARELOAD.AntiStuck.IsPositionStuck then
+    if antiStuckOn and RARELOAD.AntiStuck and RARELOAD.AntiStuck.IsPositionStuck then
         local stuck = RARELOAD.AntiStuck.IsPositionStuck(pos, ply, true)
         if stuck and RARELOAD.AntiStuck.ResolveStuckPosition then
             local safe, ok = RARELOAD.AntiStuck.ResolveStuckPosition(pos, ply)
@@ -416,12 +423,12 @@ end
 
 -- Promote a history entry to be the ACTIVE save — the one the tool-gun reload key and
 -- respawn restore. This is what makes an old save "current" again.
-function RARELOAD.ActivateHistoryEntry(ply, id)
+function RARELOAD.ActivateHistoryEntry(ply, id, silent)
     if not IsValid(ply) then return false end
     local steamID, mapName = ply:SteamID(), game.GetMap()
     local entry = RARELOAD.GetHistoryEntryById(steamID, mapName, id)
     if not entry then
-        ply:ChatPrint("[Rareload] That saved position is no longer in your history.")
+        if not silent then ply:ChatPrint("[Rareload] That saved position is no longer in your history.") end
         return false
     end
 
@@ -444,7 +451,7 @@ function RARELOAD.ActivateHistoryEntry(ply, id)
     RARELOAD.SetActiveHistoryId(steamID, mapName, id)
 
     if SyncPlayerPositions then SyncPlayerPositions(nil, steamID) end
-    ply:ChatPrint("[Rareload] This save is now your respawn point.")
+    if not silent then ply:ChatPrint("[Rareload] This save is now your respawn point.") end
     return true
 end
 

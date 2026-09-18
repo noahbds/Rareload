@@ -113,6 +113,26 @@ return {
     ["screen.no_data"] = "Aucune donnée de position",
     ["screen.no_previous"] = "Aucune sauvegarde précédente",
     ["screen.no_saves"] = "Aucune sauvegarde",
+
+    -- Sélecteur touche Recharger (Chronologie) + retours de la touche Recharger
+    ["sth.reload_hdr"] = "Ce que fait la touche Recharger (%s) avec le toolgun Rareload",
+    ["sth.reload_mode.set_previous"] = "Définir la sauvegarde précédente comme point de restauration",
+    ["sth.reload_mode.restore_current"] = "Restaurer la sauvegarde actuelle (parties cochées)",
+    ["sth.reload_mode.restore_previous"] = "Restaurer la sauvegarde précédente (parties cochées)",
+    ["tool.reload.no_saves"] = "Vous n'avez aucune position sauvegardée.",
+    ["tool.reload.no_current"] = "Aucune sauvegarde actuelle à recharger.",
+    ["tool.reload.no_previous"] = "Aucune sauvegarde précédente — vous êtes à la plus ancienne.",
+    ["tool.reload.did_current"] = "Sauvegarde actuelle rechargée.",
+    ["tool.reload.did_previous"] = "Sauvegarde précédente rechargée.",
+    ["tool.reload.did_set_previous"] = "Sauvegarde précédente définie comme point de restauration.",
+    ["tool.reload.fail_current"] = "Échec du rechargement de la sauvegarde actuelle.",
+    ["tool.reload.fail_previous"] = "Échec du rechargement de la sauvegarde précédente.",
+    ["tool.reload.fail_set_previous"] = "Échec de la définition de la sauvegarde précédente comme point de restauration.",
+
+    -- Bandeau de notification restauration/sauvegarde
+    ["toast.success"] = "SUCCÈS",
+    ["toast.failure"] = "ÉCHEC",
+    ["toast.steps"] = "%d étape(s)",
     ["screen.no_permission"] = "Aucune permission",
 
     -- Parameters (tunables) menu

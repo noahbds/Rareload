@@ -38,13 +38,17 @@ if CLIENT then
     end)
 
     net.Receive("RareloadToolReloadState", function()
-        local status = net.ReadString() -- "success" | "none" | "fail"
+        local status = net.ReadString() -- "success" | "none" | "empty" | "fail"
+        local msgKey = net.ReadString()
         RARELOAD.reloadImageState = {
             status = status,
             hasData = status == "success", -- back-compat for older screen code
             showTime = CurTime(),
             duration = 3
         }
+        if msgKey and msgKey ~= "" and RARELOAD.L then
+            chat.AddText(Color(120, 200, 255), "[Rareload] ", color_white, RARELOAD.L(msgKey))
+        end
     end)
 
     net.Receive("RareloadToolPermissionDenied", function()
@@ -144,21 +148,26 @@ function TOOL:Reload()
     local steamID = ply:SteamID()
     local mapName = game.GetMap()
 
-    -- Tell the tool screen which outcome to animate and play a matching sound.
-    --   success : reloaded / restore point set      (chime)
-    --   none    : no previous save available         (soft "can't go back" cue)
-    --   fail    : real error                         (deny buzz)
-    -- Always returns false so the tool gun does no laser effect.
-    local function finish(status, chatMsg, sound)
-        net.Start("RareloadToolReloadState"); net.WriteString(status); net.Send(ply)
-        if chatMsg then ply:ChatPrint("[RARELOAD] " .. chatMsg) end
+    -- Report the outcome to the client, which localizes the chat line and animates
+    -- the tool screen. `msgKey` is a lang key the CLIENT resolves (the server can't
+    -- localize to the viewer's language). Always returns false so the tool gun does
+    -- no laser effect.
+    --   success : reloaded / restore point set   (chime)
+    --   none    : no previous save available      (soft "can't go back" cue)
+    --   empty   : no save exists at all           (warning)
+    --   fail    : real error                      (deny buzz)
+    local function finish(status, msgKey, sound)
+        net.Start("RareloadToolReloadState")
+        net.WriteString(status)
+        net.WriteString(msgKey or "")
+        net.Send(ply)
         if sound then ply:EmitSound(sound) end
         return false
     end
 
     if not (RARELOAD.GetPositionHistory and RARELOAD.GetPositionHistory(steamID, mapName) > 0) then
         -- No save exists at all — a warning, distinct from "no previous save".
-        return finish("empty", "You have no saved positions yet.", "buttons/combine_button_locked.wav")
+        return finish("empty", "tool.reload.no_saves", "buttons/combine_button_locked.wav")
     end
 
     local cfg   = (RARELOAD.playerReloadConfig and RARELOAD.playerReloadConfig[steamID]) or {}
@@ -168,30 +177,30 @@ function TOOL:Reload()
     if mode == "restore_current" then
         local id = (RARELOAD.GetActiveHistoryId and RARELOAD.GetActiveHistoryId(steamID, mapName))
             or (RARELOAD.GetPositionHistoryEntries(steamID, mapName)[1] or {}).id
-        if not id then return finish("none", "No current save to reload.", "buttons/combine_button_locked.wav") end
+        if not id then return finish("none", "tool.reload.no_current", "buttons/combine_button_locked.wav") end
         if RARELOAD.RestoreHistoryEntry(ply, id, comps) then
-            return finish("success", "Reloaded the current save.", "buttons/button14.wav")
+            return finish("success", "tool.reload.did_current", "buttons/button14.wav")
         end
-        return finish("fail", "Failed to reload the current save.", "buttons/button10.wav")
+        return finish("fail", "tool.reload.fail_current", "buttons/button10.wav")
     elseif mode == "restore_previous" then
         local id = RARELOAD.GetAdjacentHistoryId(steamID, mapName, 1)
-        if not id then return finish("none", "No previous save to reload — you're at the oldest.", "buttons/combine_button_locked.wav") end
+        if not id then return finish("none", "tool.reload.no_previous", "buttons/combine_button_locked.wav") end
         if RARELOAD.RestoreHistoryEntry(ply, id, comps) then
             -- Advance the timeline cursor (make this the active/respawn point) so the
             -- NEXT press restores the next-older save — walking back through history
-            -- until there is no previous save left (then "none"). ActivateHistoryEntry
-            -- moves the pointer + respawn data and syncs the panel; it prints its own line.
-            if RARELOAD.ActivateHistoryEntry then RARELOAD.ActivateHistoryEntry(ply, id) end
-            return finish("success", nil, "buttons/button14.wav")
+            -- until there is no previous save left (then "none"). Silent: the client
+            -- prints the localized reload line instead of the server's activate line.
+            if RARELOAD.ActivateHistoryEntry then RARELOAD.ActivateHistoryEntry(ply, id, true) end
+            return finish("success", "tool.reload.did_previous", "buttons/button14.wav")
         end
-        return finish("fail", "Failed to reload the previous save.", "buttons/button10.wav")
+        return finish("fail", "tool.reload.fail_previous", "buttons/button10.wav")
     else -- set_previous
         local id = RARELOAD.GetAdjacentHistoryId(steamID, mapName, 1)
-        if not id then return finish("none", "No previous save — you're already at the oldest.", "buttons/combine_button_locked.wav") end
-        if RARELOAD.ActivateHistoryEntry(ply, id) then -- prints its own chat line
-            return finish("success", nil, "buttons/button14.wav")
+        if not id then return finish("none", "tool.reload.no_previous", "buttons/combine_button_locked.wav") end
+        if RARELOAD.ActivateHistoryEntry(ply, id, true) then -- silent; client prints localized line
+            return finish("success", "tool.reload.did_set_previous", "buttons/button14.wav")
         end
-        return finish("fail", "Failed to set the previous save as restore point.", "buttons/button10.wav")
+        return finish("fail", "tool.reload.fail_set_previous", "buttons/button10.wav")
     end
 end
 
