@@ -67,6 +67,15 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     local mapName = game.GetMap()
     RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
 
+    -- Debug report card for the save (mirrors the respawn-restore toast). Only
+    -- built for a real, non-silent save while someone has debug enabled.
+    local saveSess = (not silent) and RARELOAD.Debug and RARELOAD.Debug.Session
+        and RARELOAD.Debug.AnyoneListening and RARELOAD.Debug.AnyoneListening()
+        and RARELOAD.Debug.Session("save", { ply = ply, title = "Saved respawn", subtitle = mapName })
+    local function bucketCount(b)
+        return (istable(b) and istable(b.__duplicator) and tonumber(b.__duplicator.entityCount)) or 0
+    end
+
     local newPos = RARELOAD.DataUtils.ToPositionTable(worldPos or ply:GetPos()) or { x = 0, y = 0, z = 0 }
     local newAng = RARELOAD.DataUtils.ToAngleTable(viewAng or ply:EyeAngles()) or { p = 0, y = 0, r = 0 }
     local newActiveWeapon = IsValid(ply:GetActiveWeapon()) and ply:GetActiveWeapon():GetClass() or "None"
@@ -183,6 +192,32 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     -- system), so just push the updated data; no dedicated phantom net messages are needed.
     if SyncPlayerPositions then
         SyncPlayerPositions(nil, ply:SteamID())
+    end
+
+    if saveSess then
+        saveSess:step("start", "Saved position",
+            string.format("[%d, %d, %d]", newPos.x, newPos.y, newPos.z))
+        if playerData.inventory then
+            saveSess:step("ok", "Inventory", #playerData.inventory .. " weapons")
+        end
+        if playerData.health or playerData.armor then
+            saveSess:step("ok", "Health / Armor", string.format("HP %d · Armor %d",
+                math.floor(playerData.health or ply:Health()), math.floor(playerData.armor or ply:Armor())))
+        end
+        if playerData.appearance and playerData.appearance.model then
+            saveSess:step("ok", "Appearance", string.GetFileFromFilename(playerData.appearance.model))
+        end
+        local nv = bucketCount(playerData.vehicles)
+        if nv > 0 then saveSess:step("ok", "Vehicles", nv .. " saved") end
+        local ne = bucketCount(playerData.entities)
+        if ne > 0 then saveSess:step("ok", "Entities", ne .. " saved") end
+        local nn = bucketCount(playerData.npcs)
+        if nn > 0 then saveSess:step("ok", "NPCs", nn .. " saved") end
+        if playerData.ammo then saveSess:step("ok", "Ammo", "") end
+        saveSess:step("ok", "Active weapon", RARELOAD.TextUtils
+            and RARELOAD.TextUtils.CompactClassName and RARELOAD.TextUtils.CompactClassName(newActiveWeapon)
+            or newActiveWeapon)
+        saveSess:finish({ success = true })
     end
 
     return true

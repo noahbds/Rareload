@@ -98,7 +98,6 @@ if SERVER then
         SaveGlobalInventory()
     end
 
-
     function SyncData(ply)
         net.Start("SyncData")
         net.WriteTable({

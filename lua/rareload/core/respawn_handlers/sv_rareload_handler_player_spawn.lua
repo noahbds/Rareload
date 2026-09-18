@@ -240,7 +240,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
     -- Only built when someone actually has debug on, so it costs nothing otherwise.
     local sess = RARELOAD.Debug and RARELOAD.Debug.Session and RARELOAD.Debug.AnyoneListening
         and RARELOAD.Debug.AnyoneListening()
-        and RARELOAD.Debug.Session("respawn", { ply = ply, title = "Respawn restore" })
+        and RARELOAD.Debug.Session("respawn", { ply = ply, title = "Respawn restore", subtitle = mapName })
     if sess then
         sess:step("start", "Loaded save", "map " .. mapName)
     end
@@ -433,10 +433,48 @@ function RARELOAD.HandlePlayerSpawn(ply)
     local restoreCtx = {}
     if sess then
         local spawnStart = ply._rareloadSpawnTime or CurTime()
+
+        -- Per-state detail so each restore line carries a count/summary, not just
+        -- a name — this is what fills out (and scrolls) the client toast.
+        local function bcount(b)
+            return (istable(b) and istable(b.__duplicator) and tonumber(b.__duplicator.entityCount)) or 0
+        end
+        local function detailFor(id)
+            if id == "vehicles" then local n = bcount(SavedInfo.vehicles); return n > 0 and (n .. " vehicle" .. (n == 1 and "" or "s")) or "none" end
+            if id == "entities" then local n = bcount(SavedInfo.entities); return n > 0 and (n .. " " .. (n == 1 and "entity" or "entities")) or "none" end
+            if id == "npcs" then local n = bcount(SavedInfo.npcs); return n > 0 and (n .. " NPC" .. (n == 1 and "" or "s")) or "none" end
+            if id == "inventory" then local n = istable(SavedInfo.inventory) and #SavedInfo.inventory or 0; return n .. " weapon" .. (n == 1 and "" or "s") end
+            if id == "ammo" then local n = 0; if istable(SavedInfo.ammo) then for _ in pairs(SavedInfo.ammo) do n = n + 1 end end; return n .. " type" .. (n == 1 and "" or "s") end
+            if id == "healthArmor" then return string.format("HP %d · Armor %d", math.floor(SavedInfo.health or ply:Health()), math.floor(SavedInfo.armor or ply:Armor())) end
+            if id == "appearance" then return (istable(SavedInfo.appearance) and SavedInfo.appearance.model) and string.GetFileFromFilename(SavedInfo.appearance.model) or "" end
+            if id == "activeWeapon" then
+                local w = SavedInfo.activeWeapon
+                if not w or w == "None" then return "" end
+                return (RARELOAD.TextUtils and RARELOAD.TextUtils.CompactClassName and RARELOAD.TextUtils.CompactClassName(w)) or w
+            end
+            if id == "playerStates" then
+                local s = SavedInfo.playerStates
+                if not istable(s) then return "" end
+                local on = {}
+                if s.godmode then on[#on + 1] = "God" end
+                if s.notarget then on[#on + 1] = "NoTarget" end
+                if s.frozen then on[#on + 1] = "Frozen" end
+                if s.noclip then on[#on + 1] = "Noclip" end
+                return #on > 0 and table.concat(on, ", ") or "none"
+            end
+            return ""
+        end
+
         restoreCtx.onAllRestored = function(restored)
             if not IsValid(ply) then return end
+            local p = RARELOAD.DataUtils.ToPositionTable(SavedInfo.pos)
+            if p then sess:step("ok", "Position", string.format("[%d, %d, %d]", p.x, p.y, p.z)) end
+            local moveNames = { [0] = "None", [2] = "Walk", [4] = "Fly", [5] = "Fly (gravity)", [8] = "Noclip", [9] = "Ladder" }
+            if SavedInfo.moveType ~= nil then
+                sess:step("ok", "Move type", moveNames[SavedInfo.moveType] or tostring(SavedInfo.moveType))
+            end
             for _, id in ipairs(restored or {}) do
-                sess:step("ok", "Restored " .. tostring(id))
+                sess:step("ok", "Restored " .. tostring(id), detailFor(id))
             end
             sess:step("ok", "Player state", string.format("HP %d · Armor %d · %d weapons",
                 ply:Health(), ply:Armor(), #ply:GetWeapons()))

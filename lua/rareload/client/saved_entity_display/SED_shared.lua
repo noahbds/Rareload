@@ -242,6 +242,22 @@ function SS.GatherSubModels(rec)
         end
     end
 
+    -- 0. Explicit phantom parts captured at save time for self-recreating vehicles
+    -- (rareload_vehicle_capture.lua). Each carries a transform local to the root, so
+    -- we keep every entry as-is (no model dedup: an AT-AT has several identical legs).
+    if istable(rec.RareloadPhantomParts) then
+        for _, p in ipairs(rec.RareloadPhantomParts) do
+            if istable(p) and IsValidModelPath(p.model) then
+                table.insert(subModels, {
+                    model    = p.model,
+                    skin     = p.skin,
+                    localPos = p.lp,
+                    localAng = p.la,
+                })
+            end
+        end
+    end
+
     -- 1. Snapshot record tables
     inspectTable(rec.SubModels, "SubModels")
     inspectTable(rec.ExtraModels, "ExtraModels")
@@ -289,46 +305,57 @@ function SS.AttachSubModels(parentPhantom, rec)
 
     for _, cand in ipairs(candidates) do
         local sm = cand.model
-        local hint = string.lower(cand.hint)
+        local hint = string.lower(cand.hint or "")
         util.PrecacheModel(sm)
 
         local sub = SS.MakePhantomModel(sm, pos, ang)
         if IsValid(sub) then
-            local attID = -1
+            if istable(cand.localPos) then
+                -- Captured phantom part: place it by its transform relative to the
+                -- root, exactly where it sat when saved. No attachment guessing.
+                local lp = cand.localPos
+                local la = cand.localAng or {}
+                sub:SetParent(parentPhantom)
+                sub:SetLocalPos(Vector(lp.x or 0, lp.y or 0, lp.z or 0))
+                sub:SetLocalAngles(Angle(la.p or 0, la.y or 0, la.r or 0))
+            else
+                local attID = -1
 
-            -- 1. Try exact hint lookup if hint was provided
-            if hint ~= "" then
-                attID = parentPhantom:LookupAttachment(cand.hint)
-                if attID <= 0 then
-                    local stripped = string.gsub(string.gsub(hint, "^mdl_", ""), "^model_", "")
-                    attID = parentPhantom:LookupAttachment(stripped)
-                end
-            end
-
-            -- 2. Try matching any attachment name dynamically with the model path or hint
-            if attID <= 0 and #attachments > 0 then
-                local modelName = string.StripExtension(string.GetFileFromFilename(sm)):lower()
-                for _, att in ipairs(attachments) do
-                    local attName = string.lower(att.name or "")
-                    if attName ~= "" and (attName == hint or string.find(modelName, attName, 1, true) or (hint ~= "" and string.find(hint, attName, 1, true))) then
-                        attID = att.id
-                        break
+                -- 1. Try exact hint lookup if hint was provided
+                if hint ~= "" then
+                    attID = parentPhantom:LookupAttachment(cand.hint)
+                    if attID <= 0 then
+                        local stripped = string.gsub(string.gsub(hint, "^mdl_", ""), "^model_", "")
+                        attID = parentPhantom:LookupAttachment(stripped)
                     end
                 end
+
+                -- 2. Try matching any attachment name dynamically with the model path or hint
+                if attID <= 0 and #attachments > 0 then
+                    local modelName = string.StripExtension(string.GetFileFromFilename(sm)):lower()
+                    for _, att in ipairs(attachments) do
+                        local attName = string.lower(att.name or "")
+                        if attName ~= "" and (attName == hint or string.find(modelName, attName, 1, true) or (hint ~= "" and string.find(hint, attName, 1, true))) then
+                            attID = att.id
+                            break
+                        end
+                    end
+                end
+
+                -- 3. Attach to matched attachment point or fallback to BoneMerge
+                if attID > 0 then
+                    sub:SetParent(parentPhantom, attID)
+                    sub:SetLocalPos(vector_origin)
+                    sub:SetLocalAngles(angle_zero)
+                else
+                    sub:SetParent(parentPhantom)
+                    sub:AddEffects(EF_BONEMERGE)
+                    sub:AddEffects(EF_BONEMERGE_FASTCULL)
+                end
             end
 
-            -- 3. Attach to matched attachment point or fallback to BoneMerge
-            if attID > 0 then
-                sub:SetParent(parentPhantom, attID)
-                sub:SetLocalPos(vector_origin)
-                sub:SetLocalAngles(angle_zero)
-            else
-                sub:SetParent(parentPhantom)
-                sub:AddEffects(EF_BONEMERGE)
-                sub:AddEffects(EF_BONEMERGE_FASTCULL)
-            end
-
-            if rec.skin or rec.Skin then sub:SetSkin(rec.skin or rec.Skin) end
+            if cand.skin then sub:SetSkin(cand.skin)
+            elseif rec.skin or rec.Skin then sub:SetSkin(rec.skin or rec.Skin) end
             if rec.material and rec.material ~= "" then sub:SetMaterial(rec.material) end
             table.insert(attached, sub)
         end

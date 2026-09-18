@@ -16,9 +16,6 @@ local EXCLUDED_CLASSES = {
     ["physgun_beam"] = true
 }
 
--- The underlying framework base classes. A concrete vehicle is a root when it
--- inherits (at any depth) from one of these — resolved dynamically through the
--- scripted_ents registry, so individual vehicle classes never need listing.
 local ROOT_VEHICLE_BASES = {
     ["lvs_base"] = true,
     ["lvs_base_fakephysics"] = true,
@@ -42,11 +39,6 @@ local SOURCE_VEHICLES = {
     ["prop_vehicle_driveable"] = true
 }
 
--- Marker fields the frameworks set on their *root* vehicle entities. This is the
--- only framework-specific list we keep: there is no engine-level "is a vehicle"
--- signal, but everything downstream (which entities are seats/rotors/wheels, how
--- they attach, where the root is) is derived generically from the parent and
--- constraint graph — never from hardcoded part class names or model paths.
 local VEHICLE_FLAG_FIELDS = {
     "LVS", "IsLVS", "bIsLVS", "IsLVSVehicle",
     "LFS", "IsLFS", "IdentifiesAsLFS", "IsLFSVehicle",
@@ -101,7 +93,8 @@ end
 function RARELOAD.DataUtils.ToPositionTable(pos)
     if istable(pos) then
         if pos.x ~= nil and pos.y ~= nil and pos.z ~= nil then return { x = pos.x, y = pos.y, z = pos.z } end
-        if pos[1] ~= nil and pos[2] ~= nil and pos[3] ~= nil then return { x = tonumber(pos[1]) or 0, y = tonumber(pos[2]) or 0, z = tonumber(pos[3]) or 0 } end
+        if pos[1] ~= nil and pos[2] ~= nil and pos[3] ~= nil then return { x = tonumber(pos[1]) or 0, y = tonumber(pos
+            [2]) or 0, z = tonumber(pos[3]) or 0 } end
         if isfunction(pos.GetPos) then
             local v = pos:GetPos()
             return { x = v.x, y = v.y, z = v.z }
@@ -308,15 +301,10 @@ local function ClassIsRootVehicle(class)
     classIsRootCache[class] = false
     return false
 end
+
 RARELOAD.DataUtils.ClassIsRootVehicle = ClassIsRootVehicle
--- Back-compat: callers (client SED panels) that ask "does this class look like a
--- vehicle?" want the same hierarchy-based answer.
 RARELOAD.DataUtils.ClassLooksLikeVehicle = ClassIsRootVehicle
 
--- Can `ents.Create(class)` still make this class? A scripted class exists only
--- while its addon is loaded (`scripted_ents.GetStored`); engine classes are
--- always creatable. Used to skip saved entities whose addon was uninstalled
--- instead of spawning NULL and hunting for a phantom that can never appear.
 function RARELOAD.DataUtils.IsClassSpawnable(class)
     if not isstring(class) or class == "" then return false end
     if scripted_ents and scripted_ents.GetStored and scripted_ents.GetStored(class) then return true end
@@ -344,15 +332,12 @@ local function HasVehicleFlag(t)
 end
 RARELOAD.DataUtils.HasVehicleFlag = HasVehicleFlag
 
--- A ROOT vehicle: the entity a framework treats as "the vehicle" — what the
--- vehicle save targets and respawns. Seats, rotors and wheels are NOT roots.
--- Detected only from the class hierarchy (ClassIsRootVehicle) and framework
--- marker flags; never from part class names.
 function RARELOAD.DataUtils.IsRootVehicle(ent)
     if not IsValid(ent) or ent:IsPlayer() or ent:IsNPC() or ent:IsWeapon() then return false end
     local class = ent:GetClass()
     if SOURCE_VEHICLES[string.lower(class or "")] then return true end
     if ClassIsRootVehicle(class) then return true end
+    if ent.DoNotDuplicate == true then return false end
     return HasVehicleFlag(ent)
 end
 
@@ -361,22 +346,12 @@ local function creatorIsPlayer(ent)
     return IsValid(c) and c:IsPlayer()
 end
 
--- Generic sub-part test: is `ent` a structural piece of some root vehicle's
--- contraption (seat, rotor, wheel, body, camera)? Derived PURELY from the parent
--- and constraint graph plus the engine's DoNotDuplicate marker — never from part
--- class names, model paths or per-framework field names. A player-built prop
--- welded to a vehicle keeps its creator and is deliberately NOT counted, so user
--- contraptions still save normally.
 function RARELOAD.DataUtils.IsVehiclePart(ent, cache)
     if not IsValid(ent) or ent:IsPlayer() or ent:IsNPC() or ent:IsWeapon() then return false end
     if RARELOAD.DataUtils.IsRootVehicle(ent) then return false end
 
-    -- Frameworks flag their own pieces (rotors, wheels, gibs) as non-duplicatable.
     if ent.DoNotDuplicate == true then return true end
 
-    -- CHEAP PRE-GATE (Tier 2 performance optimization):
-    -- If an entity has no parent, has no constraints, and is not DoNotDuplicate,
-    -- it is impossible for it to be part of a vehicle contraption.
     local hasParent = IsValid(ent:GetParent())
     local hasConstraints = (ent.Constraints and next(ent.Constraints) ~= nil)
         or (constraint and constraint.HasConstraints and constraint.HasConstraints(ent))
@@ -392,7 +367,6 @@ function RARELOAD.DataUtils.IsVehiclePart(ent, cache)
 
     local isRoot = RARELOAD.DataUtils.IsRootVehicle
 
-    -- Climb the parent chain; a root vehicle anywhere above makes this a part.
     local node = ent
     for _ = 1, 32 do
         local parent = node:GetParent()
@@ -404,9 +378,6 @@ function RARELOAD.DataUtils.IsVehiclePart(ent, cache)
         node = parent
     end
 
-    -- The outermost parented ancestor (or `ent` itself) may instead be
-    -- *constrained* into a vehicle (spinning rotors, rolling wheels). Only
-    -- framework-created pieces count — a player-spawned prop keeps its creator.
     if constraint and constraint.GetAllConstrainedEntities then
         local probes = (node == ent) and { ent } or { node, ent }
         for _, probe in ipairs(probes) do
@@ -433,12 +404,9 @@ function RARELOAD.DataUtils.IsVehiclePart(ent, cache)
     return false
 end
 
--- Back-compat alias for callers that ask for "is a vehicle sub-entity".
 RARELOAD.DataUtils.IsVehicleSubEntity = RARELOAD.DataUtils.IsVehiclePart
 
--- "Vehicle-related": a root, a drivable seat/pod (IsVehicle), or any structural
--- part. The broad test used to keep vehicles and every piece of them out of the
--- standalone entity save.
+
 function RARELOAD.DataUtils.IsVehicleEntity(ent, cache)
     if not IsValid(ent) or ent:IsPlayer() or ent:IsNPC() or ent:IsWeapon() then return false end
     if cache and cache[ent:EntIndex()] ~= nil then return cache[ent:EntIndex()] end
@@ -455,9 +423,6 @@ function RARELOAD.DataUtils.IsVehicleEntity(ent, cache)
     return isPart
 end
 
--- Duplicator-def variants work on a decoded table (no live entity → no graph).
--- Parts are already excluded on the live entity at capture time, so these only
--- need class/flags for roots and the DoNotDuplicate marker for stray parts.
 function RARELOAD.DataUtils.IsVehicleEntityDef(def)
     if not istable(def) then return false end
     local lc = string.lower(tostring(def.Class or def.class or def.ClassName or ""))
@@ -473,13 +438,9 @@ function RARELOAD.DataUtils.IsVehicleSubEntityDef(def)
     if def.DoNotDuplicate == true then return true end
     local lc = string.lower(tostring(def.Class or def.class or def.ClassName or ""))
     if ClassIsRootVehicle(lc) then return false end
-    -- The engine's universal driveable-seat class, if it rode along into an entity
-    -- capture (its owning vehicle is saved separately in the vehicle snapshot).
     return lc == "prop_vehicle_prisoner_pod"
 end
 
--- Resolve the root vehicle for any vehicle-related entity: walk the parent chain,
--- then follow the outermost ancestor's constraints to a root. Fully generic.
 function RARELOAD.DataUtils.GetRootVehicle(ent)
     if not IsValid(ent) then return nil end
     if RARELOAD.DataUtils.IsRootVehicle(ent) then return ent end

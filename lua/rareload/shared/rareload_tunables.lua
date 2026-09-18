@@ -3,8 +3,13 @@ RARELOAD = RARELOAD or {}
 RARELOAD.TunableDefs = {
     -- ── Anti-Stuck (server) ──────────────────────────────────────────────────
     {
-        key = "anti_stuck_max_attempts", label = "Max Unstuck Attempts", category = "Anti-Stuck",
-        type = "int", min = 1, max = 100, default = 35,
+        key = "anti_stuck_max_attempts",
+        label = "Max Unstuck Attempts",
+        category = "Anti-Stuck",
+        type = "int",
+        min = 1,
+        max = 100,
+        default = 35,
         desc = "How many times to try repositioning a stuck player.",
         apply = function(v)
             if SERVER and RARELOAD.AntiStuck and RARELOAD.AntiStuck.CONFIG then
@@ -13,8 +18,15 @@ RARELOAD.TunableDefs = {
         end,
     },
     {
-        key = "anti_stuck_max_search_time", label = "Max Search Time", category = "Anti-Stuck",
-        type = "float", min = 0.5, max = 5, decimals = 1, default = 1.5, suffix = "s",
+        key = "anti_stuck_max_search_time",
+        label = "Max Search Time",
+        category = "Anti-Stuck",
+        type = "float",
+        min = 0.5,
+        max = 5,
+        decimals = 1,
+        default = 1.5,
+        suffix = "s",
         desc = "Time budget for the unstuck search.",
         apply = function(v)
             if SERVER and RARELOAD.AntiStuck and RARELOAD.AntiStuck.CONFIG then
@@ -23,8 +35,14 @@ RARELOAD.TunableDefs = {
         end,
     },
     {
-        key = "anti_stuck_safe_distance", label = "Safe Distance", category = "Anti-Stuck",
-        type = "int", min = 8, max = 256, default = 48, suffix = "u",
+        key = "anti_stuck_safe_distance",
+        label = "Safe Distance",
+        category = "Anti-Stuck",
+        type = "int",
+        min = 8,
+        max = 256,
+        default = 48,
+        suffix = "u",
         desc = "Minimum clearance considered safe when repositioning.",
         apply = function(v)
             if SERVER and RARELOAD.AntiStuck and RARELOAD.AntiStuck.CONFIG then
@@ -33,8 +51,14 @@ RARELOAD.TunableDefs = {
         end,
     },
     {
-        key = "anti_stuck_horizontal_range", label = "Horizontal Search Range", category = "Anti-Stuck",
-        type = "int", min = 256, max = 4096, default = 1536, suffix = "u",
+        key = "anti_stuck_horizontal_range",
+        label = "Horizontal Search Range",
+        category = "Anti-Stuck",
+        type = "int",
+        min = 256,
+        max = 4096,
+        default = 1536,
+        suffix = "u",
         desc = "How far horizontally to search for a free spot.",
         apply = function(v)
             if SERVER and RARELOAD.AntiStuck and RARELOAD.AntiStuck.CONFIG then
@@ -43,8 +67,14 @@ RARELOAD.TunableDefs = {
         end,
     },
     {
-        key = "anti_stuck_max_distance", label = "Max Reposition Distance", category = "Anti-Stuck",
-        type = "int", min = 200, max = 5000, default = 1200, suffix = "u",
+        key = "anti_stuck_max_distance",
+        label = "Max Reposition Distance",
+        category = "Anti-Stuck",
+        type = "int",
+        min = 200,
+        max = 5000,
+        default = 1200,
+        suffix = "u",
         desc = "Maximum distance a player can be moved to get unstuck.",
         apply = function(v)
             if SERVER and RARELOAD.AntiStuck and RARELOAD.AntiStuck.CONFIG then
@@ -55,14 +85,25 @@ RARELOAD.TunableDefs = {
 
     -- ── Saved Entity Display (client) ────────────────────────────────────────
     {
-        key = "sed_max_draw_per_frame", label = "Max Panels Per Frame", category = "Saved Display",
-        type = "int", min = 1, max = 32, default = 16,
+        key = "sed_max_draw_per_frame",
+        label = "Max Panels Per Frame",
+        category = "Saved Display",
+        type = "int",
+        min = 1,
+        max = 32,
+        default = 16,
         desc = "Upper bound on saved-entity panels rendered each frame.",
         apply = function(v) if CLIENT and SED then SED.MAX_DRAW_PER_FRAME = v end end,
     },
     {
-        key = "sed_base_draw_distance", label = "Panel Draw Distance", category = "Saved Display",
-        type = "int", min = 200, max = 3000, default = 500, suffix = "u",
+        key = "sed_base_draw_distance",
+        label = "Panel Draw Distance",
+        category = "Saved Display",
+        type = "int",
+        min = 200,
+        max = 3000,
+        default = 500,
+        suffix = "u",
         desc = "Distance at which normal saved-entity panels start drawing.",
         apply = function(v)
             if CLIENT and SED then
@@ -72,8 +113,14 @@ RARELOAD.TunableDefs = {
         end,
     },
     {
-        key = "sed_interact_distance", label = "Panel Interact Distance", category = "Saved Display",
-        type = "int", min = 80, max = 600, default = 200, suffix = "u",
+        key = "sed_interact_distance",
+        label = "Panel Interact Distance",
+        category = "Saved Display",
+        type = "int",
+        min = 80,
+        max = 600,
+        default = 200,
+        suffix = "u",
         desc = "How close you must be to a saved-entity panel to open interaction mode.",
         apply = function(v)
             if CLIENT and SED then
@@ -83,8 +130,14 @@ RARELOAD.TunableDefs = {
         end,
     },
     {
-        key = "sed_panel_size_ratio", label = "Panel Size Ratio", category = "Saved Display",
-        type = "float", min = 0.4, max = 3.0, decimals = 2, default = 1.15,
+        key = "sed_panel_size_ratio",
+        label = "Panel Size Ratio",
+        category = "Saved Display",
+        type = "float",
+        min = 0.4,
+        max = 3.0,
+        decimals = 2,
+        default = 1.15,
         desc = "Panel width relative to its entity's size. Higher = larger panels.",
         apply = function(v)
             if CLIENT and SED then
@@ -94,8 +147,14 @@ RARELOAD.TunableDefs = {
         end,
     },
     {
-        key = "sed_panel_min_width", label = "Panel Min Size", category = "Saved Display",
-        type = "int", min = 16, max = 200, default = 42, suffix = "u",
+        key = "sed_panel_min_width",
+        label = "Panel Min Size",
+        category = "Saved Display",
+        type = "int",
+        min = 16,
+        max = 200,
+        default = 42,
+        suffix = "u",
         desc = "Smallest a panel can get, so tiny props stay readable.",
         apply = function(v)
             if CLIENT and SED then
@@ -105,8 +164,14 @@ RARELOAD.TunableDefs = {
         end,
     },
     {
-        key = "sed_panel_max_width", label = "Panel Max Size", category = "Saved Display",
-        type = "int", min = 40, max = 600, default = 130, suffix = "u",
+        key = "sed_panel_max_width",
+        label = "Panel Max Size",
+        category = "Saved Display",
+        type = "int",
+        min = 40,
+        max = 600,
+        default = 130,
+        suffix = "u",
         desc = "Largest a panel can get, so huge entities don't get giant panels.",
         apply = function(v)
             if CLIENT and SED then
@@ -114,6 +179,21 @@ RARELOAD.TunableDefs = {
                 SED.EntityBoundsCache = {}
             end
         end,
+    },
+
+    -- ── Notifications (client) ───────────────────────────────────────────────
+    {
+        key = "toast_hold_time",
+        label = "Restore/Save Toast Duration",
+        category = "Notifications",
+        type = "float",
+        min = 1,
+        max = 200,
+        decimals = 1,
+        default = 6,
+        suffix = "s",
+        desc =
+        "How long the respawn/save notification card stays fully on screen before it slides away (only shown while debug is enabled).",
     },
 }
 

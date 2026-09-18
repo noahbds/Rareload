@@ -16,41 +16,47 @@ local function reply(ply, msg)
     if IsValid(ply) then ply:PrintMessage(HUD_PRINTTALK, "[Rareload] " .. msg) else print("[RARELOAD] " .. msg) end
 end
 
-concommand.Add("rareload_debug", function(ply, _, args)
-    if not allowed(ply) then return end
-    RARELOAD.settings = RARELOAD.settings or {}
-    local sub = (args[1] or "toggle"):lower()
+if game.IsDedicated() then
+    concommand.Add("rareload_debug", function(ply, _, args)
+        if not allowed(ply) then return end
+        RARELOAD.settings = RARELOAD.settings or {}
+        local sub = (args[1] or "toggle"):lower()
 
-    if sub == "toggle" or sub == "on" or sub == "off" then
-        if sub == "on" then RARELOAD.settings.debugEnabled = true
-        elseif sub == "off" then RARELOAD.settings.debugEnabled = false
-        else RARELOAD.settings.debugEnabled = not RARELOAD.settings.debugEnabled end
-        reply(ply, "Global debug " .. (RARELOAD.settings.debugEnabled and "enabled" or "disabled"))
-    elseif sub == "level" then
-        local lvl = args[2] and args[2]:upper()
-        if lvl and Debug.LEVELS[lvl] then
-            RARELOAD.settings.debugLevel = lvl
-            reply(ply, "Debug level set to " .. lvl)
+        if sub == "toggle" or sub == "on" or sub == "off" then
+            if sub == "on" then
+                RARELOAD.settings.debugEnabled = true
+            elseif sub == "off" then
+                RARELOAD.settings.debugEnabled = false
+            else
+                RARELOAD.settings.debugEnabled = not RARELOAD.settings.debugEnabled
+            end
+            reply(ply, "Global debug " .. (RARELOAD.settings.debugEnabled and "enabled" or "disabled"))
+        elseif sub == "level" then
+            local lvl = args[2] and args[2]:upper()
+            if lvl and Debug.LEVELS[lvl] then
+                RARELOAD.settings.debugLevel = lvl
+                reply(ply, "Debug level set to " .. lvl)
+            else
+                reply(ply, "Levels: ERROR, WARN, INFO, VERBOSE")
+            end
+        elseif sub == "dump" then
+            local recent = Debug.Recent(tonumber(args[2]) or 40)
+            for _, ev in ipairs(recent) do
+                print(string.format("[%s][%s] %s", ev.category:upper(), ev.levelName, ev.message))
+            end
+            reply(ply, "Dumped " .. #recent .. " events")
+        elseif sub == "clear" then
+            Debug.ClearRing()
+            if Debug.stats then Debug.stats.errors, Debug.stats.warns, Debug.stats.total = 0, 0, 0 end
+            reply(ply, "Debug ring cleared")
+        elseif sub == "diag" then
+            Debug.Diag()
+            reply(ply, "Diagnostics logged")
         else
-            reply(ply, "Levels: ERROR, WARN, INFO, VERBOSE")
+            reply(ply, "Usage: rareload_debug [toggle|on|off|level <L>|diag|dump [n]|clear]")
         end
-    elseif sub == "dump" then
-        local recent = Debug.Recent(tonumber(args[2]) or 40)
-        for _, ev in ipairs(recent) do
-            print(string.format("[%s][%s] %s", ev.category:upper(), ev.levelName, ev.message))
-        end
-        reply(ply, "Dumped " .. #recent .. " events")
-    elseif sub == "clear" then
-        Debug.ClearRing()
-        if Debug.stats then Debug.stats.errors, Debug.stats.warns, Debug.stats.total = 0, 0, 0 end
-        reply(ply, "Debug ring cleared")
-    elseif sub == "diag" then
-        Debug.Diag()
-        reply(ply, "Diagnostics logged")
-    else
-        reply(ply, "Usage: rareload_debug [toggle|on|off|level <L>|diag|dump [n]|clear]")
-    end
-end, nil, "Rareload debug: toggle/level/diag/dump/clear (server console).")
+    end, nil, "Rareload debug: toggle/level/diag/dump/clear (server console).")
+end
 
 -- One-shot health snapshot, logged as a structured event (shows in HUD + console).
 function Debug.Diag()

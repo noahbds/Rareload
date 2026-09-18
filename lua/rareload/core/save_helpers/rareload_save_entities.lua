@@ -12,18 +12,18 @@ local DebugHelpers = include("rareload/debug/sv_debug_helpers.lua")
 
 -- Engine / player-attached helper classes that must never be saved as entities.
 local EXCLUDED_ENTITY_CLASSES = {
-    ["gmod_hands"]          = true,
-    ["viewmodel"]           = true,
-    ["predicted_viewmodel"] = true,
-    ["physgun_beam"]        = true,
-    ["player_ragdoll"]      = true,
-    ["gmod_gamerules"]      = true,
-    ['env_projectedtexture'] = true,
-    ['env_texturetoggle']   = true,
-    ['env_sprite']          = true,
-    ['env_sun']             = true,
+    ["gmod_hands"]             = true,
+    ["viewmodel"]              = true,
+    ["predicted_viewmodel"]    = true,
+    ["physgun_beam"]           = true,
+    ["player_ragdoll"]         = true,
+    ["gmod_gamerules"]         = true,
+    ['env_projectedtexture']   = true,
+    ['env_texturetoggle']      = true,
+    ['env_sprite']             = true,
+    ['env_sun']                = true,
     ['env_tonemap_controller'] = true,
-    ['env_fog_controller']  = true,
+    ['env_fog_controller']     = true,
 }
 
 local WriteEntitySaveDebug = (DebugHelpers and DebugHelpers.MakeWriter)
@@ -119,7 +119,8 @@ return function(ply)
         indexMap    = { category = "entity", idPrefix = "entity" },
         extras      = { entityStates = entityStates },
         keepTargets = true,
-        onError     = function(err) WriteEntitySaveDebug(ply, "WARNING", "Duplicator snapshot capture failed", tostring(err)) end,
+        onError     = function(err) WriteEntitySaveDebug(ply, "WARNING", "Duplicator snapshot capture failed",
+                tostring(err)) end,
         onFail      = function()
             WriteEntitySaveDebug(ply, (count > 0) and "WARNING" or "VERBOSE",
                 (count > 0) and "Duplicator snapshot unavailable" or "No entity candidates to snapshot",

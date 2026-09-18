@@ -111,6 +111,14 @@ local function iterateSnapshot(snapshot, opts, callback)
 
             summary.stateHash = entityDef.RareloadStateHash or entityDef.StateHash
 
+            -- Phantom-only visual sub-parts captured for self-recreating vehicles
+            -- (see rareload_vehicle_capture.lua). Surfaced onto the record so the
+            -- SED phantom can draw the whole vehicle, not just the root's model.
+            if snapshot.phantomParts then
+                summary.RareloadPhantomParts = snapshot.phantomParts[id]
+                    or snapshot.phantomParts[tostring(id)]
+            end
+
             if category == "npc" then
                 summary.npcName = entityDef.NPCName or summary.class
             end

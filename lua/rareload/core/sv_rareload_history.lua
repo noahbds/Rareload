@@ -17,7 +17,7 @@ if not SnapshotUtils then
     if ok then SnapshotUtils = mod end
 end
 
-local MAX_SENT_ENTRIES = 512 -- net-size guard; the default cap is 125
+local MAX_SENT_ENTRIES = 512                      -- net-size guard; the default cap is 125
 
 RARELOAD.restoreUndo = RARELOAD.restoreUndo or {} -- per-steamID pre-restore snapshot
 
@@ -40,7 +40,9 @@ local netCooldown = {}
 local function RateLimited(ply, key, interval)
     local id = ply:SteamID()
     local slot = netCooldown[id]
-    if not slot then slot = {}; netCooldown[id] = slot end
+    if not slot then
+        slot = {}; netCooldown[id] = slot
+    end
     local now = CurTime()
     if slot[key] and now < slot[key] then return true end
     slot[key] = now + interval
@@ -390,7 +392,9 @@ function RARELOAD.UndoRestore(ply)
     local removed = 0
     if istable(snap.spawned) then
         for _, e in ipairs(snap.spawned) do
-            if IsValid(e) then e:Remove(); removed = removed + 1 end
+            if IsValid(e) then
+                e:Remove(); removed = removed + 1
+            end
         end
         snap.spawned = nil -- keep it out of the player-state apply below
     end
@@ -607,9 +611,11 @@ net.Receive("RareloadHistory_ObjAction", function(_, ply)
     local targetId = net.ReadString()
     local isNPC    = net.ReadBool()
 
-    local edit  = op == "edit" and net.ReadTable() or nil
+    local edit     = op == "edit" and net.ReadTable() or nil
     local flag, flagVal
-    if op == "flag" then flag = net.ReadString(); flagVal = net.ReadBool() end
+    if op == "flag" then
+        flag = net.ReadString(); flagVal = net.ReadBool()
+    end
 
     if not HasEntityPerm(ply) then
         ply:ChatPrint("[Rareload] You lack permission to modify saved objects.")
@@ -661,7 +667,8 @@ net.Receive("RareloadHistory_ObjAction", function(_, ply)
         SendData(ply) -- refresh timeline summaries (counts change on delete)
         -- push the fresh object list back so the open overlay updates in place
         local objs = BuildEntryObjects(steamID, mapName, saveId)
-        local blob = util.Compress(util.TableToJSON({ id = saveId, ownerSID = steamID, objects = objs or {} }) or "{}") or ""
+        local blob = util.Compress(util.TableToJSON({ id = saveId, ownerSID = steamID, objects = objs or {} }) or "{}") or
+        ""
         if #blob <= 60000 then
             net.Start("RareloadHistory_Objects")
             net.WriteString(saveId)

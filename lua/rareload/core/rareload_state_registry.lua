@@ -1,29 +1,5 @@
 -- ============================================================================
 -- Rareload state-provider registry
---
--- A single declarative list describing every piece of player/world state that
--- Rareload saves and restores. save_point and the player-spawn handler iterate
--- this registry instead of hardcoding a block per state, so adding a new saved
--- state type is one Register{} call rather than edits scattered across both
--- files plus their permission/setting gating.
---
--- A provider definition may set:
---   id                (string, required) unique identifier
---   savePermission    permission name gating capture   (default: `permission`)
---   restorePermission permission name gating restore   (default: `permission`)
---   saveSetting       per-player setting gating capture (default: `setting`)
---   restoreSetting    per-player setting gating restore (default: `setting`)
---   settingDefault    default value for a missing setting (default: true)
---   saveOrder         sort key for the save pass  (default: `order` or 100)
---   restoreOrder      sort key for the restore pass (default: `order` or 100)
---   restoreDelay      timer.Simple delay before restore runs (default: 0)
---   save(ply, playerData, ctx)   captures state into playerData
---   restore(ply, savedInfo, ctx) applies saved state (already gated + delayed)
---   shouldSave(ply, ctx)         optional extra gate on top of perm+setting
---   shouldRestore(ply, savedInfo, ctx) optional extra gate
---
--- Gating (permission + setting) is applied centrally by the runners; providers
--- only implement the capture/restore body.
 -- ============================================================================
 
 RARELOAD = RARELOAD or {}
@@ -31,9 +7,6 @@ RARELOAD.StateRegistry = RARELOAD.StateRegistry or { _list = {}, _byId = {} }
 
 local R = RARELOAD.StateRegistry
 
--- Register (or replace) a provider by id. Replacing in place keeps the registry
--- stable across the addon's Lua hot-reloads and the repeated includes of the
--- providers file from save_point / player_spawn.
 function R.Register(def)
     assert(istable(def) and isstring(def.id) and def.id ~= "", "state provider needs a string id")
     local existing = R._byId[def.id]
@@ -121,20 +94,6 @@ function R.RunSave(ply, playerData, ctx)
     end
 end
 
--- Deterministic restore runner.
---
---  * Per-life token: each call bumps ply._rareloadRestoreToken. Every scheduled
---    step captures that token and no-ops if the player has since respawned, so a
---    fast death->respawn can never let the previous life's pending timers land on
---    the new one. ctx.isCurrent() lets provider-internal deferrals opt in too.
---  * dependsOn: a provider with `dependsOn = "<id>"` runs only after that
---    provider has completed, instead of racing it on a fixed delay. A provider
---    marked `restoreAsync = true` receives a `done` callback and signals its own
---    completion (used by inventory, whose global path finishes ~0.5s later); all
---    others complete as soon as their restore returns. A dependency that is
---    gated out is treated as already complete, so dependents never hang.
---  * restoreDelay: still honored, but now applied when the step becomes eligible
---    (i.e. after its dependency), not as an absolute offset from spawn.
 function R.RunRestore(ply, savedInfo, ctx)
     if not IsValid(ply) then return end
     ctx = ctx or {}

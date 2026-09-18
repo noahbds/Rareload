@@ -26,11 +26,6 @@ function RARELOAD.Util.GenerateDeterministicID(ent)
         end
     end
 
-    -- Per-entity uniqueness component: two identical props at the same spot share
-    -- every spatial/appearance field, so without this they would hash to the same
-    -- id and collide (the second would be skipped on restore / removed by id). The
-    -- CreationID is unique per entity within a session; the generated id is stored
-    -- and networked once by EnsureID, so it stays stable across saves afterwards.
     local creationID = 0
     if isfunction(ent.GetCreationID) then
         local ok, cid = pcall(ent.GetCreationID, ent)

@@ -11,9 +11,9 @@
 
 if not SERVER then return end
 
-RARELOAD = RARELOAD or {}
+RARELOAD              = RARELOAD or {}
 
-local R = RARELOAD.StateRegistry or include("rareload/core/rareload_state_registry.lua")
+local R               = RARELOAD.StateRegistry or include("rareload/core/rareload_state_registry.lua")
 
 -- Save helpers (same modules save_point.lua used inline).
 local save_vehicles   = include("rareload/core/vehicles/rareload_vehicle_capture.lua")
@@ -62,19 +62,19 @@ end
 -- ---- Appearance -----------------------------------------------------------
 R.Register({
     id                = "appearance",
-    savePermission    = "SAVE_APPEARANCE",   -- save had no setting gate
+    savePermission    = "SAVE_APPEARANCE", -- save had no setting gate
     restorePermission = "RETAIN_APPEARANCE",
     restoreSetting    = "retainAppearance",
     saveOrder         = 10,
     restoreOrder      = 30,
     restoreDelay      = 1,
-    save = function(ply, pd)
+    save              = function(ply, pd)
         pd.appearance = save_appearance(ply)
     end,
-    shouldRestore = function(_, si)
+    shouldRestore     = function(_, si)
         return (si.appearance ~= nil) or (si.playermodel ~= nil)
     end,
-    restore = function(ply, si)
+    restore           = function(ply, si)
         if si.appearance and RARELOAD.RestoreAppearance then
             RARELOAD.RestoreAppearance(ply, si.appearance)
         else
@@ -93,7 +93,7 @@ R.Register({
     saveOrder         = 20,
     restoreOrder      = 80,
     restoreDelay      = 0.1,
-    save = function(ply, pd)
+    save              = function(ply, pd)
         local vel = ply:GetVelocity()
         pd.playerStates = {
             godmode    = ply:HasGodMode(),
@@ -116,13 +116,19 @@ R.Register({
             end
         end
     end,
-    shouldRestore = function(_, si) return si.playerStates ~= nil end,
-    restore = function(ply, si)
+    shouldRestore     = function(_, si) return si.playerStates ~= nil end,
+    restore           = function(ply, si)
         local states = si.playerStates
         local restored = {}
-        if states.godmode then ply:GodEnable(); table.insert(restored, "godmode") end
-        if states.notarget then ply:SetNoTarget(true); table.insert(restored, "notarget") end
-        if states.frozen then ply:Freeze(true); table.insert(restored, "frozen") end
+        if states.godmode then
+            ply:GodEnable(); table.insert(restored, "godmode")
+        end
+        if states.notarget then
+            ply:SetNoTarget(true); table.insert(restored, "notarget")
+        end
+        if states.frozen then
+            ply:Freeze(true); table.insert(restored, "frozen")
+        end
         if states.noclip and ply:GetMoveType() ~= MOVETYPE_NOCLIP then
             ply:SetMoveType(MOVETYPE_NOCLIP); table.insert(restored, "noclip")
         end
@@ -132,7 +138,9 @@ R.Register({
         local v = states.velocity
         if istable(v) then
             local vec = Vector(v.x or 0, v.y or 0, v.z or 0)
-            if not vec:IsZero() then ply:SetVelocity(vec); table.insert(restored, "velocity") end
+            if not vec:IsZero() then
+                ply:SetVelocity(vec); table.insert(restored, "velocity")
+            end
         end
         if DebugOn(ply) and #restored > 0 and RARELOAD.Debug and RARELOAD.Debug.SendToPlayer then
             RARELOAD.Debug.SendToPlayer(ply, "[RARELOAD DEBUG] Restored player states: " .. table.concat(restored, ", "))
@@ -149,11 +157,11 @@ R.Register({
     saveOrder         = 25,
     restoreOrder      = 40,
     restoreDelay      = 0.5,
-    save = function(ply, pd)
+    save              = function(ply, pd)
         pd.health = ply:Health()
         pd.armor  = ply:Armor()
     end,
-    restore = function(ply, si)
+    restore           = function(ply, si)
         ply:SetHealth(si.health or ply:GetMaxHealth())
         ply:SetArmor(si.armor or 0)
     end,
@@ -169,11 +177,11 @@ R.Register({
     restoreOrder      = 50,
     restoreDelay      = 1,
     dependsOn         = "inventory", -- weapons must be given before ammo is set
-    save = function(ply, pd, ctx)
+    save              = function(ply, pd, ctx)
         pd.ammo = save_ammo(ply, ctx.newInventory)
     end,
-    shouldRestore = function(_, si) return si.ammo ~= nil end,
-    restore = function(ply, si)
+    shouldRestore     = function(_, si) return si.ammo ~= nil end,
+    restore           = function(ply, si)
         for weaponClass, ammoData in pairs(si.ammo) do
             local weapon = ply:GetWeapon(weaponClass)
             if IsValid(weapon) then
@@ -205,13 +213,13 @@ R.Register({
     saveOrder         = 40,
     restoreOrder      = 60,
     restoreDelay      = 0,
-    shouldSave    = function(_, ctx) return ctx.wantVehicles end,
-    shouldRestore = function(ply, si)
+    shouldSave        = function(_, ctx) return ctx.wantVehicles end,
+    shouldRestore     = function(ply, si)
         local want = RARELOAD.GetPlayerSetting(ply, "retainVehicles", true)
             or (RARELOAD.settings and RARELOAD.settings.retainVehicles)
         return want and si.vehicles ~= nil
     end,
-    save = function(ply, pd)
+    save              = function(ply, pd)
         pd.vehicles = save_vehicles(ply)
         if DebugOn(ply) then
             local vehCount = 0
@@ -221,7 +229,7 @@ R.Register({
             print(string.format("[RARELOAD DEBUG] Vehicle save: saved=%d", vehCount))
         end
     end,
-    restore = function(ply, si)
+    restore           = function(ply, si)
         RARELOAD.RestoreVehicles(si, ply)
     end,
 })
@@ -235,12 +243,12 @@ R.Register({
     saveOrder         = 50,
     restoreOrder      = 65,
     restoreDelay      = 0,
-    save = function(ply, pd, ctx)
+    save              = function(ply, pd, ctx)
         -- Stash the raw result so the crossConstraints provider can read _targets.
         ctx.rawEntitiesResult = captureWorldBucket(ply, "entities", save_entities, "entity", ctx, pd)
     end,
-    shouldRestore = function(_, si) return si.entities ~= nil end,
-    restore = function(ply, si)
+    shouldRestore     = function(_, si) return si.entities ~= nil end,
+    restore           = function(ply, si)
         RARELOAD.RestoreEntities(si.pos, si, ply)
 
         timer.Simple(0.1, function()
@@ -279,11 +287,11 @@ R.Register({
     saveOrder         = 60,
     restoreOrder      = 70,
     restoreDelay      = 0,
-    save = function(ply, pd, ctx)
+    save              = function(ply, pd, ctx)
         captureWorldBucket(ply, "npcs", save_npcs, "npc", ctx, pd)
     end,
-    shouldRestore = function(_, si) return HasSnapshotData(si.npcs) end,
-    restore = function(ply, si)
+    shouldRestore     = function(_, si) return HasSnapshotData(si.npcs) end,
+    restore           = function(ply, si)
         RARELOAD.RestoreNPCs(si, ply)
     end,
 })
@@ -292,11 +300,11 @@ R.Register({
 -- Ungated: the save body reproduces the exact conditions of the pre-registry
 -- code (including the skip-mode copy that was not gated by the entity setting).
 R.Register({
-    id           = "crossConstraints",
-    saveOrder    = 70,
-    restoreOrder = 68,
-    restoreDelay = 0.2,
-    save = function(_, pd, ctx)
+    id            = "crossConstraints",
+    saveOrder     = 70,
+    restoreOrder  = 68,
+    restoreDelay  = 0.2,
+    save          = function(_, pd, ctx)
         if ctx.skipWorldSnapshot and not ctx.autoOverwrite then
             if ctx.oldData and ctx.oldData.crossConstraints then
                 pd.crossConstraints = ctx.oldData.crossConstraints
@@ -315,7 +323,7 @@ R.Register({
         end
     end,
     shouldRestore = function(_, si) return istable(si.crossConstraints) end,
-    restore = function(_, si)
+    restore       = function(_, si)
         local DuplicatorBridge = include("rareload/core/save_helpers/rareload_duplicator_utils.lua")
         if DuplicatorBridge and DuplicatorBridge.RestoreCrossCategoryConstraints then
             DuplicatorBridge.RestoreCrossCategoryConstraints(si.crossConstraints)
@@ -330,7 +338,7 @@ R.Register({
     id           = "inventory",
     restoreOrder = 10,
     restoreAsync = true, -- ammo/activeWeapon wait on this completing
-    restore = function(ply, si, ctx, done)
+    restore      = function(ply, si, ctx, done)
         local hasPerm = RARELOAD.CheckPermission
         local canInv = hasPerm(ply, "KEEP_INVENTORY") and hasPerm(ply, "RETAIN_INVENTORY")
         local canGlobal = hasPerm(ply, "KEEP_INVENTORY") and hasPerm(ply, "RETAIN_GLOBAL_INVENTORY")
@@ -363,7 +371,7 @@ R.Register({
     restoreOrder = 100,
     restoreDelay = 0,
     dependsOn    = "inventory", -- select from the weapons inventory just restored
-    restore = function(ply, si, ctx)
+    restore      = function(ply, si, ctx)
         if RARELOAD.RestoreActiveWeaponFromSpawn then
             RARELOAD.RestoreActiveWeaponFromSpawn(ply, si, ctx.inventoryRestored, ctx.globalInventoryRestored)
         end

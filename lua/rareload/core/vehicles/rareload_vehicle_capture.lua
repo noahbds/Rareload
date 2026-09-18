@@ -45,6 +45,7 @@ return function(ply)
     local idOverrides   = {}
     local runtimeState  = {}
     local seatsByVeh    = {}
+    local vehToId       = {}
     local count = 0
 
     for _, ent in ipairs(ents.GetAll()) do
@@ -76,7 +77,7 @@ return function(ply)
         local sid = (GetPlayerSteamIDSafe and GetPlayerSteamIDSafe(owner))
             or (GetOwnerSteamIDSafe and GetOwnerSteamIDSafe(veh))
         if sid then veh.OriginalSpawner = sid end
-        if id then idOverrides[veh:EntIndex()] = id end
+        if id then idOverrides[veh:EntIndex()] = id; vehToId[veh] = id end
 
         -- Adapter-driven runtime + seat capture.
         if id then
@@ -103,10 +104,37 @@ return function(ply)
 
     if Ownership and Ownership.EndResolveBatch then Ownership.EndResolveBatch() end
 
+    local phantomParts = {}
+    if next(vehToId) then
+        for _, ent in ipairs(ents.GetAll()) do
+            if IsValid(ent) and DataUtils and DataUtils.IsVehiclePart(ent)
+                and not ent:IsVehicle()
+                and not ent:GetNoDraw() and ent:GetColor().a > 0 then
+                local mdl = ent:GetModel()
+                if isstring(mdl) and mdl ~= "" and mdl ~= "models/error.mdl" then
+                    local root = GetRootVehicle(ent)
+                    local id = root and vehToId[root]
+                    if id then
+                        local lp = root:WorldToLocal(ent:GetPos())
+                        local la = root:WorldToLocalAngles(ent:GetAngles())
+                        local list = phantomParts[id]
+                        if not list then list = {}; phantomParts[id] = list end
+                        list[#list + 1] = {
+                            model = mdl,
+                            skin  = ent:GetSkin() or 0,
+                            lp    = { x = lp.x, y = lp.y, z = lp.z },
+                            la    = { p = la.p, y = la.y, r = la.r },
+                        }
+                    end
+                end
+            end
+        end
+    end
+
     local bucket = SnapshotUtils.BuildOwnedBucket(ply, targets, {
         captureOpts = { category = "vehicle" },
         indexMap    = { category = "vehicle", idPrefix = "vehicle" },
-        extras      = { rareloadIDOverrides = idOverrides },
+        extras      = { rareloadIDOverrides = idOverrides, phantomParts = phantomParts },
         keepTargets = true,
     })
     if not SnapshotUtils.HasSnapshot(bucket) then return bucket end

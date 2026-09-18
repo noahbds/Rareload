@@ -93,6 +93,7 @@ function Debug.SendReport(sess)
     net.WriteBool(sess.outcome and sess.outcome.success == true)
     net.WriteString(string.format("%.3fs", sess.elapsed or 0))
     net.WriteString(tostring((sess.meta and sess.meta.title) or sess.category or ""))
+    net.WriteString(string.sub(tostring((sess.meta and sess.meta.subtitle) or ""), 1, 120))
     local steps = sess.steps or {}
     local n = math.min(#steps, 40)
     net.WriteUInt(n, 6)
