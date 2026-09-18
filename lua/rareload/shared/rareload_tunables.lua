@@ -180,6 +180,23 @@ RARELOAD.TunableDefs = {
             end
         end,
     },
+    {
+        key = "sed_panel_max_view_factor",
+        label = "Panel Max Screen Size",
+        category = "Saved Display",
+        type = "float",
+        min = 0.3,
+        max = 2.0,
+        decimals = 2,
+        default = 0.6,
+        desc =
+        "Caps how much of your view a panel can fill up close (lower = smaller). Stops panels on huge entities from covering the screen when you stand next to them.",
+        apply = function(v)
+            if CLIENT and SED then
+                SED.PANEL_MAX_VIEW_FACTOR = v
+            end
+        end,
+    },
 
     -- ── Notifications (client) ───────────────────────────────────────────────
     {

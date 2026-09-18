@@ -122,6 +122,8 @@ return {
     ["screen.saves_on_stop"] = "Saves when you stop moving",
     ["screen.data_found"] = "Position Data Found",
     ["screen.no_data"] = "No Position Data",
+    ["screen.no_previous"] = "No Previous Save",
+    ["screen.no_saves"] = "No Saves Yet",
     ["screen.no_permission"] = "No Permission",
 
     -- Parameters (tunables) menu

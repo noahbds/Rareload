@@ -10,6 +10,15 @@ util.AddNetworkString("RareloadHistory_Action")
 util.AddNetworkString("RareloadHistory_Preview")
 util.AddNetworkString("RareloadHistory_Objects")
 util.AddNetworkString("RareloadHistory_ObjAction")
+util.AddNetworkString("RareloadHistory_ReloadConfig")
+
+-- What the tool-gun reload key (R) does, chosen in the Save Timeline panel and
+-- pushed here so TOOL:Reload can act. Per-player, resets to the default on rejoin.
+--   set_previous     : make the previous timeline save the restore point (no respawn)
+--   restore_current  : restore the active save now, using `comps`
+--   restore_previous : restore the previous save now, using `comps`
+RARELOAD.playerReloadConfig = RARELOAD.playerReloadConfig or {}
+local RELOAD_MODES = { set_previous = true, restore_current = true, restore_previous = true }
 
 local SnapshotUtils = RARELOAD.SnapshotUtils
 if not SnapshotUtils then
@@ -482,6 +491,15 @@ net.Receive("RareloadHistory_Action", function(_, ply)
     end
 end)
 
+-- The panel pushes the current reload-key mode + component selection here.
+net.Receive("RareloadHistory_ReloadConfig", function(_, ply)
+    if not IsValid(ply) then return end
+    local mode = net.ReadString()
+    local comps = ReadComps()
+    if not RELOAD_MODES[mode] then mode = "set_previous" end
+    RARELOAD.playerReloadConfig[ply:SteamID()] = { mode = mode, comps = comps }
+end)
+
 local function HasEntityPerm(ply)
     if RARELOAD.CheckPermission then return RARELOAD.CheckPermission(ply, "MANAGE_ENTITIES") end
     if RARELOAD.Permissions and RARELOAD.Permissions.HasPermission then
@@ -660,6 +678,26 @@ net.Receive("RareloadHistory_ObjAction", function(_, ply)
             end
         end
         if mutated then break end
+    end
+
+    -- A deleted object must also leave the ACTIVE (live) save — that is what respawn
+    -- restore and the SED read from. The history entry above is only an archived
+    -- copy; without this the object keeps respawning and keeps its SED phantom.
+    if op == "delete" then
+        local pd = RARELOAD.playerPositions[mapName] and RARELOAD.playerPositions[mapName][steamID]
+        if istable(pd) and SnapshotUtils and SnapshotUtils.RemoveEntryByID then
+            local liveMutated = false
+            for _, key in ipairs(bucketKeys) do
+                if istable(pd[key]) and SnapshotUtils.RemoveEntryByID(pd[key], targetId) then
+                    liveMutated = true
+                end
+            end
+            if liveMutated then
+                if RARELOAD.SavePlayerPositionEntry then RARELOAD.SavePlayerPositionEntry(ply, pd) end
+                if SyncPlayerPositions then SyncPlayerPositions(nil, steamID) end
+                mutated = true
+            end
+        end
     end
 
     if mutated then

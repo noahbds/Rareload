@@ -219,14 +219,25 @@ R.Register({
             or (RARELOAD.settings and RARELOAD.settings.retainVehicles)
         return want and si.vehicles ~= nil
     end,
-    save              = function(ply, pd)
-        pd.vehicles = save_vehicles(ply)
+    save              = function(ply, pd, ctx)
+        -- Honor "overwrite moved on save": when it is OFF, keep the previously
+        -- saved vehicle state instead of overwriting with the (possibly moved or
+        -- changed) live vehicles. Vehicles carry per-vehicle runtime/seat data keyed
+        -- by a stable ID, so we preserve the whole bucket rather than merging
+        -- (MergePreserveExisting only understands the plain entity snapshot).
+        local old = ctx and ctx.oldData and ctx.oldData.vehicles
+        if ctx and not ctx.autoOverwrite and old and SnapshotUtils.HasSnapshot(old) then
+            pd.vehicles = old
+        else
+            pd.vehicles = save_vehicles(ply)
+        end
         if DebugOn(ply) then
             local vehCount = 0
             if istable(pd.vehicles) and pd.vehicles.__duplicator then
                 vehCount = pd.vehicles.__duplicator.entityCount or 0
             end
-            print(string.format("[RARELOAD DEBUG] Vehicle save: saved=%d", vehCount))
+            print(string.format("[RARELOAD DEBUG] Vehicle save: saved=%d overwrite=%s",
+                vehCount, tostring(ctx and ctx.autoOverwrite or false)))
         end
     end,
     restore           = function(ply, si)

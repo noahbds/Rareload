@@ -105,7 +105,9 @@ function RARELOAD.Theme.BuildToolscreenColors()
         EMOJI = {
             DATA_FOUND = t.success,
             NO_DATA = t.danger,
-            NO_PERMISSION = t.warning
+            NO_PERMISSION = t.warning,
+            NO_PREVIOUS = t.accent, -- distinct from error/permission: "nothing further back"
+            NO_SAVES = t.warning    -- warning: no save exists at all
         }
     }
 end

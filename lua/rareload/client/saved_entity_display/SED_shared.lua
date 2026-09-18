@@ -96,11 +96,24 @@ function SS.ComputePlacement(ent, renderParams, eyePos, distSqr, panelWidth)
         + math.abs(dirx * u.x + diry * u.y) * hz
 
     local nearDist = d - reach - 6                          -- eye→panel distance, 6u off the near surface
-    if nearDist < 24 then nearDist = math.min(24, d) end    -- inside/touching the model: keep just in front
+    local floor    = SED.PANEL_MIN_STANDOFF or 32
+    if nearDist < floor then nearDist = math.min(floor, d) end -- inside/touching the model: keep just in front
 
     local band  = math.max(SED.PANEL_EYE_BAND or 150, hz * 2)
     local baseZ = math.Clamp(eyePos.z, center.z - band, center.z + band)
     local drawPos = Vector(eyePos.x + dirx * nearDist, eyePos.y + diry * nearDist, baseZ)
+
+    -- Cap the panel's apparent size so it never dominates the view. A big entity's
+    -- panel is a fixed (large) world width anchored to its near surface; standing on
+    -- the entity puts the eye right there, so an uncapped panel fills the screen.
+    -- Keep the world width within `factor × view distance` (≈ a bounded FOV slice).
+    local worldW = (panelWidth and panelWidth > 0) and (panelWidth * scale)
+        or (renderParams and renderParams.targetWorldWidth) or 0
+    if worldW > 0 then
+        local viewDist = math.max(nearDist, 1)
+        local maxWorldW = viewDist * (SED.PANEL_MAX_VIEW_FACTOR or 0.6)
+        if worldW > maxWorldW then scale = scale * (maxWorldW / worldW) end
+    end
 
     return drawPos, SS.FacingAngle(drawPos - eyePos), scale
 end

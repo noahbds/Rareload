@@ -111,6 +111,8 @@ return {
     ["screen.saves_on_stop"] = "Enregistre quand vous arrêtez de bouger",
     ["screen.data_found"] = "Données de position trouvées",
     ["screen.no_data"] = "Aucune donnée de position",
+    ["screen.no_previous"] = "Aucune sauvegarde précédente",
+    ["screen.no_saves"] = "Aucune sauvegarde",
     ["screen.no_permission"] = "Aucune permission",
 
     -- Parameters (tunables) menu

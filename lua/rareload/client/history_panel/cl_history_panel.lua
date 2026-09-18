@@ -27,6 +27,13 @@ local HP = {
     Loading = false, LoadError = false,
 }
 HP.Comps = { position = true, health = true, inventory = true, ammo = true, appearance = true, states = true, world = true }
+-- What the tool-gun reload key (R) does. Pushed to the server so TOOL:Reload acts.
+HP.ReloadMode = HP.ReloadMode or "set_previous"
+local RELOAD_MODES = {
+    { "set_previous", "Set previous save as restore point" },
+    { "restore_current", "Restore the current save (checked parts)" },
+    { "restore_previous", "Restore the previous save (checked parts)" },
+}
 
 -- ── networking ──────────────────────────────────────────────────────────────
 
@@ -50,6 +57,16 @@ local function SendAction(action, id, writeExtra)
     if writeExtra then writeExtra() end
     net.SendToServer()
 end
+
+-- Push the reload-key behavior + component selection to the server (TOOL:Reload
+-- reads it). Sent when the panel opens and whenever the mode or a checkbox changes.
+local function SendReloadConfig()
+    net.Start("RareloadHistory_ReloadConfig")
+    net.WriteString(HP.ReloadMode or "set_previous")
+    WriteComps(HP.Comps)
+    net.SendToServer()
+end
+HP.SendReloadConfig = SendReloadConfig
 
 net.Receive("RareloadHistory_Data", function()
     local len = net.ReadUInt(32)
@@ -496,7 +513,10 @@ function HP:BuildDetail(host)
         local cb = grid:Add("DCheckBoxLabel")
         cb:SetText(L(c[2])); cb:SetTextColor(THEME.textSecondary); cb:SetFont("RH_Small")
         cb:SetValue(HP.Comps[c[1]] and true or false); cb:SizeToContents()
-        cb.OnChange = function(_, v) HP.Comps[c[1]] = v end
+        cb.OnChange = function(_, v)
+            HP.Comps[c[1]] = v
+            SendReloadConfig() -- the R restore modes use these checkboxes
+        end
     end
 
     D.applyBtn = Button(host, L("sth.apply_selected"), THEME.primary, function()
@@ -508,6 +528,42 @@ function HP:BuildDetail(host)
         ShowNotification(L("sth.restoring"), NOTIFY_GENERIC)
     end)
     D.applyBtn:Dock(TOP); D.applyBtn:DockMargin(pad, 0, pad, sc(6)); D.applyBtn:SetTall(sc(32))
+
+    -- Reload key (R) behavior — themed dropdown that matches the sidebar Sort control.
+    local rlHeader = vgui.Create("DPanel", host)
+    D.rlHeader = rlHeader
+    rlHeader:Dock(TOP); rlHeader:DockMargin(pad, sc(6), pad, sc(3)); rlHeader:SetTall(sc(16))
+    rlHeader.Paint = function(_, w, h)
+        local kb = input.LookupBinding("+reload") or "R"
+        draw.SimpleText("What the Reload key (" .. kb .. ") does when holding rareload toolgun", "RH_Tiny", 0, h / 2, THEME.textTertiary, ALIGN_L, ALIGN_M)
+    end
+
+    local function reloadModeLabel()
+        for _, m in ipairs(RELOAD_MODES) do
+            if m[1] == HP.ReloadMode then return m[2] end
+        end
+        return RELOAD_MODES[1][2]
+    end
+    local rlCombo = vgui.Create("DButton", host)
+    D.rlCombo = rlCombo
+    rlCombo:Dock(TOP); rlCombo:DockMargin(pad, 0, pad, sc(8)); rlCombo:SetTall(sc(30)); rlCombo:SetText("")
+    rlCombo.Paint = function(selfp, bw, bh)
+        local bg = selfp:IsHovered() and ColorAlpha(THEME.primary, 40) or THEME.surface
+        draw.RoundedBox(sc(6), 0, 0, bw, bh, bg)
+        draw.RoundedBox(sc(3), sc(10), bh / 2 - sc(3), sc(6), sc(6), THEME.primary) -- accent dot
+        draw.SimpleText(reloadModeLabel(), "RH_Small", sc(22), bh / 2, THEME.textSecondary, ALIGN_L, ALIGN_M)
+        draw.SimpleText("▾", "RH_Small", bw - sc(10), bh / 2, THEME.textTertiary, ALIGN_R, ALIGN_M)
+    end
+    rlCombo.DoClick = function()
+        local m = DermaMenu()
+        for _, mode in ipairs(RELOAD_MODES) do
+            m:AddOption(mode[2], function()
+                HP.ReloadMode = mode[1]
+                SendReloadConfig()
+            end)
+        end
+        m:Open()
+    end
 
     -- Empty state (nothing selected)
     D.empty = vgui.Create("DPanel", host)
@@ -533,7 +589,7 @@ function HP:UpdateDetail()
     local hasSel = e ~= nil
 
     for _, k in ipairs({ "header", "stats", "info", "previewStatus", "preview", "objects", "banner",
-        "setActive", "note", "actions", "partHeader", "grid", "applyBtn" }) do
+        "setActive", "note", "actions", "partHeader", "grid", "applyBtn", "rlHeader", "rlCombo" }) do
         if IsValid(D[k]) then D[k]:SetVisible(hasSel) end
     end
     if IsValid(D.empty) then D.empty:SetVisible(not hasSel) end
@@ -648,7 +704,10 @@ function HP:Open()
 
     local frame = vgui.Create("DFrame")
     local w = math.min(ScrW() * 0.82, sc(1220))
-    local h = math.min(ScrH() * 0.86, sc(800))
+    -- Tall enough that the detail column (facts + restore controls + reload-key
+    -- selector) fits without scrolling on typical screens; the DScrollPanel is
+    -- still there as a fallback on short displays.
+    local h = math.min(ScrH() * 0.9, sc(900))
     frame:SetSize(w, h)
     frame:SetMinWidth(sc(880)); frame:SetMinHeight(sc(560))
     frame:Center()
@@ -828,6 +887,7 @@ function HP:Open()
     self:RebuildList()
     self:UpdateDetail()
     self:RequestData()
+    SendReloadConfig() -- make sure the server has the current reload-key behavior
 end
 
 -- ── entry points ────────────────────────────────────────────────────────────────

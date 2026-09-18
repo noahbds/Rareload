@@ -38,8 +38,10 @@ if CLIENT then
     end)
 
     net.Receive("RareloadToolReloadState", function()
+        local status = net.ReadString() -- "success" | "none" | "fail"
         RARELOAD.reloadImageState = {
-            hasData = net.ReadBool(),
+            status = status,
+            hasData = status == "success", -- back-compat for older screen code
             showTime = CurTime(),
             duration = 3
         }
@@ -128,6 +130,11 @@ function TOOL:RightClick()
     ply:EmitSound("buttons/button15.wav")
 end
 
+-- The reload key (R) is driven by the Save Timeline: its behavior is chosen there
+-- (RARELOAD.playerReloadConfig) and works against the timeline non-destructively.
+--   set_previous     : make the previous timeline save the restore point
+--   restore_current  : restore the active save now (only the checked components)
+--   restore_previous : restore the previous save now (only the checked components)
 function TOOL:Reload()
     if CLIENT then return false end
 
@@ -137,42 +144,55 @@ function TOOL:Reload()
     local steamID = ply:SteamID()
     local mapName = game.GetMap()
 
-    local previousData
-    if RARELOAD.GetPositionHistory(steamID, mapName) > 0 then
-        previousData = RARELOAD.GetPreviousPositionData(steamID, mapName)
-    end
-
-    if not previousData then
-        net.Start("RareloadToolReloadState")
-        net.WriteBool(false)
-        net.Send(ply)
-
-        ply:ChatPrint("[RARELOAD] No previous position data found to restore.")
-        ply:EmitSound("buttons/button8.wav")
+    -- Tell the tool screen which outcome to animate and play a matching sound.
+    --   success : reloaded / restore point set      (chime)
+    --   none    : no previous save available         (soft "can't go back" cue)
+    --   fail    : real error                         (deny buzz)
+    -- Always returns false so the tool gun does no laser effect.
+    local function finish(status, chatMsg, sound)
+        net.Start("RareloadToolReloadState"); net.WriteString(status); net.Send(ply)
+        if chatMsg then ply:ChatPrint("[RARELOAD] " .. chatMsg) end
+        if sound then ply:EmitSound(sound) end
         return false
     end
 
-    RARELOAD.playerPositions[mapName] = RARELOAD.playerPositions[mapName] or {}
-    RARELOAD.playerPositions[mapName][steamID] = previousData
-
-    local success, err = RARELOAD.SavePlayerPositionEntry(ply, previousData)
-    if not success then
-        ply:ChatPrint("[RARELOAD] Failed to restore previous position data.")
-        ply:EmitSound("buttons/button10.wav")
-        print("[RARELOAD] Error: " .. tostring(err))
-        return false
+    if not (RARELOAD.GetPositionHistory and RARELOAD.GetPositionHistory(steamID, mapName) > 0) then
+        -- No save exists at all — a warning, distinct from "no previous save".
+        return finish("empty", "You have no saved positions yet.", "buttons/combine_button_locked.wav")
     end
 
-    local remaining = RARELOAD.GetPositionHistory(steamID, mapName)
-    ply:ChatPrint(("[RARELOAD] Restored previous position data. (%d positions in history)"):format(remaining))
+    local cfg   = (RARELOAD.playerReloadConfig and RARELOAD.playerReloadConfig[steamID]) or {}
+    local mode  = cfg.mode or "set_previous"
+    local comps = cfg.comps or { all = true }
 
-    if SyncPlayerPositions then SyncPlayerPositions(ply) end
-
-    net.Start("RareloadToolReloadState")
-    net.WriteBool(true)
-    net.Send(ply)
-
-    ply:EmitSound("buttons/button14.wav")
+    if mode == "restore_current" then
+        local id = (RARELOAD.GetActiveHistoryId and RARELOAD.GetActiveHistoryId(steamID, mapName))
+            or (RARELOAD.GetPositionHistoryEntries(steamID, mapName)[1] or {}).id
+        if not id then return finish("none", "No current save to reload.", "buttons/combine_button_locked.wav") end
+        if RARELOAD.RestoreHistoryEntry(ply, id, comps) then
+            return finish("success", "Reloaded the current save.", "buttons/button14.wav")
+        end
+        return finish("fail", "Failed to reload the current save.", "buttons/button10.wav")
+    elseif mode == "restore_previous" then
+        local id = RARELOAD.GetAdjacentHistoryId(steamID, mapName, 1)
+        if not id then return finish("none", "No previous save to reload — you're at the oldest.", "buttons/combine_button_locked.wav") end
+        if RARELOAD.RestoreHistoryEntry(ply, id, comps) then
+            -- Advance the timeline cursor (make this the active/respawn point) so the
+            -- NEXT press restores the next-older save — walking back through history
+            -- until there is no previous save left (then "none"). ActivateHistoryEntry
+            -- moves the pointer + respawn data and syncs the panel; it prints its own line.
+            if RARELOAD.ActivateHistoryEntry then RARELOAD.ActivateHistoryEntry(ply, id) end
+            return finish("success", nil, "buttons/button14.wav")
+        end
+        return finish("fail", "Failed to reload the previous save.", "buttons/button10.wav")
+    else -- set_previous
+        local id = RARELOAD.GetAdjacentHistoryId(steamID, mapName, 1)
+        if not id then return finish("none", "No previous save — you're already at the oldest.", "buttons/combine_button_locked.wav") end
+        if RARELOAD.ActivateHistoryEntry(ply, id) then -- prints its own chat line
+            return finish("success", nil, "buttons/button14.wav")
+        end
+        return finish("fail", "Failed to set the previous save as restore point.", "buttons/button10.wav")
+    end
 end
 
 ---------------------------------------------------------------------------

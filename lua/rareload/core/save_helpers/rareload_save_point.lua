@@ -195,8 +195,36 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     end
 
     if saveSess then
+        -- Top few classes in a saved bucket, so the toast says WHAT was saved.
+        local function classes(bucket, category)
+            local SU = RARELOAD.SnapshotUtils
+            if not (SU and SU.GetSummary) then return "" end
+            local ok, list = pcall(SU.GetSummary, bucket, { category = category })
+            if not ok or not istable(list) then return "" end
+            local counts, order = {}, {}
+            for _, e in ipairs(list) do
+                local c = tostring((istable(e) and (e.class or e.Class)) or "?")
+                if RARELOAD.TextUtils and RARELOAD.TextUtils.CompactClassName then c = RARELOAD.TextUtils.CompactClassName(c) end
+                if not counts[c] then counts[c] = 0; order[#order + 1] = c end
+                counts[c] = counts[c] + 1
+            end
+            table.sort(order, function(a, b) return counts[a] > counts[b] end)
+            local parts = {}
+            for i = 1, math.min(#order, 3) do
+                parts[i] = order[i] .. (counts[order[i]] > 1 and (" ×" .. counts[order[i]]) or "")
+            end
+            if #order > 3 then parts[#parts + 1] = "…" end
+            return table.concat(parts, ", ")
+        end
+        local function countDetail(n, bucket, category)
+            local cls = classes(bucket, category)
+            return cls ~= "" and (n .. " saved · " .. cls) or (n .. " saved")
+        end
+
         saveSess:step("start", "Saved position",
             string.format("[%d, %d, %d]", newPos.x, newPos.y, newPos.z))
+        saveSess:step("ok", "Camera", RARELOAD.DataUtils.FormatAngleLike
+            and RARELOAD.DataUtils.FormatAngleLike(newAng, 0) or "saved")
         if playerData.inventory then
             saveSess:step("ok", "Inventory", #playerData.inventory .. " weapons")
         end
@@ -208,12 +236,15 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
             saveSess:step("ok", "Appearance", string.GetFileFromFilename(playerData.appearance.model))
         end
         local nv = bucketCount(playerData.vehicles)
-        if nv > 0 then saveSess:step("ok", "Vehicles", nv .. " saved") end
+        if nv > 0 then saveSess:step("ok", "Vehicles", countDetail(nv, playerData.vehicles, "vehicle")) end
         local ne = bucketCount(playerData.entities)
-        if ne > 0 then saveSess:step("ok", "Entities", ne .. " saved") end
+        if ne > 0 then saveSess:step("ok", "Entities", countDetail(ne, playerData.entities, "entity")) end
         local nn = bucketCount(playerData.npcs)
-        if nn > 0 then saveSess:step("ok", "NPCs", nn .. " saved") end
-        if playerData.ammo then saveSess:step("ok", "Ammo", "") end
+        if nn > 0 then saveSess:step("ok", "NPCs", countDetail(nn, playerData.npcs, "npc")) end
+        if playerData.ammo then
+            local n = 0; for _ in pairs(playerData.ammo) do n = n + 1 end
+            saveSess:step("ok", "Ammo", n .. " type" .. (n == 1 and "" or "s"))
+        end
         saveSess:step("ok", "Active weapon", RARELOAD.TextUtils
             and RARELOAD.TextUtils.CompactClassName and RARELOAD.TextUtils.CompactClassName(newActiveWeapon)
             or newActiveWeapon)

@@ -305,6 +305,26 @@ function RARELOAD.GetPositionHistory(steamID, mapName)
     return #RARELOAD.GetPositionHistoryEntries(steamID, mapName)
 end
 
+-- The id of the entry `offset` steps from the currently ACTIVE one in the timeline
+-- (entries are newest-first, so offset +1 = the previous/older save, -1 = newer).
+-- Returns nil when that step falls outside the list (e.g. already at the oldest —
+-- "no previous save"), so callers can give distinct feedback. Non-destructive.
+function RARELOAD.GetAdjacentHistoryId(steamID, mapName, offset)
+    mapName = mapName or game.GetMap()
+    local entries = RARELOAD.GetPositionHistoryEntries(steamID, mapName)
+    if #entries == 0 then return nil end
+    local activeId = RARELOAD.GetActiveHistoryId and RARELOAD.GetActiveHistoryId(steamID, mapName)
+    local idx = 1
+    if activeId then
+        for i, e in ipairs(entries) do
+            if e.id == activeId then idx = i break end
+        end
+    end
+    local ti = idx + (offset or 1)
+    if ti < 1 or ti > #entries then return nil end
+    return entries[ti].id
+end
+
 function RARELOAD.GetPreviousPositionData(steamID, mapName)
     if not steamID or not mapName then return nil end
     local byMap = RARELOAD.playerPositionHistory[mapName]

@@ -462,15 +462,92 @@ local function drawOverlay(state, clearState, width, height, drawIcon, text)
     end
 end
 
+-- Distinct icon for "no previous save available": a media "skip-to-start" mark
+-- (a bar + a left triangle) with a small shake — reads as "already at the oldest".
+local function drawNoPreviousIcon(x, y, size, alpha, animProgress)
+    animProgress = animProgress or 1
+    x = x + shakeOffset(animProgress, size * 0.06)
+
+    local bgColor = TOOL_UI.COLORS.EMOJI.NO_PREVIOUS or Color(65, 145, 255)
+    local bgSize = drawIconCircle(x, y, size, bgColor, alpha, animProgress)
+    if animProgress < 0.3 then return end
+
+    local p    = math.min(1, (animProgress - 0.3) / 0.6)
+    local ease = p < 0.5 and 2 * p * p or 1 - math.pow(-2 * p + 2, 2) / 2
+    local s    = size * 0.5
+    local barW = math.max(2, size * 0.1)
+
+    surface.SetDrawColor(255, 255, 255, alpha)
+    -- The "start" bar on the left.
+    surface.DrawRect(x - s * 0.72, y - s * 0.5, barW, s)
+    -- A left-pointing triangle that slides up against the bar.
+    local slide = (1 - ease) * s * 0.5
+    local rightX = x + s * 0.45 + slide
+    local tipX   = x - s * 0.45 + slide
+    surface.DrawPoly({
+        { x = tipX,   y = y },
+        { x = rightX, y = y - s * 0.55 },
+        { x = rightX, y = y + s * 0.55 },
+    })
+
+    drawIconHighlightArc(x, y, bgSize, alpha)
+end
+
+-- Warning sign for "no save exists at all": an amber ⚠ triangle with an
+-- exclamation mark. Distinct from "no previous save" (which uses the skip icon).
+local function drawWarnIcon(x, y, size, alpha, animProgress)
+    animProgress = animProgress or 1
+    x = x + shakeOffset(animProgress, size * 0.08)
+
+    local bgColor = TOOL_UI.COLORS.EMOJI.NO_SAVES or Color(255, 195, 85)
+    local bgSize = drawIconCircle(x, y, size, bgColor, alpha, animProgress)
+    if animProgress < 0.3 then return end
+
+    local p  = math.min(1, (animProgress - 0.3) / 0.6)
+    local tri = size * 0.42
+
+    -- Triangle outline (grows in), pointing up.
+    surface.SetDrawColor(255, 255, 255, alpha)
+    local top   = { x = x,        y = y - tri * p }
+    local left  = { x = x - tri * p, y = y + tri * 0.75 * p }
+    local right = { x = x + tri * p, y = y + tri * 0.75 * p }
+    surface.DrawPoly({ top, right, left })
+
+    -- Exclamation mark punched in the theme color (reads as the "!" cutout).
+    if p > 0.6 then
+        local q = math.min(1, (p - 0.6) / 0.4)
+        surface.SetDrawColor(bgColor.r, bgColor.g, bgColor.b, alpha)
+        local barW = math.max(2, size * 0.07)
+        surface.DrawRect(x - barW / 2, y - tri * 0.15, barW, tri * 0.55 * q)
+        if q >= 0.95 then
+            RareloadToolUI.DrawCircle(x, y + tri * 0.55, barW * 0.62, 10, Color(bgColor.r, bgColor.g, bgColor.b, alpha))
+        end
+    end
+
+    drawIconHighlightArc(x, y, bgSize, alpha)
+end
+
 local function drawReloadStateImage(width, height)
     local state = RARELOAD.reloadImageState
     if not state then return end
+    local status = state.status or (state.hasData and "success" or "fail")
 
     drawOverlay(state, function() RARELOAD.reloadImageState = nil end, width, height,
         function(cx, cy, size, alpha, animProgress)
-            drawStatusEmoji(cx, cy, size, state.hasData, alpha, animProgress)
+            if status == "success" then
+                drawStatusEmoji(cx, cy, size, true, alpha, animProgress)
+            elseif status == "empty" then
+                drawWarnIcon(cx, cy, size, alpha, animProgress)
+            elseif status == "none" then
+                drawNoPreviousIcon(cx, cy, size, alpha, animProgress)
+            else
+                drawStatusEmoji(cx, cy, size, false, alpha, animProgress)
+            end
         end,
-        state.hasData and L("screen.data_found") or L("screen.no_data"))
+        (status == "success" and L("screen.data_found"))
+        or (status == "empty" and L("screen.no_saves"))
+        or (status == "none" and L("screen.no_previous"))
+        or L("screen.no_data"))
 end
 
 local function drawPermissionIcon(x, y, size, alpha, animProgress)

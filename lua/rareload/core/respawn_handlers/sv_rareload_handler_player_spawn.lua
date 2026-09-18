@@ -439,10 +439,38 @@ function RARELOAD.HandlePlayerSpawn(ply)
         local function bcount(b)
             return (istable(b) and istable(b.__duplicator) and tonumber(b.__duplicator.entityCount)) or 0
         end
+        -- Top few classes in a bucket, e.g. "AT-AT, prop_physics ×3, …", so the
+        -- toast shows WHAT was restored, not just how many.
+        local function classes(bucket, category, maxN)
+            local SU = RARELOAD.SnapshotUtils
+            if not (SU and SU.GetSummary) then return "" end
+            local ok, list = pcall(SU.GetSummary, bucket, { category = category })
+            if not ok or not istable(list) then return "" end
+            local counts, order = {}, {}
+            for _, e in ipairs(list) do
+                local c = tostring((istable(e) and (e.class or e.Class)) or "?")
+                if RARELOAD.TextUtils and RARELOAD.TextUtils.CompactClassName then c = RARELOAD.TextUtils.CompactClassName(c) end
+                if not counts[c] then counts[c] = 0; order[#order + 1] = c end
+                counts[c] = counts[c] + 1
+            end
+            table.sort(order, function(a, b) return counts[a] > counts[b] end)
+            local parts = {}
+            for i = 1, math.min(#order, maxN or 3) do
+                parts[i] = order[i] .. (counts[order[i]] > 1 and (" ×" .. counts[order[i]]) or "")
+            end
+            if #order > (maxN or 3) then parts[#parts + 1] = "…" end
+            return table.concat(parts, ", ")
+        end
+        local function withClasses(n, noun, plural, bucket, category)
+            if n <= 0 then return "none" end
+            local head = n .. " " .. (n == 1 and noun or plural)
+            local cls = classes(bucket, category, 3)
+            return cls ~= "" and (head .. " · " .. cls) or head
+        end
         local function detailFor(id)
-            if id == "vehicles" then local n = bcount(SavedInfo.vehicles); return n > 0 and (n .. " vehicle" .. (n == 1 and "" or "s")) or "none" end
-            if id == "entities" then local n = bcount(SavedInfo.entities); return n > 0 and (n .. " " .. (n == 1 and "entity" or "entities")) or "none" end
-            if id == "npcs" then local n = bcount(SavedInfo.npcs); return n > 0 and (n .. " NPC" .. (n == 1 and "" or "s")) or "none" end
+            if id == "vehicles" then return withClasses(bcount(SavedInfo.vehicles), "vehicle", "vehicles", SavedInfo.vehicles, "vehicle") end
+            if id == "entities" then return withClasses(bcount(SavedInfo.entities), "entity", "entities", SavedInfo.entities, "entity") end
+            if id == "npcs" then return withClasses(bcount(SavedInfo.npcs), "NPC", "NPCs", SavedInfo.npcs, "npc") end
             if id == "inventory" then local n = istable(SavedInfo.inventory) and #SavedInfo.inventory or 0; return n .. " weapon" .. (n == 1 and "" or "s") end
             if id == "ammo" then local n = 0; if istable(SavedInfo.ammo) then for _ in pairs(SavedInfo.ammo) do n = n + 1 end end; return n .. " type" .. (n == 1 and "" or "s") end
             if id == "healthArmor" then return string.format("HP %d · Armor %d", math.floor(SavedInfo.health or ply:Health()), math.floor(SavedInfo.armor or ply:Armor())) end

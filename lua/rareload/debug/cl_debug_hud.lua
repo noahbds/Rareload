@@ -1,44 +1,27 @@
--- Rareload debug client (v2): a glanceable live overlay + an interactive panel.
---   Overlay  (rareload_debug hud)   : stream tail, watches, counters, report card.
---   Panel    (rareload_debug panel) : scroll, pause, filter, expand, copy.
+-- Rareload debug client: the restore/save notification toast.
+-- The old on-screen event overlay and interactive DFrame panel were removed —
+-- GMod's own developer tools cover live console logging. All that remains here is
+-- the animated toast card that summarizes the LAST respawn restore or save.
 if not CLIENT then return end
 
-RARELOAD             = RARELOAD or {}
-RARELOAD.DebugHUD    = RARELOAD.DebugHUD or {}
-local HUD            = RARELOAD.DebugHUD
+RARELOAD          = RARELOAD or {}
+RARELOAD.DebugHUD = RARELOAD.DebugHUD or {}
+local HUD         = RARELOAD.DebugHUD
 
-HUD.visible          = HUD.visible or false
-HUD.events           = HUD.events or {}  -- ordered list, oldest first
-HUD.bySeq            = HUD.bySeq or {}   -- seq -> event (for collapse upserts)
-HUD.reports          = HUD.reports or {} -- last N report cards (history for panel/dump)
-HUD.toast            = HUD.toast or nil  -- { r = report, t0 = start } for the animated card
-HUD.status           = HUD.status or { errors = 0, warns = 0, total = 0, watches = {} }
-HUD.filter           = HUD.filter or nil
-HUD.errorFlash       = HUD.errorFlash or 0
-local MAX_EVENTS     = 300
-local MAX_REPORTS    = 10
+HUD.toast         = HUD.toast or nil -- { r = report, t0 = start } for the animated card
 
-local LEVEL          = {
-    [1] = { label = "ERROR", color = Color(255, 80, 80) },
-    [2] = { label = "WARN", color = Color(255, 175, 60) },
-    [3] = { label = "INFO", color = Color(90, 180, 255) },
-    [4] = { label = "VERBOSE", color = Color(165, 165, 165) },
-}
-local FONT, FONT_SM  = "RareloadBody", "RareloadSmall"
-local CAT            = Color(120, 200, 255)
-local KEY            = Color(150, 150, 160)
-local VAL            = Color(210, 210, 215)
-local WHITE          = Color(230, 230, 235)
-local STEP_COL       = {
-    ok = Color(110, 230, 140),
-    fail = Color(255, 90, 90),
+local FONT_SM     = "RareloadSmall"
+local KEY         = Color(150, 150, 160)
+local WHITE       = Color(230, 230, 235)
+local STEP_COL    = {
+    ok    = Color(110, 230, 140),
+    fail  = Color(255, 90, 90),
     start = Color(120, 200, 255),
-    warn = Color(
-        255, 180, 70)
+    warn  = Color(255, 180, 70),
 }
-local STEP_ICON      = { ok = "✓", fail = "✗", start = "⚡", warn = "!" }
+local STEP_ICON   = { ok = "✓", fail = "✗", start = "⚡", warn = "!" }
 
--- Restore / save toast: a self-dismissing, animated card for the LAST action.
+-- Restore / save toast styling.
 local TOAST_W        = 384   -- card width
 local TOAST_IN       = 0.5   -- slide/fade-in duration
 local TOAST_OUT      = 0.55  -- slide/fade-out duration
@@ -59,57 +42,12 @@ end
 --------------------------------------------------------------------------------
 -- Networking
 --------------------------------------------------------------------------------
-local function readEvent()
-    local ev = { seq = net.ReadUInt(32), count = net.ReadUInt(16) }
-    ev.category = net.ReadString()
-    ev.level = net.ReadUInt(3)
-    ev.message = net.ReadString()
-    local n = net.ReadUInt(6)
-    if n > 0 then
-        ev.data = {}
-        for _ = 1, n do ev.data[#ev.data + 1] = { net.ReadString(), net.ReadString() } end
-    end
-    ev.at = CurTime()
-    return ev
-end
-
-local function pushEvent(ev)
-    local existing = HUD.bySeq[ev.seq]
-    if existing then
-        existing.count, existing.data, existing.at = ev.count, ev.data, ev.at
-    else
-        HUD.events[#HUD.events + 1] = ev
-        HUD.bySeq[ev.seq] = ev
-        if ev.level == 1 then HUD.errorFlash = CurTime() end
-        while #HUD.events > MAX_EVENTS do
-            local old = table.remove(HUD.events, 1)
-            if old then HUD.bySeq[old.seq] = nil end
-        end
-    end
-end
-
-net.Receive("RareloadDebugBatch", function()
-    local n = net.ReadUInt(8)
-    for _ = 1, n do pushEvent(readEvent()) end
-end)
-
-net.Receive("RareloadDebugStatus", function()
-    HUD.status.errors = net.ReadUInt(24)
-    HUD.status.warns = net.ReadUInt(24)
-    HUD.status.total = net.ReadUInt(24)
-    local n = net.ReadUInt(6)
-    local w = {}
-    for _ = 1, n do w[#w + 1] = { net.ReadString(), net.ReadString() } end
-    HUD.status.watches = w
-end)
-
 net.Receive("RareloadDebugReport", function()
     local r = {
         category = net.ReadString(),
-        success = net.ReadBool(),
-        elapsed = net.ReadString(),
-        title = net
-            .ReadString()
+        success  = net.ReadBool(),
+        elapsed  = net.ReadString(),
+        title    = net.ReadString(),
     }
     r.subtitle = net.ReadString()
     local n = net.ReadUInt(6)
@@ -117,93 +55,22 @@ net.Receive("RareloadDebugReport", function()
     for _ = 1, n do
         r.steps[#r.steps + 1] = { status = net.ReadString(), title = net.ReadString(), detail = net.ReadString() }
     end
-    r.at = CurTime()
-    HUD.reports[#HUD.reports + 1] = r
-    while #HUD.reports > MAX_REPORTS do table.remove(HUD.reports, 1) end
-    -- The restore toast only appears while debug is enabled; a fresh report
-    -- (re)starts its intro animation so only the latest restore is shown.
+    -- The toast only appears while debug is enabled; a fresh report restarts its
+    -- intro animation so only the latest action is shown.
     if RARELOAD.GetClientDebugEnabled and RARELOAD.GetClientDebugEnabled() then
         HUD.toast = { r = r, t0 = CurTime() }
     end
 end)
 
-local function requestSync()
-    net.Start("RareloadDebugSync")
-    net.SendToServer()
-end
+-- The server still streams events/status to debug-enabled players for anyone who
+-- reads them via console; the overlay is gone, so we accept and discard them here
+-- to avoid "unhandled net message" warnings.
+net.Receive("RareloadDebugBatch", function() end)
+net.Receive("RareloadDebugStatus", function() end)
 
 --------------------------------------------------------------------------------
--- Shared formatting
+-- Toast rendering
 --------------------------------------------------------------------------------
-local function eventLine(ev)
-    local msg = ev.message
-    if (ev.count or 1) > 1 then msg = msg .. "  ×" .. ev.count end
-    return msg
-end
-
-local function filtered()
-    local out = {}
-    for i = 1, #HUD.events do
-        local ev = HUD.events[i]
-        if not HUD.filter or ev.category == HUD.filter then out[#out + 1] = ev end
-    end
-    return out
-end
-
---------------------------------------------------------------------------------
--- Overlay (HUDPaint) — glanceable, non-interactive
---------------------------------------------------------------------------------
-local SHOW_LINES, EVENT_TTL = 14, 16
-local function drawStream()
-    surface.SetFont(FONT_SM)
-    local x, y = 16, 96
-    local now = CurTime()
-
-    draw.SimpleText("RARELOAD DEBUG", FONT_SM, x, y - 18, Color(120, 200, 255, 220))
-    local badge = string.format("err %d  warn %d", HUD.status.errors, HUD.status.warns)
-    draw.SimpleText(badge, FONT_SM, x + 130, y - 18, HUD.status.errors > 0 and Color(255, 110, 110) or KEY)
-    if HUD.filter then draw.SimpleText("[" .. HUD.filter .. "]", FONT_SM, x + 260, y - 18, Color(255, 200, 100, 220)) end
-
-    local list = filtered()
-    local from = math.max(1, #list - SHOW_LINES + 1)
-    for i = from, #list do
-        local ev = list[i]
-        local age = now - (ev.at or now)
-        local a = age > EVENT_TTL and math.max(0, 255 - (age - EVENT_TTL) * 120) or 255
-        if a > 4 then
-            local lv = LEVEL[ev.level] or LEVEL[3]
-            local tag = "[" .. ev.category:upper() .. "] "
-            draw.SimpleText(tag, FONT_SM, x, y, ColorAlpha(CAT, a))
-            draw.SimpleText(eventLine(ev), FONT_SM, x + surface.GetTextSize(tag), y, ColorAlpha(lv.color, a))
-            y = y + 15
-            if ev.data then
-                for _, kv in ipairs(ev.data) do
-                    draw.SimpleText("   " .. (kv[1] ~= "" and (kv[1] .. " = ") or "") .. kv[2], FONT_SM, x, y,
-                        ColorAlpha(kv[1] ~= "" and KEY or VAL, a))
-                    y = y + 14
-                end
-            end
-        end
-    end
-    if #HUD.events == 0 then
-        local on = RARELOAD.GetClientDebugEnabled and RARELOAD.GetClientDebugEnabled()
-        draw.SimpleText(on and "Waiting for debug events..." or "Debug is OFF - run: rareload_debug on",
-            FONT_SM, x, y, Color(160, 160, 160, 200))
-    end
-end
-
-local function drawWatches()
-    local w = HUD.status.watches
-    if not w or #w == 0 then return end
-    local x, y = 16, ScrH() - 40 - (#w * 16)
-    draw.SimpleText("WATCHES", FONT_SM, x, y - 16, Color(150, 220, 150, 220))
-    for _, kv in ipairs(w) do
-        draw.SimpleText(kv[1] .. ":", FONT_SM, x, y, KEY)
-        draw.SimpleText(kv[2], FONT_SM, x + 130, y, Color(150, 255, 180))
-        y = y + 16
-    end
-end
-
 local function drawToast()
     local t = HUD.toast
     if not t or not t.r then return end
@@ -283,7 +150,7 @@ local function drawToast()
         draw.RoundedBox(9, x + w - cw - 14, y + 18, cw, 18, A(accent, 0.18))
         draw.SimpleText(chip, FONT_SM, x + w - 14 - cw / 2, y + 27, A(accent), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
-    -- Subtitle (map / coords) under the title when present.
+    -- Subtitle (map / coords) after the title when present.
     if r.subtitle and r.subtitle ~= "" then
         surface.SetFont("RareloadHeading")
         local tw = surface.GetTextSize(r.title ~= "" and r.title or r.category:upper())
@@ -341,62 +208,28 @@ local function drawToast()
     draw.RoundedBox(2, x + 14, barY, barW * math.Clamp(prog, 0, 1), 3, A(accent, 0.7))
 end
 
-hook.Add("HUDPaint", "RareloadDebugHUD", function()
-    -- The restore toast is independent of the debug overlay: it shows the last
-    -- respawn whenever debug is enabled, then dismisses itself.
-    drawToast()
-
-    if not HUD.visible then return end
-    -- brief red edge flash on a new error
-    local fa = 1 - (CurTime() - HUD.errorFlash)
-    if fa > 0 and fa <= 1 then
-        surface.SetDrawColor(255, 40, 40, 60 * fa)
-        surface.DrawRect(0, 0, ScrW(), 6)
-        surface.DrawRect(0, ScrH() - 6, ScrW(), 6)
-    end
-    drawStream()
-    drawWatches()
-end)
+hook.Add("HUDPaint", "RareloadDebugHUD", drawToast)
 
 --------------------------------------------------------------------------------
--- Command
+-- Command: enable/disable debug (which gates the toast + server logging).
 --------------------------------------------------------------------------------
 local function notify(msg) chat.AddText(Color(120, 200, 255), "[Rareload] ", color_white, msg) end
 
 concommand.Add("rareload_debug", function(_, _, args)
-    local sub = (args[1] or "hud"):lower()
-    if sub == "hud" then
-        HUD.visible = not HUD.visible
-        if HUD.visible then requestSync() end
-        notify("Overlay " .. (HUD.visible and "shown" or "hidden"))
-    elseif sub == "on" or sub == "off" or sub == "toggle" then
+    local sub = (args[1] or "toggle"):lower()
+    if sub == "on" or sub == "off" or sub == "toggle" then
         local cur = RARELOAD.GetClientDebugEnabled and RARELOAD.GetClientDebugEnabled() or false
         local val = (sub == "on") or (sub == "toggle" and not cur)
         if RARELOAD.UpdatePlayerSetting then RARELOAD.UpdatePlayerSetting("debugEnabled", val) end
         notify("Debug " .. (val and "enabled" or "disabled"))
-    elseif sub == "level" then
-        local lvl = args[2] and args[2]:upper()
-        if lvl and (lvl == "ERROR" or lvl == "WARN" or lvl == "INFO" or lvl == "VERBOSE") then
-            if RARELOAD.UpdatePlayerSetting then RARELOAD.UpdatePlayerSetting("debugLevel", lvl) end
-            notify("Level set to " .. lvl)
-        else
-            notify("Levels: ERROR, WARN, INFO, VERBOSE")
-        end
     elseif sub == "diag" then
         net.Start("RareloadDebugDiag")
-        net.SendToServer(); notify("Diagnostics requested")
-    elseif sub == "filter" then
-        HUD.filter = (args[2] and args[2] ~= "" and args[2]:lower()) or nil
-        notify(HUD.filter and ("Filtering: " .. HUD.filter) or "Filter cleared")
-    elseif sub == "dump" then
-        for _, ev in ipairs(HUD.events) do
-            print(string.format("[%s][%s] %s", ev.category:upper(), (LEVEL[ev.level] or LEVEL[3]).label, eventLine(ev)))
-        end
-        notify("Dumped " .. #HUD.events .. " events to console")
+        net.SendToServer()
+        notify("Diagnostics requested (see server console)")
     elseif sub == "clear" then
-        HUD.events, HUD.bySeq, HUD.reports, HUD.toast = {}, {}, {}, nil
-        notify("Cleared")
+        HUD.toast = nil
+        notify("Toast cleared")
     else
-        notify("rareload_debug [hud|panel|on|off|level <L>|diag|filter <cat>|dump|clear]")
+        notify("rareload_debug [on|off|toggle|diag|clear]")
     end
-end, nil, "Rareload debug: overlay, interactive panel, filters, diagnostics.")
+end, nil, "Rareload debug: enable/disable debug logging and the restore/save toast.")
