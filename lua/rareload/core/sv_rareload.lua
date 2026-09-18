@@ -71,8 +71,8 @@ if SERVER then
 
         if not success then
             print("[RARELOAD] Failed to save global inventory: " .. err)
-        elseif RARELOAD.settings.debugEnabled then
-            print("[RARELOAD DEBUG] Global inventory saved successfully")
+        else
+            RARELOAD.Debug.Log("inventory", "VERBOSE", "Global inventory saved")
         end
     end
 
@@ -85,23 +85,13 @@ if SERVER then
 
             if success and inventoryData then
                 RARELOAD.globalInventory = inventoryData
-                if RARELOAD.settings.debugEnabled then
-                    if RARELOAD.Debug and RARELOAD.Debug.Write then
-                        RARELOAD.Debug.Write("inventory", "VERBOSE", 0, "Loaded global inventory")
-                    else
-                        print("[RARELOAD DEBUG] Global inventory loaded successfully")
-                    end
-                end
+                RARELOAD.Debug.Log("inventory", "VERBOSE", "Loaded global inventory")
             else
                 print("[RARELOAD] Failed to load global inventory")
                 RARELOAD.globalInventory = {}
             end
         else
-            if RARELOAD.settings.debugEnabled then
-                if not (RARELOAD.Debug and RARELOAD.Debug.Log) then
-                    print("[RARELOAD DEBUG] No global inventory file found, creating new one")
-                end
-            end
+            RARELOAD.Debug.Log("inventory", "INFO", "No global inventory file found, creating new one")
             RARELOAD.globalInventory = {}
             SaveGlobalInventory()
         end
