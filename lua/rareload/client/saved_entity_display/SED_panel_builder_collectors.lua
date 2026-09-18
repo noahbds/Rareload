@@ -89,26 +89,7 @@ function PB.populateCategories(ctx)
         "ownerSteamID64", "RareloadOwnerSteamID64")
     local spawnTime = PB.firstValue(saved, "spawnTime", "savedAt", "SavedAt")
 
-    local isVeh = not isNPC and (
-        saved.isVehicle == true or
-        (RARELOAD.DataUtils and RARELOAD.DataUtils.ClassLooksLikeVehicle and RARELOAD.DataUtils.ClassLooksLikeVehicle(className)) or
-        (isstring(className) and (
-            string.find(className, "vehicle") or
-            string.find(className, "jeep") or
-            string.find(className, "airboat") or
-            string.find(className, "^lvs_") or
-            string.find(className, "^lfs_") or
-            string.find(className, "lunasflightschool") or
-            string.find(className, "fphysics") or
-            string.find(className, "^wac_") or
-            string.find(className, "^glide_") or
-            string.find(className, "^sent_sakarias_car")
-        )) or
-        (IsValid(ent) and (
-            (RARELOAD.DataUtils and RARELOAD.DataUtils.IsVehicleEntity and RARELOAD.DataUtils.IsVehicleEntity(ent)) or
-            ent:IsVehicle() or ent.LVS or ent.IsLVS or ent.LFS or ent.IsLFS or ent.IsSimfphyscar or ent.IsWAC
-        ))
-    )
+    local isVeh = not isNPC and SED.IsVehicleRecord(saved, ent)
 
     local isLVS = isVeh and (saved.LVS or saved.IsLVS or (IsValid(ent) and (ent.LVS or ent.IsLVS)) or (className and string.find(className, "^lvs_")) or (saved.Base and string.find(saved.Base, "lvs_")))
     local isLFS = isVeh and (saved.LFS or saved.IsLFS or (IsValid(ent) and (ent.LFS or ent.IsLFS)) or (className and (string.find(className, "^lfs_") or string.find(className, "^lunasflightschool") or string.find(className, "_lfs_"))) or (saved.Base and (string.find(saved.Base, "lunasflightschool") or string.find(saved.Base, "lfs_"))))

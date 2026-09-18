@@ -164,7 +164,7 @@ function RareloadToolUI.CreateCategory(parent, title, icon, defaultExpanded)
 
         local textOffset = 14
         if iconMat and not iconMat:IsError() then
-            surface.SetDrawColor(theme.Colors.Accent)
+            surface.SetDrawColor(255, 255, 255)
             surface.SetMaterial(iconMat)
             surface.DrawTexturedRect(10, h / 2 - 8, 16, 16)
             textOffset = 32

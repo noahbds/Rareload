@@ -4,7 +4,7 @@
     // sumneko/LuaLS only activates on language "lua". GLua operators are handled
     // by Lua.runtime.nonstandardSymbol below.
     "files.associations": {
-        "*.lua": "lua"
+        "*.lua": "glua"
     },
 
     // ── Lua Language Server (sumneko.lua / LuaLS) ────────────────────────────

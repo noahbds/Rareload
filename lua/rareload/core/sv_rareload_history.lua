@@ -73,6 +73,17 @@ local function CountBucket(bucket)
     return n
 end
 
+-- Vehicle class the player was seated in at save time (from the v2 seats table),
+-- or nil if they were not seated. Used only for the history summary label.
+local function SeatedVehicleClass(vehicles)
+    local seats = istable(vehicles) and vehicles.seats
+    if not istable(seats) then return nil end
+    for _, list in pairs(seats) do
+        if istable(list) and istable(list[1]) then return list[1].vehClass or "1" end
+    end
+    return nil
+end
+
 -- ── summary sent to the client ──────────────────────────────────────────────────
 
 local function BuildSummary(steamID, mapName)
@@ -108,7 +119,7 @@ local function BuildSummary(steamID, mapName)
             ec   = CountBucket(e.entities),
             nc   = CountBucket(e.npcs),
             vc   = CountBucket(e.vehicles),
-            veh  = (e.vehicleState and e.vehicleState.savedInVehicle) and (e.vehicleState.class or "1") or nil,
+            veh  = SeatedVehicleClass(e.vehicles),
             act  = (activeId and e.id == activeId) and 1 or nil,
         }
     end
@@ -140,7 +151,7 @@ end)
 local PREVIEW_OBJ_CAP = 48
 local PLAYER_INFO_KEYS = {
     "pos", "ang", "moveType", "health", "armor", "inventory", "ammo",
-    "playerStates", "appearance", "activeWeapon", "playermodel", "vehicles", "vehicleState",
+    "playerStates", "appearance", "activeWeapon", "playermodel", "vehicles",
 }
 
 local function ExtractObjects(bucket, out, isNPC)
@@ -174,31 +185,6 @@ local function BuildPreviewData(steamID, mapName, id)
     ExtractObjects(e.entities, objects, false)
     ExtractObjects(e.npcs, objects, true)
     ExtractObjects(e.vehicles, objects, false)
-
-    -- If legacy array format without duplicator, fallback to iterating directly
-    if istable(e.vehicles) and not SnapshotUtils.HasSnapshot(e.vehicles) then
-        for i, v in ipairs(e.vehicles) do
-            if #objects >= PREVIEW_OBJ_CAP then break end
-            if istable(v.pos) and isstring(v.model) and v.model ~= "" then
-                objects[#objects + 1] = {
-                    c   = v.class or "vehicle",
-                    m   = v.model,
-                    p   = v.pos,
-                    a   = v.ang,
-                    rec = {
-                        id    = "vehicle_" .. i,
-                        class = v.class, Class = v.class,
-                        model = v.model, Model = v.model,
-                        pos   = v.pos, Pos = v.pos,
-                        ang   = v.ang, Angle = v.ang,
-                        health = v.health, CurHealth = v.health, MaxHealth = v.health,
-                        skin  = v.skin,
-                        isVehicle = true,
-                    },
-                }
-            end
-        end
-    end
 
     return {
         player = {
@@ -336,9 +322,6 @@ function RARELOAD.ApplyHistoryComponents(ply, data, comps)
         end
         if perm("RESTORE_VEHICLES") and istable(data.vehicles) and RARELOAD.RestoreVehicles then
             RARELOAD.RestoreVehicles(data, ply)
-            if data.vehicleState and data.vehicleState.savedInVehicle and RARELOAD.RestorePlayerVehicle then
-                RARELOAD.RestorePlayerVehicle(ply, data)
-            end
         end
     end
 end

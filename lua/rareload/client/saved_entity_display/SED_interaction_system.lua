@@ -80,9 +80,6 @@ function SED.LeaveInteraction()
     end
 end
 
--- While inspecting a pile, resolve the current-frame group, apply a Left/Right flip, start the
--- swap animation, and keep the interaction pointed at the active card so all the per-card
--- controls (tabs / scroll / highlight) operate on whatever is showing.
 function SED.UpdateFocusedPile()
     SED.FocusedPileMulti = false
     local key = SED.InteractionState.pileKey
@@ -202,27 +199,7 @@ function SED.HandleInteractionInput()
         end
 
         if cache and cache.activeCat then
-            local isVeh = savedRec and (
-                savedRec.isVehicle == true or
-                (RARELOAD.DataUtils and RARELOAD.DataUtils.ClassLooksLikeVehicle and RARELOAD.DataUtils.ClassLooksLikeVehicle(savedRec.class)) or
-                (isstring(savedRec.class) and (
-                    string.find(savedRec.class, "vehicle") or
-                    string.find(savedRec.class, "jeep") or
-                    string.find(savedRec.class, "airboat") or
-                    string.find(savedRec.class, "^lvs_") or
-                    string.find(savedRec.class, "^lfs_") or
-                    string.find(savedRec.class, "_lfs_") or
-                    string.find(savedRec.class, "lunasflightschool") or
-                    string.find(savedRec.class, "fphysics") or
-                    string.find(savedRec.class, "^wac_") or
-                    string.find(savedRec.class, "^glide_") or
-                    string.find(savedRec.class, "^sent_sakarias_car")
-                )) or
-                (IsValid(liveEnt) and (
-                    (RARELOAD.DataUtils and RARELOAD.DataUtils.IsVehicleEntity and RARELOAD.DataUtils.IsVehicleEntity(liveEnt)) or
-                    liveEnt:IsVehicle() or liveEnt.LVS or liveEnt.IsLVS or liveEnt.LFS or liveEnt.IsLFS or liveEnt.IsSimfphyscar or liveEnt.IsWAC
-                ))
-            )
+            local isVeh = SED.IsVehicleRecord(savedRec, liveEnt)
             local categoryList = isNPC and SED.NPC_CATEGORIES or (isVeh and SED.VEHICLE_CATEGORIES or SED.ENT_CATEGORIES)
             local scrollTable = isNPC and SED.PanelScroll.npcs or SED.PanelScroll.entities
 
@@ -270,8 +247,6 @@ function SED.HandleInteractionInput()
                 scrollTable[panelID .. "_" .. cache.activeCat] = 0
             end
 
-            -- Left/Right scroll the content, except on a multi-card pile where they flip cards
-            -- (handled in SED.UpdateFocusedPile); the mouse wheel scrolls content in either case.
             local scrollDelta = SED.ScrollDelta
             if not SED.FocusedPileMulti then
                 if input.IsKeyDown(KEY_LEFT) then scrollDelta = scrollDelta - SED.SCROLL_SPEED end

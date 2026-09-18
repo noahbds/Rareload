@@ -16,7 +16,7 @@ RARELOAD = RARELOAD or {}
 local R = RARELOAD.StateRegistry or include("rareload/core/rareload_state_registry.lua")
 
 -- Save helpers (same modules save_point.lua used inline).
-local save_vehicles   = include("rareload/core/save_helpers/rareload_save_vehicles.lua")
+local save_vehicles   = include("rareload/core/vehicles/rareload_vehicle_capture.lua")
 local save_entities   = include("rareload/core/save_helpers/rareload_save_entities.lua")
 local save_npcs       = include("rareload/core/save_helpers/rareload_save_npcs.lua")
 local save_ammo       = include("rareload/core/save_helpers/rareload_save_ammo.lua")
@@ -212,25 +212,17 @@ R.Register({
         return want and si.vehicles ~= nil
     end,
     save = function(ply, pd)
-        local vehicleResult = save_vehicles(ply)
-        pd.vehicles = vehicleResult
-        if istable(vehicleResult) and istable(vehicleResult.vehicleState) then
-            pd.vehicleState = vehicleResult.vehicleState
-        end
+        pd.vehicles = save_vehicles(ply)
         if DebugOn(ply) then
             local vehCount = 0
             if istable(pd.vehicles) and pd.vehicles.__duplicator then
                 vehCount = pd.vehicles.__duplicator.entityCount or 0
             end
-            print(string.format("[RARELOAD DEBUG] Vehicle save: saved=%d seated=%s",
-                vehCount, tostring(pd.vehicleState ~= nil)))
+            print(string.format("[RARELOAD DEBUG] Vehicle save: saved=%d", vehCount))
         end
     end,
     restore = function(ply, si)
         RARELOAD.RestoreVehicles(si, ply)
-        if si.vehicleState and si.vehicleState.savedInVehicle then
-            RARELOAD.RestorePlayerVehicle(ply, si)
-        end
     end,
 })
 

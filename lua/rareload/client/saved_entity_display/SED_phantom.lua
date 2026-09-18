@@ -20,6 +20,18 @@ if not (SS and SS._initialized) then
 end
 
 local PB = SED and SED.PanelBuilder
+
+-- Return the first saved seat descriptor (carrying vehClass + occupant) if the
+-- player was seated in a vehicle at save time, from the v2 vehicle bucket.
+local function SavedSeat(savedInfo)
+    local veh = savedInfo and savedInfo.vehicles
+    local seats = istable(veh) and veh.seats
+    if not istable(seats) then return nil end
+    for _, list in pairs(seats) do
+        if istable(list) and istable(list[1]) then return list[1] end
+    end
+    return nil
+end
 if not PB then
     include("rareload/client/saved_entity_display/SED_panel_builder_utils.lua")
     PB = SED and SED.PanelBuilder
@@ -131,7 +143,7 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         if savedInfo.inventory and #savedInfo.inventory > 0 then addItem(L("sed.phantom.item.inventory")) end
         if savedInfo.ammo then addItem(L("sed.phantom.item.ammo")) end
         if savedInfo.playerStates then addItem(L("sed.phantom.item.states")) end
-        if savedInfo.vehicleState and savedInfo.vehicleState.savedInVehicle then addItem(L("sed.phantom.item.reseat_in_vehicule")) end
+        if SavedSeat(savedInfo) then addItem(L("sed.phantom.item.reseat_in_vehicule")) end
 
         local entS = SnapshotUtils.GetSummary(savedInfo.entities, { category = "entity" }) or {}
         local npcS = SnapshotUtils.GetSummary(savedInfo.npcs, { category = "npc" }) or {}
@@ -332,8 +344,9 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
     if #vehSummary > 0 then
         PB.addLine(data.stats, L("sed.phantom.saved_vehicles"), #vehSummary, Color(200, 200, 255))
     end
-    if savedInfo.vehicleState and type(savedInfo.vehicleState) == "table" and savedInfo.vehicleState.savedInVehicle then
-        local vehClass = savedInfo.vehicleState.class or L("common.unknown")
+    local seatDesc = SavedSeat(savedInfo)
+    if seatDesc then
+        local vehClass = seatDesc.vehClass or L("common.unknown")
         local framework = (string.find(vehClass, "^lvs_") and "LVS")
             or ((string.find(vehClass, "^lfs_") or string.find(vehClass, "lunasflightschool")) and "LFS")
             or (string.find(vehClass, "fphysics") and "Simfphys")
@@ -447,7 +460,7 @@ function Phantom.CreatePlayerModel(savedInfo, fallbackModel)
 
     -- If the player was seated in a vehicle at save time, apply a sitting
     -- animation so the phantom renders in a seated pose.
-    if savedInfo.vehicleState and savedInfo.vehicleState.savedInVehicle then
+    if SavedSeat(savedInfo) then
         local sitSeq = phantom:LookupSequence("sit_rollercoaster")
         if not sitSeq or sitSeq <= 0 then
             sitSeq = phantom:LookupSequence("sitdown")

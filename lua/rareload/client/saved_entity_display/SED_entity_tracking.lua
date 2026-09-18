@@ -33,30 +33,11 @@ function SED.RebuildSavedLookup()
                     category = "npc", owner = ownerSteamID
                 })
             end
-            -- Ingest saved vehicles from duplicator snapshot (or legacy array) into SED
-            if istable(pdata.vehicles) then
-                if SnapshotUtils.HasSnapshot(pdata.vehicles) then
-                    ingestSaved(SED.SAVED_ENTITIES_BY_ID, pdata.vehicles, {
-                        category = "vehicle", idPrefix = "vehicle", owner = ownerSteamID
-                    })
-                else
-                    for i, v in ipairs(pdata.vehicles) do
-                        if istable(v) and istable(v.pos) and isstring(v.model) and v.model ~= "" then
-                            local vid = "vehicle_" .. ownerSteamID .. "_" .. i
-                            SED.SAVED_ENTITIES_BY_ID[vid] = {
-                                id            = vid,
-                                _ownerSteamID = ownerSteamID,
-                                class         = v.class or "vehicle", Class = v.class or "vehicle",
-                                model         = v.model, Model = v.model,
-                                pos           = v.pos, Pos = v.pos,
-                                ang           = v.ang, Angle = v.ang,
-                                health        = v.health, CurHealth = v.health, MaxHealth = v.health,
-                                skin          = v.skin,
-                                isVehicle     = true,
-                            }
-                        end
-                    end
-                end
+            -- Ingest saved vehicles (always a duplicator snapshot) into SED.
+            if istable(pdata.vehicles) and SnapshotUtils.HasSnapshot(pdata.vehicles) then
+                ingestSaved(SED.SAVED_ENTITIES_BY_ID, pdata.vehicles, {
+                    category = "vehicle", idPrefix = "vehicle", owner = ownerSteamID
+                })
             end
         end
     end

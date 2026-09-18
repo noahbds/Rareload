@@ -95,18 +95,7 @@ local function DrawContent(ctx, ox, oy)
     surface_SetDrawColor(60, 140, 220, 100)
     surface_DrawOutlinedRect(ox, oy, width, panelHeight, 1)
 
-    local isVehicle = saved and (saved.isVehicle or (isstring(saved.class) and (
-        string.find(saved.class, "vehicle") or
-        string.find(saved.class, "jeep") or
-        string.find(saved.class, "airboat") or
-        string.find(saved.class, "^lvs_") or
-        string.find(saved.class, "^lfs_") or
-        string.find(saved.class, "lunasflightschool") or
-        string.find(saved.class, "fphysics") or
-        string.find(saved.class, "^wac_") or
-        string.find(saved.class, "^glide_") or
-        string.find(saved.class, "^sent_sakarias_car")
-    )))
+    local isVehicle = SED.IsVehicleRecord(saved, nil)
     local title = isNPC and L("sed.saved_npc") or (isVehicle and (L("sed.saved_vehicle") or "Saved Vehicle") or L("sed.saved_entity"))
     if saved and saved._isPhantom and saved._phantomTitle then
         title = saved._phantomTitle

@@ -153,3 +153,36 @@ function SED.SavedRecID(saved)
     return saved.id or saved.RareloadNPCID or saved.RareloadEntityID or saved.RareloadID or
         ((saved.class or saved.Class or saved.ClassName or "unknown") .. "?")
 end
+
+-- Class-name fallback for vehicle detection, used only when DataUtils can't
+-- resolve the class (e.g. the addon is not installed on this client). Covers
+-- stock prop_vehicle_* plus the common framework class prefixes.
+local VEHICLE_CLASS_PATTERNS = {
+    "vehicle", "jeep", "airboat",
+    "^lvs_", "^lfs_", "_lfs_", "lunasflightschool",
+    "fphysics", "^wac_", "^glide_", "^sent_sakarias_car",
+}
+
+-- Single source of truth for "is this saved record (or its live entity) a
+-- vehicle?" Replaces the detection hack that used to be copy-pasted across the
+-- interaction, renderer and collector files (including guessed .IsLVS/.IsWAC
+-- fields that DataUtils.IsVehicleEntity already covers).
+function SED.IsVehicleRecord(saved, liveEnt)
+    if saved and saved.isVehicle == true then return true end
+
+    local DU = RARELOAD.DataUtils
+    if IsValid(liveEnt) then
+        if DU and DU.IsVehicleEntity and DU.IsVehicleEntity(liveEnt) then return true end
+        if isfunction(liveEnt.IsVehicle) and liveEnt:IsVehicle() then return true end
+    end
+
+    local class = saved and (saved.class or saved.Class or saved.ClassName)
+    if not isstring(class) then return false end
+    if DU and DU.ClassLooksLikeVehicle and DU.ClassLooksLikeVehicle(class) then return true end
+
+    class = string.lower(class)
+    for _, pat in ipairs(VEHICLE_CLASS_PATTERNS) do
+        if string.find(class, pat) then return true end
+    end
+    return false
+end
