@@ -212,7 +212,6 @@ local CPANEL_LAYOUT = {
             { toggle = "cpanel.keep_map_entities", convar = "sv_rareload_keep_map_entities" },
             { toggle = "cpanel.keep_map_npcs", convar = "sv_rareload_keep_map_npcs" },
             { toggle = "cpanel.keep_vehicles", convar = "sv_rareload_keep_vehicles" },
-            { toggle = "cpanel.reseat_in_vehicule", convar = "sv_rareload_keep_reseat_in_vehicule" },
             { toggle = "cpanel.auto_overwrite", convar = "sv_rareload_auto_overwrite" },
             { toggle = "cpanel.cleanup_map", convar = "sv_rareload_cleanup_map" },
             { toggle = "cpanel.cleanup_only_saved", convar = "sv_rareload_cleanup_only_saved" },

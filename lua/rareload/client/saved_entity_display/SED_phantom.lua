@@ -143,7 +143,6 @@ function Phantom.BuildPhantomInfoData(ply, savedInfo, mapName, lodLevel)
         if savedInfo.inventory and #savedInfo.inventory > 0 then addItem(L("sed.phantom.item.inventory")) end
         if savedInfo.ammo then addItem(L("sed.phantom.item.ammo")) end
         if savedInfo.playerStates then addItem(L("sed.phantom.item.states")) end
-        if SavedSeat(savedInfo) then addItem(L("sed.phantom.item.reseat_in_vehicule")) end
 
         local entS = SnapshotUtils.GetSummary(savedInfo.entities, { category = "entity" }) or {}
         local npcS = SnapshotUtils.GetSummary(savedInfo.npcs, { category = "npc" }) or {}
