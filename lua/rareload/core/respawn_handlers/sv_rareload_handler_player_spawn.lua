@@ -236,6 +236,15 @@ function RARELOAD.HandlePlayerSpawn(ply)
 
     DebugLog(ply, "INFO", 0, "Player spawn started")
 
+    -- Debug v2: a grouped session that becomes the on-screen "respawn report".
+    -- Only built when someone actually has debug on, so it costs nothing otherwise.
+    local sess = RARELOAD.Debug and RARELOAD.Debug.Session and RARELOAD.Debug.AnyoneListening
+        and RARELOAD.Debug.AnyoneListening()
+        and RARELOAD.Debug.Session("respawn", { ply = ply, title = "Respawn restore" })
+    if sess then
+        sess:step("start", "Loaded save", "map " .. mapName)
+    end
+
     if DebugEnabled and SavedInfo.ang then
         DebugLog(ply, "VERBOSE", 0, "Saved angle data: " .. tostring(SavedInfo.ang))
     end
@@ -344,6 +353,11 @@ function RARELOAD.HandlePlayerSpawn(ply)
     if antiStuckEnabled then
         local isStuck, stuckReason = RARELOAD.AntiStuck.IsPositionStuck(savedPos, ply, true)
 
+        if sess then
+            sess:step(isStuck and "warn" or "ok", "Spawn position",
+                isStuck and ("stuck: " .. tostring(stuckReason or "?")) or "clear")
+        end
+
         if DebugEnabled then
             local status = isStuck and "stuck" or "clear"
             DebugLog(ply, "INFO", 0, "Spawn position validation: " .. status)
@@ -373,6 +387,9 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 if finalPos ~= savedPos then
                     DebugLog(ply, "INFO", 0, "Player position adjusted by anti-stuck system")
                 end
+                if sess then
+                    sess:step("ok", "Anti-stuck", finalPos ~= savedPos and "moved to safe spot" or "no move needed")
+                end
             else
                 ApplySpawnTransform(ply, {
                     setPos = savedPos,
@@ -384,6 +401,7 @@ function RARELOAD.HandlePlayerSpawn(ply)
                 })
                 ply:ChatPrint("[RARELOAD] Warning: Position may be stuck. Anti-stuck could not find a better spot.")
                 DebugLog(ply, "WARNING", 0, "Anti-stuck resolution failed; using original saved position")
+                if sess then sess:step("fail", "Anti-stuck", "no better spot found") end
             end
         else
             DebugLog(ply, "VERBOSE", 0, "Position status: Not stuck, using saved position")
@@ -409,7 +427,21 @@ function RARELOAD.HandlePlayerSpawn(ply)
             warnOnAngleParseFailure = true
         })
         DebugLog(ply, "VERBOSE", 0, "Anti-stuck disabled; used saved position and angles directly")
+        if sess then sess:step("ok", "Spawn position", "anti-stuck disabled") end
     end
 
-    Registry.RunRestore(ply, SavedInfo, {})
+    local restoreCtx = {}
+    if sess then
+        local spawnStart = ply._rareloadSpawnTime or CurTime()
+        restoreCtx.onAllRestored = function(restored)
+            if not IsValid(ply) then return end
+            for _, id in ipairs(restored or {}) do
+                sess:step("ok", "Restored " .. tostring(id))
+            end
+            sess:step("ok", "Player state", string.format("HP %d · Armor %d · %d weapons",
+                ply:Health(), ply:Armor(), #ply:GetWeapons()))
+            sess:finish({ success = true, totalTime = CurTime() - spawnStart })
+        end
+    end
+    Registry.RunRestore(ply, SavedInfo, restoreCtx)
 end

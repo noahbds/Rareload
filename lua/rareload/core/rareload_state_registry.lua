@@ -155,13 +155,21 @@ function R.RunRestore(ply, savedInfo, ctx)
     end
 
     local completed, waiters = {}, {}
+    local totalRunnable = #runnable
+    local doneCount = 0
+    ctx._restored = {}
     local function markComplete(id)
         if not id or completed[id] then return end
         completed[id] = true
+        doneCount = doneCount + 1
+        ctx._restored[#ctx._restored + 1] = id
         local list = waiters[id]
         if list then
             waiters[id] = nil
             for _, fn in ipairs(list) do fn() end
+        end
+        if doneCount >= totalRunnable and isfunction(ctx.onAllRestored) then
+            ctx.onAllRestored(ctx._restored)
         end
     end
     local function afterComplete(id, fn)
@@ -202,6 +210,11 @@ function R.RunRestore(ply, savedInfo, ctx)
 
     for _, def in ipairs(runnable) do
         schedule(def)
+    end
+
+    -- Nothing to restore this pass: still notify so a report can finalize.
+    if totalRunnable == 0 and isfunction(ctx.onAllRestored) then
+        ctx.onAllRestored(ctx._restored)
     end
 end
 
