@@ -112,7 +112,7 @@ R.Register({
             if pd.playerStates.noclip then table.insert(states, "noclip") end
             if pd.playerStates.flashlight then table.insert(states, "flashlight") end
             if #states > 0 then
-                print("[RARELOAD DEBUG] Saved player states: " .. table.concat(states, ", "))
+                RARELOAD.Debug.Log("save", "VERBOSE", "Saved player states: " .. table.concat(states, ", "))
             end
         end
     end,

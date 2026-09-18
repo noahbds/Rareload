@@ -135,8 +135,8 @@ function RARELOAD.LoadPlayerPositions(mapName)
                     for steamID, pdata in pairs(result[mapName]) do
                         RARELOAD.playerPositions[mapName][steamID] = RARELOAD.MigratePlayerData(pdata)
                     end
-                elseif RARELOAD.settings and RARELOAD.settings.debugEnabled then
-                    print("[RARELOAD DEBUG] Invalid player position data in: " .. filePath)
+                else
+                    RARELOAD.Debug.Log("core", "WARN", "Invalid player position data in: " .. filePath)
                 end
             end
         end

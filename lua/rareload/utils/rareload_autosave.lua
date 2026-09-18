@@ -130,11 +130,9 @@ if SERVER then
             net.Start("RareloadAutoSaveTriggered")
             net.WriteFloat(now())
             net.Send(ply)
-            if getSetting(ply, "debugEnabled", false) then
-                print(string.format("[RARELOAD DEBUG] Auto-saved %s (idle for %ds)", ply:Nick(), interval))
-            end
-        elseif err and getSetting(ply, "debugEnabled", false) then
-            print("[RARELOAD DEBUG] Auto-save failed: " .. tostring(err))
+            RARELOAD.Debug.Log("autosave", "VERBOSE", string.format("Auto-saved %s (idle for %ds)", ply:Nick(), interval))
+        elseif err then
+            RARELOAD.Debug.Log("autosave", "WARN", "Auto-save failed: " .. tostring(err))
         end
     end
 

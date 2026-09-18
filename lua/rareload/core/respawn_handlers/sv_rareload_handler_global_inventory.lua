@@ -12,9 +12,7 @@ function RARELOAD.RestoreGlobalInventory(ply)
     local globalInventoryData = RARELOAD.globalInventory[steamID]
 
     if not globalInventoryData or not globalInventoryData.weapons then
-        if debugEnabled then
-            print("[RARELOAD DEBUG] No global inventory found for player: " .. ply:Nick() .. " (" .. steamID .. ")")
-        end
+        RARELOAD.Debug.Log("inventory", "INFO", "No global inventory for " .. ply:Nick() .. " (" .. steamID .. ")")
         return
     end
 
@@ -34,17 +32,7 @@ function RARELOAD.RestoreGlobalInventory(ply)
     )
 
 
-    if debugEnabled then
-        if RARELOAD.Debug and RARELOAD.Debug.LogWeaponMessages then
-            RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
-        else
-            InventoryCommon.PrintFallbackDebug(ply, debugMessages, debugFlags, {
-                notRegisteredGuardSettingKey = "retainInventory",
-                notRegisteredGuardDefault = true,
-                notRegisteredLabel = "Unregistered weapons"
-            })
-        end
-    end
+    RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
 
     if globalInventoryData.activeWeapon and globalInventoryData.activeWeapon ~= "None" then
         timer.Simple(0.5, function()
@@ -53,10 +41,7 @@ function RARELOAD.RestoreGlobalInventory(ply)
             end
 
             ply:SelectWeapon(globalInventoryData.activeWeapon)
-
-            if RARELOAD.GetPlayerSetting(ply, "debugEnabled", false) then
-                print("[RARELOAD DEBUG] Selected active weapon: " .. globalInventoryData.activeWeapon)
-            end
+            RARELOAD.Debug.Log("inventory", "VERBOSE", "Selected active weapon: " .. globalInventoryData.activeWeapon)
         end)
     end
 

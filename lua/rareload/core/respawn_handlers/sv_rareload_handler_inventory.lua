@@ -16,13 +16,5 @@ function RARELOAD.RestoreInventory(ply, savedInfo)
         includeExtendedFailureDetails = true
     })
 
-    if RARELOAD.Debug and RARELOAD.Debug.LogWeaponMessages then
-        RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
-    elseif debugEnabled then
-        InventoryCommon.PrintFallbackDebug(ply, debugMessages, debugFlags, {
-            notRegisteredGuardSettingKey = "retainGlobalInventory",
-            notRegisteredGuardDefault = false,
-            notRegisteredLabel = "Unregistered Global weapons"
-        })
-    end
+    RARELOAD.Debug.LogWeaponMessages(debugMessages, debugFlags)
 end

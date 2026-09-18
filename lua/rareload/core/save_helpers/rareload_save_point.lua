@@ -88,11 +88,9 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
             SaveGlobalInventory()
         end
 
-        if RARELOAD.GetPlayerSetting(ply, "debugEnabled") then
-            print("[RARELOAD DEBUG] Saved " ..
-                #globalInventory .. " weapons to global inventory for player " .. ply:Nick() ..
-                " (Active weapon: " .. newActiveWeapon .. ")")
-        end
+        RARELOAD.Debug.Log("position_save", "VERBOSE", "Saved global inventory", {
+            weapons = #globalInventory, player = ply:Nick(), active = newActiveWeapon,
+        })
     end
 
     local oldData = RARELOAD.playerPositions[mapName][ply:SteamID()]

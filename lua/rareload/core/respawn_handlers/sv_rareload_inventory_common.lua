@@ -113,34 +113,4 @@ function InventoryCommon.RestoreWeaponsFromList(ply, weaponList, debugEnabled, o
     return debugMessages, debugFlags, restoredCount
 end
 
-function InventoryCommon.PrintFallbackDebug(ply, debugMessages, debugFlags, opts)
-    opts = opts or {}
-
-    if debugFlags.adminOnly then
-        print("[RARELOAD DEBUG] Admin-only weapons not given: " .. table.concat(debugMessages.adminOnly, ", "))
-    end
-
-    if debugFlags.notRegistered then
-        local settingKey = opts.notRegisteredGuardSettingKey
-        local defaultValue = opts.notRegisteredGuardDefault
-        local shouldPrint = true
-
-        if settingKey and RARELOAD.GetPlayerSetting then
-            shouldPrint = not RARELOAD.GetPlayerSetting(ply, settingKey, defaultValue)
-        end
-
-        if shouldPrint then
-            local label = opts.notRegisteredLabel or "Unregistered weapons"
-            print("[RARELOAD DEBUG] " .. label .. ": " .. table.concat(debugMessages.notRegistered, ", "))
-        end
-    end
-
-    if debugFlags.givenWeapons then
-        print("[RARELOAD DEBUG] Weapon results: ")
-        for _, msg in ipairs(debugMessages.givenWeapons) do
-            print("[RARELOAD DEBUG] - " .. msg)
-        end
-    end
-end
-
 return InventoryCommon
