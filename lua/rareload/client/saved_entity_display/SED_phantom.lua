@@ -457,19 +457,24 @@ function Phantom.CreatePlayerModel(savedInfo, fallbackModel)
         end
     end
 
-    -- If the player was seated in a vehicle at save time, apply a sitting
-    -- animation so the phantom renders in a seated pose.
+    -- BROKEN - DEPRACATED
     if SavedSeat(savedInfo) then
-        local sitSeq = phantom:LookupSequence("sit_rollercoaster")
-        if not sitSeq or sitSeq <= 0 then
-            sitSeq = phantom:LookupSequence("sitdown")
+        phantom:SetIK(false)
+        local sitSeq = -1
+        for _, act in ipairs({ ACT_HL2MP_SIT, ACT_HL2MP_SIT_PASSIVE, ACT_HL2MP_SIT_PISTOL }) do
+            if act then
+                local s = phantom:SelectWeightedSequence(act)
+                if s and s > 0 then sitSeq = s break end
+            end
         end
-        if not sitSeq or sitSeq <= 0 then
-            sitSeq = phantom:LookupSequence("idle_all_01")
-        end
+        if sitSeq <= 0 then sitSeq = phantom:LookupSequence("sit") end
+        if sitSeq <= 0 then sitSeq = phantom:LookupSequence("sitdown") end
+        if sitSeq <= 0 then sitSeq = phantom:LookupSequence("sit_rollercoaster") end
         if sitSeq and sitSeq > 0 then
-            phantom:SetSequence(sitSeq)
+            phantom:ResetSequence(sitSeq)
             phantom:SetCycle(0)
+            phantom:SetPlaybackRate(0)
+            phantom:InvalidateBoneCache()
         end
     end
 

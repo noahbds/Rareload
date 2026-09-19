@@ -80,6 +80,26 @@ net.Receive("RareloadHistory_Data", function()
     RARELOAD.HistoryClient.total = tonumber(tbl.total) or #RARELOAD.HistoryClient.entries
     RARELOAD.HistoryClient.undo = tbl.undo == true
 
+    -- Adopt the server's persisted reload-key config so the selector reflects the
+    -- saved choice (survives reconnects) instead of the client-side default.
+    if istable(tbl.reloadCfg) then
+        if isstring(tbl.reloadCfg.mode) then HP.ReloadMode = tbl.reloadCfg.mode end
+        if istable(tbl.reloadCfg.comps) then
+            for _, k in ipairs({ "position", "health", "inventory", "ammo", "appearance", "states", "world" }) do
+                HP.Comps[k] = tbl.reloadCfg.comps[k] == true
+            end
+        end
+        -- Reflect the loaded comps in the checkbox widgets (guarded so it doesn't
+        -- echo back to the server as a change).
+        if HP.D and istable(HP.D.compChecks) then
+            HP._applyingCfg = true
+            for k, cb in pairs(HP.D.compChecks) do
+                if IsValid(cb) then cb:SetValue(HP.Comps[k] and true or false) end
+            end
+            HP._applyingCfg = false
+        end
+    end
+
     if IsValid(HP.Frame) then HP:Refresh() end
 end)
 
@@ -111,6 +131,31 @@ local function TimeAgo(t)
     _timeAgoCache[t] = s
     return s
 end
+
+-- Absolute date/time, localized. os.date only knows the C locale, so we fill a
+-- per-language template ("date.long"/"date.short") with translated month and
+-- weekday names (date.month.N / date.month_short.N / date.weekday.N; wday 1=Sun).
+-- Numeric time comes straight from os.date. Cached per (timestamp, template).
+local _dateCache = {}
+local function FmtDate(t, tmplKey)
+    t = tonumber(t) or 0
+    local ck = tmplKey .. "|" .. t
+    local c = _dateCache[ck]
+    if c then return c end
+    local dt = os.date("*t", t)
+    local out = L(tmplKey)
+    out = out:gsub("{wday}", L("date.weekday." .. dt.wday))
+    out = out:gsub("{month}", L("date.month." .. dt.month))
+    out = out:gsub("{mon}", L("date.month_short." .. dt.month))
+    out = out:gsub("{day}", tostring(dt.day))
+    out = out:gsub("{year}", tostring(dt.year))
+    out = out:gsub("{time}", os.date("%H:%M:%S", t))
+    out = out:gsub("{hm}", os.date("%H:%M", t))
+    _dateCache[ck] = out
+    return out
+end
+-- Rebuild localized dates when the language changes.
+hook.Add("RareloadLanguageChanged", "RareloadHistory_DateCacheFlush", function() _dateCache = {} end)
 
 local function PosStr(p)
     p = p or {}
@@ -205,7 +250,7 @@ local function BuildRow(parent, e)
 
         local pad = sc(14)
         draw.SimpleText(TimeAgo(e.t), "RH_BodyB", pad, sc(11), THEME.textPrimary, ALIGN_L, ALIGN_T)
-        draw.SimpleText(os.date("%b %d, %H:%M", tonumber(e.t) or 0), "RH_Small", pad, sc(33), THEME.textTertiary, ALIGN_L, ALIGN_T)
+        draw.SimpleText(FmtDate(e.t, "date.short"), "RH_Small", pad, sc(33), THEME.textTertiary, ALIGN_L, ALIGN_T)
 
         -- top-right status icons: pin, active dot, note
         local bx = w - sc(12)
@@ -273,7 +318,7 @@ function HP:BuildDetail(host)
         local mx = sc(110)
         -- facts
         draw.SimpleText(TimeAgo(e.t), "RH_H1", mx, sc(14), THEME.textPrimary, ALIGN_L, ALIGN_T)
-        draw.SimpleText(os.date("%A, %B %d %Y  ·  %H:%M:%S", tonumber(e.t) or 0), "RH_Small", mx, sc(44),
+        draw.SimpleText(FmtDate(e.t, "date.long"), "RH_Small", mx, sc(44),
             THEME.textSecondary, ALIGN_L, ALIGN_T)
 
         -- badges
@@ -506,15 +551,18 @@ function HP:BuildDetail(host)
     }
     local grid = vgui.Create("DIconLayout", host)
     D.grid = grid
+    D.compChecks = {}
     grid:Dock(TOP); grid:DockMargin(pad, 0, pad, sc(8)); grid:SetTall(sc(58)); grid:SetSpaceX(sc(6)); grid:SetSpaceY(sc(6))
     for _, c in ipairs(comps) do
         local cb = grid:Add("DCheckBoxLabel")
         cb:SetText(L(c[2])); cb:SetTextColor(THEME.textSecondary); cb:SetFont("RH_Small")
         cb:SetValue(HP.Comps[c[1]] and true or false); cb:SizeToContents()
         cb.OnChange = function(_, v)
+            if HP._applyingCfg then return end -- ignore programmatic sync from the server
             HP.Comps[c[1]] = v
             SendReloadConfig() -- the R restore modes use these checkboxes
         end
+        D.compChecks[c[1]] = cb
     end
 
     D.applyBtn = Button(host, L("sth.apply_selected"), THEME.primary, function()
@@ -878,8 +926,7 @@ function HP:Open()
 
     self:RebuildList()
     self:UpdateDetail()
-    self:RequestData()
-    SendReloadConfig() -- make sure the server has the current reload-key behavior
+    self:RequestData() -- the server replies with the persisted reload config (do NOT push ours first)
 end
 
 -- ── entry points ────────────────────────────────────────────────────────────────

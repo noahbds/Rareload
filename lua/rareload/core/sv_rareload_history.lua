@@ -12,13 +12,20 @@ util.AddNetworkString("RareloadHistory_Objects")
 util.AddNetworkString("RareloadHistory_ObjAction")
 util.AddNetworkString("RareloadHistory_ReloadConfig")
 
--- What the tool-gun reload key (R) does, chosen in the Save Timeline panel and
--- pushed here so TOOL:Reload can act. Per-player, resets to the default on rejoin.
---   set_previous     : make the previous timeline save the restore point (no respawn)
---   restore_current  : restore the active save now, using `comps`
---   restore_previous : restore the previous save now, using `comps`
 RARELOAD.playerReloadConfig = RARELOAD.playerReloadConfig or {}
 local RELOAD_MODES = { set_previous = true, restore_current = true, restore_previous = true }
+
+local RELOAD_CFG_PATH = "rareload/history_config.json"
+local function SaveReloadConfigs()
+    if not file.Exists("rareload", "DATA") then file.CreateDir("rareload") end
+    file.Write(RELOAD_CFG_PATH, util.TableToJSON(RARELOAD.playerReloadConfig, true) or "{}")
+end
+local function LoadReloadConfigs()
+    if not file.Exists(RELOAD_CFG_PATH, "DATA") then return end
+    local ok, t = pcall(util.JSONToTable, file.Read(RELOAD_CFG_PATH, "DATA") or "")
+    if ok and istable(t) then RARELOAD.playerReloadConfig = t end
+end
+LoadReloadConfigs()
 
 local SnapshotUtils = RARELOAD.SnapshotUtils
 if not SnapshotUtils then
@@ -30,9 +37,6 @@ local MAX_SENT_ENTRIES = 512                      -- net-size guard; the default
 
 RARELOAD.restoreUndo = RARELOAD.restoreUndo or {} -- per-steamID pre-restore snapshot
 
--- Restore components the client may request. NEVER read these as an arbitrary
--- net.ReadTable (unbounded / exploitable) — the client writes them as a fixed
--- ordered run of booleans and we read exactly that many.
 local RESTORE_COMPS = { "all", "position", "health", "inventory", "ammo", "appearance", "states", "world" }
 
 local function ReadComps()
@@ -142,7 +146,10 @@ local function SendData(ply)
     local steamID = ply:SteamID()
     local summary, total = BuildSummary(steamID, game.GetMap())
     local undo = RARELOAD.restoreUndo[steamID] ~= nil
-    local json = util.TableToJSON({ entries = summary, total = total, undo = undo }) or "{}"
+    -- Include the persisted reload-key config so the panel shows the saved choice
+    -- instead of resetting to the client default after a reconnect.
+    local reloadCfg = RARELOAD.playerReloadConfig[steamID]
+    local json = util.TableToJSON({ entries = summary, total = total, undo = undo, reloadCfg = reloadCfg }) or "{}"
     local data = util.Compress(json) or ""
 
     net.Start("RareloadHistory_Data")
@@ -505,6 +512,7 @@ net.Receive("RareloadHistory_ReloadConfig", function(_, ply)
     local comps = ReadComps()
     if not RELOAD_MODES[mode] then mode = "set_previous" end
     RARELOAD.playerReloadConfig[ply:SteamID()] = { mode = mode, comps = comps }
+    SaveReloadConfigs() -- persist so it survives reconnect / server restart
 end)
 
 local function HasEntityPerm(ply)
