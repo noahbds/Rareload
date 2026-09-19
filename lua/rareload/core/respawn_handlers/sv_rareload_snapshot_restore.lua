@@ -36,7 +36,8 @@ function SnapshotRestore.RestoreCategory(opts)
 
     local info = {
         snapshot = snapshot, targetOwner = targetOwner,
-        skipped = (istable(skipped) and #skipped) or 0, restored = 0, created = {},
+        skipped = (istable(skipped) and #skipped) or 0,
+        skippedIDs = skipped or {}, restored = 0, created = {},
     }
     if not ok then info.error = res; return false, info end
 

@@ -5,6 +5,7 @@
 RARELOAD = RARELOAD or {}
 
 local SnapshotRestore = include("rareload/core/respawn_handlers/sv_rareload_snapshot_restore.lua")
+local EntityIdentity = include("rareload/core/rareload_entity_identity.lua")
 local Adapters        = include("rareload/core/vehicles/rareload_vehicle_adapters.lua")
 local Schema          = include("rareload/core/vehicles/rareload_vehicle_schema.lua")
 local Scheduler       = include("rareload/core/vehicles/rareload_vehicle_scheduler.lua")
@@ -21,6 +22,39 @@ local function playerVehicleCap(ply)
     return tonumber(
         (RARELOAD.GetPlayerSetting and RARELOAD.GetPlayerSetting(ply, "maxRestoredVehicles", 0))
         or (RARELOAD.settings and RARELOAD.settings.maxRestoredVehicles) or 0) or 0
+end
+
+local function queueExistingVehicles(savedInfo, skippedIDs, requestingPlayer, runtimeState, seatsByVeh)
+    if not (istable(skippedIDs) and #skippedIDs > 0) then return 0 end
+
+    local wanted = {}
+    for _, id in ipairs(skippedIDs) do wanted[tostring(id)] = true end
+
+    local queued = 0
+    for _, ent in ipairs(ents.GetAll()) do
+        if IsValid(ent) then
+            local id = EntityIdentity.GetID(ent, "RareloadEntityID")
+            if id and wanted[tostring(id)] then
+                local adapter = Adapters.Resolve(ent)
+                local entry = runtimeState[tostring(id)]
+                local seats = seatsByVeh[tostring(id)]
+                if adapter and (entry or seats) then
+                    Scheduler.Enqueue({
+                        ent              = ent,
+                        adapter          = adapter,
+                        root             = entry and entry.root or nil,
+                        components       = entry and entry.components or nil,
+                        seats            = seats,
+                        requestingPlayer = requestingPlayer,
+                    })
+                    queued = queued + 1
+                    wanted[tostring(id)] = nil
+                end
+            end
+        end
+    end
+
+    return queued
 end
 
 --- Restore all vehicles in savedInfo. Returns ok, stats.
@@ -75,6 +109,13 @@ function Restore.RestoreVehicles(savedInfo, requestingPlayer)
             })
         end,
     })
+
+    -- Same-map death respawns keep the old vehicle entity alive. The snapshot
+    -- restore correctly skips that duplicate, but the normal create callback
+    -- never runs, so queue the live vehicle for reseating explicitly.
+    if info and info.skippedIDs then
+        queueExistingVehicles(savedInfo, info.skippedIDs, requestingPlayer, runtimeState, seatsByVeh)
+    end
 
     local stats = {
         total = total, restored = info.restored, skipped = info.skipped,
