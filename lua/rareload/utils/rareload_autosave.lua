@@ -52,7 +52,7 @@ if SERVER then
         local lastPos = RARELOAD.DataUtils.ToVector(lastData.pos) or pos
         local lastAng = RARELOAD.DataUtils.ToAngle(lastData.ang) or ang
 
-        local dist = pos:Distance(lastPos)
+        local distSqr = pos:DistToSqr(lastPos) -- avoid the sqrt; compare against 24²
         local angDelta = math.max(
             math.abs(ang.p - lastAng.p),
             math.abs(ang.y - lastAng.y),
@@ -60,7 +60,7 @@ if SERVER then
         )
 
         local angleThreshold = math.Clamp(tonumber(getSetting(ply, "angleTolerance", 10)) or 10, 1, 180)
-        return dist >= 24 or angDelta >= angleThreshold
+        return distSqr >= (24 * 24) or angDelta >= angleThreshold
     end
 
     local function notifyMove(ply, sid, t)

@@ -155,7 +155,28 @@ if SERVER then
         return true
     end
 
-    function SyncPlayerPositions(ply, steamIDFilter)
+    -- Heavy per-player buckets that only change on a real world-snapshot save.
+    -- On a light delta (e.g. auto-save, which position-only) we omit them and the
+    -- client keeps whatever it already had, so we don't re-broadcast big duplicator
+    -- payloads to every player on every idle tick.
+    local HEAVY_SYNC_BUCKETS = { "entities", "npcs", "vehicles" }
+
+    local function StripHeavyBuckets(playerData)
+        if not istable(playerData) then return playerData end
+        local light = {}
+        for k, v in pairs(playerData) do
+            light[k] = v
+        end
+        for _, bucket in ipairs(HEAVY_SYNC_BUCKETS) do
+            light[bucket] = nil
+        end
+        light.__lightSync = true
+        return light
+    end
+
+    -- `light` (only meaningful with steamIDFilter): send a position-only delta and
+    -- let the client merge it over the buckets it already holds for that player.
+    function SyncPlayerPositions(ply, steamIDFilter, light)
         local mapName = game.GetMap()
         local sourcePositions = RARELOAD.playerPositions[mapName] or {}
         local playerPositions = sourcePositions
@@ -165,7 +186,9 @@ if SERVER then
             isDelta = true
             playerPositions = {}
             if sourcePositions[steamIDFilter] ~= nil then
-                playerPositions[steamIDFilter] = sourcePositions[steamIDFilter]
+                playerPositions[steamIDFilter] = light
+                    and StripHeavyBuckets(sourcePositions[steamIDFilter])
+                    or sourcePositions[steamIDFilter]
             end
         end
 

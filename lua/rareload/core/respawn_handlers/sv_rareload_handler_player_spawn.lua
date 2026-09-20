@@ -251,7 +251,9 @@ function RARELOAD.HandlePlayerSpawn(ply)
 
     ply.lastSpawnPosition = RARELOAD.DataUtils.ToVector(SavedInfo.pos)
     ply.hasMovedAfterSpawn = false
-    local moveHookName = "RARELOAD_CheckMovement_" .. ply:EntIndex()
+    -- UserID is unique per connection and not reused within a session, unlike
+    -- EntIndex which is recycled and could collide across reconnects.
+    local moveHookName = "RARELOAD_CheckMovement_" .. ply:UserID()
     hook.Add("PlayerTick", moveHookName, function(tickPly)
         if not IsValid(ply) then
             hook.Remove("PlayerTick", moveHookName)
@@ -320,6 +322,12 @@ function RARELOAD.HandlePlayerSpawn(ply)
                     timer.Simple(1, function() RARELOAD._isCleaningUpMap = false end)
                 end)
                 return
+            else
+                -- A full-map cleanup triggered by another player is already running and
+                -- will clear this player's entities too. Clear the death flag so it
+                -- doesn't linger into (and mis-trigger) the rest of the spawn logic.
+                ply.wasKilled = false
+                DebugLog(ply, "INFO", 0, "Cleanup already in progress (concurrent death); skipping duplicate map cleanup")
             end
         end
     end

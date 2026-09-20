@@ -24,6 +24,17 @@ local function ApplySyncedPositions(mapName, positions, isDelta)
     if isDelta then
         local mapData = RARELOAD.playerPositions[mapName] or {}
         for steamID, playerData in pairs(positions or {}) do
+            if istable(playerData) and playerData.__lightSync then
+                -- Position-only delta: keep the heavy buckets we already hold for
+                -- this player instead of clobbering them with nil.
+                playerData.__lightSync = nil
+                local prev = mapData[steamID]
+                if istable(prev) then
+                    playerData.entities = playerData.entities or prev.entities
+                    playerData.npcs     = playerData.npcs or prev.npcs
+                    playerData.vehicles = playerData.vehicles or prev.vehicles
+                end
+            end
             mapData[steamID] = playerData
         end
         RARELOAD.playerPositions[mapName] = mapData

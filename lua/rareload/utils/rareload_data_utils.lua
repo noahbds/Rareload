@@ -52,6 +52,28 @@ local VEHICLE_FLAG_FIELDS = {
 -- INTERNAL HELPERS
 -- ===========================================================================
 
+-- Guards against NaN/inf slipping in from a corrupted or hand-edited save and
+-- becoming a spawn position/angle (which can hang the anti-stuck resolver).
+local function IsFiniteNumber(n)
+    return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
+end
+RARELOAD.DataUtils.IsFiniteNumber = IsFiniteNumber
+
+local function FiniteVector(x, y, z)
+    if IsFiniteNumber(x) and IsFiniteNumber(y) and IsFiniteNumber(z) then
+        return Vector(x, y, z)
+    end
+    return nil
+end
+
+local function FiniteAngle(p, y, r)
+    p, y, r = tonumber(p), tonumber(y), tonumber(r)
+    if IsFiniteNumber(p) and IsFiniteNumber(y) and IsFiniteNumber(r) then
+        return Angle(p, y, r)
+    end
+    return nil
+end
+
 local function AsPositionTable(pos)
     if istable(pos) and pos.x ~= nil and pos.y ~= nil and pos.z ~= nil then
         if RARELOAD.DataUtils.IsValidPosition(pos) then return { x = pos.x, y = pos.y, z = pos.z } end
@@ -68,10 +90,10 @@ function RARELOAD.DataUtils.ToVector(pos)
 
     if istable(pos) then
         if type(pos.x) == "number" and type(pos.y) == "number" and type(pos.z) == "number" then
-            return Vector(pos.x, pos.y, pos.z)
+            return FiniteVector(pos.x, pos.y, pos.z)
         end
         if pos[1] ~= nil and pos[2] ~= nil and pos[3] ~= nil then
-            return Vector(tonumber(pos[1]) or 0, tonumber(pos[2]) or 0, tonumber(pos[3]) or 0)
+            return FiniteVector(tonumber(pos[1]) or 0, tonumber(pos[2]) or 0, tonumber(pos[3]) or 0)
         end
         if isfunction(pos.GetPos) then
             return pos:GetPos()
@@ -80,7 +102,7 @@ function RARELOAD.DataUtils.ToVector(pos)
 
     if isstring(pos) then
         local parsed = RARELOAD.DataUtils.ParsePositionString(pos)
-        if parsed then return Vector(parsed.x, parsed.y, parsed.z) end
+        if parsed then return FiniteVector(parsed.x, parsed.y, parsed.z) end
     end
 
     if IsValid(pos) and pos.GetPos then
@@ -147,13 +169,13 @@ function RARELOAD.DataUtils.ToAngle(ang)
     if isangle(ang) then return ang end
 
     if istable(ang) then
-        if ang.p ~= nil and ang.y ~= nil and ang.r ~= nil then return Angle(ang.p, ang.y, ang.r) end
-        if ang[1] ~= nil and ang[2] ~= nil and ang[3] ~= nil then return Angle(ang[1], ang[2], ang[3]) end
+        if ang.p ~= nil and ang.y ~= nil and ang.r ~= nil then return FiniteAngle(ang.p, ang.y, ang.r) end
+        if ang[1] ~= nil and ang[2] ~= nil and ang[3] ~= nil then return FiniteAngle(ang[1], ang[2], ang[3]) end
     end
 
     if isstring(ang) then
         local parsed = RARELOAD.DataUtils.ParseAngleString(ang)
-        if parsed then return Angle(parsed.p, parsed.y, parsed.r) end
+        if parsed then return FiniteAngle(parsed.p, parsed.y, parsed.r) end
     end
 
     return nil

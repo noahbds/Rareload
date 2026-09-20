@@ -557,6 +557,12 @@ function Phantom.RemoveAllModels()
     table.Empty(SED.TrackedPhantoms)
 end
 
+-- Rebuilding every phantom's saved record is not free (BuildSavedRecord walks the
+-- saved snapshot summaries), so we only do it when the saved data actually changed
+-- or a new phantom appeared, instead of every frame from PostDrawOpaqueRenderables.
+Phantom._recordsDirty = true
+function Phantom.MarkRecordsDirty() Phantom._recordsDirty = true end
+
 function Phantom.InjectTracked(mapName)
     if not SS.HasViewPhantomPerm() then
         Phantom.RemoveAllModels()
@@ -573,13 +579,18 @@ function Phantom.InjectTracked(mapName)
         end
     end
 
+    local dirty = Phantom._recordsDirty
     for steamID, data in pairs(SED.PlayerPhantoms) do
         if IsValid(data.phantom) then
-            local owner = player.GetBySteamID(steamID)
-            SED.PhantomSavedRecords[steamID] = Phantom.BuildSavedRecord(steamID, { ply = owner }, mapName)
+            -- Rebuild on a data change, or lazily for any phantom missing a record.
+            if dirty or SED.PhantomSavedRecords[steamID] == nil then
+                local owner = player.GetBySteamID(steamID)
+                SED.PhantomSavedRecords[steamID] = Phantom.BuildSavedRecord(steamID, { ply = owner }, mapName)
+            end
             SED.TrackedPhantoms[data.phantom] = steamID
         end
     end
+    Phantom._recordsDirty = false
 end
 
 local nextModelRefresh, nextModelVis = 0, 0
@@ -610,6 +621,7 @@ hook.Add("RareloadPlayerPositionsUpdated", "RARELOAD_PlayerPhantom_Reset", funct
     Phantom.RemoveAllModels()
     if SED.PhantomSavedRecords then table.Empty(SED.PhantomSavedRecords) end
     nextModelRefresh = 0
+    Phantom._recordsDirty = true
 end)
 
 hook.Add("PlayerDisconnected", "RARELOAD_PlayerPhantom_Cleanup", function(ply)

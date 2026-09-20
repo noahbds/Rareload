@@ -191,7 +191,9 @@ function RARELOAD.SaveRespawnPoint(ply, worldPos, viewAng, opts)
     -- Player phantoms are derived client-side from the synced player positions (see the SED phantom
     -- system), so just push the updated data; no dedicated phantom net messages are needed.
     if SyncPlayerPositions then
-        SyncPlayerPositions(nil, ply:SteamID())
+        -- When the world snapshot was skipped (auto-save), the heavy entity/NPC/vehicle
+        -- buckets are unchanged, so broadcast a light position-only delta.
+        SyncPlayerPositions(nil, ply:SteamID(), opts.skipWorldSnapshot == true)
     end
 
     if saveSess then

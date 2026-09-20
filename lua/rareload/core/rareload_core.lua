@@ -48,18 +48,23 @@ function RARELOAD.GetPlayerPositionFilePath(mapName, steamID)
     return "rareload/player_positions/" .. mapName .. "/" .. SafePlayerKey(steamID) .. ".json"
 end
 
+-- In-memory mirror of the last payload written per file, so repeated saves
+-- (auto-save fires constantly) don't re-read and re-parse the file from disk
+-- every time just to preserve the other play-mode's data block.
+local payloadCache = {}
+
 function RARELOAD.SavePlayerPositionEntry(ply, playerData)
     if not istable(playerData) then return false, "invalid args" end
 
     local mapName = game.GetMap()
-    
+
     local steamID
     if IsValid(ply) then
         steamID = RARELOAD.GetPlayerID(ply)
     else
         steamID = (istable(ply) and ply.SteamID and ply:SteamID()) or "unknown"
     end
-    
+
     if not steamID or steamID == "" then return false, "invalid steamid" end
     EnsurePlayerPositionsDirs(mapName)
 
@@ -68,23 +73,29 @@ function RARELOAD.SavePlayerPositionEntry(ply, playerData)
     RARELOAD.playerPositions[mapName][steamID] = playerData
 
     local filePath = RARELOAD.GetPlayerPositionFilePath(mapName, steamID)
-    local payload = {
-        map = mapName,
-        steamID = steamID,
-        steamID64 = (IsValid(ply) and ply:SteamID64()) or (istable(ply) and ply.SteamID64 and ply:SteamID64()) or ""
-    }
+    local steamID64 = (IsValid(ply) and ply:SteamID64())
+        or (istable(ply) and ply.SteamID64 and ply:SteamID64()) or ""
 
-    if file.Exists(filePath, "DATA") then
-        local raw = file.Read(filePath, "DATA")
-        if raw and raw ~= "" then
-            local ok, existing = pcall(util.JSONToTable, raw)
-            if ok and istable(existing) then
-                payload = existing
-                -- Update baseline identifiers
-                payload.steamID64 = payload.steamID64 or ((IsValid(ply) and ply:SteamID64()) or "")
+    -- Reuse the cached payload when we've written this file before; only touch
+    -- disk to recover the other-mode block after a restart / external change.
+    local payload = payloadCache[filePath]
+    if not istable(payload) then
+        payload = nil
+        if file.Exists(filePath, "DATA") then
+            local raw = file.Read(filePath, "DATA")
+            if raw and raw ~= "" then
+                local ok, existing = pcall(util.JSONToTable, raw)
+                if ok and istable(existing) then
+                    payload = existing
+                end
             end
         end
+        payload = payload or { map = mapName, steamID = steamID }
     end
+
+    payload.map = mapName
+    payload.steamID = steamID
+    payload.steamID64 = payload.steamID64 or steamID64
 
     if game.SinglePlayer() then
         payload.sp_data = playerData
@@ -94,14 +105,26 @@ function RARELOAD.SavePlayerPositionEntry(ply, playerData)
 
     payload.playerData = nil
 
-    local ok, err = pcall(function()
-        file.Write(filePath, util.TableToJSON(payload, true))
-    end)
+    local json = util.TableToJSON(payload, true)
+    if not json then return false, "json_encode_failed" end
 
-    if not ok then
-        return false, err
+    -- Atomic-ish write: stage to a temp file and rename over the target so a crash
+    -- mid-write can't leave a truncated, unparseable save behind.
+    local tmpPath = filePath .. ".tmp"
+    local ok, err = pcall(file.Write, tmpPath, json)
+    if not ok then return false, err end
+
+    file.Delete(filePath)
+    file.Rename(tmpPath, filePath)
+    -- Rename return values differ across GMod builds; trust the filesystem instead.
+    if not file.Exists(filePath, "DATA") then
+        -- Rename unsupported/failed: fall back to a direct write so we still persist.
+        local wok, werr = pcall(file.Write, filePath, json)
+        file.Delete(tmpPath)
+        if not wok then return false, werr end
     end
 
+    payloadCache[filePath] = payload
     return true
 end
 

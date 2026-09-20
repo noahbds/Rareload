@@ -241,9 +241,26 @@ local function advance(item)
     return true
 end
 
+local activeInterval = nil
+
 local function ensureTimer()
-    if timer.Exists(TIMER_NAME) then return end
-    timer.Create(TIMER_NAME, settleInterval(), 0, function()
+    if timer.Exists(TIMER_NAME) then
+        -- Pick up live convar changes to the tick interval instead of freezing the
+        -- value captured when the timer was first created.
+        local want = settleInterval()
+        if activeInterval ~= want then
+            activeInterval = want
+            timer.Adjust(TIMER_NAME, want, 0)
+        end
+        return
+    end
+    activeInterval = settleInterval()
+    timer.Create(TIMER_NAME, activeInterval, 0, function()
+        local want = settleInterval()
+        if activeInterval ~= want then
+            activeInterval = want
+            timer.Adjust(TIMER_NAME, want, 0)
+        end
         if #queue == 0 then timer.Remove(TIMER_NAME); return end
         for i = #queue, 1, -1 do
             local ok, done = pcall(advance, queue[i])
