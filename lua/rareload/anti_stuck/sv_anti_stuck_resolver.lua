@@ -11,23 +11,29 @@ if SERVER then
     }
 
     local methodsCache = {}
+    local methodsCacheValid = false
     local lastMethodsLoad = 0
     local METHODS_CACHE_TTL = 45
     local positionMemory = {}
 
     AntiStuck._invalidateResolverCache = function()
         methodsCache = {}
+        methodsCacheValid = false
         lastMethodsLoad = 0
     end
 
     local function GetOptimizedMethods()
         local currentTime = CurTime()
 
-        if #methodsCache > 0 and (currentTime - lastMethodsLoad) < METHODS_CACHE_TTL then
+        -- Gate on an explicit validity flag, not on the cache being non-empty, so a
+        -- fully-disabled configuration (legitimately empty result) is still cached
+        -- instead of rebuilt (and re-loading methods) on every single resolve.
+        if methodsCacheValid and (currentTime - lastMethodsLoad) < METHODS_CACHE_TTL then
             return methodsCache
         end
 
         methodsCache = {}
+        methodsCacheValid = true
         lastMethodsLoad = currentTime
 
         if not AntiStuck.methods or #AntiStuck.methods == 0 then
@@ -339,8 +345,10 @@ if SERVER then
         local currentTime = CurTime()
         local cleaned = 0
 
+        -- Entries are only consulted within a 30s window (see ResolveStuckPosition),
+        -- so purge them at that same window instead of letting them sit for 300s.
         for posKey, timestamp in pairs(positionMemory) do
-            if currentTime - timestamp > 300 then
+            if currentTime - timestamp > 30 then
                 positionMemory[posKey] = nil
                 cleaned = cleaned + 1
             end

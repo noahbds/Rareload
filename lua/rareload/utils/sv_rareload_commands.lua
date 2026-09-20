@@ -128,7 +128,9 @@ concommand.Add("rareload_teleport_to", function(ply, cmd, args)
     local y = tonumber(args[2])
     local z = tonumber(args[3])
 
-    if not x or not y or not z then
+    local finite = RARELOAD.DataUtils and RARELOAD.DataUtils.IsFiniteNumber
+        or function(n) return type(n) == "number" and n == n and math.abs(n) ~= math.huge end
+    if not (finite(x) and finite(y) and finite(z)) then
         ply:ChatPrint("[RARELOAD] Invalid coordinates.")
         return
     end

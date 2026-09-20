@@ -34,9 +34,20 @@ function AntiStuck.TryDisplacement(pos, ply)
         (safeDistance * 2)
     local maxHeight = (AntiStuck.CONFIG and AntiStuck.CONFIG.DISPLACEMENT_MAX_HEIGHT) or 1000
 
+    -- Internal budget: this method can otherwise run thousands of traces in a single
+    -- frame on a large map (its ring count scales with map size, and each probe runs
+    -- ~10 traces via IsPositionStuck). The resolver only checks time *between* methods,
+    -- so bound the work here to avoid a server hitch.
+    local timeout = (AntiStuck.CONFIG and AntiStuck.CONFIG.DISPLACEMENT_TIME_BUDGET) or 0.3
+    local deadline = SysTime() + math.max(0.05, timeout)
+    local maxRings = (AntiStuck.CONFIG and AntiStuck.CONFIG.DISPLACEMENT_MAX_RINGS) or 24
+
     groundTrace.filter = ply
 
+    local ring = 0
     for distance = safeDistance, maxDistance, stepSize do
+        ring = ring + 1
+        if ring > maxRings or SysTime() > deadline then break end
         for i = 1, #DISPLACEMENT_DIRECTIONS do
             local dir = DISPLACEMENT_DIRECTIONS[i]
             local testPos = pos + (dir * distance)
@@ -45,6 +56,7 @@ function AntiStuck.TryDisplacement(pos, ply)
                 local maxTrace = (AntiStuck.CONFIG and AntiStuck.CONFIG.MAX_TRACE_DISTANCE) or 1000
                 local heightStep = math.max(100, stepSize)
                 for heightOffset = heightStep * 2, math.min(maxHeight, maxTrace), heightStep do
+                    if SysTime() > deadline then break end
                     local startPos = testPos + Vector(0, 0, heightOffset)
 
                     groundTrace.start:Set(startPos)
