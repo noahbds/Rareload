@@ -1,7 +1,9 @@
 # Rareload v5 — Full Rewrite Plan
 
 > **Status:** proposal · **Work branch:** `Rareload_Rewrite_Branch` · **Baseline:** v4 (`origin/main` @ `58a3d92`)
-> **End state:** v4 frozen on `legacy/v4`; v5 merged into `main` and becomes the only maintained version.
+> **End state:** v4 archived on `legacy/v4`; v5 merged into `main` and becomes the only version.
+>
+> **No backward compatibility (decided 2026-09-23).** Rareload has no real user base yet, so v5 does **not** import v4 data, keep v4 convar or command names, or ship aliases. v5 starts with a fresh data folder and its own names.
 >
 > **Sources:** the v4 code and its 250-commit history, `docs/VEHICLE_MODULE_PLAN.md`, and the [GMod wiki](https://wiki.facepunch.com/gmod/) (§5.2).
 >
@@ -32,7 +34,7 @@
 13. [Core APIs](#13-core-apis)
 14. [State modules](#14-state-modules)
 15. [Save & restore pipeline](#15-save--restore-pipeline)
-16. [Data format v5 & migration](#16-data-format-v5--migration)
+16. [Data format v5](#16-data-format-v5)
 17. [Networking](#17-networking)
 18. [Settings & permissions model](#18-settings--permissions-model)
 19. [Anti-stuck](#19-anti-stuck)
@@ -75,7 +77,7 @@
 | Lines of code (excl. lang) | **~24,100** | **~13,500** |
 | Settings systems | **5** (convars, `RARELOAD.settings`, player settings, tunables, `AntiStuck.CONFIG`) | **1** registry |
 | Net message names | **25** | **2** channels + opcodes |
-| Console commands | **21** | **1** dispatcher (`rareload …`) + `save_position` alias |
+| Console commands | **21** | **1** dispatcher (`rareload …`) |
 | Include list | ~80 hand-ordered lines | auto-loader |
 | Global functions | 9 | 0 (only `RARELOAD`) |
 | Files touched to add a saved state | 6+ | **1** module file (+ lang keys) |
@@ -94,7 +96,7 @@ The three ideas that do most of the work:
 
 ### Goals
 - **100% parity** with v4 (§6). A user-visible feature can only disappear through an explicit decision in §33.
-- **Drop-in upgrade**: v4 data imports automatically (§16.5), server convar names keep working, CAMI privilege names stay the same, and a `save_position` key bind still works.
+- **Clean break**: no v4 data import, no old convar or command names, no aliases. v4 files left in `data/rareload/` are simply ignored.
 - **Extensible**: a new saved state is one file. A new setting is one declaration. A new vehicle base is one adapter table. Other addons can do all three through a documented API (§24).
 - **Deterministic**: restores never depend on guessed delays.
 - **Safe by default**: no player can affect other players' data or the map without a privilege (§8).
@@ -104,9 +106,9 @@ The three ideas that do most of the work:
 - New features during the rewrite. Park them in the `v5.1` list (§28).
 - A visual redesign. Keep the current look and only consolidate the code behind it.
 - Any entity transport other than the duplicator.
-- Keeping v4's internal Lua API (`RARELOAD.SaveRespawnPoint`, etc.). Only the external contracts stay: convars, privileges, commands, data.
+- Any compatibility with v4: its Lua API, data files, convars, commands or settings.
 
-### Success metrics (checked in Phase 8)
+### Success metrics (checked in Phase 7)
 - [ ] Every F-item in §6 passes the test matrix (§30.3).
 - [ ] Every L-item (§5.1) and G-item (§5.2) has a named test, checklist line or CI check.
 - [ ] `find lua -name '*.lua' | wc -l` ≤ 40 (translations are `.properties` files, not Lua, D16).
@@ -136,7 +138,7 @@ The three ideas that do most of the work:
 ### 3.2 Branch layout
 
 ```
-legacy/v4  ─────●  58a3d92  (frozen; security fixes only)      tag: 4.0.1
+legacy/v4  ─────●  58a3d92  (archive, no further work)          tag: 4.0.1
                 │
 main       ─────●───────────────────────────────────────●  merge "Rareload v5"   tag: 5.0.0
                  \                                      /
@@ -158,25 +160,23 @@ Rareload_Rewrite_Branch ──●──●──●── … ──●── rc
 
 **During development:**
 - Work in small branches (`v5/<area>`, e.g. `v5/config`, `v5/world-module`) and open PRs into `Rareload_Rewrite_Branch`. Solo work can commit directly, but keep commits PR-sized (§28).
-- `main` gets **no** commits except the final merge. Urgent v4 fixes go to `legacy/v4` (§3.4).
-- Pre-release tags on the rewrite branch: `5.0.0-alpha.N` (from Phase 3), `5.0.0-beta.N` (from Phase 6), `5.0.0-rc.N` (Phase 8).
+- `main` gets **no** commits except the final merge.
+- Pre-release tags on the rewrite branch: `5.0.0-alpha.N` (from Phase 3), `5.0.0-beta.N` (from Phase 6), `5.0.0-rc.N` (Phase 7).
 
 **Cutover:**
 1. Every §2 metric is ticked and `5.0.0-rc.N` has had at least one multiplayer session with no blocking issues.
 2. Open the PR `Rareload_Rewrite_Branch → main` titled "Rareload v5". Use a **merge commit**, not a squash, so the rewrite history stays browsable.
 3. Tag `5.0.0` on `main` and publish a GitHub release with the notes from §3.5.
-4. Put a banner at the top of the `legacy/v4` README: *"Maintenance only. Rareload v5 is on `main`."*
+4. Put a banner at the top of the `legacy/v4` README: *"Archived. Rareload v5 is on `main`."*
 5. Delete `Rareload_Rewrite_Branch` after the merge. The tags keep its history.
 
-### 3.4 Legacy maintenance policy
-- `legacy/v4` only receives **security and data-loss fixes**, for about 3 months after 5.0.0. After that it is archived.
-- If a fix also applies to v5, land it on v5 first and cherry-pick it to `legacy/v4` (`git cherry-pick -x`).
-- Legacy releases are tagged `4.0.2`, `4.0.3`, …
+### 3.4 Legacy branch
+`legacy/v4` is an **archive** for reading the old code (L-lessons, `git log -p`). It gets no fixes and no releases.
 
 ### 3.5 Release notes template (5.0.0)
-- **Upgrading**: data imports automatically on first boot, and the old data is moved to `data/rareload/_legacy_v4/`. To go back, restore that folder and switch to `legacy/v4`.
+- **Fresh start**: v5 doesn't read v4 saves or settings. Players start with an empty timeline.
 - **Changed defaults / security**: death cleanup and debug became server-only settings (B2, B3).
-- **Renamed commands**: table from §23, noting that the old names still work.
+- **Commands and convars**: the new names from §23 and §6.2.
 - **Removed**: only the items decided in §33.
 
 ---
@@ -430,7 +430,7 @@ This is the Phase-0 checklist. v5 isn't finished until every row is ticked.
 
 | # | Feature | v4 location | v5 owner |
 |---|---|---|---|
-| F1 | Save position + view angles + movetype (tool left-click = aim point, right-click = own position, `save_position`) | stool, `save_point.lua` | `modules/player.lua`, stool |
+| F1 | Save position + view angles + movetype (tool left-click = aim point, right-click = own position, `rareload save`) | stool, `save_point.lua` | `modules/player.lua`, stool |
 | F2 | Respawn at the saved spot on spawn and after death | `handler_player_spawn.lua` | `sv_spawn.lua` + pipeline |
 | F3 | "No custom respawn on death" | spawn handler | `sv_spawn.lua` |
 | F4 | Anti-stuck on respawn (5 methods, priorities, safe-position cache, toggles kept across reboots) | `anti_stuck/*` | `sv_antistuck.lua` |
@@ -472,13 +472,15 @@ This is the Phase-0 checklist. v5 isn't finished until every row is ticked.
 | F40 | CAMI permissions with default tiers, `rareload_perms` listing | `permissions_def` | `sh_perms.lua` |
 | F41 | Debug: report cards (save / respawn / anti-stuck), HUD toasts, watches, profiler timings, diag | `debug/*` | `sv_log.lua`, `cl_debug.lua` |
 | F42 | Admin tools: teleport to coords, look-at, test anti-stuck, set anti-stuck method state | `sv_rareload_commands` | `sv_commands.lua` |
-| F43 | Data maintenance: cleanup, cache migrate, history dump/clear | various | `sv_commands.lua` + `sv_storage` |
+| F43 | Data maintenance: cleanup, history dump/clear | various | `sv_commands.lua` + `sv_storage` |
 | F44 | Separate SP and MP saves (security isolation) | `rareload_core.lua` | `sv_storage` directory split (D1) |
-| F45 | Legacy data import (all v3 and v4 layouts) | `rareload_core.lua` | `sv_storage` migration |
+| F45 | ~~Legacy data import~~ | `rareload_core.lua` | **dropped**: no backward compatibility |
 
-### 6.2 Settings (v4 convar names kept)
+### 6.2 Settings
 
-| Convar | v4 key | v5 key | Default | v5 scope | Notes |
+v4 names are **not** kept. Convar names are generated from the v5 key (`keepAmmo` → `keep_ammo`): server settings become `sv_rareload_<name>`, player preferences `rareload_pref_<name>`, client settings `cl_rareload_<name>`. The first two columns below only show where each setting came from in v4.
+
+| v4 convar | v4 key | v5 key | Default | v5 scope | Notes |
 |---|---|---|---|---|---|
 | `sv_rareload_enabled` | addonEnabled | `enabled` | 1 | player | |
 | `sv_rareload_spawn_mode` | spawnModeEnabled | `antiStuck` | 1 | player | |
@@ -619,7 +621,7 @@ Reference scene: gm_construct, 1 player, 200 props (40 welded), 10 NPCs, 3 vehic
 2. **Layered, one-way dependencies** (§10.2).
 3. **Declarative registration** for settings, privileges, modules, net opcodes, commands, vehicle adapters and anti-stuck methods.
 4. **Single owners**: `sv_storage` is the only file touching `file.*`, `sh_net` the only one touching `net.*`, and `sv_pipeline` the only one deciding order and gating.
-5. **Pure cores, thin shells**: serialization, config resolution, merging, migration transforms and phase ordering are pure functions with injected dependencies, so they can be tested offline (§27.3).
+5. **Pure cores, thin shells**: serialization, config resolution, merging, schema upgrades and phase ordering are pure functions with injected dependencies, so they can be tested offline (§27.3).
 6. **Fail soft per item**: one bad entity, weapon or module never aborts the whole save or restore. It is skipped, counted and reported.
 
 ### 10.2 Layers
@@ -647,7 +649,7 @@ A file may only call its own layer or lower ones. Upward communication uses hook
 1. `autorun/rareload.lua` includes the 6 shared files in a fixed order, then `server/*`, `server/modules/*`, `client/*` and `client/world/*` alphabetically.
 2. At include time, files only **define and register**. They start no timers, read no files and send no net messages.
 3. `hook.Run("RareloadLoaded")` runs after all includes. It freezes the registries (a late `Register` call errors, except through the public API in §24) and generates convars.
-4. `Initialize` loads config and runs migrations. `InitPostEntity` marks the map ready, loads map data and starts timers. `ShutDown` flushes storage.
+4. `Initialize` loads config and checks the data schema version. `InitPostEntity` marks the map ready, loads map data and starts timers. `ShutDown` flushes storage.
 
 ---
 
@@ -666,7 +668,7 @@ lua/
    ├─ sh_perms.lua ............................ 150  CAMI privileges, Can(ply, priv)
    ├─ sh_net.lua .............................. 350  2 channels, opcodes, schemas, chunking, compression, rate limits
    ├─ server/
-   │  ├─ sv_storage.lua ....................... 500  atomic IO, .bak, debounce, paths, blobs, schema, migrations
+   │  ├─ sv_storage.lua ....................... 500  atomic IO, .bak, debounce, paths, blobs, schema version
    │  ├─ sv_log.lua ........................... 300  loggers, sessions/report cards, ring buffer, timings, watches
    │  ├─ sv_ownership.lua ..................... 350  CPPI / undo / creator / cleanup-list, batch cache
    │  ├─ sv_snapshot.lua ...................... 700  duplicator capture/restore, IDs, merge, filters, denylist
@@ -674,7 +676,7 @@ lua/
    │  ├─ sv_spawn.lua ......................... 250  spawn/death/disconnect/cleanup/PreCleanupMap/ShutDown
    │  ├─ sv_history.lua ....................... 400  timeline ops, undo, reload modes, object ops
    │  ├─ sv_autosave.lua ...................... 150
-   │  ├─ sv_commands.lua ...................... 300  `rareload` dispatcher, aliases, selftest runner
+   │  ├─ sv_commands.lua ...................... 300  `rareload` dispatcher, autocomplete, selftest runner
    │  ├─ sv_antistuck.lua ..................... 700  IsStuck, Resolve, 5 methods, 1 cache, map/nav data
    │  └─ modules/
    │     ├─ player.lua ........................ 300  transform, health, states, appearance
@@ -787,7 +789,6 @@ hook.Run("RareloadLoaded")
 RARELOAD.Setting("keepAmmo", {
     type     = "bool",           -- bool | int | float | enum | string
     default  = true,
-    convar   = "sv_rareload_keep_ammo",
     scope    = "player",         -- server | player | client
     category = "inventory",      -- menu grouping
     advanced = false,            -- true → Advanced page only
@@ -796,12 +797,6 @@ RARELOAD.Setting("keepAmmo", {
 RARELOAD.Setting("deathCleanupMode", {
     type = "enum", values = { "off", "all", "owned", "saved" }, default = "off",
     scope = "server", category = "cleanup",
-    fromLegacy = function(cv)    -- v4 convars → v5 value, run once by the migration
-        if not cv("sv_rareload_cleanup_map") then return "off" end
-        if cv("sv_rareload_cleanup_owned_only") then return "owned" end
-        if cv("sv_rareload_cleanup_only_saved") then return "saved" end
-        return "all"
-    end,
 })
 
 RARELOAD.Setting("historySize", {
@@ -818,9 +813,9 @@ Resolution: `RARELOAD.Get(ply, key)`
 | `player` | server **lock**? → convar : (player override ?? convar) → then `capBy` |
 | `client` | client convar (client realm only) |
 
-Generated from each declaration: the convar (with engine `min`/`max` so the engine clamps too, G42), the type/range/enum validation used by `settings.set`, the menu control, lang keys `setting.<key>.label` / `.help`, player-override persistence, the `rareload settings` listing and the README settings table (`rareload settings --md`).
+Generated from each declaration: the convar, named from the key (§6.2), (with engine `min`/`max` so the engine clamps too, G42), the type/range/enum validation used by `settings.set`, the menu control, lang keys `setting.<key>.label` / `.help`, player-override persistence, the `rareload settings` listing and the README settings table (`rareload settings --md`).
 
-**Player overrides as userinfo convars (D13, recommended).** For every `scope = "player"` setting, the registry also creates a client convar `rareload_pref_<key>` with `FCVAR_USERINFO` and `FCVAR_ARCHIVE`, default `-1` meaning "use the server value". The server reads it with `ply:GetInfoNum` (G41), then applies locks and caps. This removes the whole per-player settings layer from v4: `players/<sid64>.json.settings`, the `settings.set` / `settings.get` opcodes for preferences, and the settings sync. The engine persists the values (`client.vdf`) and sends them. Trade-off: a player's preferences follow them to every server that runs Rareload, which is the usual GMod behaviour (like `cl_playermodel`). The v4 per-player settings files are migrated once, on the player's first join: the server pushes the old values and the client writes them to its convars.
+**Player overrides as userinfo convars (D13, recommended).** For every `scope = "player"` setting, the registry also creates a client convar `rareload_pref_<key>` with `FCVAR_USERINFO` and `FCVAR_ARCHIVE`, default `-1` meaning "use the server value". The server reads it with `ply:GetInfoNum` (G41), then applies locks and caps. This removes the whole per-player settings layer from v4: `players/<sid64>.json.settings`, the `settings.set` / `settings.get` opcodes for preferences, and the settings sync. The engine persists the values (`client.vdf`) and sends them. Trade-off: a player's preferences follow them to every server that runs Rareload, which is the usual GMod behaviour (like `cl_playermodel`).
 
 ### 13.3 Permissions — `sh_perms.lua`
 
@@ -865,7 +860,6 @@ Store.SaveSaves(mode, map, sid64)       -- debounced atomic write
 Store.Blob.Put(mode, map, tbl) --> hash / Store.Blob.Get(mode, map, hash) / Store.Blob.GC(mode, map)
 Store.Server() / Store.SaveServer()     -- server.json
 Store.Flush()                           -- ShutDown
-Store.Migrate()                         -- once, on Initialize
 ```
 
 Write path: encode → write `x.tmp` → copy the current `x` to `x.bak` → rename `x.tmp` to `x`. `file.Write` and `file.Rename` both return a success bool (G5, G6), so each step is checked. If the rename fails, write `x` directly and report it. Read path: `x` → `x.bak` → quarantine (E8).
@@ -873,7 +867,7 @@ Write path: encode → write `x.tmp` → copy the current `x` to `x.bak` → ren
 Rules from the wiki:
 - Decode our own files with `util.JSONToTable(str, true)` (`ignoreLimits`) so big saves load (G1, B19). Leave `ignoreConversions` off because the duplicator needs numeric keys, and never use SteamID64 as a JSON key (G2).
 - Paths are lowercase, `[a-z0-9_%-]` only, and end in `.json` (G5, G45). Map names go through the same sanitizer.
-- Heavy blobs are read with `file.AsyncRead` when a player joins, so a large save doesn't cause a hitch (G7). Synchronous reads are only used at startup and in the migration.
+- Heavy blobs are read with `file.AsyncRead` when a player joins, so a large save doesn't cause a hitch (G7). Synchronous reads are only used at startup.
 - Writes happen as soon as data changes (debounced 0.5 s), never deferred to `ShutDown` (G48).
 
 ### 13.6 Logging — `sv_log.lua`
@@ -903,7 +897,6 @@ RARELOAD.Module({
     restore = function(ply, data, ctx) end,               -- sync; or call ctx:async() and later ctx:done()
     equal   = function(a, b) return bool end,             -- optional; default deep-equal (for "unchanged")
     summary = function(data) return { key = "summary.ammo", args = { n } } end,
-    migrate = { [4] = function(v4entry) return data end }, -- optional per-module import
 })
 ```
 
@@ -914,7 +907,6 @@ RARELOAD.Module({
 | `setting`, `privSave`, `privRestore` | no | when missing, the module is always on |
 | `heavy` | no | entities, npcs and vehicles are heavy |
 | `summary` | recommended | used by the timeline, report card and history rows |
-| `migrate` | no | the v4 importer calls it with the whole v4 entry |
 
 ### 14.1 `modules/player.lua`
 
@@ -1089,7 +1081,7 @@ Undo is `{snapshot = captureOnly entry, spawned = ctx.spawned}`. Running it remo
 
 ---
 
-## 16. Data format v5 & migration
+## 16. Data format v5
 
 ### 16.1 Layout
 
@@ -1100,8 +1092,7 @@ data/rareload/
 ├─ sp/<map>/<sid64>.json                 saves doc — singleplayer   (D1, L16)
 ├─ mp/<map>/<sid64>.json                 saves doc — multiplayer
 ├─ {sp,mp}/<map>/_blobs/<hash>.json      heavy buckets, content-addressed
-├─ {sp,mp}/<map>/_safe_positions.json    anti-stuck cache
-└─ _legacy_v4/                           original v4 tree, moved after import (never deleted automatically)
+└─ {sp,mp}/<map>/_safe_positions.json    anti-stuck cache
 ```
 
 ### 16.2 Saves doc
@@ -1144,24 +1135,10 @@ data/rareload/
 - Atomic write with `.bak` (§13.5). If loading fails: `.bak`, then quarantine as `.corrupt-<unix>` with a console warning (E8).
 - A debounced writer per path, plus `Flush()` on `ShutDown` and on map change.
 
-### 16.5 Migration
+### 16.5 Schema versions
+There is no v4 import. v4 files in `data/rareload/` use different paths and are ignored.
 
-`sv_storage` keeps `MIGRATIONS[fromVersion] = fn`. The v4 → v5 import runs when `version.txt` is missing and any v4 path exists:
-
-| v4 source | v5 target |
-|---|---|
-| `player_positions/<map>/<sid>.json` (`sp_data`, `mp_data`, legacy `playerData`) | `sp|mp/<map>/<sid64>.json`, current save as the newest entry if it isn't already in history |
-| `player_positions_<map>.json` (v3 single file) | same |
-| `history/<map>/<sid>.json` | entries (ids, pinned, notes, active id kept) |
-| `player_settings/<sid>.json` | kept in `_legacy_v4/`; on the player's first v5 join the values (keys renamed per §6.2) are pushed to their `rareload_pref_*` convars once (D13) |
-| `global_inventory.json` | PData `rareload_global_inv` per player (D17) |
-| `history_config.json` | PData `rareload_reload` per player (D17) |
-| `lua/rareload/shared/lang/*.lua` (code, not data) | converted once by `tools/lua_to_properties.lua` into `resource/localization/*/rareload.properties` (D16) |
-| `cached_pos_*`, anti-stuck cache | `{sp,mp}/<map>/_safe_positions.json` |
-| anti-stuck method toggles/priorities, tunables | `server.json` + convars |
-| v4 cleanup convars | `deathCleanupMode` via `fromLegacy` |
-
-Per-entry conversion is done by each module's `migrate[4]`, so v4 knowledge stays next to the code it concerns. The importer is **idempotent** (it does nothing when `version.txt` = 5), supports a dry run (`rareload data migrate --dry` prints counts only), and moves the originals to `_legacy_v4/`. Data from before v3 is out of scope (v4 already migrated it).
+Each doc carries `v`. `sv_storage` keeps an `UPGRADES[v] = fn` table for **future v5.x** format changes only; it starts empty. A file with a newer `v` than the running code is read-only (never overwritten) and reported.
 
 ---
 
@@ -1374,23 +1351,22 @@ Cmd.Register("tp", { priv = "rareload_teleport", usage = "<x> <y> <z>",
     args = { "number", "number", "number" }, fn = function(ply, x, y, z) ... end })
 ```
 
-| v4 | v5 |
-|---|---|
-| `save_position` | kept as an alias for `rareload save` |
-| `rareload_history`, `rareload_save_timeline` | `rareload timeline` |
-| `rareload_history_dump` / `_clear` | `rareload history dump|clear [map]` |
-| `rareload_teleport_to`, `rareload_look_at` | `rareload tp <x y z>`, `rareload lookat <x y z>` |
-| `rareload_test_antistuck`, `rareload_antistuck_method` | `rareload antistuck test|method …` |
-| `rareload_cleanup_data`, `rareload_standardize_cache`, `rareload_migrate_cache` | `rareload data cleanup|migrate [--dry]` |
-| `rareload_debug` | `rareload debug on|off|diag|recent [n]` |
-| `rareload_perms` | `rareload perms` |
-| `rareload_tunables` | `rareload menu advanced` |
-| `rareload_highlight_{all,link_all,players,clear}` | `rareload highlight all|link|players|clear` |
-| `rareload_preview_off` | `rareload preview off` |
-| — | `rareload settings [--md]`, `rareload selftest`, `rareload version` |
-| `wac_air_input` (override) | kept inside the WAC adapter `init` |
+| Command | Does | v4 equivalent (reference) |
+|---|---|---|
+| `rareload save` | save here (bindable) | `save_position` |
+| `rareload timeline` | open the Save Timeline | `rareload_history` |
+| `rareload history dump\|clear [map]` | dump or clear history | `rareload_history_dump/_clear` |
+| `rareload tp <x y z>`, `rareload lookat <x y z>` | admin teleport / look | `rareload_teleport_to`, `rareload_look_at` |
+| `rareload antistuck test\|method …` | test or configure anti-stuck | `rareload_test_antistuck`, `rareload_antistuck_method` |
+| `rareload data cleanup` | remove orphaned blobs and corrupt files | `rareload_cleanup_data` |
+| `rareload debug on\|off\|diag\|recent [n]` | debugging | `rareload_debug` |
+| `rareload perms` | list privileges | `rareload_perms` |
+| `rareload menu [advanced]` | open the settings | `rareload_tunables` |
+| `rareload highlight all\|link\|players\|clear` | highlights | `rareload_highlight_*` |
+| `rareload preview off` | hide the timeline preview | `rareload_preview_off` |
+| `rareload settings [--md]`, `rareload selftest`, `rareload version`, `rareload dev reload\|reset` | tooling | — |
 
-The old names stay as hidden aliases that print a one-time deprecation hint. They are removed in v6 (D9).
+The WAC adapter still overrides `wac_air_input` inside its `init`; that's a WAC fix, not an alias. No v4 command names are registered.
 
 ---
 
@@ -1421,7 +1397,7 @@ Hooks are listed in Appendix A. Anything not listed there is internal and may ch
 - **Usage**: Derma labels take `"#rareload.key"` directly; code uses `L(key, ...)` (a `language.GetPhrase` wrapper that formats `%s`/`%d` arguments).
 - **The server never localizes** (L29). It sends `{key, args}`.
 - **Multiplayer**: `.properties` files are not sent to clients like Lua files are. Rareload calls `resource.AddWorkshop("<its own Workshop id>")` on the server so joining players download it. A server running Rareload from a non-Workshop copy must make sure clients have the addon, otherwise they see raw keys.
-- **Migration**: `tools/lua_to_properties.lua` converts v4's 9 Lua language files once and applies `tools/lang_map.lua` for renamed keys.
+- **Carrying over translations**: `tools/lua_to_properties.lua` converts v4's 9 Lua language files once into `.properties` files, as a starting point for the new keys. It's a one-off content conversion, not runtime compatibility.
 - **CI check** (`tools/check_lang.lua`): fails on keys used in code but missing from `en/rareload.properties`, warns on unused keys and on keys missing from other languages.
 - Trade-off: v4's separate `rareload_language` override disappears; Rareload follows the game's language setting like every other addon.
 
@@ -1476,7 +1452,7 @@ Run `glualint` (GLuaFixer) in CI on `lua/**`. Also a grep step that fails on:
 
 ### 27.3 Offline unit tests
 - LuaJIT (the same VM GMod uses) plus `tests/stub/gmod.lua`, which provides `Vector`, `Angle`, `Color`, `util.TableToJSON/JSONToTable` (via a vendored `dkjson`, tests only), `hook`, `timer` (a manual clock), `CreateConVar`.
-- Test targets are the pure parts: `sh_util`, `sh_config` resolution, `sh_net` chunk encode/decode, `sv_snapshot` encode and merge helpers, `sv_storage` migration transforms (IO injected), `sv_pipeline` phase ordering, tokens, `after` cycles and unchanged detection with fake modules, and the `sv_antistuck` resolver contract with fake methods.
+- Test targets are the pure parts: `sh_util`, `sh_config` resolution, `sh_net` chunk encode/decode, `sv_snapshot` encode and merge helpers, `sv_storage` read/write and schema checks (IO injected), `sv_pipeline` phase ordering, tokens, `after` cycles and unchanged detection with fake modules, and the `sv_antistuck` resolver contract with fake methods.
 - Run with `luajit tests/run.lua`. The target is < 2 s.
 
 ### 27.4 In-game `rareload selftest`
@@ -1502,7 +1478,7 @@ Each phase ends with the addon loading cleanly and its acceptance checks passing
 ### Phase 0 — Groundwork (½ day)
 - [x] Branch steps 1–7 from §3.3 (`legacy/v4`, tag `4.0.1`, merge `origin/main`). Still to do by hand: protect `legacy/v4` in GitHub settings
 - [x] Commit this plan; move the vehicle plan to `docs/VEHICLES.md`; un-ignore `docs/`
-- [~] Capture fixtures: `tests/fixtures/v4/small` done (SP, 1 prop, anonymized). Still needed: a bigger save with MP data, vehicles, NPCs and a long history
+- [x] ~~Capture v4 fixtures~~: dropped, there is no v4 import
 - [ ] Confirm B19 on v4: build a save with > 15,000 JSON keys, restart, check whether it loads (record the result in §32)
 - [x] Remove the v4 `lua/rareload` tree and `autorun`; add the loader, `addon.json`, `.glualint.json`, `tools/check_rules.sh`, the CI workflow (green)
 - **Accept:** the game boots and prints `Rareload 5.0.0 loaded`; CI is green.
@@ -1513,7 +1489,7 @@ Each phase ends with the addon loading cleanly and its acceptance checks passing
 - [ ] `sh_perms` [F40, L30]
 - [ ] `sh_net` with send scheduler, acks and ready handshake (+ chunk tests) [S1, S2, S11, S13, L31, G10, G11, G14]
 - [ ] `resource/localization/*/rareload.properties` via `tools/lua_to_properties.lua`, `L()` helper, `tools/check_lang.lua` [F39, L29, D16, G74]
-- [ ] `sv_storage` (IO, `.bak`, debounce, lowercase paths, `ignoreLimits`, async blob reads, PData records; no migrations yet) [S4, L6, E8, E27, G1, G5–G7, G48, G49, D17]
+- [ ] `sv_storage` (IO, `.bak`, debounce, lowercase paths, `ignoreLimits`, async blob reads, PData records, schema version check) [S4, L6, E8, E27, G1, G5–G7, G48, G49, D17]
 - [ ] `sv_log` [F41]
 - [ ] `sv_commands` skeleton: `settings`, `perms`, `version`, `selftest`, `dev reload`, `dev reset` [G46]
 - **Accept:** every convar exists; a player's preference survives a reconnect; a server-scope change by a non-admin is rejected; selftest passes.
@@ -1524,7 +1500,7 @@ Each phase ends with the addon loading cleanly and its acceptance checks passing
 - [ ] `modules/inventory.lua` (weapons via `PlayerLoadout`, `Give(class, true)`, all ammo by name, `CUserCmd:SelectWeapon`) [F8–F10, L9, L20, G17, G18, G55–G57, B26, B27, E26]
 - [ ] `sv_antistuck.lua` (+ resolver tests) [F4, L1, L10, L12, G33, G70, G71, G83]
 - [ ] `sv_spawn.lua` without world cleanup (host flush on pause menu, gamemode gate) [F2, F3, F20, L2, E1, E15, E18, E22–E25, E33, G19–G23, G48, G50, G54, G61, B20, B22, D19]
-- [ ] Minimal stool (left/right click) + `save_position`
+- [ ] Minimal stool (left/right click) + `rareload save`
 - **Accept:** F1–F10 and F20 pass; E1, E3, E4, E15 and E18 pass; the respawn report card shows each module.
 
 ### Phase 3 — World & vehicles (4 days) → tag `5.0.0-alpha.1`
@@ -1555,12 +1531,7 @@ Each phase ends with the addon loading cleanly and its acceptance checks passing
 - [ ] `world/cl_tracking` → `cl_phantoms` (registry) → `cl_panels` (RTT pool) → `cl_interact` → `cl_highlight` [F30–F35, L25–L28, G36, G38, G39]
 - **Accept:** visual parity with v4 in side-by-side screenshots; the client budget in §9 is met with 100 panels.
 
-### Phase 7 — Migration & compatibility (2 days)
-- [ ] v4 importer + per-module `migrate[4]` (+ golden-file tests against the fixtures) [F44, F45]
-- [ ] Convar `fromLegacy`, command aliases
-- **Accept:** importing the fixtures matches the golden files; running the import twice does nothing; `_legacy_v4/` holds the original files byte-for-byte.
-
-### Phase 8 — Hardening & release (2–3 days) → tag `5.0.0-rc.1` → cutover
+### Phase 7 — Hardening & release (2–3 days) → tag `5.0.0-rc.1` → cutover
 - [ ] Full manual matrix (§30.3), including a multiplayer session with 3 or more players and ULX
 - [ ] Performance pass against §9
 - [ ] Security pass against §8 (try every opcode with bad arguments, oversized and compressed-bomb payloads)
@@ -1569,7 +1540,7 @@ Each phase ends with the addon loading cleanly and its acceptance checks passing
 - [ ] Cutover (§3.3)
 - **Accept:** every §2 metric is ticked.
 
-**Total:** about 24–30 focused days.
+**Total:** about 22–28 focused days.
 
 **`v5.1` parking lot** (ideas that come up during the rewrite, not done now): named save slots, save sharing between players, restoring a snapshot for another player (admin), a server-wide world snapshot, per-map settings.
 
@@ -1614,11 +1585,10 @@ Any bug found after alpha gets a unit test, if the logic is pure, or a matrix ro
 | Hidden v4 behaviour is lost | regressions | the §5 lessons table + per-file `git log -p` review + tag `4.0.1` for comparison |
 | Engine timing needs appear (models, physics, AI init) | flaky restores | only `ctx:nextTick` / `ctx:waitFor` with a documented reason per wait; a 10 s phase timeout reports a partial restore instead of hanging |
 | Vehicle bases change their APIs | broken adapters | `pcall` around base calls, readiness timeouts, adapter-level failure reported but not fatal |
-| An import bug destroys saves | trust lost | originals are never deleted, the import is idempotent with a dry run, golden-file tests |
 | Scope creep | never finishes | the v5.1 parking lot; phase acceptance gates |
 | World display performance regresses | FPS loss | client budget in §9 measured in Phase 6; RTT and draw budget kept |
 | Offline stubs drift from the real engine | false confidence | the in-game selftest repeats the key checks with real engine functions |
-| Burnout on a 5–6 week solo rewrite | it stalls halfway | alpha after Phase 3 is already playable; v4 stays usable on `legacy/v4` the whole time |
+| Burnout on a 5–6 week solo rewrite | it stalls halfway | alpha after Phase 3 is already playable |
 
 ## 32. v4 bugs not to carry over
 
@@ -1659,16 +1629,16 @@ Any bug found after alpha gets a unit test, if the logic is pure, or a matrix ro
 | # | Question | Options | Recommendation |
 |---|---|---|---|
 | D1 | SP vs MP save separation | field per entry · **separate directories** · none | **Separate directories.** It was added for security (L16), and separate folders isolate the data by construction |
-| D2 | Keep v4 convar names? | keep · rename | **Keep**; v5 keys are only internal |
+| D2 | Keep v4 convar names? | keep · rename | **Rename** (decided: no backward compatibility). Names are generated from the setting key (§6.2) |
 | D3 | How admins lock player preferences | per-setting lock convars · lock list in `server.json` | **Lock list**, edited from the Advanced page |
 | D4 | World display scope for 5.0 | full parity · drop piles/RTT until 5.1 | **Full parity**, built last so it can't block the core |
 | D5 | Where summaries and formatters live | server-sent summaries + client formatter table · shared module files | **Server summaries + client formatters**, with a generic fallback |
 | D6 | Global name | `RARELOAD` · `Rareload` | **Keep `RARELOAD`** |
 | D7 | Rewrite strategy | clean slate · replace v4 one subsystem at a time | **Clean slate.** v4's globals and include-order coupling make piecemeal replacement cost more than it saves |
 | D8 | Heavy data storage | blob files · inline | **Blob files** (small docs, dedupe, fast timeline sync) |
-| D9 | Old command aliases | forever · one major version | **Until v6**, with a deprecation hint |
+| D9 | Old command aliases | forever · one major version · none | **None** (decided: no backward compatibility) |
 | D10 | Respect sandbox spawn hooks and limits (`PlayerSpawnProp`/`SENT`/`NPC`/`Vehicle`, `sbox_max*`) on restore? | never · always · server setting | **Server setting `respectSpawnLimits`**, default **on in multiplayer, off in singleplayer** |
-| D11 | Is v4 data out in the wild (GitHub/Workshop users)? | yes → full importer · no → import only from your own fixtures | **Assume yes.** Tags 1.0–4.0 are public on GitHub |
+| D11 | Import v4 data? | full importer · none | **None.** The addon has no real user base yet, so no data loss is expected |
 | D12 | Should the rewrite branch be renamed (e.g. `v5`)? | keep `Rareload_Rewrite_Branch` · rename | **Keep.** Renaming changes nothing, and the branch is deleted after the merge |
 | D13 | Where do player preferences live? | server JSON per player + net sync (v4) · **userinfo client convars** (G41) | **Userinfo convars.** Removes a file type, 2 opcodes and a sync path; the engine persists and transmits them. Server-side locks and caps still apply |
 | D14 | Storage backend | JSON files (+ blobs) · SQLite `sv.db` (G9) · hybrid | **JSON files.** They are easy to inspect, back up and copy between servers, and G1/G7 remove their main weaknesses. Revisit SQLite in v5.x only if timeline listing gets slow with many players; the `sv_storage` API hides the backend, so the switch would touch one file |
