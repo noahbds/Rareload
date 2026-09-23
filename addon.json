@@ -1,0 +1,17 @@
+{
+    "title": "Rareload",
+    "type": "tool",
+    "tags": ["build", "fun"],
+    "ignore": [
+        "*.md",
+        "*.sh",
+        ".editorconfig",
+        ".glualint.json",
+        ".gitignore",
+        ".github/*",
+        ".vscode/*",
+        "docs/*",
+        "tests/*",
+        "tools/*"
+    ]
+}
