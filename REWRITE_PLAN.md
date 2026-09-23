@@ -1500,11 +1500,11 @@ A 512×512 `.jpg` icon is required for the Workshop (G47). Upload with `gmpublis
 Each phase ends with the addon loading cleanly and its acceptance checks passing. Each checkbox is roughly one PR or commit. IDs in brackets point to the requirements it satisfies.
 
 ### Phase 0 — Groundwork (½ day)
-- [ ] Branch steps 1–7 from §3.3 (`legacy/v4`, tag `4.0.1`, merge `origin/main`)
-- [ ] Commit this plan; move the vehicle plan to `docs/VEHICLES.md`; un-ignore `docs/`
-- [ ] Capture fixtures: copy a real `data/rareload/` (SP and MP, with history, vehicles and NPCs) and anonymize it into `tests/fixtures/v4/`
+- [x] Branch steps 1–7 from §3.3 (`legacy/v4`, tag `4.0.1`, merge `origin/main`). Still to do by hand: protect `legacy/v4` in GitHub settings
+- [x] Commit this plan; move the vehicle plan to `docs/VEHICLES.md`; un-ignore `docs/`
+- [~] Capture fixtures: `tests/fixtures/v4/small` done (SP, 1 prop, anonymized). Still needed: a bigger save with MP data, vehicles, NPCs and a long history
 - [ ] Confirm B19 on v4: build a save with > 15,000 JSON keys, restart, check whether it loads (record the result in §32)
-- [ ] Remove the v4 `lua/rareload` tree and `autorun`; add the empty loader, `addon.json`, `.glualint.json`, the CI skeleton
+- [x] Remove the v4 `lua/rareload` tree and `autorun`; add the loader, `addon.json`, `.glualint.json`, `tools/check_rules.sh`, the CI workflow (green)
 - **Accept:** the game boots and prints `Rareload 5.0.0 loaded`; CI is green.
 
 ### Phase 1 — Shared infrastructure (2 days)
