@@ -359,7 +359,7 @@ A second, systematic pass (2026-09-23) read the **complete member lists** of eve
 
 | ID | Fact (wiki page) | v5 impact |
 |---|---|---|
-| G48 | "Do not save data during `ShutDown`… some players will become invalid"; save data as soon as it changes (`File_Based_Storage`). `host_quit` is not reliable server-side (`gameevent/host_quit`) | `ShutDown` is only a best-effort flush. The host's transform is also saved when they open the pause menu (`OnPauseMenuShow` → `flushHost` request) and by autosave if on (B20, E23) |
+| G48 | "Do not save data during `ShutDown`… some players will become invalid"; save data as soon as it changes (`File_Based_Storage`). `host_quit` is not reliable server-side (`gameevent/host_quit`) | `ShutDown` is only a best-effort flush. The host's transform is otherwise only saved by autosave if on (B20, E23). No save on `OnPauseMenuShow`: the console opens the pause menu too, so it moved the respawn point |
 | G49 | **PData** now keys by SteamID64 and is safe to use (July 2024); `util.GetPData/SetPData` work for offline players; stored in `sv.db`, not networked (`File_Based_Storage`, `Player:GetPData`) | D17: small per-player records (reload-key mode, global inventory) move to PData, which removes the `players/` folder |
 | G50 | `Player:IsListenServerHost()` is true in singleplayer and for the listen host (`Player:IsListenServerHost`) | Host detection for G48 |
 | G51 | `game.MapLoadType()` returns `newgame`, `loadgame`, `transition` or `background` (`game.MapLoadType`) | On `loadgame` (Source save) or `transition`, the world modules don't restore, because the engine already restored the world (E30) |
@@ -1057,7 +1057,6 @@ PlayerLoadout      → if pending and weapons will restore → give weapons, ret
                      after the gamemode's PlayerSpawn: pipeline continues with phases 2–5
 PlayerDisconnected → Pipeline.Save(ply, {only={transform}, reason="disconnect", silent=true}); disconnectCleanup
 PreCleanupMap      → unless Rareload started it: Save world modules for each player (silent)  (E17)
-OnPauseMenuShow    → (client, host only) Net.Request("flushHost"): server saves the host's transform  (E23, G48, G50)
 ShutDown           → best-effort: save the host if still valid, then Store.Flush()   (G21, G48, B20)
 ```
 
@@ -1168,7 +1167,6 @@ Each doc carries `v`. `sv_storage` keeps an `UPGRADES[v] = fn` table for **futur
 |---|---|---|---|
 | `settings.set` | `rareload_settings` (server scope and locks only; player preferences are userinfo convars, D13) | 0.1 | `{key, value}` |
 | `ready` | — | once per connection | — (G14) |
-| `flushHost` | listen host / singleplayer only | 1 | — (G48, G50) |
 | `ack` | — | per transfer | `{transferId}` (S13) |
 | `save` | `rareload_save` | 0.3 | `{at?, ang?}` (only from the stool or command path) |
 | `history.get` / `preview` / `objects` | `rareload_restore` | 0.3 | `{id?}` |
@@ -1484,52 +1482,84 @@ Each phase ends with the addon loading cleanly and its acceptance checks passing
 - **Accept:** the game boots and prints `Rareload 5.0.0 loaded`; CI is green.
 
 ### Phase 1 — Shared infrastructure (2 days)
-- [ ] `sh_core`, `sh_util` (+ tests)
-- [ ] `sh_config` with every §6.2 setting, engine min/max, userinfo preference convars (+ tests) [S3, D13, G41, G42]
-- [ ] `sh_perms` [F40, L30]
-- [ ] `sh_net` with send scheduler, acks and ready handshake (+ chunk tests) [S1, S2, S11, S13, L31, G10, G11, G14]
-- [ ] `resource/localization/*/rareload.properties` via `tools/lua_to_properties.lua`, `L()` helper, `tools/check_lang.lua` [F39, L29, D16, G74]
-- [ ] `sv_storage` (IO, `.bak`, debounce, lowercase paths, `ignoreLimits`, async blob reads, PData records, schema version check) [S4, L6, E8, E27, G1, G5–G7, G48, G49, D17]
-- [ ] `sv_log` [F41]
-- [ ] `sv_commands` skeleton: `settings`, `perms`, `version`, `selftest`, `dev reload`, `dev reset` [G46]
+- [x] `sh_util` (+ tests). No `sh_core`: nothing needed it (see deviations below)
+- [x] `sh_config` with the settings Phases 1–2 read, engine min/max, userinfo preference convars (+ tests) [S3, D13, G41, G42]
+- [x] `sh_perms` [F40, L30]
+- [x] `sh_net` with send scheduler, acks and ready handshake (+ chunk tests) [S1, S2, S11, S13, L31, G10, G11, G14]
+- [x] `resource/localization/en/rareload.properties`, `L()` helper, `tools/check_lang.lua` [F39, L29, D16, G74]. Other languages and `tools/lua_to_properties.lua` move to Phase 5, when the UI keys exist
+- [x] `sv_storage` (IO, `.bak`, batched writes, lowercase paths, `ignoreLimits`, PData records, schema version check) [S4, L6, E8, E27, G1, G5, G6, G48, G49, D17]. Blobs and async reads move to Phase 3
+- [x] `sv_log` [F41]
+- [x] `sv_commands`: `help`, `settings`, `perms`, `version`, `save`, `selftest`, `dev reload`, `dev reset` [G46]
 - **Accept:** every convar exists; a player's preference survives a reconnect; a server-scope change by a non-admin is rejected; selftest passes.
 
 ### Phase 2 — Core loop (3 days)
-- [ ] `sv_pipeline` (ctx, phases 0–5, tokens, unchanged check, `ProtectedCall`, report) (+ ordering tests) [L21, L35, G34]
-- [ ] `modules/player.lua` (model via `PlayerSetModel`, gated state grants, crouch, map version) [F1, F5–F7, L8, B4, B17, B25, G16, G53, G58, G60, S14, E32, E35]
-- [ ] `modules/inventory.lua` (weapons via `PlayerLoadout`, `Give(class, true)`, all ammo by name, `CUserCmd:SelectWeapon`) [F8–F10, L9, L20, G17, G18, G55–G57, B26, B27, E26]
-- [ ] `sv_antistuck.lua` (+ resolver tests) [F4, L1, L10, L12, G33, G70, G71, G83]
-- [ ] `sv_spawn.lua` without world cleanup (host flush on pause menu, gamemode gate) [F2, F3, F20, L2, E1, E15, E18, E22–E25, E33, G19–G23, G48, G50, G54, G61, B20, B22, D19]
-- [ ] Minimal stool (left/right click) + `rareload save`
+- [x] `sv_pipeline` (ctx, phases 0–5, tokens, unchanged check, `ProtectedCall`, report) (+ ordering tests) [L21, L35, G34]
+- [x] `modules/player.lua` (model via `PlayerSetModel`, gated state grants, crouch, map version) [F1, F5–F7, L8, B4, B17, B25, G16, G53, G58, G60, S14, E32, E35]
+- [x] `modules/inventory.lua` (weapons via `PlayerLoadout`, `Give(class, true)`, all ammo by name, `CUserCmd:SelectWeapon`) [F8–F10, L9, L20, G17, G18, G55–G57, B26, B27, E26]
+- [x] `sv_antistuck.lua` (+ resolver tests) [F4, L1, L10, L12, G33, G70, G71]. The `debugoverlay` view (G83) moves to Phase 5 with the debug UI
+- [x] `sv_spawn.lua` without world cleanup (gamemode gate) [F2, F3, F20, L2, E1, E15, E18, E22–E25, E33, G19–G23, G48, G50, G54, G61, B20, B22, D19]
+- [x] Minimal stool (left/right click) + `rareload save`
 - **Accept:** F1–F10 and F20 pass; E1, E3, E4, E15 and E18 pass; the respawn report card shows each module.
 
+**Deviations in Phases 1–2** (CLAUDE.md: minimum code, nothing speculative). Later phases add these when they first need them:
+- **Settings and privileges** are declared only when something reads them, so B7 ("declared, never read") can't come back. Autosave, world, vehicle and client settings arrive with their phases.
+- **No `sh_core.lua`**: the version and load counter live in the loader, helpers in `sh_util`. Shared load order is `sh_util`, `sh_perms`, `sh_net`, `sh_config`, because `sh_config` registers a network request.
+- **No `settings` topic**: server convars are replicated, so clients read them directly. Preference locks (D3) come with the settings UI in Phase 5.
+- **Restore timing**: on a spawn, phases 1–5 all run one tick after `PlayerSpawn` (phase 0 still runs inside `PlayerSetModel`/`PlayerLoadout`). `ctx:async`, `ctx:waitFor` and the world timeout come with the world modules in Phase 3.
+- **Anti-stuck** has 4 methods (cached, displacement, navmesh, spawnpoints): "map entities" and "emergency" were both "nearest spawn point". Methods return candidate points; the resolver snaps and checks them. The safe-position cache is a linear scan over at most 512 points instead of a spatial hash.
+- **Data**: `transform` doesn't store `moveType` (only noclip matters, and `states` owns it). `health` doesn't store max health and clamps to the current maximum (S14).
+- **Summaries** are English strings for the debug report. They switch to `{key, args}` when the timeline needs localized rows (Phase 4).
+- **Deferred**: blobs and async reads (Phase 3), log ring buffer and `rareload debug recent`, `rareload settings --md` (Phase 7), command autocomplete, timeline-only restore steps (exit vehicle/spectate/drive, Phase 4).
+
 ### Phase 3 — World & vehicles (4 days) → tag `5.0.0-alpha.1`
-- [ ] `sv_ownership` (Sandbox `PlayerSpawned*` hooks first, CPPI/undo fallback) [L19, G65]
-- [ ] `sv_snapshot` with the `rareload` entity modifier and sandbox gates (+ encode/merge tests) [F14, F15, L17, L18, L23, L24, L32, S7, G26–G30, D10]
-- [ ] `modules/world.lua` (edict headroom, model/addon validation, penetration freeze, cleanup type, coroutine paste, external-restore skip) [F11–F13, L3, L22, B12, B28, B29, E7, E21, E29–E31, E34, G32, G51, G52, G62–G67, G72]
-- [ ] `modules/vehicles.lua` + `vehicle_adapters.lua` + `cl_wac.lua` [F16, F17, L13–L15, L37]
-- [ ] Death and disconnect cleanup, PreCleanupMap [F18, F19, F21, E6, E17, G31]
+- [x] `sv_ownership` (Sandbox `PlayerSpawned*` hooks first, CPPI/undo fallback) [L19, G65]
+- [x] `sv_snapshot` with the `rareload` entity modifier and sandbox gates (+ encode/merge tests) [F14, F15, L17, L18, L23, L24, L32, S7, G26–G30, D10]
+- [x] `modules/world.lua` (edict headroom, model/addon validation, penetration freeze, cleanup type, coroutine paste, external-restore skip) [F11–F13, L3, L22, B12, B28, B29, E7, E21, E29–E31, E34, G32, G51, G52, G62–G67, G72]
+- [x] `modules/vehicles.lua` + `vehicle_adapters.lua` + `cl_wac.lua` [F16, F17, L13–L15, L37]
+- [x] Death and disconnect cleanup, PreCleanupMap [F18, F19, F21, E6, E17, G31]
 - **Accept:** the reference scene (§9) saves and restores with no duplicates after 3 respawns; the welded prop and vehicle come back welded; E2, E6, E7 and E12 pass; the performance budgets for save and restore are met.
 
 ### Phase 4 — Timeline & autosave (2–3 days)
-- [ ] Blob store + GC in `sv_storage`
-- [ ] `sv_history`: append, prune, pin, note, delete, clear, activate, restore by component, undo, reload modes [F23–F26, F28, E13, E14]
-- [ ] Object ops with edit validation [F29 server, S6, S8]
-- [ ] `sv_autosave`, event-driven dirty flags (§15.7) [F22, G73]
+- [x] Blob store + GC in `sv_storage`
+- [x] `sv_history`: append, prune, pin, note, delete, clear, activate, restore by component, undo, reload modes [F23–F26, F28, E13, E14]
+- [x] Object ops with edit validation [F29 server, S6, S8]
+- [x] `sv_autosave`, event-driven dirty flags (§15.7) [F22, G73]
 - **Accept:** 150 saves of an unchanged world produce one blob; undo removes the async vehicles (E14); an object edit adding a new key is rejected.
 
+**Deviations in Phases 3–4:**
+- **Paste**: `duplicator.Paste` is used as-is. It already protects each entity with `ProtectedCall` and runs `OnDuplicated`, entity and bone modifiers and `PostEntityPaste`, which v4's per-entity paste skipped (B30).
+- **Not yet**: pasting spread over several ticks with a coroutine (G72). One restore pastes in a single call; the Phase 7 performance pass decides whether it's needed. The 3D preview data (`history.preview`) comes with its UI in Phase 6. Timeline summaries are still English strings.
+- **Vehicles**: settling uses fixed values (8 steps, 0.05 s apart) instead of three settings. Only the restoring player is put back in a seat; v4 moved any saved occupant, which could pull other players into your vehicle. The WAC exit fix wraps `receiveInput` when a restored aircraft is ready or entered; v4's extra `wac_air_input` wrapper and emergency-exit key hook were dropped.
+- **Undo** doesn't capture the world: it removes what the restore created and restores the player modules as they were.
+- **Blob GC** runs at startup and with `rareload data cleanup`, not after every prune.
+- **Autosave** checks movement and view once a second instead of in `SetupMove`.
+- **Console**: `rareload history …` commands expose the timeline until its UI exists (Phase 6).
+- **Found in game testing**: Sandbox's `gmod_admin_cleanup` removes every player's objects before `PreCleanupMap`, so the cleanup save captured nothing and erased the saved world. Cleanup saves now pass `keepMissing`. The host's pause-menu save (`flushHost`) was removed: opening the console opens the pause menu, so it kept moving the respawn point.
+
 ### Phase 5 — Client foundation (3 days)
-- [ ] `cl_state`, `cl_ui` with the Rareload Derma skin, `L()`, native notifications [G37, G40, G78–G81, G85, D18]
-- [ ] `cl_menu` generated from the registry: tool panel with `ToolPresets`, Utilities › Rareload pages, `TOOL.Information` [F37, F38, G75–G77]
-- [ ] `cl_toolscreen`, full stool reload key [F28, F36]
-- [ ] `cl_debug` [F41]
+- [x] `cl_state`, `cl_ui` with the Rareload Derma skin, `L()`, native notifications [G37, G40, G78–G81, G85, D18]
+- [x] `cl_menu` generated from the registry: tool panel with `ToolPresets`, Utilities › Rareload pages, `TOOL.Information` [F37, F38, G75–G77]
+- [x] `cl_toolscreen`, full stool reload key [F28, F36]
+- [x] `cl_debug` [F41]
 - **Accept:** every §6.2 setting is visible in the right place with correct lock and privilege behaviour; switching language updates everything live.
 
 ### Phase 6 — Rich client UI (5–7 days) → tag `5.0.0-beta.1`
-- [ ] `cl_history` + preview [F23–F28 UI, F27]
-- [ ] `cl_inspector` [F29]
-- [ ] `world/cl_tracking` → `cl_phantoms` (registry) → `cl_panels` (RTT pool) → `cl_interact` → `cl_highlight` [F30–F35, L25–L28, G36, G38, G39]
+- [x] `cl_history` + preview [F23–F28 UI, F27]
+- [x] `cl_inspector` [F29]
+- [x] `world/cl_tracking` → `cl_phantoms` (registry) → `cl_panels` (RTT pool) → `cl_interact` → `cl_highlight` [F30–F35, L25–L28, G36, G38, G39]
 - **Accept:** visual parity with v4 in side-by-side screenshots; the client budget in §9 is met with 100 panels.
+
+**Deviations in Phases 5–6:**
+- **Locks** live in one replicated convar, `sv_rareload_locked` (a comma-separated list of keys), not in `server.json`. Clients read them with no extra networking.
+- **Commands**: the server owns `rareload`. In singleplayer and on a listen server, a server command beats a client command of the same name (found in game), so the client-only subcommands (`timeline`, `menu`, `highlight`, `preview off`) are server commands that send a `cmd` topic back to the player's client. Autocomplete comes from the server command. `tp` and `lookat` are commands (privilege `rareload_teleport`) instead of `admin.teleport` / `admin.lookat` opcodes.
+- **World display feed**: the `saves` topic (each player's respawn point with its light modules and objects) only goes to players with `rareload_debug` while `debug` is on, as in v4 where the world display was a debug feature. There is no separate `saves.heavy` topic. The timeline preview uses `history.objects` instead of `history.preview`.
+- **Timeline rows** carry raw values (`info`: position, health, weapons, object counts…) that the client formats and translates, instead of server summaries. Rows are pushed after every change of the saves document.
+- **Skin**: the engine loads the Default skin after autorun files run (seen in game), so the Rareload skin sets its own window, label, button and tooltip colours and reads any other colour group from the Default skin only when a panel asks for it. The tool's control panel keeps the spawn menu's own skin so it matches the rest of the menu.
+- **World display, simplified**: panels list their sections one under another (scroll with the mouse wheel while locked) instead of a category sidebar. Pile cards are flipped with the strafe keys while locked. **Not yet**: RTT baking of panels (G38), vehicle sub-models and the seated pose for phantoms, phantom LOD. The Phase 7 performance pass decides whether RTT is needed.
+- **JSON editor** is a plain multi-line text box instead of DHTML/Ace, and only sends the keys that changed.
+- **Not yet**: `notification.AddProgress` for long restores; translations other than English (`tools/lua_to_properties.lua` is not written).
+- **Loader**: `cl_ui` and `cl_state` load before the other client files, and the world display files load in dependency order, because files use each other while loading.
+
 
 ### Phase 7 — Hardening & release (2–3 days) → tag `5.0.0-rc.1` → cutover
 - [ ] Full manual matrix (§30.3), including a multiplayer session with 3 or more players and ULX
@@ -1623,6 +1653,7 @@ Any bug found after alpha gets a unit test, if the logic is pure, or a matrix ro
 | B27 | Ammo is saved only for weapon types the player holds, and stored by numeric ammo ID, which can change when addons add ammo types. Grenades or ammo picked up without the weapon are lost (G55) | save all ammo by name |
 | B28 | No edict check before a world restore: a big save on a busy server can hit the ~8,100-entity `ents.Create` limit (G62) | headroom check (E29) |
 | B29 | The world restore also runs after `gm_load`, a Source save load or a map transition, duplicating entities the engine already restored (G51, G52) | skip on external restores (E30) |
+| B30 | Entities were pasted one by one with `duplicator.CreateEntityFromTable`, which skips `OnDuplicated`, entity and bone modifiers and `PostEntityPaste` (only `duplicator.Paste` runs them). Modifier data (material tool, Wiremod) was lost, and bases that initialize in `PostEntityPaste` never ran it | `duplicator.Paste` (§14.3) |
 
 ## 33. Open decisions
 

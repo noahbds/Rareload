@@ -14,14 +14,14 @@ report() {
     fail=1
 }
 
-# check <description> <extended-regex> [path-to-exclude ...]
+# check <description> <extended-regex> [path-prefix-to-exclude ...]
 check() {
     local desc="$1" pattern="$2"
     shift 2
     local out
     out=$(grep -rnE "$pattern" "$LUA_DIR" --include='*.lua' 2>/dev/null)
     for skip in "$@"; do
-        out=$(echo "$out" | grep -v "^$skip:" || true)
+        out=$(echo "$out" | grep -v "^$skip" || true)
     done
     out=$(echo "$out" | sed '/^$/d')
     if [ -n "$out" ]; then report "$desc" "$out"; fi
@@ -39,9 +39,9 @@ check "ents.GetAll/player.GetAll: use ents.Iterator/player.Iterator (G25)" '\b(e
 check "RunString/CompileString (S5)" '\b(RunString|RunStringEx|CompileString)\('
 check "ConCommand built from data (S5)" 'ConCommand\([^)]*\.\.'
 check "list.Get: use list.GetEntry/HasEntry (G67)" '\blist\.Get\('
-check "table.Copy in server code (G68)" '\btable\.Copy\('
+check "table.Copy in server code (G68)" '\btable\.Copy\(' "$LUA_DIR/rareload/client/"
 check "Player:SelectWeapon: use CUserCmd:SelectWeapon (G56)" '[^d]:SelectWeapon\('
-check "util.Decompress without maxSize (G4)" 'util\.Decompress\([^,)]*\)'
+check "util.Decompress without maxSize (G4)" 'util\.Decompress\([^,]*$'
 
 # Pipeline and modules never use timers (§15, §26)
 out=$(grep -rnE '\btimer\.(Simple|Create)\(' "$LUA_DIR/rareload/server/sv_pipeline.lua" "$LUA_DIR/rareload/server/modules" --include='*.lua' 2>/dev/null)

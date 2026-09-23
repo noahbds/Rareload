@@ -36,9 +36,6 @@ jobs:
       - name: Install LuaJIT
         run: sudo apt-get update && sudo apt-get install -y luajit
       - name: Run tests
-        run: |
-          if [ -f tests/run.lua ]; then
-            luajit tests/run.lua
-          else
-            echo "No tests yet (added in Phase 1)."
-          fi
+        run: luajit tests/run.lua
+      - name: Check translation keys
+        run: luajit tools/check_lang.lua
