@@ -3,6 +3,8 @@
 > **Status:** proposal · **Work branch:** `Rareload_Rewrite_Branch` · **Baseline:** v4 (`origin/main` @ `58a3d92`)
 > **End state:** v4 frozen on `legacy/v4`; v5 merged into `main` and becomes the only maintained version.
 >
+> **Sources:** the v4 code and its 250-commit history, `docs/VEHICLE_MODULE_PLAN.md`, and the [GMod wiki](https://wiki.facepunch.com/gmod/) (§5.2).
+>
 > **Goal:** rebuild Rareload from scratch with **every v4 feature**, in about **half the code and a third of the files**, with exactly **one way to do each thing**.
 
 ---
@@ -62,14 +64,14 @@
 - **Sections 6–9 are the requirements.** Nothing is "done" until it meets them.
 - **Sections 10–25 are the design.** If the code has to differ from the design, update this document in the same PR. The plan and the code must never disagree.
 - **Section 28 is the work queue.** Each checkbox is roughly one PR.
-- IDs are stable so commits and PRs can cite them: **F**-features (§6), **E**-edge cases (§7), **S**-security rules (§8), **L**-lessons (§5), **B**-v4 bugs (§32), **D**-decisions (§33).
+- IDs are stable so commits and PRs can cite them: **F**-features (§6), **E**-edge cases (§7), **S**-security rules (§8), **L**-lessons (§5.1), **G**-GMod platform facts (§5.2), **B**-v4 bugs (§32), **D**-decisions (§33).
 - Commit messages and PR descriptions reference IDs, e.g. `Add ammo module (F9, L9)`.
 
 ## 1. TL;DR
 
 | | v4 (today) | v5 (target) |
 |---|---|---|
-| Lua code files (excl. lang) | **118** | **~37** |
+| Lua files (v4 excl. lang) | **118** (+ 9 Lua language files) | **~36** (translations become `.properties` data files, D16) |
 | Lines of code (excl. lang) | **~24,100** | **~13,500** |
 | Settings systems | **5** (convars, `RARELOAD.settings`, player settings, tunables, `AntiStuck.CONFIG`) | **1** registry |
 | Net message names | **25** | **2** channels + opcodes |
@@ -106,14 +108,15 @@ The three ideas that do most of the work:
 
 ### Success metrics (checked in Phase 8)
 - [ ] Every F-item in §6 passes the test matrix (§30.3).
-- [ ] Every L-item in §5 has a named test or checklist line.
-- [ ] `find lua -name '*.lua' ! -path '*/lang/*' | wc -l` ≤ 40.
+- [ ] Every L-item (§5.1) and G-item (§5.2) has a named test, checklist line or CI check.
+- [ ] `find lua -name '*.lua' | wc -l` ≤ 40 (translations are `.properties` files, not Lua, D16).
 - [ ] Code lines (excl. lang) ≤ 15,000.
 - [ ] No `timer.Simple` in `server/sv_pipeline.lua` or `server/modules/`.
 - [ ] `grep -rnE "^\s*function [A-Z]" lua` → nothing (no globals).
 - [ ] `net.Start` / `net.Receive` appear only in `sh_net.lua`.
-- [ ] `file.Write` / `file.Read` / `file.Delete` / `file.Rename` appear only in `sv_storage.lua` and `sh_lang.lua`.
-- [ ] CI is green: lint, unit tests, and the lang key check.
+- [ ] `file.Write` / `file.Read` / `file.Delete` / `file.Rename` appear only in `sv_storage.lua`.
+- [ ] CI is green: lint, unit tests, the lang key check and the platform greps (§27.2).
+- [ ] A save with 50,000 JSON keys loads, and a 3 MB heavy sync causes no disconnect (E27, E28).
 - [ ] Every performance budget in §9 is met on the reference scene.
 
 ---
@@ -213,6 +216,8 @@ Rareload_Rewrite_Branch ──●──●──●── … ──●── rc
 
 ## 5. Lessons learned from v4 history
 
+### 5.1 From v4's git history
+
 These fixes came from 250 commits, mostly found the hard way. **Every row must be handled on purpose in v5.** The "v5 answer" column says where.
 
 | ID | Lesson (source commit) | v5 answer |
@@ -256,6 +261,162 @@ These fixes came from 250 commits, mostly found the hard way. **Every row must b
 | L37 | WAC client hooks crashed when `lp.wac` was nil (`rareload_init.lua`) | `client/cl_wac.lua` guard, loaded only when WAC is detected |
 
 Before a v4 file is removed from consideration, run `git log -p --follow <file>` on it and add any new lesson to this table.
+
+### 5.2 Platform facts from the GMod wiki
+
+These come from [wiki.facepunch.com/gmod](https://wiki.facepunch.com/gmod/) (researched 2026-09-23). They are engine behaviours v5 must design around. Several of them explain v4 bugs (§32 B19–B24). The page name is given so the source can be re-checked.
+
+**Serialization & storage**
+
+| ID | Fact (wiki page) | v5 impact |
+|---|---|---|
+| G1 | `util.JSONToTable` has a **15,000-key limit** unless `ignoreLimits = true` (`util.JSONToTable`) | Our own data files are read with `ignoreLimits = true`. Untrusted JSON (client edits) keeps the limit. v4 never passes it, so large saves or histories can fail to load (B19) |
+| G2 | By default `JSONToTable` converts numeric-string **keys** to numbers, so `SteamID64` keys break (`util.JSONToTable`) | Never key a JSON table by SteamID64 (use the file name or a field). Duplicator entity lists rely on the numeric conversion, so leave `ignoreConversions` off |
+| G3 | `util.TableToJSON` turns every key into a string, so `{["5"]=…, [5]=…}` collide; entities, materials and functions are dropped (`util.TableToJSON`) | Snapshot defs are sanitized before encoding. Never mix numeric and string keys in one table |
+| G4 | `util.Decompress` needs `maxSize` on untrusted data, otherwise a decompression bomb can fill Lua memory (`util.Decompress`) | S11 |
+| G5 | `file.Write` forces **lowercase** names, only allows some extensions (`.json`, `.txt`, `.dat`, …) and a restricted character set, and since 2025 returns a success `bool` (`file.Write`) | `Store.Path` lowercases and sanitizes. Every write checks the return value and falls back or reports |
+| G6 | `file.Rename` returns `bool` and also lowercases (`file.Rename`) | The atomic write checks it (§13.5) |
+| G7 | `file.AsyncRead` exists (`file.AsyncRead`) | Heavy blobs load asynchronously when a player joins, so there is no hitch on join |
+| G8 | `util.SHA256` is available; `util.CRC` is a checksum, not a hash (`util.SHA256`, `util.CRC`) | Blob names and IDs use `SHA256` (truncated) |
+| G9 | `sql` (SQLite in `sv.db`) is "the preferred and fastest method of storing large amounts of data", with transactions (`sql`, `sql.Begin`) | Considered as the storage backend: D14 |
+
+**Networking**
+
+| ID | Fact (wiki page) | v5 impact |
+|---|---|---|
+| G10 | A net message is ≤ 65,533 bytes. `net.WriteTable` doesn't check the limit and adds 16 bits per pair; the recommended method is JSON + `util.Compress` in **60 KB chunks** (`net.WriteTable`, `net`) | The `sh_net` design (§13.4) |
+| G11 | The reliable buffer overflows at about **256 KB**, which **disconnects the client**. Reliable bandwidth is roughly **120 KB/s** (`Networking_Usage`) | Chunked sends are **scheduled**: a per-client queue with ≤ 1 chunk per tick and ≤ 96 KB in flight. v4 sends every chunk in one loop (B21) |
+| G12 | `util.AddNetworkString` and every NW key share one 4,095-slot string table (`Networking_Usage`) | 2 network strings + 1 NW key (`rl_id`) instead of 25 + more |
+| G13 | NWVar values are ≤ 199 chars, sent by usermessage and re-sent every 10 s; NW2 only updates inside the PVS and is buggy on Lua entities (`Entity:SetNWString`, `Entity:SetNW2String`) | Keep a single NWString `rl_id` per saved entity for client linking. Don't use NW2 |
+| G14 | Net messages sent in `PlayerInitialSpawn` can arrive before the client has loaded (`LocalPlayer()` may be NULL). The wiki recommends a **client-ready handshake** (`GM:PlayerInitialSpawn`) | The client sends `ready` from `InitPostEntity`; the server sends nothing to that player before it arrives. v4 syncs from a `timer.Simple(0)` (B23) |
+| G15 | "Don't trust the client": check rates, negative numbers, entity arguments; never identify the sender from the payload (`Net_Library_Usage`) | S1, S9 |
+
+**Player lifecycle**
+
+| ID | Fact (wiki page) | v5 impact |
+|---|---|---|
+| G16 | Base-derived `GM:PlayerSpawn` calls `PlayerSetModel` and `PlayerLoadout`, which override `SetModel`/`Give` done in a `PlayerSpawn` hook (`GM:PlayerSpawn`) | Appearance and weapons are applied **inside** those hooks (§15.3 phase 0) instead of on a timer afterwards |
+| G17 | Returning `true` from `PlayerLoadout` prevents the default loadout (`GM:PlayerLoadout`) | When `weapons` restores, the default loadout is skipped: no strip-then-give, no extra default ammo |
+| G18 | `Player:Give(class, bNoAmmo)` can skip default ammo, and `Give` fails silently when `PlayerCanPickupWeapon` returns false (`Player:Give`, `GM:PlayerCanPickupWeapon`) | `Give(class, true)` then set exact ammo. A `NULL` return is reported as "blocked" |
+| G19 | `PlayerSpawn` and `PlayerSelectSpawn` receive a `transition` flag for `trigger_changelevel` spawns (`GM:PlayerSpawn`) | No restore on transition spawns (E22) |
+| G20 | `PlayerDeath` isn't called for `KillSilent`; `PostPlayerDeath` is called for every death (`GM:PostPlayerDeath`, `GM:PlayerSilentDeath`) | The "died" flag is set in `PostPlayerDeath` (B22) |
+| G21 | `PlayerDisconnected` **isn't called for the host** in singleplayer or on a listen server (`GM:PlayerDisconnected`) | The host is saved in `ShutDown`. v4 never saves the host on exit (B20) |
+| G22 | `SteamID64` is a string; bots get unique IDs; in `-multirun` every copy returns `"0"` (`Player:SteamID64`) | IDs stay strings. `"0"` → temporary key `lan_<UserID>` with a console warning (E24) |
+| G23 | `UserID` is unique per connection (`Player:UserID`); `hook.Add` accepts an **entity as identifier** and removes the hook once it's invalid (`hook.Add`) | Per-player temporary hooks use the player as identifier, so they can't leak (L2) |
+| G24 | `EnterVehicle` does **not** bypass `CanPlayerEnterVehicle`; `SetEyeAngles` is relative to the vehicle while seated (`Player:EnterVehicle`, `Player:SetEyeAngles`) | Reseat failures are reported. Eye angles are applied after the seat is resolved |
+
+**Entities, world & sandbox**
+
+| ID | Fact (wiki page) | v5 impact |
+|---|---|---|
+| G25 | `ents.Iterator()` / `player.Iterator()` are cached and faster than `ents.GetAll()`, but their tables are read-only (`ents.Iterator`) | Use them everywhere (v4 calls `ents.GetAll` 18 times) and never modify the result |
+| G26 | `duplicator.Paste` runs `CreateEntityFromTable` → `OnDuplicated` → entity/bone modifiers → `PostEntityPaste`; `createdEntities` is keyed by the original indexes (`duplicator.Paste`, `ENTITY:PostEntityPaste`) | Readiness and post-processing hang off this order (§20). Keep the index keys intact (G2) |
+| G27 | `duplicator.IsAllowed` / `Allow`: SENTs and SWEPs are allowed automatically unless `DisableDuplicator`; most sandbox NPCs are allowed (`duplicator.Allow`) | S7 relies on it |
+| G28 | `duplicator.RegisterEntityModifier` / `StoreEntityModifier` are the official way to carry custom state through a paste (`duplicator.RegisterEntityModifier`) | Rareload's own per-entity data (ID, gravity flag, NPC AI) travels as **entity modifiers** instead of fields patched in afterwards (L24) |
+| G29 | Sandbox gates spawning with `PlayerSpawnProp/SENT/NPC/Vehicle` hooks and `CheckLimit`/`AddCount` (always true in singleplayer) and offers `cleanup.Add` / `undo.Create` (`SANDBOX:*`, `Player:CheckLimit`) | D10: restored entities go through those gates on multiplayer servers and are registered in the player's undo, cleanup and counts |
+| G30 | `Entity:GetCreationID` wraps at 10,000,000; `MapCreationID` is stable per map and `-1` for non-map entities (`Entity:GetCreationID`, `Entity:MapCreationID`) | IDs are random hashes created at capture, not creation IDs (L17). Map-created entities are excluded from saves |
+| G31 | `game.CleanUpMap(dontSendToClients, extraFilters, callback)` has a callback; `EFL_KEEP_ON_RECREATE_ENTITIES` still duplicates (`game.CleanUpMap`) | Full-map death cleanup uses the callback instead of a timer (E6) |
+| G32 | `Entity:SetPersistent` + `sbox_persist` make the engine save and reload entities itself (`Entity:SetPersistent`) | Persistent entities are **excluded** from saves, otherwise they'd come back twice (E21) |
+| G33 | `util.IsInWorld`, `util.TraceHull`, `navmesh.IsLoaded`, `navmesh.Find(pos, radius, step, drop)` (`util.*`, `navmesh.*`) | Anti-stuck validation and the nav method use them directly. Nav is skipped when `navmesh.IsLoaded()` is false |
+| G34 | `ProtectedCall(fn, …)` runs a function without stopping the script **and still reports the error** (unlike `pcall`) (`Global.ProtectedCall`) | The pipeline wraps each module with `ProtectedCall` so errors stay visible (principle 6) |
+| G35 | `properties.Add` adds context-menu (C-menu) actions on entities, gated by `CanProperty` (`properties.Add`) | v5.1: "Rareload → Inspect / Remove from save" on right-click |
+
+**Client & rendering**
+
+| ID | Fact (wiki page) | v5 impact |
+|---|---|---|
+| G36 | `ClientsideModel`s are **never garbage-collected**, can delete themselves under heavy lag, and detach from parents that leave the PVS (`Global.ClientsideModel`) | One phantom registry owns every clientside model: it re-creates invalid ones and removes all on reload/map change |
+| G37 | Create fonts **once**, only the sizes you use (`surface.CreateFont`) | One font table in `cl_ui`. Scaling changes are handled by a fixed set of sizes |
+| G38 | `GetRenderTargetEx` sizes must be powers of two, and names ignore extensions (`Global.GetRenderTargetEx`) | The RTT pool uses fixed power-of-two sizes and a fixed number of targets |
+| G39 | `halo.Add` gets expensive with more passes (`halo.Add`) | Highlights use 1 pass and cap the number of haloed entities |
+| G40 | `cvars.AddChangeCallback` doesn't fire on the client for `FCVAR_REPLICATED` convars (`cvars.AddChangeCallback`) | The menu refreshes from the `settings` topic, not convar callbacks |
+| G41 | Client convars with `FCVAR_USERINFO` are readable on the server via `ply:GetInfo/GetInfoNum` (truncated to 259 bytes) (`Global.CreateClientConVar`, `Player:GetInfo`) | Player preferences can be userinfo convars: D13 |
+| G42 | `CreateConVar` accepts `min`/`max`, and `FCVAR_NEVER_AS_STRING` must not be combined with `FCVAR_REPLICATED` (`Global.CreateConVar`) | The settings registry passes min/max through, so the engine clamps too |
+
+**Loading & tooling**
+
+| ID | Fact (wiki page) | v5 impact |
+|---|---|---|
+| G43 | Autorun files run alphabetically, **before** `weapons/gmod_tool/stools/` (`Lua_Loading_Order`) | The stool can use `RARELOAD` directly |
+| G44 | All addons share one virtual `lua/` filesystem, so file names must be unique; an **empty** file fails to include; client files larger than 64 KB compressed may fail (`Global.include`) | Everything stays under `lua/rareload/`. Stub files are never committed empty. File budgets (§11) also protect this limit |
+| G45 | `file.Find` with capital letters misbehaves on Linux (`file.Find`) | All paths are lowercase (a CI check fails on uppercase names in `lua/`) |
+| G46 | Auto-refresh **doesn't work on macOS** or for dynamically included files, and re-runs a whole file (`Auto_Refresh`) | A `rareload dev reload` command re-runs the loader. Registries are idempotent (`X = X or {}`, replace by id) so reloading is safe |
+| G47 | Workshop uploads need a 512×512 `.jpg` icon and `addon.json`; tools such as gmpublisher exist (`Workshop_Addon_Creation`) | §27.6 |
+
+### 5.3 Full wiki pass
+
+A second, systematic pass (2026-09-23) read the **complete member lists** of everything Rareload touches, then opened the promising pages in full:
+
+- **Classes:** `Player` (270 members), `Entity` (555), `NPC` (182), `Vehicle` (49), `Weapon` (94), `PhysObj` (78), `CNavArea` (78), `ConVar`, `TOOL` + `TOOL` hooks.
+- **Hooks:** all 267 `GM` hooks and all 53 `SANDBOX` hooks.
+- **Libraries:** `util`, `net`, `file`, `duplicator`, `constraint`, `undo`, `cleanup`, `game`, `ents`, `player_manager`, `gameevent`, `engine`, `system`, `timer`, `hook`, `cvars`, `concommand`, `navmesh`, `ai`, `physenv`, `cam`, `draw`, `vgui`, `derma`, `spawnmenu`, `language`, `properties`, `notification`, `list`, `scripted_ents`, `weapons`, `gmsave`, `saverestore`, `sql`, `construct`, `drive`, `input`, `gui`, `chat`, `cookie`, `coroutine`, `debugoverlay`, `presets`, `controlpanel`, `markup`, `widgets`, `steamworks`, `team`, `permissions`, `table`, `string`, `os`, `resource`, `gamemode`, `gmod`, `baseclass`.
+- **Globals:** the names of all 331 Global functions.
+- **Guides:** `optimizationTips`, `File_Based_Storage`, `Addon_Localization`, `Tool_Information_Display`, `Lua_Hooks_Order`, `Understanding_AddCSLuaFile_and_include`, `Default_Lists`, `Blocked_ConCommands`, `Lua_Error_Logging`, `Entity_Callbacks`, `Derma_Skin_Creation`, `VGUI_Element_List`, `Workshop_Addon_Creation`, `Addon_Creation`.
+
+**Not read:** the ~450-method `Panel` class, the `render`/`surface` member lists, the `ENTITY`/`WEAPON`/`EFFECT`/`NEXTBOT`/`PANEL`/`DRIVE` hook sets (Rareload defines no entity, weapon or panel classes of its own), enums and structures beyond the few cited, shaders, and the mapping, modelling and beginner tutorials. Read `Panel` and `render` during Phase 5–6.
+
+**Storage, identity & lifecycle**
+
+| ID | Fact (wiki page) | v5 impact |
+|---|---|---|
+| G48 | "Do not save data during `ShutDown`… some players will become invalid"; save data as soon as it changes (`File_Based_Storage`). `host_quit` is not reliable server-side (`gameevent/host_quit`) | `ShutDown` is only a best-effort flush. The host's transform is also saved when they open the pause menu (`OnPauseMenuShow` → `flushHost` request) and by autosave if on (B20, E23) |
+| G49 | **PData** now keys by SteamID64 and is safe to use (July 2024); `util.GetPData/SetPData` work for offline players; stored in `sv.db`, not networked (`File_Based_Storage`, `Player:GetPData`) | D17: small per-player records (reload-key mode, global inventory) move to PData, which removes the `players/` folder |
+| G50 | `Player:IsListenServerHost()` is true in singleplayer and for the listen host (`Player:IsListenServerHost`) | Host detection for G48 |
+| G51 | `game.MapLoadType()` returns `newgame`, `loadgame`, `transition` or `background` (`game.MapLoadType`) | On `loadgame` (Source save) or `transition`, the world modules don't restore, because the engine already restored the world (E30) |
+| G52 | `GM:LoadGModSave` runs for `gm_load`; `SANDBOX:PersistenceLoad` runs when persistent props load; `GM:Saved` / `GM:Restored` wrap Source-engine saves (`GM_Hooks`, `SANDBOX_Hooks`) | Rareload marks the world as "externally restored" in these hooks and skips its own world restore for that load (E30, E31) |
+| G53 | `game.GetMapVersion()` gives the map revision (`game`) | Stored in each entry. A mismatch shows "map was updated" in the timeline and forces anti-stuck on (E4) |
+| G54 | `engine.ActiveGamemode()` and gamemode tables; team/class gamemodes spawn players through their own logic (`engine`, `team`, `player_manager`) | D19: Rareload is enabled by default only in Sandbox-derived gamemodes; others need an explicit server setting |
+
+**Player state**
+
+| ID | Fact (wiki page) | v5 impact |
+|---|---|---|
+| G55 | `Player:GetAmmo()` returns **every** ammo type the player holds (by ID); `game.GetAmmoName/GetAmmoID/GetAmmoMax` translate and cap (`Player:GetAmmo`, `game`) | `ammo` saves `{[ammoName] = count}` for all ammo plus per-weapon clips, and clamps to `GetAmmoMax`. v4 only saves ammo for held weapons and keys it by numeric IDs that can change when addons add ammo types (B27) |
+| G56 | `Player:SelectWeapon` switches **outside prediction**; the recommended way is `CUserCmd:SelectWeapon` (`Player:SelectWeapon`, `CUserCmd:SelectWeapon`) | `activeWeapon` sets a pending weapon that a one-shot `StartCommand` hook applies with `cmd:SelectWeapon(wep)` |
+| G57 | `Player:SetSuppressPickupNotices(true)` hides pickup notifications (`Player`) | Enabled while restoring weapons and ammo, so the HUD isn't spammed |
+| G58 | `GM:PlayerNoClip` and `GM:PlayerSwitchFlashlight` can refuse those states; admin mods use them (`GM_Hooks`) | Restoring noclip/flashlight asks these hooks first. Godmode and notarget need the new privilege `rareload_restore_privileged_states` (default: admin). v4 re-grants all of them unconditionally, even from old timeline entries (B25, S14) |
+| G59 | `SANDBOX:PlayerGiveSWEP` gates giving yourself a weapon (`SANDBOX_Hooks`) | Optional weapon gate under `respectSpawnLimits` (D10), off by default because map pickups also go through inventory |
+| G60 | `Player:Crouching()`, `GetHullDuck()`; `GetMaxArmor/SetMaxArmor` (`Player`) | `transform` stores `crouched`; anti-stuck tests the duck hull when the save was crouched (E32). `health` also stores `maxArmor` |
+| G61 | `Player:GetObserverMode()`, `GetDrivingEntity()` (`Player`) | No save while spectating; exit prop-driving before a timeline restore (E33) |
+
+**World restore safety**
+
+| ID | Fact (wiki page) | v5 impact |
+|---|---|---|
+| G62 | Only 8,192 edicts exist and `ents.Create` fails somewhere between **8,064 and 8,176** (`ents.GetEdictCount`) | Before a world restore, `GetEdictCount() + needed` must leave ≥ 256 free; otherwise restore what fits and report the rest (E29, B28) |
+| G63 | `PhysObj:IsPenetrating()` (non-static objects) and `GM:OnCrazyPhysics` (`PhysObj`, `GM_Hooks`) | After a paste, objects that penetrate each other are frozen and reported instead of exploding. `OnCrazyPhysics` on a restored entity is logged to the report |
+| G64 | `duplicator.FigureOutRequiredAddons` finds the Workshop addons a dupe's models/materials need; `util.IsValidModel` precaches and validates; `duplicator.WorkoutSize` gives the AABB (`duplicator`, `util.IsValidModel`) | The timeline shows "needs addon X" for entries with missing content, and those defs are skipped instead of spawning error models (E7). `WorkoutSize` frames the 3D preview |
+| G65 | Sandbox fires `PlayerSpawnedProp/SENT/NPC/Vehicle/Ragdoll/Effect/SWEP` after each spawn; `GetCreator` is only set for SENTs (`SANDBOX_Hooks`, `Entity:SetCreator`) | `sv_ownership` records owners from these hooks first, then falls back to CPPI/undo. Most of v4's 659-line resolver becomes a fallback path |
+| G66 | `cleanup.Register(type)` adds a cleanup type; `undo.SetCustomUndoText`, `undo.AddFunction` (`cleanup`, `undo`) | A "Rareload restores" cleanup category in the Q menu, and one undo entry per restore with readable text |
+| G67 | `list.Get("Vehicles"/"NPC"/"Weapon"/"SpawnableEntities")` give display names and spawn data, but `list.Get` copies with the slow `table.Copy`; use `list.GetEntry`/`HasEntry` (`Default_Lists`, `list.Get`) | Human-readable names in summaries without a hand-written name table. Lookups use `list.GetEntry` |
+| G68 | `table.Copy` is very slow and **doesn't copy Vectors/Angles** (`table.Copy`) | Never used on saves. Stored data is immutable (blobs by hash), so nothing needs deep-copying |
+| G69 | `Vehicle:IsValidVehicle()` says whether a Source vehicle is fully initialized (`Vehicle`) | The default readiness probe for the Source adapter (§20) |
+| G70 | `Entity:IsInWorld` only checks the origin; `util.PointContents`, `util.TraceEntityHull` test properly (`Entity:IsInWorld`, `util`) | Anti-stuck and restore placement use hull traces, not `IsInWorld` alone |
+| G71 | `CNavArea:GetClosestPointOnArea`, `IsUnderwater`, `IsDamaging`, `IsBlocked`; `navmesh.GetNearestNavArea`, `navmesh.GetGroundHeight`; `ai.GetNodeCount` (`CNavArea`, `navmesh`, `ai`) | The nav method picks the closest point on the nearest safe area and skips underwater, damaging and blocked areas. The node-graph fallback only runs if `ai.GetNodeCount() > 0` |
+| G72 | `coroutine.wait` is only useful inside NextBot coroutines (`coroutine.wait`) | Long captures and pastes run in coroutines resumed by our own `Tick` scheduler with a per-tick time budget, never `coroutine.wait` |
+
+**Change detection (autosave)**
+
+| ID | Fact (wiki page) | v5 impact |
+|---|---|---|
+| G73 | Events exist for every state change Rareload saves: `PlayerAmmoChanged`, `WeaponEquip`, `PlayerDroppedWeapon`, `PlayerHurt`, `PlayerSpawned*`, `OnPhysgunFreeze`, `PlayerFrozeObject`, `OnUndo`, `OnCleanup`, `EntityRemoved` (`GM_Hooks`, `SANDBOX_Hooks`) | Autosave becomes **event-driven**: hooks set per-module dirty flags, and a tick only saves dirty modules. v4 polls and compares everything |
+
+**Client, UI & tooling**
+
+| ID | Fact (wiki page) | v5 impact |
+|---|---|---|
+| G74 | Official localization: `resource/localization/<lang>/<name>.properties`, loaded for `gmod_language` with English fallback; `#key` auto-translates in Derma; `language.GetPhrase`; allowed in Workshop addons (`Addon_Localization`, `Workshop_Addon_Creation`) | D16: the 9 Lua language files and `sh_lang.lua` become `.properties` files (no Lua code). Servers call `resource.AddWorkshop` so clients get them |
+| G75 | `TOOL.Information` renders the tool's HUD help (left/right/reload icons) from `tool.<name>.<key>` phrases; `TOOL:RebuildControlPanel` rebuilds the CPanel (`Tool_Information_Display`, `TOOL`) | Standard tool help instead of custom text; language changes call `RebuildControlPanel` |
+| G76 | `ControlPanel:ToolPresets` / `ControlPresets` give save/load presets for a list of convars (`ControlPanel`, `presets`) | Players get setting presets for free by passing the preference convars to `ToolPresets` |
+| G77 | `spawnmenu.AddToolMenuOption` adds pages under the Q menu's Utilities tab (`spawnmenu`) | Server settings get their own "Utilities › Rareload › Server" page instead of living only in the tool panel |
+| G78 | A **Derma skin** (`derma.DefineSkin`, `Panel:SetSkin`, `SKIN:Paint*`) styles every stock control from one file (`Derma_Skin_Creation`) | D18: one `Rareload` skin + stock controls (`DListView`, `DTree`, `DProperties`, `DColumnSheet`, `DNumSlider`, `DCheckBoxLabel`, `DComboBox`) instead of custom `Paint` on every panel |
+| G79 | `notification.AddLegacy` / `AddProgress` / `Kill` are the native toasts, including an animated progress bar (`notification`) | Simple toasts and "restoring N objects…" progress use them. The custom card stays only for the debug report |
+| G80 | `string.NiceTime`, `string.NiceSize`, `os.date` (`string`, `os`) | Replace v4's hand-written "time ago" and date formatting |
+| G81 | `input.LookupBinding("+reload")` returns the player's real key (`input`) | Hints show the actual bound key, not a hard-coded "R" |
+| G82 | `TOOL:MakeGhostEntity` / `UpdateGhostEntity` show a ghost model at the aim point (`TOOL`) | v5.1: ghost player model where the left-click save will land |
+| G83 | `debugoverlay.*` only works with `developer 1` and is only shown to the listen host (`debugoverlay.Box`) | Anti-stuck debug draws candidate boxes with `debugoverlay` for the host; dedicated servers send the same geometry over the `debug` topic |
+| G84 | `optimizationTips`: cache Colors/Materials/Vectors outside hooks, use lookup tables and `player.Iterator`, avoid nested player × entity loops, send compact changes only when they happen (`optimizationTips`) | Coding rules in §26 |
+| G85 | `Derma_Query` / `Derma_StringRequest` are stock confirm and input dialogs; `SetClipboardText` copies (`Global`) | Replace v4's custom confirm dialog; the inspector's copy menu uses `SetClipboardText` |
 
 ---
 
@@ -307,7 +468,7 @@ This is the Phase-0 checklist. v5 isn't finished until every row is ticked.
 | F36 | Tool screen: status, auto-save progress bar, reload-state animations, permission denied, feature list | `rareload_toolscreen.lua` | `cl_toolscreen.lua` |
 | F37 | Tool control panel: categories, toggles, sliders, action buttons, language dropdown | stool + `rareload_tool_ui` | `cl_menu.lua` (generated) |
 | F38 | Advanced parameters (anti-stuck, world display, toast) | `cl_tunables_menu`, `tunables` | `cl_menu.lua` Advanced page |
-| F39 | Localization: 9 languages, `rareload_language`, live switching | `sh_lang`, `lang/*` | same |
+| F39 | Localization: 9 languages, `rareload_language`, live switching | `sh_lang`, `lang/*` | `resource/localization/*/rareload.properties` (D16) |
 | F40 | CAMI permissions with default tiers, `rareload_perms` listing | `permissions_def` | `sh_perms.lua` |
 | F41 | Debug: report cards (save / respawn / anti-stuck), HUD toasts, watches, profiler timings, diag | `debug/*` | `sv_log.lua`, `cl_debug.lua` |
 | F42 | Admin tools: teleport to coords, look-at, test anti-stuck, set anti-stuck method state | `sv_rareload_commands` | `sv_commands.lua` |
@@ -340,17 +501,19 @@ This is the Phase-0 checklist. v5 isn't finished until every row is ticked.
 | `sv_rareload_cleanup_on_disconnect` | cleanupOwnedEntitiesOnDisconnect | `disconnectCleanup` | 0 | server | |
 | `sv_rareload_history_size` | maxHistorySize | `historySize` | 125 | player, capped by `historySizeMax` | |
 | — | — | `historySizeMax` (new convar `sv_rareload_history_size_max`) | 150 | server | stops players from filling the disk |
+| — | — | `respectSpawnLimits` (new, `sv_rareload_respect_spawn_limits`) | 1 in MP, 0 in SP | server | D10, G29 |
+| — | — | `enableInAllGamemodes` (new, `sv_rareload_all_gamemodes`) | 0 | server | D19, G54 |
 | `sv_rareload_max_vehicles` | maxRestoredVehicles | `maxVehicles` | 0 | server | |
 | `sv_rareload_veh_settle_ticks` / `_interval` / `_restore_velocity` | — | `vehSettleTicks` / `vehSettleInterval` / `vehRestoreVelocity` | 8 / 0.05 / 0 | server, advanced | |
 | — | maxDistance | **removed** | — | — | declared, never read (B7) |
 | tunables `anti_stuck_*` (5) | — | `asMaxAttempts`, `asMaxSearchTime`, `asSafeDistance`, `asHorizontalRange`, `asMaxDistance` | as v4 | server, advanced | |
 | tunables `sed_*` (7) | — | `wdMaxDrawPerFrame`, `wdDrawDistance`, `wdInteractDistance`, `wdPanelSizeRatio`, `wdPanelMinWidth`, `wdPanelMaxWidth`, `wdPanelMaxViewFactor` | as v4 | **client** | purely visual |
 | tunable `toast_hold_time` | — | `toastHold` | as v4 | client | |
-| `rareload_language` | — | `language` | auto | client | |
+| `rareload_language` | — | **removed** (D16) | — | — | Rareload follows the game language (`gmod_language`) like every other addon |
 
 ### 6.3 CAMI privileges (names unchanged)
 
-`rareload_admin` (umbrella), `rareload_manage_objects`, `rareload_teleport`, `rareload_debug`, `rareload_anti_stuck`, `rareload_data_cleanup`, `rareload_settings`, `rareload_use_tool`, `rareload_save`, `rareload_restore`, `rareload_{save,restore}_{inventory,ammo,health_armor,appearance,states,entities,npcs,vehicles}`, `rareload_global_inventory`.
+`rareload_admin` (umbrella), `rareload_manage_objects`, `rareload_teleport`, `rareload_debug`, `rareload_anti_stuck`, `rareload_data_cleanup`, `rareload_settings`, `rareload_use_tool`, `rareload_save`, `rareload_restore`, `rareload_{save,restore}_{inventory,ammo,health_armor,appearance,states,entities,npcs,vehicles}`, `rareload_global_inventory`, and one new one: `rareload_restore_privileged_states` (default `admin`) for restoring godmode and notarget (G58, S14).
 
 The internal alias table is removed (`KEEP_/RETAIN_/RESTORE_INVENTORY` all pointed at one privilege). Call sites use privilege names directly.
 
@@ -384,7 +547,22 @@ Each case gets a manual-test row (§30.3). "Expected" is the required v5 behavio
 | E17 | `game.CleanUpMap()` called by an admin | The world is saved for each player first (F21) unless Rareload started the cleanup |
 | E18 | Player restores a save containing noclip without `keepStates` | Movetype is forced to walk |
 | E19 | Duplicator-blocked or admin-only entity class in a save (`duplicator.IsAllowed` false) | Skipped and reported (S7) |
-| E20 | Sandbox limits (`sbox_maxprops` …) would be exceeded on restore | Governed by D10 |
+| E20 | Sandbox limits (`sbox_maxprops` …) would be exceeded on restore | Governed by D10 (G29) |
+| E21 | Saved prop was made **persistent** (`sbox_persist`) | Not captured, so no double copy (G32) |
+| E22 | Player spawns through a `trigger_changelevel` transition | No restore (G19) |
+| E23 | Listen-server or singleplayer **host** quits the game | Host position saved in `ShutDown` (G21, B20) |
+| E24 | Developer runs `-multirun` (every copy has `SteamID64 = "0"`) | Temporary `lan_<UserID>` keys, a warning, nothing written to disk |
+| E25 | Player killed by `KillSilent` (admin mods, gamemode logic) | Treated as a death (G20, B22) |
+| E26 | Another addon blocks `PlayerCanPickupWeapon` or `CanPlayerEnterVehicle` | Blocked items are reported; the rest restores (G18, G24) |
+| E27 | Save file larger than 15,000 JSON keys (big builds, long history) | Loads fine (G1, B19); covered by a test with a 50,000-key fixture |
+| E28 | Player with a 3 MB heavy save joins a full server | Stream is throttled: no client disconnect, no server hitch (G11, B21) |
+| E29 | World restore on a server close to the 8,192-edict limit | Restores what fits with ≥ 256 edicts spare, reports the rest; never crashes `ents.Create` (G62) |
+| E30 | Map loaded from a Source save (`loadgame`), `gm_load`, or a transition | World modules don't restore; player modules still do (G51, G52) |
+| E31 | Persistent props (`sbox_persist`) load at map start | Treated as external world state, never duplicated (G32, G52) |
+| E32 | Save made while crouched in a vent | Anti-stuck tests the duck hull, so the player isn't pushed out of the vent (G60) |
+| E33 | Timeline restore while spectating or prop-driving | Leaves spectate/drive first; no save is taken while spectating (G61) |
+| E34 | Restored props spawn overlapping each other | Penetrating objects are frozen and reported instead of flying apart (G63) |
+| E35 | Server with `sbox_noclip 0` or an admin mod blocking noclip | Saved noclip is not restored (G58, B25) |
 
 ---
 
@@ -404,6 +582,10 @@ Each case gets a manual-test row (§30.3). "Expected" is the required v5 behavio
 | S8 | Players only ever read and write **their own** saves. The only exception is `rareload_manage_objects`, which is checked per request | `sv_history.lua` |
 | S9 | Anything a client sends back is treated as untrusted, including entity IDs (resolved server-side, not by index) | all handlers |
 | S10 | Other players' saves are only synced as light data (position, model, summary) unless the viewer has `rareload_manage_objects`. Nobody can download everyone's full inventories | `sh_net` topics |
+| S11 | Every `util.Decompress` passes `maxSize` (requests: 256 KB, transfers: 16 MB) (G4) | `sh_net.lua` |
+| S12 | JSON from clients (inspector edits) is decoded **with** the 15,000-key limit; only our own data files use `ignoreLimits` (G1) | `sv_history.lua`, `sv_storage.lua` |
+| S13 | The server never sends a client more than 96 KB of unacknowledged reliable data from Rareload, so it can't cause a reliable-buffer overflow disconnect (G11) | `sh_net.lua` scheduler |
+| S14 | Restoring a state can never grant more than the player could get right now: noclip asks `PlayerNoClip`, flashlight asks `PlayerSwitchFlashlight`, godmode/notarget need `rareload_restore_privileged_states`. This matters most for **old timeline entries**, which could otherwise re-grant a power an admin has since taken away (G58, B25) | `modules/player.lua` |
 
 ---
 
@@ -419,7 +601,8 @@ Reference scene: gm_construct, 1 player, 200 props (40 welded), 10 NPCs, 3 vehic
 | Respawn → world fully restored | ≤ 1.5 s (vehicle settling included) | report |
 | Anti-stuck resolve (worst case) | ≤ `asMaxSearchTime` (default 1.5 s), typical < 20 ms | report |
 | Join sync (light, 10 players) | ≤ 32 KB | `Net` byte counter |
-| Heavy sync per player | compressed; streamed at ≤ 1 chunk per tick | `Net` byte counter |
+| Heavy sync per player | compressed; ≤ 1 chunk (≤ 60 KB) per tick per client, ≤ 96 KB in flight, stays under the ~120 KB/s reliable bandwidth (G11) | `Net` byte counter |
+| Largest save that loads | ≥ 50,000 JSON keys (G1) | unit test fixture |
 | Client world display, 100 panels in view | ≤ 1.0 ms/frame CPU | `SysTime` around the draw hook, shown in debug HUD |
 | Disk write after a timeline edit | debounced to at most 1 write per 0.5 s per file | storage log |
 | Memory for the safe-position cache | ≤ 512 positions per map | cap |
@@ -454,7 +637,7 @@ Reference scene: gm_construct, 1 player, 200 props (40 welded), 10 NPCs, 3 vehic
   Services  │ sv_snapshot · sv_antistuck · sv_ownership · vehicle_adapters  │
   Infra     │ sv_storage · sv_log                                            │
             └───────────────────────────────────────────────────────────────┘
-  Shared    sh_core · sh_util · sh_config · sh_perms · sh_net · sh_lang
+  Shared    sh_core · sh_util · sh_config · sh_perms · sh_net   (+ resource/localization/*.properties)
 ```
 
 A file may only call its own layer or lower ones. Upward communication uses hooks (Appendix A).
@@ -471,7 +654,8 @@ A file may only call its own layer or lower ones. Upward communication uses hook
 ## 11. Target file tree & line budgets
 
 ```
-addon.json ..................................... workshop metadata + ignore list (§27.5)
+addon.json ..................................... workshop metadata + ignore list (§27.6)
+resource/localization/<lang>/rareload.properties  translations, one file per language (D16)
 lua/
 ├─ autorun/rareload.lua ........................ 60   loader
 ├─ weapons/gmod_tool/stools/rareload_tool.lua .. 200  left/right/reload → pipeline/history; CPanel → cl_menu
@@ -481,8 +665,6 @@ lua/
    ├─ sh_config.lua ........................... 350  settings registry, convar gen, resolution, clamp, locks, sync
    ├─ sh_perms.lua ............................ 150  CAMI privileges, Can(ply, priv)
    ├─ sh_net.lua .............................. 350  2 channels, opcodes, schemas, chunking, compression, rate limits
-   ├─ sh_lang.lua ............................. 120  L(), locale loading, language setting
-   ├─ lang/ ................................... 9 files, unchanged format
    ├─ server/
    │  ├─ sv_storage.lua ....................... 500  atomic IO, .bak, debounce, paths, blobs, schema, migrations
    │  ├─ sv_log.lua ........................... 300  loggers, sessions/report cards, ring buffer, timings, watches
@@ -520,7 +702,7 @@ tools/ .......................................... lang checker, fixture anonymiz
 docs/ ........................................... ARCHITECTURE.md (short), VEHICLES.md (from VEHICLE_MODULE_PLAN)
 ```
 
-**Totals:** 37 code files, ≈13,700 lines. The budgets flag possible problems but are not hard limits. A file that goes more than 25% over should be checked for doing two jobs.
+**Totals:** 36 code files, ≈13,600 lines. The budgets flag possible problems but are not hard limits. A file that goes more than 25% over should be checked for doing two jobs.
 
 ---
 
@@ -535,7 +717,7 @@ docs/ ........................................... ARCHITECTURE.md (short), VEHIC
 | `core/sv_player_settings.lua`, `client/cl_player_settings.lua`, `shared/rareload_convars.lua`, `shared/rareload_tunables.lua` | `sh_config.lua` |
 | `anti_stuck/sv_anti_stuck_config.lua`, `sv_deepcopy_utils.lua` | `sh_config.lua` / removed (`table.Copy`) |
 | `shared/permissions_def.lua` | `sh_perms.lua` |
-| `shared/sh_lang.lua`, `shared/lang/*` | `sh_lang.lua`, `lang/*` |
+| `shared/sh_lang.lua`, `shared/lang/*` | `resource/localization/*/rareload.properties` + a 10-line `L()` helper in `cl_ui.lua` (D16) |
 | `core/rareload_state_registry.lua`, `core/rareload_state_providers.lua`, `save_helpers/rareload_save_point.lua` | `sv_pipeline.lua` + `modules/*` |
 | `save_helpers/rareload_save_appearance.lua`, `respawn_handlers/sv_rareload_restore_appearance.lua` | `modules/player.lua` |
 | `save_helpers/rareload_save_{inventory,ammo}.lua`, `respawn_handlers/sv_rareload_handler_{inventory,global_inventory}.lua`, `sv_rareload_inventory_common.lua` | `modules/inventory.lua` |
@@ -578,7 +760,7 @@ RARELOAD = RARELOAD or {}
 RARELOAD.version = "5.0.0"
 RARELOAD.API = 1                       -- bump on breaking public-API changes (§24)
 
-local SHARED = { "sh_core", "sh_util", "sh_config", "sh_perms", "sh_net", "sh_lang" }
+local SHARED = { "sh_core", "sh_util", "sh_config", "sh_perms", "sh_net" }
 
 local function each(dir, fn)
     local files = file.Find("rareload/" .. dir .. "*.lua", "LUA")
@@ -589,7 +771,6 @@ local function shared(p) if SERVER then AddCSLuaFile(p) end include(p) end
 local function client(p) if SERVER then AddCSLuaFile(p) else include(p) end end
 
 for _, n in ipairs(SHARED) do shared("rareload/" .. n .. ".lua") end
-each("lang/", function(p) if SERVER then AddCSLuaFile(p) end end)   -- loaded by sh_lang
 if SERVER then
     each("server/", include)
     each("server/modules/", include)
@@ -637,7 +818,9 @@ Resolution: `RARELOAD.Get(ply, key)`
 | `player` | server **lock**? → convar : (player override ?? convar) → then `capBy` |
 | `client` | client convar (client realm only) |
 
-Generated from each declaration: the convar, the type/range/enum validation used by `settings.set`, the menu control, lang keys `setting.<key>.label` / `.help`, player-override persistence, the `rareload settings` listing and the README settings table (`rareload settings --md`).
+Generated from each declaration: the convar (with engine `min`/`max` so the engine clamps too, G42), the type/range/enum validation used by `settings.set`, the menu control, lang keys `setting.<key>.label` / `.help`, player-override persistence, the `rareload settings` listing and the README settings table (`rareload settings --md`).
+
+**Player overrides as userinfo convars (D13, recommended).** For every `scope = "player"` setting, the registry also creates a client convar `rareload_pref_<key>` with `FCVAR_USERINFO` and `FCVAR_ARCHIVE`, default `-1` meaning "use the server value". The server reads it with `ply:GetInfoNum` (G41), then applies locks and caps. This removes the whole per-player settings layer from v4: `players/<sid64>.json.settings`, the `settings.set` / `settings.get` opcodes for preferences, and the settings sync. The engine persists the values (`client.vdf`) and sends them. Trade-off: a player's preferences follow them to every server that runs Rareload, which is the usual GMod behaviour (like `cl_playermodel`). The v4 per-player settings files are migrated once, on the player's first join: the server pushes the old values and the client writes them to its convars.
 
 ### 13.3 Permissions — `sh_perms.lua`
 
@@ -667,13 +850,16 @@ RARELOAD.Net.Handle("history.pin", {
 })
 ```
 
-Encoding: JSON → `util.Compress` → one message if ≤ 60 KB, otherwise chunks `{transferId, index, total}`. The receiver reassembles with a 10 s timeout. Requests are capped at 64 KB (S2). Registering an opcode twice is an error (L31).
+Encoding: JSON → `util.Compress` → one message if ≤ 60 KB, otherwise chunks `{transferId, index, total}` (G10). The receiver reassembles with a 10 s timeout and decompresses with `maxSize` (S11). Requests are capped at 64 KB (S2). Registering an opcode twice is an error (L31).
+
+**Send scheduler (G11, S13).** `Push` never writes to the network directly. It adds chunks to a per-client queue, and one `Tick` hook sends at most **one chunk per client per tick** while that client has less than 96 KB unacknowledged. The client acknowledges each transfer it has fully received with a tiny `ack` request. Newer pushes of the same topic for the same player replace queued, unsent ones (for example, 5 quick saves send only the latest). v4 sends every chunk in a single loop, which can overflow the reliable buffer and disconnect the client (B21).
+
+**Ready handshake (G14).** The client calls `Net.Request("ready")` from `InitPostEntity`. Until then, the server queues nothing for that player. On `ready` it sends the initial `settings` and `saves`, and heavy data follows through the scheduler.
 
 ### 13.5 Storage — `sv_storage.lua`
 
 ```lua
-Store.Player(sid64)                     --> { settings, globalInventory, reload }  (cached)
-Store.SavePlayer(sid64)                 -- debounced
+Store.PData(sid64, key [, value])       -- small per-player records via util.GetPData/SetPData (D17, G49)
 Store.Saves(mode, map, sid64)           --> saves doc (§16.2), cached
 Store.SaveSaves(mode, map, sid64)       -- debounced atomic write
 Store.Blob.Put(mode, map, tbl) --> hash / Store.Blob.Get(mode, map, hash) / Store.Blob.GC(mode, map)
@@ -682,7 +868,13 @@ Store.Flush()                           -- ShutDown
 Store.Migrate()                         -- once, on Initialize
 ```
 
-Write path: encode → write `x.tmp` → copy the current `x` to `x.bak` → rename `x.tmp` to `x`. If the rename fails, write `x` directly. Read path: `x` → `x.bak` → quarantine (E8).
+Write path: encode → write `x.tmp` → copy the current `x` to `x.bak` → rename `x.tmp` to `x`. `file.Write` and `file.Rename` both return a success bool (G5, G6), so each step is checked. If the rename fails, write `x` directly and report it. Read path: `x` → `x.bak` → quarantine (E8).
+
+Rules from the wiki:
+- Decode our own files with `util.JSONToTable(str, true)` (`ignoreLimits`) so big saves load (G1, B19). Leave `ignoreConversions` off because the duplicator needs numeric keys, and never use SteamID64 as a JSON key (G2).
+- Paths are lowercase, `[a-z0-9_%-]` only, and end in `.json` (G5, G45). Map names go through the same sanitizer.
+- Heavy blobs are read with `file.AsyncRead` when a player joins, so a large save doesn't cause a hitch (G7). Synchronous reads are only used at startup and in the migration.
+- Writes happen as soon as data changes (debounced 0.5 s), never deferred to `ShutDown` (G48).
 
 ### 13.6 Logging — `sv_log.lua`
 See §22.
@@ -728,28 +920,36 @@ RARELOAD.Module({
 
 | id | phase | data | restore |
 |---|---|---|---|
-| `transform` | position | `pos`, `ang`, `moveType` | exit vehicle if seated → anti-stuck (if `antiStuck`) → `SetPos` / `SetEyeAngles` / movetype (noclip only if `keepStates`, E18) → start the safe-position watcher |
+| `transform` | position | `pos`, `ang`, `moveType`, `crouched`, `mapVersion` | leave vehicle, spectate or prop-drive if needed (E13, E33) → anti-stuck (if `antiStuck`, forced on when `mapVersion` differs, G53), using the duck hull if the save was crouched (E32) → `SetPos` / `SetEyeAngles` / movetype (noclip only if `keepStates` and allowed, E18, S14) → start the safe-position watcher |
 | `health` | player | `hp`, `armor`, `maxHp` | |
-| `states` | player | `god`, `notarget`, `frozen`, `noclip`, `flashlight`, `vel` | **symmetric**: sets and clears (B4) |
-| `appearance` | player | `model`, `skin`, `bodygroups`, `playerColor`, `weaponColor`, `material`, `color` | applied in phase 2, which runs after sandbox's `PlayerSetModel`. Model validated with `util.IsValidModel`. Hands via `SetupHands`. **No `ConCommand`** (L8, B17) |
+| `states` | player | `god`, `notarget`, `frozen`, `noclip`, `flashlight`, `vel` | **symmetric**: sets and clears (B4). Each grant is checked first: `PlayerNoClip`, `PlayerSwitchFlashlight`, and `rareload_restore_privileged_states` for god/notarget (S14, G58) |
+| `appearance` | **spawn** (in `PlayerSetModel`) | `model`, `skin`, `bodygroups`, `playerColor`, `weaponColor`, `material`, `color` | The model is set inside our `PlayerSetModel` hook, which then returns `true` so the gamemode doesn't overwrite it (G16). Skin, bodygroups and colors are applied right after, in phase 2. Model validated with `util.IsValidModel`. Hands via `SetupHands`. **No `ConCommand`**, so the player's own `cl_playermodel` preference is never touched (L8, B17) |
 
 ### 14.2 `modules/inventory.lua`
 
 | id | phase | data | restore |
 |---|---|---|---|
-| `weapons` | inventory | class list | strip, then give. Unknown classes are skipped (L9). If `globalInventory` is on and allowed, the list comes from `Store.Player(sid).globalInventory` instead (L20) |
-| `ammo` | inventory, after `weapons` | `{ [class] = {p, s, c1, c2} }` | |
-| `activeWeapon` | finalize | class | `SelectWeapon` if present |
+| `weapons` | **spawn** (in `PlayerLoadout`) on respawn; inventory phase for timeline restores | class list | On respawn, our `PlayerLoadout` hook gives the saved weapons with `Give(class, true)` (no default ammo) and returns `true`, so the default loadout never runs and nothing needs stripping (G17, G18). It only returns `true` when it actually restores weapons, so other addons' loadouts still work otherwise. Timeline restores strip, then give. Unknown classes are skipped (L9); a `NULL` from `Give` means another addon blocked it and is reported (E26). If `globalInventory` is on and allowed, the list comes from the global inventory PData record instead (L20) |
+| `ammo` | inventory, after `weapons` | `{ reserve = {[ammoName] = n}, clips = {[class] = {c1, c2}} }`, from `ply:GetAmmo()` so ammo without a matching weapon is kept too | `SetAmmo` by `game.GetAmmoID(name)`, clamped to `game.GetAmmoMax`; clips with `SetClip1/2`. Pickup notices suppressed during the restore (G55, G57, B27) |
+| `activeWeapon` | finalize | class | sets a pending weapon that a one-shot `StartCommand` hook applies with `cmd:SelectWeapon`, which stays inside prediction (G56) |
 
-Saving with `globalInventory` on also writes `Store.Player(sid).globalInventory`.
+Saving with `globalInventory` on also writes the player's global inventory record with `Store.PData` (D17).
 
 ### 14.3 `modules/world.lua`
 
 | id | phase | data | restore |
 |---|---|---|---|
-| `entities` | world | snapshot of owned entities that are not excluded and not vehicles | `Snapshot.Restore` with the existing-ID filter, owner = player, the denylist (S7), health and gravity (L24). Entities overlapping the player are made non-solid **only for entities spawned in this restore**, until the player's hull is clear (B12) |
+| `entities` | world | snapshot of owned entities that are not excluded, not vehicles, not map-created (`MapCreationID ~= -1`) and not persistent (G30, G32) | `Snapshot.Restore` with the existing-ID filter, owner = player, the denylist (S7), health and gravity (L24). Entities overlapping the player are made non-solid **only for entities spawned in this restore**, until the player's hull is clear (B12) |
 | `npcs` | world | snapshot + per-NPC AI record `{state, schedule, squad, enemy="ply:<sid64>"/"npc:<id>"}` | waits for **map ready** through the queue (L3). Squad keyvalue is set before spawn, AI and enemies reapplied on the next tick (L22) |
 | `constraints` | world, after `entities` + `vehicles` | cross-category constraint list | links once both ends exist (readiness wait, not a delay) |
+
+Shared snapshot helpers live in `sv_snapshot.lua`: `Capture(ents, opts)`, `Restore(snapshot, opts)`, `Merge(old, fresh, mode)`, `RemoveById`, `Summary`.
+
+**Carrying Rareload data through the duplicator (G28).** Rareload registers one entity modifier, `duplicator.RegisterEntityModifier("rareload", fn)`. At capture, `duplicator.StoreEntityModifier(ent, "rareload", {id, gravity, ai, health})` puts the Rareload ID and per-entity state *inside* the snapshot. On paste, the duplicator calls our function in its normal order (G26), which sets the `rl_id` NWString, the gravity flag and health, and queues the NPC AI data. This replaces v4's approach of matching IDs and patching fields after the paste (L24).
+
+**Restore safety (G62–G66).** Before pasting: check edict headroom (`ents.GetEdictCount()`; keep ≥ 256 free, E29), validate models with `util.IsValidModel` and list missing Workshop content with `duplicator.FigureOutRequiredAddons` (E7). Pasting runs in a coroutine with a per-tick time budget (G72). After pasting: freeze any physics object where `IsPenetrating()` is true (E34), register the entities in a `rareload` cleanup type (`cleanup.Register`) and one undo entry with readable text. Ownership comes from the Sandbox `PlayerSpawned*` hooks first, with CPPI/undo lookups only as a fallback (G65).
+
+**Sandbox gates (G29, D10).** When `respectSpawnLimits` is on (default in multiplayer), each def is checked before pasting with the matching sandbox hook (`PlayerSpawnProp`, `PlayerSpawnSENT`, `PlayerSpawnNPC`, `PlayerSpawnVehicle`) and `ply:CheckLimit(type)`. Entities that pass are registered with `ply:AddCount`, `cleanup.Add` and one `undo` entry named "Rareload restore", so players can undo a restore with Z and server limits still apply. Rejected defs are counted in the report and stay in the save.
 
 ### 14.4 `modules/vehicles.lua` — see §20.
 
@@ -776,7 +976,7 @@ Saving with `globalInventory` on also writes `Store.Player(sid).globalInventory`
 `opts = { at?, ang?, reason = "tool"|"command"|"auto"|"disconnect"|"cleanup", only?, silent?, captureOnly? }`
 
 1. Check the gate: `enabled`, `rareload_save`, and the `RareloadCanSave` hook (§24).
-2. For each module in phase order that passes its privilege and setting check: `data[id] = mod.save(ply, ctx)`. Errors are caught per module and reported (principle 6).
+2. For each module in phase order that passes its privilege and setting check: `data[id] = mod.save(ply, ctx)`, called through `ProtectedCall` so one broken module is skipped but its error is still printed and reported (principle 6, G34). Restores use the same wrapper.
 3. **Unchanged check**: every light module's output is compared with `prev` using `equal`. If nothing changed and no heavy module produced new data, return `"unchanged"` (L35).
 4. Heavy data: `hash = Store.Blob.Put(…)`. An identical hash reuses the existing blob.
 5. `captureOnly` → return the entry (used by undo). Otherwise `History.Append` → it becomes active → pruning (pinned entries survive) → debounced write.
@@ -787,8 +987,9 @@ Saving with `globalInventory` on also writes `Store.Player(sid).globalInventory`
 
 | # | Phase | Modules | Starts after |
 |---|---|---|---|
+| 0 | `spawn` | appearance (model), weapons | **only on respawn**: runs inside the gamemode's own `PlayerSetModel` / `PlayerLoadout` calls (G16, G17). Timeline restores skip this phase and run these modules in phases 2–3 |
 | 1 | `position` | transform | immediately |
-| 2 | `player` | appearance, health, states | `ctx:nextTick` (sandbox has applied its spawn defaults) |
+| 2 | `player` | appearance (rest), health, states | `ctx:nextTick` (sandbox has applied its spawn defaults) |
 | 3 | `inventory` | weapons → ammo | phase 2 done |
 | 4 | `world` | entities, npcs, vehicles → constraints | phase 3 done; npcs also wait for map ready |
 | 5 | `finalize` | activeWeapon, report, `RareloadRestored` | phase 4 done, or a 10 s world timeout reported as partial |
@@ -850,18 +1051,40 @@ sequenceDiagram
 ### 15.6 Spawn and lifecycle hooks — `sv_spawn.lua`
 
 ```
-PlayerDeath        → ply.rareloadDied = true
-PlayerSpawn        → if not Get(enabled) or not Can(rareload_restore) → return (E15)
+PostPlayerDeath    → ply.rareloadDied = true                       (covers KillSilent, G20, B22)
+PlayerSpawn(ply, transition)
+                   → if transition → return                         (E22, G19)
+                     if not Get(enabled) or not Can(rareload_restore) → return (E15)
                      entry = History.Active(ply); if none → return
                      if died and skipRestoreOnDeath → clear, return
-                     if died and deathCleanupMode ~= "off" → Cleanup(mode)   ("all": re-entrancy guard, respawn after, E6)
-                     Pipeline.Restore(ply, entry, {reason="spawn"})
+                     if died and deathCleanupMode ~= "off" → Cleanup(mode)
+                         ("all": re-entrancy guard, game.CleanUpMap callback respawns the player, E6, G31)
+                     ply.rareloadPending = Pipeline.Begin(ply, entry, {reason="spawn"})   -- creates ctx, runs phase 1
+PlayerSetModel     → if pending and appearance allowed → set model, return true   (phase 0)
+PlayerLoadout      → if pending and weapons will restore → give weapons, return true (phase 0)
+                     after the gamemode's PlayerSpawn: pipeline continues with phases 2–5
 PlayerDisconnected → Pipeline.Save(ply, {only={transform}, reason="disconnect", silent=true}); disconnectCleanup
 PreCleanupMap      → unless Rareload started it: Save world modules for each player (silent)  (E17)
-ShutDown           → Store.Flush()
+OnPauseMenuShow    → (client, host only) Net.Request("flushHost"): server saves the host's transform  (E23, G48, G50)
+ShutDown           → best-effort: save the host if still valid, then Store.Flush()   (G21, G48, B20)
 ```
 
-### 15.7 Undo
+Hook order note: `hook.Add` callbacks run **before** the gamemode function. Our `PlayerSpawn` hook must return nothing so the gamemode's `PlayerSpawn` still runs, and that in turn calls our `PlayerSetModel` / `PlayerLoadout` hooks. Returning a value from those two hooks stops the gamemode's default *and* any other addon's hook that hasn't run yet for that event (hook order isn't guaranteed). So we only return `true` when we actually restore something, and the manual matrix includes a popular loadout addon (E26).
+
+### 15.7 Autosave (event-driven)
+v4 polls every 0.35 s and compares state. v5 marks modules dirty from engine events (G73):
+
+| Event | Marks dirty |
+|---|---|
+| `SetupMove` moved > threshold, or view turned > `autoSaveAngleThreshold` | `transform` |
+| `PlayerHurt`, armor change | `health` |
+| `WeaponEquip`, `PlayerDroppedWeapon` | `weapons` |
+| `PlayerAmmoChanged` | `ammo` |
+| `PlayerSpawned*`, `OnPhysgunFreeze`, `PlayerFrozeObject`, `EntityRemoved` of an owned entity, `OnUndo`, `OnCleanup` | `entities` / `npcs` / `vehicles` |
+
+Every `autoSaveInterval` seconds, a player with dirty modules and a safe state (alive, on the ground, not in noclip unless `keepStates`, not spectating) gets `Pipeline.Save(ply, {only = dirty, reason = "auto"})`. No dirty modules means no work at all.
+
+### 15.8 Undo
 Undo is `{snapshot = captureOnly entry, spawned = ctx.spawned}`. Running it removes everything still valid in `spawned`, then calls `Restore(ply, snapshot, {only = same comps, reason = "undo"})`. Only one level of undo per player, the same as v4.
 
 ---
@@ -874,7 +1097,6 @@ Undo is `{snapshot = captureOnly entry, spawned = ctx.spawned}`. Running it remo
 data/rareload/
 ├─ version.txt                           "5"
 ├─ server.json                           anti-stuck methods (order/enabled), preference locks, misc
-├─ players/<sid64>.json                  { v, settings = {…}, globalInventory = {…}, reload = {mode, comps} }
 ├─ sp/<map>/<sid64>.json                 saves doc — singleplayer   (D1, L16)
 ├─ mp/<map>/<sid64>.json                 saves doc — multiplayer
 ├─ {sp,mp}/<map>/_blobs/<hash>.json      heavy buckets, content-addressed
@@ -931,9 +1153,10 @@ data/rareload/
 | `player_positions/<map>/<sid>.json` (`sp_data`, `mp_data`, legacy `playerData`) | `sp|mp/<map>/<sid64>.json`, current save as the newest entry if it isn't already in history |
 | `player_positions_<map>.json` (v3 single file) | same |
 | `history/<map>/<sid>.json` | entries (ids, pinned, notes, active id kept) |
-| `player_settings/<sid>.json` | `players/<sid64>.json.settings` (keys renamed per §6.2) |
-| `global_inventory.json` | `players/<sid64>.json.globalInventory` |
-| `history_config.json` | `players/<sid64>.json.reload` |
+| `player_settings/<sid>.json` | kept in `_legacy_v4/`; on the player's first v5 join the values (keys renamed per §6.2) are pushed to their `rareload_pref_*` convars once (D13) |
+| `global_inventory.json` | PData `rareload_global_inv` per player (D17) |
+| `history_config.json` | PData `rareload_reload` per player (D17) |
+| `lua/rareload/shared/lang/*.lua` (code, not data) | converted once by `tools/lua_to_properties.lua` into `resource/localization/*/rareload.properties` (D16) |
 | `cached_pos_*`, anti-stuck cache | `{sp,mp}/<map>/_safe_positions.json` |
 | anti-stuck method toggles/priorities, tunables | `server.json` + convars |
 | v4 cleanup convars | `deathCleanupMode` via `fromLegacy` |
@@ -953,7 +1176,7 @@ Per-entry conversion is done by each module's `migrate[4]`, so v4 knowledge stay
 ### 17.2 Topics (S→C)
 | Topic | Content | When | Audience |
 |---|---|---|---|
-| `settings` | resolved settings + locks + server values | join, change | self |
+| `settings` | server values + locks + effective values for the player | after `ready`, on change | self |
 | `saves` | light active entry per player (transform, model, summaries) | join, save | everyone on the map (S10) |
 | `saves.heavy` | heavy data of an active entry | join, heavy hash change | the owner; everyone with `rareload_manage_objects` |
 | `history` | own timeline rows with summaries (≤ 512) | request, change | self |
@@ -966,8 +1189,10 @@ Per-entry conversion is done by each module's `migrate[4]`, so v4 knowledge stay
 ### 17.3 Opcodes (C→S)
 | Opcode | Priv | Rate (s) | Args |
 |---|---|---|---|
-| `settings.set` | none (player scope) / `rareload_settings` (server scope, locks) | 0.1 | `{key, value}` |
-| `settings.get` | — | 0.75 | — |
+| `settings.set` | `rareload_settings` (server scope and locks only; player preferences are userinfo convars, D13) | 0.1 | `{key, value}` |
+| `ready` | — | once per connection | — (G14) |
+| `flushHost` | listen host / singleplayer only | 1 | — (G48, G50) |
+| `ack` | — | per transfer | `{transferId}` (S13) |
 | `save` | `rareload_save` | 0.3 | `{at?, ang?}` (only from the stool or command path) |
 | `history.get` / `preview` / `objects` | `rareload_restore` | 0.3 | `{id?}` |
 | `history.pin` / `note` / `delete` / `clear` | `rareload_restore` | 0.2 | `{id, pinned|note(≤256)}` |
@@ -985,7 +1210,7 @@ Per-entry conversion is done by each module's `migrate[4]`, so v4 knowledge stay
 | Kind | Changed by | Stored | Examples |
 |---|---|---|---|
 | **Server policy** | admins with `rareload_settings` | convar | `deathCleanupMode`, `maxVehicles`, `debug`, `historySizeMax`, anti-stuck tuning |
-| **Player preference** (default from server) | each player, for themselves | `players/<sid64>.json` | `keepAmmo`, `autoSave`, `historySize` |
+| **Player preference** (default from server) | each player, for themselves | userinfo client convar `rareload_pref_<key>` (D13) | `keepAmmo`, `autoSave`, `historySize` |
 | **Client visual** | each player, locally | client convar | world display distances, toast time, language |
 | **Capability** | admins, in their admin mod | CAMI | `rareload_restore_ammo` |
 
@@ -1013,6 +1238,8 @@ One file, three sections:
 
 Removed from v4: the stats module, `OptimizePerformance`, the method-cache invalidation, the per-method timeout multiplier table (replaced by `cost`), and the periodic memory-cleanup timer.
 
+Engine helpers the methods rely on (G70, G71): hull traces (`util.TraceHull`, `util.TraceEntityHull`) and `util.PointContents` instead of `IsInWorld` alone; `navmesh.GetNearestNavArea` + `CNavArea:GetClosestPointOnArea`, skipping `IsUnderwater`, `IsDamaging` and `IsBlocked` areas; `navmesh.GetGroundHeight` for the displacement method; the node-graph fallback only when `ai.GetNodeCount() > 0`. In debug mode the listen host sees candidate positions via `debugoverlay` (G83).
+
 ---
 
 ## 20. Vehicles
@@ -1024,7 +1251,7 @@ This section brings in the findings of `docs/VEHICLE_MODULE_PLAN.md`. Move that 
 - **Every base wipes runtime state after a paste** (simfphys `PostEntityPaste`, LVS `sv_duping`, Glide's DT filter). Runtime state must be re-applied **after** the base has finished its own init (L14).
 - **Don't re-apply what the base already restores.** Glide's `DuplicatorNetworkVariables` are tuning values and Glide restores them itself.
 - **Health is component-based on some bases**: LVS keeps HP on engine, rotor and ammorack sub-entities; Glide keeps chassis, engine and tire health on the root; simfphys uses root `CurHealth`/`MaxHealth` (L15).
-- **Readiness probes exist**: LVS `GetlvsReady()`, WAC `isfunction(ent.receiveInput)`, Glide/simfphys valid physics object plus one tick.
+- **Readiness probes exist**: LVS `GetlvsReady()`, WAC `isfunction(ent.receiveInput)`, Glide/simfphys valid physics object plus one tick, Source vehicles `Vehicle:IsValidVehicle()` (G69).
 
 ### 20.2 Adapter contract
 
@@ -1062,15 +1289,22 @@ PASTED → WAIT_READY (isReady, timeout 5 s) → APPLY_STATE → SETTLE (vehSett
 One store: `RARELOAD.State = { settings, locks, saves = {[sid64] = light}, heavy = {[sid64] = {…}}, history, map }`. It merges light and heavy data, bumps a per-player revision, and fires `RareloadStateChanged(what, sid64)`. UI code only reads from the store and never listens to net directly. Consumers keep dirty flags keyed by revision (L28).
 
 ### 21.2 `cl_ui.lua`
-- One set of **theme tokens** (the current dark palette), `UI.S` scale factor, and fonts registered from a data table.
-- Widgets: `Category`, `Toggle`, `Slider`, `Dropdown`, `Button`, `Scroll`, `Search`, `ModelPreview`, `ConfirmDialog`, `Toast`, `Badge`, `LockHint`.
-- Rule: panels are built only from these widgets. Custom `Paint` code belongs in `cl_ui` or in the world display.
+- **One Derma skin** (`derma.DefineSkin("Rareload", …)`, D18, G78) holds the dark palette and paints every stock control. Panels call `SetSkin("Rareload")` and are built from stock controls: `DFrame`, `DColumnSheet`, `DListView`, `DTree`, `DProperties`, `DNumSlider`, `DCheckBoxLabel`, `DComboBox`, `DTextEntry`, `DScrollPanel`, `DModelPanel`. This replaces v4's custom `Paint` functions on nearly every panel.
+- `UI.S` scale factor and a fixed font table created once (G37).
+- `L(key, ...)`: `language.GetPhrase("rareload." .. key)` formatted with the arguments (D16).
+- Stock dialogs `Derma_Query` / `Derma_StringRequest` for confirmations and input; `SetClipboardText` for copy (G85).
+- Simple toasts and "restoring N objects…" progress use `notification.AddLegacy` / `AddProgress` (G79); `string.NiceTime` / `os.date` for times (G80); `input.LookupBinding` for key hints (G81).
+- Rule: custom `Paint` code only exists in the skin, the tool screen and the world display.
 
 ### 21.3 `cl_menu.lua`
-Built **from the settings registry**, grouped by `category` and filtered by scope, privilege and locks. The only hand-written part is a small actions table (save, timeline, advanced, highlights). Changing a language rebuilds the panel.
+Built **from the settings registry**, grouped by `category` and filtered by scope, privilege and locks. The only hand-written part is a small actions table (save, timeline, advanced, highlights).
+- **Tool panel** (player preferences + actions): starts with `ToolPresets` over the preference convars, so players get save/load presets for free (G76). A language change calls `TOOL:RebuildControlPanel` (G75).
+- **Utilities › Rareload › Server** (`spawnmenu.AddToolMenuOption`, G77): server policy and locks, visible only with `rareload_settings`.
+- **Utilities › Rareload › Client**: world display and other client-scope settings.
+- **Tool HUD help** uses `TOOL.Information` with `tool.rareload_tool.*` phrases (left = save at aim point, right = save here, reload = the chosen reload mode) (G75).
 
 ### 21.4 `cl_toolscreen.lua`
-Same visuals as v4. It reads from `cl_state` and the `toast` / `autosave` topics instead of four dedicated net messages.
+Same visuals as v4. It reads from `cl_state` and the `toast` / `autosave` topics instead of four dedicated net messages. Key hints show the player's real bindings (G81).
 
 ### 21.5 `cl_history.lua`
 List, detail, components, reload-mode picker, notes and pin, all using server summaries. The preview uses `world/cl_phantoms.lua`, so there is no second phantom implementation. Hull-clear coloring is rechecked at 5 Hz.
@@ -1089,6 +1323,13 @@ Object grid, detail, flags, actions (highlight, teleport, look-at, copy, delete,
 | `cl_highlight.lua` | halos, beams, HUD labels, highlight commands |
 
 Every world-draw hook starts with `if not Render.ShouldDraw(bDepth, bSky) then return end` (L25).
+
+Client rendering rules from the wiki:
+- **Phantom registry (G36).** Every `ClientsideModel` is created through `Phantoms.Make` and stored in one registry. The registry removes them all on `ShutDown`, on map change and on `rareload dev reload`, and each tick re-creates any that deleted themselves under lag. Phantoms are never parented to server entities (they detach outside the PVS); their position is updated instead.
+- **Fonts (G37).** A fixed table of about 8 fonts created once in `cl_ui`. The UI scale picks the closest size instead of creating new fonts.
+- **RTT pool (G38).** A fixed pool of power-of-two render targets (e.g. 8 × 512×256), named `rareload_panel_<n>`, reused least-recently-used.
+- **Halos (G39).** 1 pass and at most 32 haloed entities. Beyond that, only beams and labels.
+- **Cached iteration (G25).** Client scans use `ents.Iterator()`; the world display mostly avoids scans because of `OnEntityCreated` / `EntityRemoved`.
 
 Formatter example (replaces the 1,030-line collectors):
 
@@ -1174,11 +1415,15 @@ Hooks are listed in Appendix A. Anything not listed there is internal and may ch
 
 ## 25. Localization
 
-- **Key scheme**: `area.thing[.variant]`, e.g. `setting.keepAmmo.label`, `summary.ammo`, `toast.save.unchanged`, `timeline.component.world`.
-- **The server never localizes** (L29). It sends `{key, args}` and the client calls `L(key, unpack(args))`.
-- **Reuse v4 keys** where the meaning is the same. `tools/lang_map.lua` maps renamed keys so the 8 translations can be carried over by a script instead of by hand.
-- **CI check** (`tools/check_lang.lua`): fails on keys used in code but missing from `en`, and warns on keys unused in code and on keys present in `en` but missing from another language (the fallback is English).
-- `en.lua` is the source of truth. Contributors only edit the other files.
+- **Format (D16, G74)**: GMod's own system. One file per language, `resource/localization/<code>/rareload.properties`, `key=value` per line, **first line empty**, `#` for comments. GMod loads the file matching `gmod_language` and falls back to English automatically.
+- **Language codes** must match GMod's list, so v4's files are renamed: `en`, `fr`, `de`, `ru`, `pl`, `tr`, `es` → `es-ES`, `pt-br` → `pt-BR`, `zh-cn` → `zh-CN`.
+- **Keys** are prefixed `rareload.` (the filesystem is shared by all addons), then `area.thing[.variant]`, e.g. `rareload.setting.keepAmmo.label`, `rareload.summary.ammo`. Tool strings use GMod's required `tool.rareload_tool.*` keys.
+- **Usage**: Derma labels take `"#rareload.key"` directly; code uses `L(key, ...)` (a `language.GetPhrase` wrapper that formats `%s`/`%d` arguments).
+- **The server never localizes** (L29). It sends `{key, args}`.
+- **Multiplayer**: `.properties` files are not sent to clients like Lua files are. Rareload calls `resource.AddWorkshop("<its own Workshop id>")` on the server so joining players download it. A server running Rareload from a non-Workshop copy must make sure clients have the addon, otherwise they see raw keys.
+- **Migration**: `tools/lua_to_properties.lua` converts v4's 9 Lua language files once and applies `tools/lang_map.lua` for renamed keys.
+- **CI check** (`tools/check_lang.lua`): fails on keys used in code but missing from `en/rareload.properties`, warns on unused keys and on keys missing from other languages.
+- Trade-off: v4's separate `rareload_language` override disappears; Rareload follows the game's language setting like every other addon.
 
 ---
 
@@ -1196,6 +1441,15 @@ Hooks are listed in Appendix A. Anything not listed there is internal and may ch
 - **Data vectors** are always `Util.Vec` / `Util.ToVector`.
 - **Style** follows `.editorconfig` (4 spaces, LF, max 120 columns), enforced by `glualint`.
 - **Comments** explain *why*, never *what*. No commented-out code; git history keeps it.
+- **Iteration**: `ents.Iterator()` / `player.Iterator()`, never `ents.GetAll()` / `player.GetAll()`, and never modify what they return (G25).
+- **Per-player temporary hooks** use the player entity as the hook identifier so they remove themselves (G23).
+- **Reload-safe files**: shared state is `X = X or {}`, registries replace entries by id, and hooks use fixed identifiers, so re-running a file (`rareload dev reload`) is always safe (G46).
+- **Lowercase** file and folder names only (G45). No empty files (G44).
+- **JSON**: our files use `util.JSONToTable(s, true)`; client-supplied JSON uses the default limits (G1, S12). No SteamID64 table keys (G2).
+- **No `table.Copy`** on saved data (slow, drops Vectors/Angles, G68); no `list.Get` in hot hooks, use `list.GetEntry`/`HasEntry` (G67).
+- **Hot paths** (`Tick`, `Think`, render and HUD hooks): cache Colors, Materials and Vectors outside the hook, use lookup tables instead of searches, never nest player × entity loops (G84).
+- **Long work** (capturing or pasting many entities) runs in a coroutine resumed by the pipeline's `Tick` scheduler with a time budget per tick, never `coroutine.wait` (G72).
+- **Weapon switching** goes through `CUserCmd:SelectWeapon`, not `Player:SelectWeapon` (G56).
 
 ## 27. Tooling & CI
 
@@ -1211,7 +1465,14 @@ docs/                        ARCHITECTURE.md (1 page, links here), VEHICLES.md
 Remove `/docs` from `.gitignore`.
 
 ### 27.2 Lint
-Run `glualint` (GLuaFixer) in CI on `lua/**`. Also a grep step that fails on `RunString`, on `ConCommand(` with concatenation (S5), on `net.Start` outside `sh_net.lua`, and on `file.Write` outside the allowed files.
+Run `glualint` (GLuaFixer) in CI on `lua/**`. Also a grep step that fails on:
+- `RunString`, and `ConCommand(` with concatenation (S5)
+- `net.Start` / `net.Receive` outside `sh_net.lua`, `file.Write` outside the allowed files
+- `ents.GetAll` / `player.GetAll` (G25)
+- `JSONToTable(` in `sv_storage.lua` without the `ignoreLimits` argument, and `Decompress(` without `maxSize` (G1, G4)
+- uppercase characters or empty files under `lua/` (G44, G45)
+- `table.Copy(` in `lua/rareload/server/`, `list.Get(` anywhere, `:SelectWeapon(` on a player (G56, G67, G68)
+- a `.properties` file whose first line isn't empty, or a language folder whose name isn't a GMod language code (G74)
 
 ### 27.3 Offline unit tests
 - LuaJIT (the same VM GMod uses) plus `tests/stub/gmod.lua`, which provides `Vector`, `Angle`, `Color`, `util.TableToJSON/JSONToTable` (via a vendored `dkjson`, tests only), `hook`, `timer` (a manual clock), `CreateConVar`.
@@ -1221,8 +1482,16 @@ Run `glualint` (GLuaFixer) in CI on `lua/**`. Also a grep step that fails on `Ru
 ### 27.4 In-game `rareload selftest`
 A short runner that repeats a subset of the tests against the **real** engine (JSON round-trip of real Vectors, `util.Compress`, `duplicator.IsAllowed`, CAMI availability) and prints PASS/FAIL. Run it on every alpha, beta and rc build.
 
-### 27.5 Packaging
-`addon.json` with `"type": "tool"`, `"tags": ["build","fun"]` and `"ignore": ["*.md", "tests/*", "tools/*", "docs/*", ".github/*", ".vscode/*", ".glualint.json", ".editorconfig"]`. `gmad create` must produce an addon with only `lua/` (plus materials if any are added).
+### 27.5 Development loop on macOS
+Auto-refresh doesn't work on macOS (G46), so the plan doesn't rely on it:
+- `rareload dev reload` (listen server, `rareload_admin`) re-runs `autorun/rareload.lua` on the server and tells clients to run it too with `lua_openscript_cl`. It then fires `RareloadLoaded` again. Idempotent registries (§26) make this safe.
+- `rareload dev reset` removes every Rareload-spawned entity and phantom, clears pending restores and flushes storage, so tests start from a clean state.
+- When testing multiplayer with `-multirun`, remember every copy has `SteamID64 = "0"` (G22, E24). Use bots (`bot` command) for multi-player save tests instead.
+
+### 27.6 Packaging
+A 512×512 `.jpg` icon is required for the Workshop (G47). Upload with `gmpublish` or gmpublisher.
+
+`addon.json` with `"type": "tool"`, `"tags": ["build","fun"]` and `"ignore": ["*.md", "tests/*", "tools/*", "docs/*", ".github/*", ".vscode/*", ".glualint.json", ".editorconfig"]`. `gmad create` must produce an addon with only `lua/` and `resource/localization/` (plus materials if any are added). Both folders are on GMod's Workshop whitelist (G74).
 
 ---
 
@@ -1234,47 +1503,48 @@ Each phase ends with the addon loading cleanly and its acceptance checks passing
 - [ ] Branch steps 1–7 from §3.3 (`legacy/v4`, tag `4.0.1`, merge `origin/main`)
 - [ ] Commit this plan; move the vehicle plan to `docs/VEHICLES.md`; un-ignore `docs/`
 - [ ] Capture fixtures: copy a real `data/rareload/` (SP and MP, with history, vehicles and NPCs) and anonymize it into `tests/fixtures/v4/`
+- [ ] Confirm B19 on v4: build a save with > 15,000 JSON keys, restart, check whether it loads (record the result in §32)
 - [ ] Remove the v4 `lua/rareload` tree and `autorun`; add the empty loader, `addon.json`, `.glualint.json`, the CI skeleton
 - **Accept:** the game boots and prints `Rareload 5.0.0 loaded`; CI is green.
 
 ### Phase 1 — Shared infrastructure (2 days)
 - [ ] `sh_core`, `sh_util` (+ tests)
-- [ ] `sh_config` with every §6.2 setting (+ tests) [S3]
+- [ ] `sh_config` with every §6.2 setting, engine min/max, userinfo preference convars (+ tests) [S3, D13, G41, G42]
 - [ ] `sh_perms` [F40, L30]
-- [ ] `sh_net` (+ chunk tests) [S1, S2, L31]
-- [ ] `sh_lang` + `lang/` + `tools/check_lang.lua` [F39, L29]
-- [ ] `sv_storage` (IO, `.bak`, debounce, paths; no migrations yet) [S4, L6, E8]
+- [ ] `sh_net` with send scheduler, acks and ready handshake (+ chunk tests) [S1, S2, S11, S13, L31, G10, G11, G14]
+- [ ] `resource/localization/*/rareload.properties` via `tools/lua_to_properties.lua`, `L()` helper, `tools/check_lang.lua` [F39, L29, D16, G74]
+- [ ] `sv_storage` (IO, `.bak`, debounce, lowercase paths, `ignoreLimits`, async blob reads, PData records; no migrations yet) [S4, L6, E8, E27, G1, G5–G7, G48, G49, D17]
 - [ ] `sv_log` [F41]
-- [ ] `sv_commands` skeleton: `settings`, `perms`, `version`, `selftest`
+- [ ] `sv_commands` skeleton: `settings`, `perms`, `version`, `selftest`, `dev reload`, `dev reset` [G46]
 - **Accept:** every convar exists; a player's preference survives a reconnect; a server-scope change by a non-admin is rejected; selftest passes.
 
 ### Phase 2 — Core loop (3 days)
-- [ ] `sv_pipeline` (ctx, phases, tokens, unchanged check, report) (+ ordering tests) [L21, L35]
-- [ ] `modules/player.lua` [F1, F5–F7, L8, B4, B17]
-- [ ] `modules/inventory.lua` [F8–F10, L9, L20]
-- [ ] `sv_antistuck.lua` (+ resolver tests) [F4, L1, L10, L12]
-- [ ] `sv_spawn.lua` without world cleanup [F2, F3, F20, L2, E1, E15, E18]
+- [ ] `sv_pipeline` (ctx, phases 0–5, tokens, unchanged check, `ProtectedCall`, report) (+ ordering tests) [L21, L35, G34]
+- [ ] `modules/player.lua` (model via `PlayerSetModel`, gated state grants, crouch, map version) [F1, F5–F7, L8, B4, B17, B25, G16, G53, G58, G60, S14, E32, E35]
+- [ ] `modules/inventory.lua` (weapons via `PlayerLoadout`, `Give(class, true)`, all ammo by name, `CUserCmd:SelectWeapon`) [F8–F10, L9, L20, G17, G18, G55–G57, B26, B27, E26]
+- [ ] `sv_antistuck.lua` (+ resolver tests) [F4, L1, L10, L12, G33, G70, G71, G83]
+- [ ] `sv_spawn.lua` without world cleanup (host flush on pause menu, gamemode gate) [F2, F3, F20, L2, E1, E15, E18, E22–E25, E33, G19–G23, G48, G50, G54, G61, B20, B22, D19]
 - [ ] Minimal stool (left/right click) + `save_position`
 - **Accept:** F1–F10 and F20 pass; E1, E3, E4, E15 and E18 pass; the respawn report card shows each module.
 
 ### Phase 3 — World & vehicles (4 days) → tag `5.0.0-alpha.1`
-- [ ] `sv_ownership` [L19]
-- [ ] `sv_snapshot` (+ encode/merge tests) [F14, F15, L17, L18, L23, L24, L32, S7]
-- [ ] `modules/world.lua` [F11–F13, L3, L22, B12]
+- [ ] `sv_ownership` (Sandbox `PlayerSpawned*` hooks first, CPPI/undo fallback) [L19, G65]
+- [ ] `sv_snapshot` with the `rareload` entity modifier and sandbox gates (+ encode/merge tests) [F14, F15, L17, L18, L23, L24, L32, S7, G26–G30, D10]
+- [ ] `modules/world.lua` (edict headroom, model/addon validation, penetration freeze, cleanup type, coroutine paste, external-restore skip) [F11–F13, L3, L22, B12, B28, B29, E7, E21, E29–E31, E34, G32, G51, G52, G62–G67, G72]
 - [ ] `modules/vehicles.lua` + `vehicle_adapters.lua` + `cl_wac.lua` [F16, F17, L13–L15, L37]
-- [ ] Death and disconnect cleanup, PreCleanupMap [F18, F19, F21, E6, E17]
+- [ ] Death and disconnect cleanup, PreCleanupMap [F18, F19, F21, E6, E17, G31]
 - **Accept:** the reference scene (§9) saves and restores with no duplicates after 3 respawns; the welded prop and vehicle come back welded; E2, E6, E7 and E12 pass; the performance budgets for save and restore are met.
 
 ### Phase 4 — Timeline & autosave (2–3 days)
 - [ ] Blob store + GC in `sv_storage`
 - [ ] `sv_history`: append, prune, pin, note, delete, clear, activate, restore by component, undo, reload modes [F23–F26, F28, E13, E14]
 - [ ] Object ops with edit validation [F29 server, S6, S8]
-- [ ] `sv_autosave` [F22]
+- [ ] `sv_autosave`, event-driven dirty flags (§15.7) [F22, G73]
 - **Accept:** 150 saves of an unchanged world produce one blob; undo removes the async vehicles (E14); an object edit adding a new key is rejected.
 
 ### Phase 5 — Client foundation (3 days)
-- [ ] `cl_state`, `cl_ui`
-- [ ] `cl_menu` generated from the registry, with locks [F37, F38]
+- [ ] `cl_state`, `cl_ui` with the Rareload Derma skin, `L()`, native notifications [G37, G40, G78–G81, G85, D18]
+- [ ] `cl_menu` generated from the registry: tool panel with `ToolPresets`, Utilities › Rareload pages, `TOOL.Information` [F37, F38, G75–G77]
 - [ ] `cl_toolscreen`, full stool reload key [F28, F36]
 - [ ] `cl_debug` [F41]
 - **Accept:** every §6.2 setting is visible in the right place with correct lock and privilege behaviour; switching language updates everything live.
@@ -1282,7 +1552,7 @@ Each phase ends with the addon loading cleanly and its acceptance checks passing
 ### Phase 6 — Rich client UI (5–7 days) → tag `5.0.0-beta.1`
 - [ ] `cl_history` + preview [F23–F28 UI, F27]
 - [ ] `cl_inspector` [F29]
-- [ ] `world/cl_tracking` → `cl_phantoms` → `cl_panels` → `cl_interact` → `cl_highlight` [F30–F35, L25–L28]
+- [ ] `world/cl_tracking` → `cl_phantoms` (registry) → `cl_panels` (RTT pool) → `cl_interact` → `cl_highlight` [F30–F35, L25–L28, G36, G38, G39]
 - **Accept:** visual parity with v4 in side-by-side screenshots; the client budget in §9 is met with 100 panels.
 
 ### Phase 7 — Migration & compatibility (2 days)
@@ -1293,7 +1563,8 @@ Each phase ends with the addon loading cleanly and its acceptance checks passing
 ### Phase 8 — Hardening & release (2–3 days) → tag `5.0.0-rc.1` → cutover
 - [ ] Full manual matrix (§30.3), including a multiplayer session with 3 or more players and ULX
 - [ ] Performance pass against §9
-- [ ] Security pass against §8 (try every opcode with bad arguments)
+- [ ] Security pass against §8 (try every opcode with bad arguments, oversized and compressed-bomb payloads)
+- [ ] Network pass: 3 MB heavy save joining a full server without disconnects (E28)
 - [ ] README rewrite (settings table from `rareload settings --md`), release notes (§3.5)
 - [ ] Cutover (§3.3)
 - **Accept:** every §2 metric is ticked.
@@ -1305,7 +1576,7 @@ Each phase ends with the addon loading cleanly and its acceptance checks passing
 ## 29. Definition of done
 
 A PR or commit is done when:
-- [ ] It does one thing and references its IDs (F/E/S/L/B).
+- [ ] It does one thing and references its IDs (F/E/S/L/G/B/D).
 - [ ] CI is green (lint, unit tests, lang check).
 - [ ] New pure logic has unit tests; new behaviour has a manual-matrix row.
 - [ ] No new globals, no `timer.Simple` in pipeline or module code, no `net`/`file` calls outside their owner files.
@@ -1371,6 +1642,17 @@ Any bug found after alpha gets a unit test, if the logic is pure, or a matrix ro
 | B16 | Permission aliases lead to mixed checks (`GLOBAL_INVENTORY` vs `RETAIN_GLOBAL_INVENTORY`, `KEEP_` + `RETAIN_`) | privilege names directly |
 | B17 | Appearance restore runs `ConCommand("cl_playermodel …")`, which **permanently changes the player's own playermodel preference** | apply the model server-side after `PlayerSetModel`; never touch client convars |
 | B18 | v4 restores the world even when a player can't spawn those classes on this server (ignores `duplicator.IsAllowed`) | S7 + D10 |
+| B19 | **Likely data loss on big saves.** None of v4's 17 `util.JSONToTable` calls pass `ignoreLimits`, so a file with more than 15,000 keys returns `nil` (G1). Duplicator payloads are nested inside the save and history files, so large builds or long histories can hit this and look like "no save". Confirm by loading a large fixture in v4 during Phase 0 | `JSONToTable(s, true)` for our files; test with a 50,000-key fixture (E27) |
+| B20 | The singleplayer or listen-server **host** is never saved on exit, because `PlayerDisconnected` doesn't fire for the host (G21) | save in `ShutDown` (E23) |
+| B21 | `SendPlayerPositionsChunked` sends **every chunk in one loop**. A large heavy sync can overflow the ~256 KB reliable buffer and disconnect the client (G11) | send scheduler (§13.4, S13) |
+| B22 | The "was killed" flag uses `PlayerDeath`, which doesn't fire for `KillSilent` (G20) | `PostPlayerDeath` |
+| B23 | Data is synced from `PlayerInitialSpawn` + `timer.Simple(0)`, before the client has loaded (G14) | ready handshake |
+| B24 | Appearance and weapons are applied on timers after spawn and can race the gamemode's `PlayerSetModel` / `PlayerLoadout` (G16), which is why v4 strips and re-gives weapons | phase 0 inside those hooks |
+| B25 | **Privilege re-grant.** v4 restores noclip, godmode and notarget without asking `PlayerNoClip` or any permission. On a server with noclip disabled, or after an admin removes a player's godmode, restoring an older save (or just respawning) gives it back (G58) | S14 |
+| B26 | The active weapon is restored with `Player:SelectWeapon`, which switches outside prediction and can glitch the client's weapon (G56) | `CUserCmd:SelectWeapon` |
+| B27 | Ammo is saved only for weapon types the player holds, and stored by numeric ammo ID, which can change when addons add ammo types. Grenades or ammo picked up without the weapon are lost (G55) | save all ammo by name |
+| B28 | No edict check before a world restore: a big save on a busy server can hit the ~8,100-entity `ents.Create` limit (G62) | headroom check (E29) |
+| B29 | The world restore also runs after `gm_load`, a Source save load or a map transition, duplicating entities the engine already restored (G51, G52) | skip on external restores (E30) |
 
 ## 33. Open decisions
 
@@ -1388,6 +1670,13 @@ Any bug found after alpha gets a unit test, if the logic is pure, or a matrix ro
 | D10 | Respect sandbox spawn hooks and limits (`PlayerSpawnProp`/`SENT`/`NPC`/`Vehicle`, `sbox_max*`) on restore? | never · always · server setting | **Server setting `respectSpawnLimits`**, default **on in multiplayer, off in singleplayer** |
 | D11 | Is v4 data out in the wild (GitHub/Workshop users)? | yes → full importer · no → import only from your own fixtures | **Assume yes.** Tags 1.0–4.0 are public on GitHub |
 | D12 | Should the rewrite branch be renamed (e.g. `v5`)? | keep `Rareload_Rewrite_Branch` · rename | **Keep.** Renaming changes nothing, and the branch is deleted after the merge |
+| D13 | Where do player preferences live? | server JSON per player + net sync (v4) · **userinfo client convars** (G41) | **Userinfo convars.** Removes a file type, 2 opcodes and a sync path; the engine persists and transmits them. Server-side locks and caps still apply |
+| D14 | Storage backend | JSON files (+ blobs) · SQLite `sv.db` (G9) · hybrid | **JSON files.** They are easy to inspect, back up and copy between servers, and G1/G7 remove their main weaknesses. Revisit SQLite in v5.x only if timeline listing gets slow with many players; the `sv_storage` API hides the backend, so the switch would touch one file |
+| D15 | Apply model and weapons inside `PlayerSetModel` / `PlayerLoadout` (phase 0) or on a tick after spawn (v4) | hooks · timers | **Hooks** (G16, G17). Fewer visual glitches, no strip/re-give, correct ammo. The risk that another loadout addon doesn't run is limited by only returning `true` when restoring |
+| D16 | Translations | keep Lua language files + own `rareload_language` · **GMod `.properties` files** (G74) | **`.properties`.** Removes `sh_lang.lua` and 9 Lua files (~5,200 lines of code the Lua VM loads), gives automatic English fallback and `#key` in Derma, and matches how GMod itself and translators work. Costs the separate language override and requires `resource.AddWorkshop` for multiplayer |
+| D17 | Small per-player records (reload-key mode, global inventory) | `players/<sid64>.json` · **PData** (G49) | **PData.** Now keyed by SteamID64 and safe; transactional in `sv.db`; removes a folder and its IO code. Large data (saves, blobs) stays in files (D14) |
+| D18 | UI styling | custom `Paint` per panel (v4) · **one Derma skin + stock controls** (G78) | **Skin.** The biggest single reduction in client code; stock controls also bring keyboard navigation, sorting (`DListView`) and property editors (`DProperties`) for free. Keep custom drawing only for the tool screen and world display |
+| D19 | Non-Sandbox gamemodes (DarkRP, TTT, …) | always on · **Sandbox-derived only by default** (G54) | **Sandbox-derived only**, with a server setting `enableInAllGamemodes`. Restoring positions and weapons in role or economy gamemodes can break their rules |
 
 ---
 
