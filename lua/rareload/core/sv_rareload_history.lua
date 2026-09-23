@@ -721,7 +721,7 @@ net.Receive("RareloadHistory_ObjAction", function(_, ply)
         -- push the fresh object list back so the open overlay updates in place
         local objs = BuildEntryObjects(steamID, mapName, saveId)
         local blob = util.Compress(util.TableToJSON({ id = saveId, ownerSID = steamID, objects = objs or {} }) or "{}") or
-        ""
+            ""
         if #blob <= 60000 then
             net.Start("RareloadHistory_Objects")
             net.WriteString(saveId)

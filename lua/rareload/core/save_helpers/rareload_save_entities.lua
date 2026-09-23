@@ -6,7 +6,6 @@ if not RARELOAD.Ownership then
 end
 
 local EntityIdentity = include("rareload/core/rareload_entity_identity.lua")
-
 local SnapshotUtils = include("rareload/shared/rareload_snapshot_utils.lua")
 local DebugHelpers = include("rareload/debug/sv_debug_helpers.lua")
 
@@ -41,8 +40,6 @@ return function(ply)
     local duplicatorTargets = {}
     local duplicatorSeen = {}
     local vehCheckCache = {}
-    -- Per-entity live state the duplicator does not carry (current health), keyed
-    -- by RareloadEntityID and reapplied on restore.
     local entityStates = {}
 
     local DataUtils = RARELOAD.DataUtils

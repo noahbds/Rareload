@@ -19,15 +19,8 @@ local Vehicles = {}
 RARELOAD.Vehicles = Vehicles
 
 function Vehicles.Save(ply) return capture(ply) end
-function Vehicles.Restore(savedInfo, ply) return Restore.RestoreVehicles(savedInfo, ply) end
-
--- Global binding used by the state providers and history restore.
 function RARELOAD.RestoreVehicles(savedInfo, ply) return Restore.RestoreVehicles(savedInfo, ply) end
 
--- ---------------------------------------------------------------------------
--- Serialize a v2 bucket for on-disk storage: keep the duplicator snapshot and
--- the v2 runtime/seat fields, drop the transient _targets (live entity refs).
--- ---------------------------------------------------------------------------
 local function bucketForSave(bucket)
     if not (istable(bucket) and SnapshotUtils.HasSnapshot(bucket)) then return nil end
     local out = {}

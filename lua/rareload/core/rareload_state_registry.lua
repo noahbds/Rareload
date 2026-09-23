@@ -3,34 +3,33 @@
 -- ============================================================================
 
 RARELOAD = RARELOAD or {}
+-- StateRegistry is the central registry of all state providers. It handles save/restore order, gating, and dependency management.
 RARELOAD.StateRegistry = RARELOAD.StateRegistry or { _list = {}, _byId = {} }
 
-local R = RARELOAD.StateRegistry
-
-function R.Register(def)
+function RARELOAD.StateRegistry.Register(def)
     assert(istable(def) and isstring(def.id) and def.id ~= "", "state provider needs a string id")
-    local existing = R._byId[def.id]
+    local existing = RARELOAD.StateRegistry._byId[def.id]
     if existing then
-        for i = 1, #R._list do
-            if R._list[i] == existing then
-                R._list[i] = def
+        for i = 1, #RARELOAD.StateRegistry._list do
+            if RARELOAD.StateRegistry._list[i] == existing then
+                RARELOAD.StateRegistry._list[i] = def
                 break
             end
         end
     else
-        R._list[#R._list + 1] = def
+        RARELOAD.StateRegistry._list[#RARELOAD.StateRegistry._list + 1] = def
     end
-    R._byId[def.id] = def
+    RARELOAD.StateRegistry._byId[def.id] = def
     return def
 end
 
-function R.Get(id)
-    return R._byId[id]
+function RARELOAD.StateRegistry.Get(id)
+    return RARELOAD.StateRegistry._byId[id]
 end
 
 local function orderedCopy(keyFn)
     local copy = {}
-    for i = 1, #R._list do copy[i] = R._list[i] end
+    for i = 1, #RARELOAD.StateRegistry._list do copy[i] = RARELOAD.StateRegistry._list[i] end
     -- stable sort: fall back to registration index for equal keys
     local index = {}
     for i = 1, #copy do index[copy[i]] = i end
@@ -42,11 +41,11 @@ local function orderedCopy(keyFn)
     return copy
 end
 
-function R.SaveOrdered()
+function RARELOAD.StateRegistry.SaveOrdered()
     return orderedCopy(function(d) return d.saveOrder or d.order or 100 end)
 end
 
-function R.RestoreOrdered()
+function RARELOAD.StateRegistry.RestoreOrdered()
     return orderedCopy(function(d) return d.restoreOrder or d.order or 100 end)
 end
 
@@ -66,7 +65,7 @@ local function settingOn(ply, settingKey, default)
 end
 
 -- Should this provider capture for this player right now?
-function R.CanSave(def, ply, ctx)
+function RARELOAD.StateRegistry.CanSave(def, ply, ctx)
     local default = def.settingDefault
     if default == nil then default = true end
     if not permOk(ply, def.savePermission or def.permission) then return false end
@@ -76,7 +75,7 @@ function R.CanSave(def, ply, ctx)
 end
 
 -- Should this provider restore for this player right now?
-function R.CanRestore(def, ply, savedInfo, ctx)
+function RARELOAD.StateRegistry.CanRestore(def, ply, savedInfo, ctx)
     local default = def.settingDefault
     if default == nil then default = true end
     if not permOk(ply, def.restorePermission or def.permission) then return false end
@@ -86,15 +85,15 @@ function R.CanRestore(def, ply, savedInfo, ctx)
 end
 
 -- Run every save provider that passes its gate, in save order.
-function R.RunSave(ply, playerData, ctx)
-    for _, def in ipairs(R.SaveOrdered()) do
-        if isfunction(def.save) and R.CanSave(def, ply, ctx) then
+function RARELOAD.StateRegistry.RunSave(ply, playerData, ctx)
+    for _, def in ipairs(RARELOAD.StateRegistry.SaveOrdered()) do
+        if isfunction(def.save) and RARELOAD.StateRegistry.CanSave(def, ply, ctx) then
             def.save(ply, playerData, ctx)
         end
     end
 end
 
-function R.RunRestore(ply, savedInfo, ctx)
+function RARELOAD.StateRegistry.RunRestore(ply, savedInfo, ctx)
     if not IsValid(ply) then return end
     ctx = ctx or {}
 
@@ -106,8 +105,8 @@ function R.RunRestore(ply, savedInfo, ctx)
 
     -- Providers that pass their gate this pass.
     local runnable, scheduled = {}, {}
-    for _, def in ipairs(R.RestoreOrdered()) do
-        if isfunction(def.restore) and R.CanRestore(def, ply, savedInfo, ctx) then
+    for _, def in ipairs(RARELOAD.StateRegistry.RestoreOrdered()) do
+        if isfunction(def.restore) and RARELOAD.StateRegistry.CanRestore(def, ply, savedInfo, ctx) then
             runnable[#runnable + 1] = def
             scheduled[def.id] = true
         end
@@ -177,4 +176,4 @@ function R.RunRestore(ply, savedInfo, ctx)
     end
 end
 
-return R
+return RARELOAD.StateRegistry

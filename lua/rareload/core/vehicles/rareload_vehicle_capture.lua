@@ -3,6 +3,13 @@
 -- actively driving), assigns each a stable RareloadEntityID.
 -- ============================================================================
 
+-- TODO : change the behavior to prevent unowned vehicule
+-- from being captured but still allow the player to
+-- reseat in it but only if the original vehicule or
+-- the restored version from the original owner is still present
+-- in the map. This will prevent players from capturing unowned vehicles
+-- and then leaving them behind for other players to use.
+
 RARELOAD = RARELOAD or {}
 
 local EntityIdentity = include("rareload/core/rareload_entity_identity.lua")
@@ -57,7 +64,6 @@ return function(ply)
         if DataUtils and DataUtils.IsVehiclePart(veh) then goto cont end
         if seen[veh] then goto cont end
 
-        -- Ownership (or claim if the player is driving it).
         local owner = ResolveOwner and ResolveOwner(veh) or nil
         local ownerValid = IsOwnedByPlayerSafe and IsOwnedByPlayerSafe(veh, ply)
         if not ownerValid and not IsValid(owner) then

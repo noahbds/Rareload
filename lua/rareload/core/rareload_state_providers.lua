@@ -1,19 +1,10 @@
 -- ============================================================================
 -- Rareload state providers
---
--- Declarative definitions of every save/restore state, registered into
--- RARELOAD.StateRegistry. save_point.lua and the player-spawn handler iterate
--- the registry; the per-state save/restore bodies live here.
---
--- Behavior (gating, ordering, restore delays) mirrors the pre-registry inline
--- code exactly — this is a structural refactor, not a behavior change.
 -- ============================================================================
 
 if not SERVER then return end
 
 RARELOAD              = RARELOAD or {}
-
-local R               = RARELOAD.StateRegistry or include("rareload/core/rareload_state_registry.lua")
 
 -- Save helpers (same modules save_point.lua used inline).
 local save_vehicles   = include("rareload/core/vehicles/rareload_vehicle_capture.lua")
@@ -27,16 +18,12 @@ local function DebugOn(ply)
     return RARELOAD.GetPlayerSetting(ply, "debugEnabled", false)
 end
 
--- Mirror of the local previously in the player-spawn handler.
 local function HasSnapshotData(bucket)
     if bucket == nil then return false end
     if SnapshotUtils.HasSnapshot(bucket) then return true end
     return istable(bucket) and next(bucket) ~= nil
 end
 
--- Shared capture for the world buckets (entities/npcs): honors skipWorldSnapshot
--- (reuse the previous snapshot) and merges with the old bucket unless
--- autoOverwrite is set. Returns the raw (pre-normalize) save result.
 local function captureWorldBucket(ply, key, saveFn, category, ctx, pd)
     if ctx.skipWorldSnapshot and not ctx.autoOverwrite then
         if ctx.oldData then pd[key] = ctx.oldData[key] end
@@ -60,9 +47,9 @@ end
 -- ============================================================================
 
 -- ---- Appearance -----------------------------------------------------------
-R.Register({
+RARELOAD.StateRegistry.Register({
     id                = "appearance",
-    savePermission    = "SAVE_APPEARANCE", -- save had no setting gate
+    savePermission    = "SAVE_APPEARANCE",
     restorePermission = "RETAIN_APPEARANCE",
     restoreSetting    = "retainAppearance",
     saveOrder         = 10,
@@ -85,7 +72,7 @@ R.Register({
 })
 
 -- ---- Player states (god/notarget/frozen/noclip) ---------------------------
-R.Register({
+RARELOAD.StateRegistry.Register({
     id                = "playerStates",
     savePermission    = "SAVE_STATES",
     restorePermission = "RETAIN_PLAYER_STATES",
@@ -149,7 +136,7 @@ R.Register({
 })
 
 -- ---- Health & armor -------------------------------------------------------
-R.Register({
+RARELOAD.StateRegistry.Register({
     id                = "healthArmor",
     savePermission    = "SAVE_HEALTH_ARMOR",
     restorePermission = "RETAIN_HEALTH_ARMOR",
@@ -168,7 +155,7 @@ R.Register({
 })
 
 -- ---- Ammo -----------------------------------------------------------------
-R.Register({
+RARELOAD.StateRegistry.Register({
     id                = "ammo",
     savePermission    = "SAVE_AMMO",
     restorePermission = "RETAIN_AMMO",
@@ -203,10 +190,7 @@ R.Register({
 })
 
 -- ---- Vehicles -------------------------------------------------------------
--- Save honors either the per-player setting or the global convar; restore does
--- the same. Vehicles are captured even in skipWorldSnapshot (autosave) mode,
--- matching the pre-registry ordering (the vehicle block sat above the skip gate).
-R.Register({
+RARELOAD.StateRegistry.Register({
     id                = "vehicles",
     savePermission    = "SAVE_VEHICLES",
     restorePermission = "RESTORE_VEHICLES",
@@ -220,11 +204,6 @@ R.Register({
         return want and si.vehicles ~= nil
     end,
     save              = function(ply, pd, ctx)
-        -- Honor "overwrite moved on save": when it is OFF, keep the previously
-        -- saved vehicle state instead of overwriting with the (possibly moved or
-        -- changed) live vehicles. Vehicles carry per-vehicle runtime/seat data keyed
-        -- by a stable ID, so we preserve the whole bucket rather than merging
-        -- (MergePreserveExisting only understands the plain entity snapshot).
         local old = ctx and ctx.oldData and ctx.oldData.vehicles
         if ctx and not ctx.autoOverwrite and old and SnapshotUtils.HasSnapshot(old) then
             pd.vehicles = old
@@ -236,6 +215,7 @@ R.Register({
             if istable(pd.vehicles) and pd.vehicles.__duplicator then
                 vehCount = pd.vehicles.__duplicator.entityCount or 0
             end
+            -- TODO: should use debug log or something frop debug module
             print(string.format("[RARELOAD DEBUG] Vehicle save: saved=%d overwrite=%s",
                 vehCount, tostring(ctx and ctx.autoOverwrite or false)))
         end
@@ -246,7 +226,8 @@ R.Register({
 })
 
 -- ---- Map entities ---------------------------------------------------------
-R.Register({
+-- TODO: add debug log for entity count, similar to vehicles
+RARELOAD.StateRegistry.Register({
     id                = "entities",
     savePermission    = "SAVE_ENTITIES",
     restorePermission = "RESTORE_ENTITIES",
@@ -255,7 +236,6 @@ R.Register({
     restoreOrder      = 65,
     restoreDelay      = 0,
     save              = function(ply, pd, ctx)
-        -- Stash the raw result so the crossConstraints provider can read _targets.
         ctx.rawEntitiesResult = captureWorldBucket(ply, "entities", save_entities, "entity", ctx, pd)
     end,
     shouldRestore     = function(_, si) return si.entities ~= nil end,
@@ -290,7 +270,8 @@ R.Register({
 })
 
 -- ---- Map NPCs -------------------------------------------------------------
-R.Register({
+-- TODO: add debug log for NPC count, similar to vehicles
+RARELOAD.StateRegistry.Register({
     id                = "npcs",
     savePermission    = "SAVE_NPCS",
     restorePermission = "RESTORE_NPCS",
@@ -308,9 +289,7 @@ R.Register({
 })
 
 -- ---- Cross-category constraints (prop <-> vehicle) -------------------------
--- Ungated: the save body reproduces the exact conditions of the pre-registry
--- code (including the skip-mode copy that was not gated by the entity setting).
-R.Register({
+RARELOAD.StateRegistry.Register({
     id            = "crossConstraints",
     saveOrder     = 70,
     restoreOrder  = 68,
@@ -343,9 +322,7 @@ R.Register({
 })
 
 -- ---- Inventory (map-specific vs global; mutually exclusive) ----------------
--- Ungated so both branches and the ctx flags are decided internally, exactly
--- as the pre-registry player-spawn handler did.
-R.Register({
+RARELOAD.StateRegistry.Register({
     id           = "inventory",
     restoreOrder = 10,
     restoreAsync = true, -- ammo/activeWeapon wait on this completing
@@ -356,9 +333,6 @@ R.Register({
 
         if canGlobal and RARELOAD.GetPlayerSetting(ply, "retainGlobalInventory") then
             ctx.globalInventoryRestored = true
-            -- Claim this spawn's global restore so the standalone PlayerSpawn
-            -- fallback hook (which covers the no-save case) skips instead of
-            -- restoring a second time.
             RARELOAD._lastGlobalRestore = RARELOAD._lastGlobalRestore or {}
             RARELOAD._lastGlobalRestore[ply:SteamID()] = CurTime()
             timer.Simple(0.5, function()
@@ -377,7 +351,7 @@ R.Register({
 })
 
 -- ---- Active weapon (depends on which inventory path ran) -------------------
-R.Register({
+RARELOAD.StateRegistry.Register({
     id           = "activeWeapon",
     restoreOrder = 100,
     restoreDelay = 0,
@@ -389,4 +363,4 @@ R.Register({
     end,
 })
 
-return R
+return RARELOAD.StateRegistry

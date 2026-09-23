@@ -89,16 +89,11 @@ function RARELOAD.RestoreNPCs(savedInfo, requestingPlayer)
                 if not st then return end
                 if st.maxHealth and isfunction(npc.SetMaxHealth) then npc:SetMaxHealth(st.maxHealth) end
                 if st.health and isfunction(npc.SetHealth) then npc:SetHealth(st.health) end
-                -- squad must be set as a keyvalue before AI init; state/schedule/enemy
-                -- are applied in the post-restore pass below (once every NPC exists).
                 if st.squad and isfunction(npc.SetKeyValue) then npc:SetKeyValue("squadname", st.squad) end
                 spawned[tostring(savedID)] = { npc = npc, st = st }
             end,
         })
 
-        -- Reapply AI state and relink enemies once all NPCs exist. Best-effort: the
-        -- NPC's own AI re-evaluates on its next think, so we let it settle a moment
-        -- and set state/enemy-memory (the durable parts) rather than fight the scheduler.
         timer.Simple(0.15, function()
             for _, rec in pairs(spawned) do
                 local npc, st = rec.npc, rec.st

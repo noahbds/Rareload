@@ -6,9 +6,10 @@ RARELOAD.NPCSaver = RARELOAD.NPCSaver or {}
 local CONFIG = {
     DEBUG = false,
     SAVE_PLAYER_OWNED_ONLY = true,
+    -- TODO: should be allowed to be changed by the player in the settings menu
     MAX_NPCS_TO_SAVE = 500,
-    -- NOTE: KEY_VALUES_TO_SAVE is not currently consumed (the duplicator captures
-    -- NPC keyvalues); left in place as it is unrelated to this change.
+
+    -- TODO: Add more NPC properties to save, if they are not already saved by the duplicator system.
     KEY_VALUES_TO_SAVE = {
         "squadname", "targetname",
         "wakeradius", "sleepstate",
@@ -69,7 +70,6 @@ return function(ply)
     local npcCount = #allNPCs
     DebugLog(ply, "INFO", "Found %d NPCs on the map", npcCount)
 
-    -- Resolve owners against one-time reverse indices (covers the sort + main loop).
     if RARELOAD.Ownership and RARELOAD.Ownership.BeginResolveBatch then
         RARELOAD.Ownership.BeginResolveBatch()
     end
@@ -89,8 +89,6 @@ return function(ply)
     local savedCount = 0
     local duplicatorTargets = {}
     local duplicatorSeen = {}
-    -- Current health per NPC (keyed by RareloadNPCID); the duplicator respawns
-    -- NPCs at default health, so we reapply this on restore.
     local npcStates = {}
 
     for i = 1, #allNPCs do
@@ -122,9 +120,6 @@ return function(ply)
         RARELOAD.Ownership.EndResolveBatch()
     end
 
-    -- Second pass (all RareloadNPCIDs now assigned): capture AI state so restored
-    -- NPCs resume behaviour instead of standing inert. Enemy is stored as a portable
-    -- ref ("ply:<steamid>" / "npc:<RareloadNPCID>") resolved back on restore.
     for i = 1, #duplicatorTargets do
         local npc = duplicatorTargets[i]
         if not IsValid(npc) then continue end
@@ -143,10 +138,6 @@ return function(ply)
         end
         if isfunction(npc.GetEnemy) then
             local enemy = npc:GetEnemy()
-            -- GetEnemy() is frequently NULL mid-combat (NPCs reacquire targets every
-            -- few ticks), so a straight read misses almost every fight. If the NPC is
-            -- actively in combat, fall back to the nearest player it is hostile to, so
-            -- the fight actually resumes on restore.
             if not IsValid(enemy) and isfunction(npc.GetNPCState) and isfunction(npc.Disposition)
                 and npc:GetNPCState() == NPC_STATE_COMBAT then
                 local npos, best, bestD = npc:GetPos(), nil, nil
