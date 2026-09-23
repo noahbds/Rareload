@@ -9,21 +9,21 @@ jobs:
     name: Architecture & platform rules
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: bash tools/check_rules.sh
 
   lint:
     name: glualint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Download glualint
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download --repo FPtje/GLuaFixer --pattern '*linux*' --dir glualint-dl
+          gh release download --repo FPtje/GLuaFixer --pattern '*x86_64-linux.zip' --dir glualint-dl
           cd glualint-dl
-          for a in *; do case "$a" in *.zip) unzip -q "$a" ;; *.tar.gz) tar xzf "$a" ;; esac; done
+          unzip -q -o ./*.zip
           chmod +x "$(find . -type f -name glualint | head -n 1)"
           echo "$PWD/$(dirname "$(find . -type f -name glualint | head -n 1)")" >> "$GITHUB_PATH"
       - run: glualint lint lua
@@ -32,7 +32,7 @@ jobs:
     name: Unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install LuaJIT
         run: sudo apt-get update && sudo apt-get install -y luajit
       - name: Run tests
