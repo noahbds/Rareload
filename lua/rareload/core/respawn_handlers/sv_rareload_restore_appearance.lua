@@ -4,10 +4,15 @@
 function RARELOAD.RestoreAppearance(ply, app)
     if not IsValid(ply) or not app then return end
 
-    if app.model then
+    if isstring(app.model) and app.model ~= "" then
         util.PrecacheModel(app.model)
         ply:SetModel(app.model)
-        ply:ConCommand("cl_playermodel " .. app.model)
+        -- app.model comes from a saved file that can be hand-edited or loaded from
+        -- elsewhere; it is concatenated into a client console command, so only pass
+        -- it through when it looks like a plain model path (no command separators).
+        if string.match(app.model, "^[%w_%-%./]+$") then
+            ply:ConCommand("cl_playermodel " .. app.model)
+        end
     end
 
     if app.skin then

@@ -1,4 +1,4 @@
-RARELOAD = RARELOAD or nil
+RARELOAD = RARELOAD or {}
 RARELOAD.settings = RARELOAD.settings or {}
 RARELOAD.globalInventory = RARELOAD.globalInventory or {}
 local InventoryCommon = include("rareload/core/respawn_handlers/sv_rareload_inventory_common.lua")

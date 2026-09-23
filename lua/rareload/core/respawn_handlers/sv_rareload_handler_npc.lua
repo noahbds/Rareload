@@ -35,11 +35,11 @@ local function ProcessNPCSpawnQueue()
     local queue = RARELOAD._NPCSpawnQueue
     RARELOAD._NPCSpawnQueue = {}
     for _, task in ipairs(queue) do
-        timer.Simple(RARELOAD.settings.npcRestoreDelay or 1, function()
-            if IsValid(task.requestingPlayer) or task.savedInfo then
-                RARELOAD.RestoreNPCs(task.savedInfo, task.requestingPlayer)
-            end
-        end)
+        -- RestoreNPCs already defers by npcRestoreDelay internally; calling it directly
+        -- here avoids stacking a second delay on top of queued (post-cleanup) restores.
+        if IsValid(task.requestingPlayer) or task.savedInfo then
+            RARELOAD.RestoreNPCs(task.savedInfo, task.requestingPlayer)
+        end
     end
 end
 

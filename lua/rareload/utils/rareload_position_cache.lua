@@ -1,10 +1,16 @@
 local MapName = game.GetMap()
 local cacheFile = "rareload/cached_pos_" .. MapName .. ".json"
 local CACHE_VERSION = 2
+-- Hard cap so the file (and the per-call dedupe scan) can't grow without bound.
+local MAX_CACHED_POSITIONS = 512
+
+-- In-memory mirror so we don't read+parse the whole file on every SavePositionToCache
+-- (called on every spawn, anti-stuck cache hit, and move-away detection).
+local memoryCache = nil
 
 -- Using centralized data utility functions from RARELOAD.DataUtils
 
-local function LoadCachedPositions()
+local function ReadCacheFromDisk()
     if not file.Exists(cacheFile, "DATA") then return { version = CACHE_VERSION, positions = {} } end
     local data = file.Read(cacheFile, "DATA")
     local success, cachedData = pcall(util.JSONToTable, data)
@@ -32,10 +38,16 @@ local function LoadCachedPositions()
     return { version = CACHE_VERSION, positions = {} }
 end
 
+local function LoadCachedPositions()
+    if not memoryCache then
+        memoryCache = ReadCacheFromDisk()
+    end
+    return memoryCache
+end
+
 local function SavePositionToCache(pos)
     if not pos then return false end
     local v = RARELOAD.DataUtils.ToVector(pos)
-    if v and v.x and not v.IsZero then v = Vector(v.x, v.y, v.z) end
     if v and v.x and v.y and v.z then
         if not util.IsInWorld(v) then
             if RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled then
@@ -58,6 +70,11 @@ local function SavePositionToCache(pos)
         end
     end
     table.insert(cachedData.positions, posObj)
+    -- Bound the cache: drop the oldest entries once past the cap so neither the file
+    -- nor the per-call dedupe scan grows without limit.
+    while #cachedData.positions > MAX_CACHED_POSITIONS do
+        table.remove(cachedData.positions, 1)
+    end
     file.Write(cacheFile, util.TableToJSON(cachedData, true))
     if RARELOAD and RARELOAD.settings and RARELOAD.settings.debugEnabled then
         print(string.format("[RARELOAD] Cached position: [%.2f %.2f %.2f]", posObj.x, posObj.y, posObj.z))
@@ -94,6 +111,7 @@ function RARELOAD.StandardizeCachedPositions()
         version = CACHE_VERSION,
         positions = validPositions
     }
+    memoryCache = newCacheData -- keep the in-memory mirror in sync
     file.Write(cacheFile, util.TableToJSON(newCacheData, true))
     print(string.format("[RARELOAD] Standardized position cache: %d positions (from %d), %d duplicates removed",
         #validPositions, originalCount, duplicates))

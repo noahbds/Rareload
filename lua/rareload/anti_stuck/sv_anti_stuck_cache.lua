@@ -30,8 +30,11 @@ function AntiStuck.CleanupCache()
     end
     local currentTime = CurTime()
     local cleaned = 0
+    -- CONFIG may not be loaded yet when this 60s timer first fires; don't crash the
+    -- timer callback on a nil CONFIG/CACHE_DURATION.
+    local cacheDuration = (AntiStuck.CONFIG and AntiStuck.CONFIG.CACHE_DURATION) or 300
     for mapPos, data in pairs(AntiStuck.safePositionCache) do
-        if currentTime - data.timestamp > AntiStuck.CONFIG.CACHE_DURATION then
+        if currentTime - data.timestamp > cacheDuration then
             AntiStuck.safePositionCache[mapPos] = nil
             cleaned = cleaned + 1
         end

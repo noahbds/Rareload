@@ -57,6 +57,7 @@ function InventoryCommon.RestoreWeaponsFromList(ply, weaponList, debugEnabled, o
     local includeExtendedFailureDetails = opts.includeExtendedFailureDetails == true
 
     for _, weaponClass in ipairs(weaponList) do
+        if not isstring(weaponClass) or weaponClass == "" then continue end
         local weaponInfo = weapons.Get(weaponClass)
         local canGiveWeapon = weaponInfo and (weaponInfo.Spawnable or weaponInfo.AdminOnly)
         local alreadyHas = ply:HasWeapon(weaponClass)
