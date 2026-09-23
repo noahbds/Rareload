@@ -108,20 +108,46 @@ local function playerOnly(fn)
     end
 end
 
+-- A player by SteamID64, SteamID or part of their name.
+function Cmd.FindPlayer(text)
+    if not text or text == "" then return nil end
+    local lower = string.lower(text)
+    for _, p in player.Iterator() do
+        if p:SteamID64() == text or p:SteamID() == text then return p end
+    end
+    for _, p in player.Iterator() do
+        if string.find(string.lower(p:Nick()), lower, 1, true) then return p end
+    end
+end
+
+-- Admins can name another player as the first argument of the timeline commands.
+local function targetOf(ply, args, reply)
+    if args[1] and not tonumber(args[1]) then
+        if not RARELOAD.Can(ply, "rareload_admin") then reply("Only admins can act on other players.") return nil end
+        local target = Cmd.FindPlayer(table.remove(args, 1))
+        if not target then reply("No such player.") end
+        return target
+    end
+    if not IsValid(ply) then reply("Name a player.") return nil end
+    return ply
+end
+
 local function result(reply, ok, what)
     reply(ok and ("Done: " .. what) or ("Failed: " .. what .. " (no such save?)"))
 end
 
 Cmd.Register("history", {
-    priv = "rareload_restore",
-    help = "List your saves on this map (* = respawn point, P = pinned)",
-    fn = playerOnly(function(ply, _, reply)
-        for _, row in ipairs(RARELOAD.History.Rows(ply)) do
+    priv = "rareload_restore", usage = "[player]",
+    help = "List saves on this map (* = respawn point, P = pinned); admins can name a player",
+    fn = function(ply, args, reply)
+        local target = targetOf(ply, args, reply)
+        if not target then return end
+        for _, row in ipairs(RARELOAD.History.Rows(target)) do
             reply(string.format("  %s%s #%-4d %s  %-10s %s%s", row.active and "*" or " ", row.pinned and "P" or " ",
                 row.id, os.date("%Y-%m-%d %H:%M:%S", row.time), row.reason, table.concat(row.modules, ","),
                 row.note and ("  \"" .. row.note .. "\"") or ""))
         end
-    end),
+    end,
 })
 
 Cmd.Register("history restore", {
@@ -163,8 +189,12 @@ Cmd.Register("history delete", {
 })
 
 Cmd.Register("history clear", {
-    priv = "rareload_restore", help = "Delete every save except pinned ones and the respawn point",
-    fn = playerOnly(function(ply, _, reply) result(reply, RARELOAD.History.Clear(ply), "clear") end),
+    priv = "rareload_restore", usage = "[player]",
+    help = "Delete every save except pinned ones and the respawn point; admins can name a player",
+    fn = function(ply, args, reply)
+        local target = targetOf(ply, args, reply)
+        if target then result(reply, RARELOAD.History.Clear(target), "clear") end
+    end,
 })
 
 Cmd.Register("history reload", {
@@ -203,6 +233,44 @@ Cmd.Register("lookat", {
     end),
 })
 
+Cmd.Register("antistuck test", {
+    priv = "rareload_anti_stuck", usage = "[player]",
+    help = "Look for a free spot from where a player stands (debug draws the candidates)",
+    fn = function(ply, args, reply)
+        local target = args[1] and Cmd.FindPlayer(args[1]) or ply
+        if not IsValid(target) then return reply("No such player.") end
+        local AntiStuck = RARELOAD.AntiStuck
+        local pos, crouched = target:GetPos(), target:Crouching()
+        local stuck, why = AntiStuck.IsStuck(pos, target, crouched)
+        local tried, started = 0, SysTime()
+        local mins, maxs = target:OBBMins(), target:OBBMaxs()
+        local found, method = AntiStuck.Resolve(pos, target, crouched, function(p, free)
+            tried = tried + 1
+            if RARELOAD.Get(nil, "debug") and tried <= 200 then   -- G83
+                debugoverlay.Box(p, mins, maxs, 8, free and Color(0, 255, 0, 30) or Color(255, 0, 0, 8))
+            end
+        end)
+        reply(string.format("Here: %s. Free spot: %s (%s), %d candidates, %.0f ms.",
+            stuck and ("stuck, " .. why) or "free", found and tostring(found) or "none", method or "-",
+            tried, (SysTime() - started) * 1000))
+    end,
+})
+
+Cmd.Register("antistuck method", {
+    priv = "rareload_anti_stuck", usage = "[list|enable|disable|only|up|down|reset] [method]",
+    help = "Show or change which anti-stuck methods run, and in which order",
+    fn = function(_, args, reply)
+        local action = args[1] or "list"
+        if action ~= "list" then
+            local ok, err = RARELOAD.AntiStuck.Configure(action, args[2])
+            if not ok then return reply("Failed: " .. err) end
+        end
+        for i, m in ipairs(RARELOAD.AntiStuck.List()) do
+            reply(string.format("  %d. [%s] %s", i, m.enabled and "on " or "off", m.id))
+        end
+    end,
+})
+
 Cmd.Register("data cleanup", {
     priv = "rareload_data_cleanup", help = "Delete saved world data no save uses any more",
     fn = function(_, _, reply) reply("Removed " .. RARELOAD.Store.GC() .. " unused blobs.") end,
@@ -219,6 +287,44 @@ for name, def in pairs(CLIENT_COMMANDS) do
     def.fn = playerOnly(function(ply, args) RARELOAD.Net.Push(ply, "cmd", { name = name, args = args }) end)
     Cmd.Register(name, def)
 end
+
+Cmd.Register("debug", {
+    priv = "rareload_debug", usage = "<on|off|recent [n]|clear|diag>",
+    help = "Turn debug on or off, show recent log events, or print a diagnostic",
+    fn = function(_, args, reply)
+        local sub = args[1] or "diag"
+        if sub == "on" or sub == "off" then
+            RARELOAD.Settings.debug.cv:SetString(sub == "on" and "1" or "0")
+            reply("Debug " .. sub .. ".")
+        elseif sub == "recent" then
+            for _, e in ipairs(RARELOAD.LogRecent(math.Clamp(tonumber(args[2]) or 30, 1, 500))) do
+                reply(string.format("  %s %-7s %-10s %s", os.date("%H:%M:%S", e.t), e.level, tostring(e.category), e.text))
+            end
+        elseif sub == "clear" then
+            RARELOAD.LogClear()
+            reply("Log cleared.")
+        else
+            local saves, blobs = 0, 0
+            local dir = "rareload/" .. RARELOAD.Store.MapDir()
+            for _, name in ipairs(file.Find(dir .. "/*.json", "DATA") or {}) do
+                if name:match("^%d+%.json$") then saves = saves + 1 end
+            end
+            blobs = #(file.Find(dir .. "/_blobs/*.json", "DATA") or {})
+            local methods = {}
+            for _, m in ipairs(RARELOAD.AntiStuck.List()) do
+                if m.enabled then methods[#methods + 1] = m.id end
+            end
+            local counts = RARELOAD.LogRing.counts
+            reply("Rareload " .. RARELOAD.version .. " on " .. game.GetMap() .. (game.SinglePlayer() and " (singleplayer)" or ""))
+            reply("  debug " .. (RARELOAD.Get(nil, "debug") and "on" or "off") .. ", gamemode "
+                .. (RARELOAD.Pipeline.Enabled() and "supported" or "not supported") .. ", navmesh "
+                .. (navmesh.IsLoaded() and "loaded" or "missing"))
+            reply(string.format("  %d players with saves on this map, %d world blobs", saves, blobs))
+            reply("  anti-stuck: " .. table.concat(methods, " > "))
+            reply(string.format("  %d errors and %d warnings since start", counts.error, counts.warn))
+        end
+    end,
+})
 
 -- In-game checks of engine behaviour the offline tests can only stub (§27.4).
 local SELFTEST = {

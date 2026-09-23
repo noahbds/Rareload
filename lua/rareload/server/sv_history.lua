@@ -152,6 +152,7 @@ function History.Restore(ply, id, comps)
 
     local ctx = RARELOAD.Pipeline.Restore(ply, entry, { only = only, reason = "timeline" })
     undos[ply] = { entry = snapshot, only = undoOnly, ctx = ctx }
+    refresh(ply)   -- the timeline shows Undo now
     return true
 end
 
@@ -161,6 +162,7 @@ function History.Undo(ply)
     local u = undos[ply]
     if not u then return false end
     undos[ply] = nil
+    refresh(ply)
     for _, ent in ipairs(u.ctx.spawned) do
         if IsValid(ent) then ent:Remove() end
     end
@@ -198,43 +200,63 @@ end
 -- Objects inside saves (F29) ----------------------------------------------------------------------
 
 -- What the inspector, the timeline preview and the world display show about one saved object.
-local function objectInfo(def, kind)
+-- `snap` gives the NPC AI state and vehicle runtime kept next to the duplicator data.
+local function objectInfo(def, kind, snap)
     local mods = istable(def.EntityMods) and def.EntityMods or {}
     local phys = istable(def.PhysicsObjects) and (def.PhysicsObjects[0] or def.PhysicsObjects["0"]) or {}
     local rl = istable(mods.rareload) and mods.rareload or {}
+    local id = RARELOAD.Snapshot.DefID(def)
+    local runtime = id and istable(snap.runtime) and snap.runtime[id] or nil
+    local ai = id and istable(snap.ai) and snap.ai[id] or nil
     return {
-        id = RARELOAD.Snapshot.DefID(def), kind = kind, class = def.Class, model = def.Model, skin = def.Skin,
+        id = id, kind = kind, class = def.Class, model = def.Model, skin = def.Skin,
         pos = isvector(def.Pos) and RARELOAD.Util.Vec(def.Pos) or nil,
         ang = isangle(def.Angle) and RARELOAD.Util.Ang(def.Angle) or nil,
         frozen = phys.Frozen or nil, nograv = phys.NoGrav or nil,
-        hp = rl.hp, maxHp = rl.maxHp,
+        hp = rl.hp, maxHp = rl.maxHp, scale = def.ModelScale, bodygroups = def.BodyG,
         material = istable(mods.material) and mods.material.MaterialOverride or nil,
         color = istable(mods.colour) and mods.colour.Color or nil,   -- tagged { __color = { r, g, b, a } }
+        base = runtime and runtime.adapter, parts = runtime and runtime.parts,
+        squad = ai and ai.squad, npcState = ai and ai.state,
     }
+end
+
+-- Calls fn(def, kind, snap) for every saved object of an entry until fn returns a value.
+local function eachObject(entry, fn)
+    for _, kind in ipairs(WORLD_KINDS) do
+        local snap = entry and RARELOAD.Pipeline.Payload(entry.data[kind])
+        for _, def in pairs(snap and snap.Entities or {}) do
+            local r = fn(def, kind, snap)
+            if r ~= nil then return r end
+        end
+    end
 end
 
 -- Every saved object of an entry.
 function History.Objects(ply, id)
-    local entry = History.Get(ply, id)
     local out = {}
-    for _, kind in ipairs(WORLD_KINDS) do
-        local snap = entry and RARELOAD.Pipeline.Payload(entry.data[kind])
-        for _, def in pairs(snap and snap.Entities or {}) do
-            out[#out + 1] = objectInfo(def, kind)
-        end
-    end
+    eachObject(History.Get(ply, id), function(def, kind, snap) out[#out + 1] = objectInfo(def, kind, snap) end)
+    return out
+end
+History.ObjectsOf = function(entry)
+    local out = {}
+    eachObject(entry, function(def, kind, snap) out[#out + 1] = objectInfo(def, kind, snap) end)
     return out
 end
 
--- The full saved definition of one object, for the JSON editor.
-function History.ObjectDef(ply, entryId, objectId)
-    local entry = History.Get(ply, entryId)
-    for _, kind in ipairs(WORLD_KINDS) do
-        local snap = entry and RARELOAD.Pipeline.Payload(entry.data[kind])
-        for _, def in pairs(snap and snap.Entities or {}) do
-            if RARELOAD.Snapshot.DefID(def) == objectId then return def end
+-- The full saved definition of one object, with its NPC AI state and vehicle runtime, or nil.
+function History.ObjectDetail(entry, objectId)
+    return eachObject(entry, function(def, _, snap)
+        if RARELOAD.Snapshot.DefID(def) == objectId then
+            return { def = def, ai = istable(snap.ai) and snap.ai[objectId] or nil,
+                runtime = istable(snap.runtime) and snap.runtime[objectId] or nil }
         end
-    end
+    end)
+end
+
+function History.ObjectDef(ply, entryId, objectId)
+    local detail = History.ObjectDetail(History.Get(ply, entryId), objectId)
+    return detail and detail.def
 end
 
 -- Pure (unit-tested): an edit may only change keys the object already has, to a value of the same
@@ -300,27 +322,42 @@ end
 
 -- Network requests (§17.3) ------------------------------------------------------------------------
 
-local objectCounts = {}   -- blob hash -> number of objects, so building rows doesn't reload blobs
+-- Facts about a world snapshot the timeline shows, cached by blob hash so building rows doesn't
+-- reload blobs: how many objects, and the class of the vehicle the player was seated in.
+local snapFacts = {}
 
-local function objectCount(value)
+local function factsOf(value)
     local hash = istable(value) and value["$blob"]
-    if hash and objectCounts[hash] then return objectCounts[hash] end
+    if hash and snapFacts[hash] then return snapFacts[hash] end
     local snap = RARELOAD.Pipeline.Payload(value)
-    local n = istable(snap) and table.Count(snap.Entities or {}) or 0
-    if hash then objectCounts[hash] = n end
-    return n
+    local facts = { count = 0 }
+    if istable(snap) then
+        facts.count = table.Count(snap.Entities or {})
+        local seatId = istable(snap.seat) and snap.seat.vehicle
+        for _, def in pairs(seatId and snap.Entities or {}) do
+            if RARELOAD.Snapshot.DefID(def) == seatId then facts.seatClass = def.Class end
+        end
+    end
+    if hash then snapFacts[hash] = facts end
+    return facts
 end
 
 -- Raw values for the timeline; the client formats and translates them (L29).
 function History.Info(data)
     local t, h = data.transform or {}, data.health or {}
     local info = {
-        pos = t.pos, ang = t.ang, model = data.appearance and data.appearance.model,
+        pos = t.pos, ang = t.ang, crouched = t.crouched, model = data.appearance and data.appearance.model,
         hp = h.hp, armor = h.armor, active = data.activeWeapon, states = data.states,
         weapons = data.weapons and #data.weapons,
     }
     for _, kind in ipairs(WORLD_KINDS) do
-        if data[kind] ~= nil then info[kind] = objectCount(data[kind]) end
+        if data[kind] ~= nil then info[kind] = factsOf(data[kind]).count end
+    end
+    if data.vehicles ~= nil then info.vehicle = factsOf(data.vehicles).seatClass end
+    local look = data.appearance
+    if istable(look) then
+        info.look = { skin = look.skin, bodygroups = look.bodygroups, material = look.material,
+            playerColor = look.playerColor, color = look.color }
     end
     return info
 end
@@ -339,7 +376,8 @@ function History.Rows(ply)
 end
 
 local function pushRows(ply)
-    RARELOAD.Net.Push(ply, "history", { rows = History.Rows(ply), reload = History.ReloadConfig(ply) })
+    RARELOAD.Net.Push(ply, "history", { rows = History.Rows(ply), reload = History.ReloadConfig(ply),
+        undo = undos[ply] ~= nil })
 end
 
 local function parseComps(text)
@@ -389,6 +427,26 @@ RARELOAD.Net.Handle("object.get", {
     end,
 })
 
+-- Everything saved about one object, for the world display's focused panel: from one of the
+-- player's own saves, or (with rareload_debug while debug is on) another player's respawn point.
+RARELOAD.Net.Handle("object.detail", {
+    rate = 0.1, args = { sid = "string:20?", entryId = "uint?", objectId = "string:32" },
+    fn = function(ply, a)
+        local entry
+        if a.sid and a.sid ~= ply:SteamID64() then
+            local owner = player.GetBySteamID64(a.sid)
+            if not IsValid(owner) or not RARELOAD.Get(nil, "debug") or not RARELOAD.Can(ply, "rareload_debug") then return end
+            entry = History.Active(owner)
+        elseif RARELOAD.Can(ply, "rareload_restore") then
+            entry = a.entryId and History.Get(ply, a.entryId) or History.Active(ply)
+        end
+        local detail = entry and History.ObjectDetail(entry, a.objectId)
+        if detail then
+            RARELOAD.Net.Push(ply, "object.detail", { objectId = a.objectId, detail = detail }, { key = "detail:" .. a.objectId })
+        end
+    end,
+})
+
 RARELOAD.Net.Handle("history.objects", {
     priv = "rareload_restore", rate = 0.3, args = { id = "uint" },
     fn = function(ply, a) RARELOAD.Net.Push(ply, "history.objects", { id = a.id, objects = History.Objects(ply, a.id) }) end,
@@ -434,7 +492,7 @@ local function feedFor(ply)
         local def = RARELOAD.Pipeline._defs[id]
         if def and not def.heavy and def.phase ~= "world" then light[id] = value end
     end
-    return { nick = ply:Nick(), data = light, objects = History.Objects(ply, active.id) }
+    return { nick = ply:Nick(), data = light, objects = History.ObjectsOf(active), seated = History.Info(active.data).vehicle ~= nil }
 end
 
 local function pushFeed(ply, targets)

@@ -52,3 +52,86 @@ end
 function Util.Snake(key)
     return (key:gsub("%u", function(c) return "_" .. c:lower() end))
 end
+
+-- Checks JSON syntax. Returns true, or false with the line, column and a short reason of the first
+-- error, so the object editor can point at it.
+function Util.CheckJSON(text)
+    local i, n = 1, #text
+    local function fail(why)
+        local before = string.sub(text, 1, i - 1)
+        local _, lines = string.gsub(before, "\n", "")
+        local col = i - (string.find(before, "\n[^\n]*$") or 0)
+        error({ line = lines + 1, col = col, why = why }, 0)
+    end
+    local function skip() i = string.find(text, "[^ \t\r\n]", i) or n + 1 end
+    local value
+    local function str()
+        i = i + 1
+        while i <= n do
+            local c = string.sub(text, i, i)
+            if c == '"' then i = i + 1 return end
+            if c == "\\" then
+                local e = string.sub(text, i + 1, i + 1)
+                if e == "u" then
+                    if not string.find(string.sub(text, i + 2, i + 5), "^%x%x%x%x$") then fail("bad \\u escape") end
+                    i = i + 6
+                elseif string.find(e, '^["\\/bfnrt]$') then
+                    i = i + 2
+                else
+                    fail("bad escape")
+                end
+            elseif c == "\n" then
+                fail("unfinished string")
+            else
+                i = i + 1
+            end
+        end
+        fail("unfinished string")
+    end
+    local function list(close, item)
+        i = i + 1
+        skip()
+        if string.sub(text, i, i) == close then i = i + 1 return end
+        while true do
+            item()
+            skip()
+            local c = string.sub(text, i, i)
+            if c == close then i = i + 1 return end
+            if c ~= "," then fail("expected , or " .. close) end
+            i = i + 1
+        end
+    end
+    value = function()
+        skip()
+        local c = string.sub(text, i, i)
+        if c == "{" then
+            list("}", function()
+                skip()
+                if string.sub(text, i, i) ~= '"' then fail("expected a key in quotes") end
+                str()
+                skip()
+                if string.sub(text, i, i) ~= ":" then fail("expected :") end
+                i = i + 1
+                value()
+            end)
+        elseif c == "[" then
+            list("]", value)
+        elseif c == '"' then
+            str()
+        else
+            local word = string.match(text, "^%-?%d+%.?%d*[eE]?[%+%-]?%d*", i) or string.match(text, "^%a+", i)
+            if not word or (string.find(word, "^%a") and word ~= "true" and word ~= "false" and word ~= "null") then
+                fail(c == "" and "unexpected end" or "unexpected " .. c)
+            end
+            i = i + #word
+        end
+    end
+    local ok, err = pcall(function()
+        value()
+        skip()
+        if i <= n then fail("text after the end") end
+    end)
+    if ok then return true end
+    if not istable(err) then error(err, 0) end
+    return false, err.line, err.col, err.why
+end

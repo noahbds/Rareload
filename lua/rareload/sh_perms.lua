@@ -35,6 +35,7 @@ RARELOAD.Priv("rareload_save_vehicles", "user", "Include your vehicles when savi
 RARELOAD.Priv("rareload_restore_vehicles", "user", "Get your saved vehicles back on spawn")
 RARELOAD.Priv("rareload_manage_objects", "admin", "Edit, flag or delete objects inside saves")
 RARELOAD.Priv("rareload_teleport", "admin", "Teleport to saved positions and objects")
+RARELOAD.Priv("rareload_anti_stuck", "admin", "Test anti-stuck and choose its methods")
 RARELOAD.Priv("rareload_data_cleanup", "superadmin", "Run Rareload data cleanup commands")
 
 local function tierAllows(ply, tier)

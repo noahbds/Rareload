@@ -1561,6 +1561,30 @@ Each phase ends with the addon loading cleanly and its acceptance checks passing
 - **Loader**: `cl_ui` and `cl_state` load before the other client files, and the world display files load in dependency order, because files use each other while loading.
 
 
+### Phase 6b — v4 parity (added after in-game review)
+Phases 5–6 shipped simplified screens. This phase closes every gap found by reading the v4 client and server code side by side with v5. One UI kit in `cl_ui` is used by every window, the tool panel, the world display and the HUD, so they look like one product.
+- [x] **UI kit**: palette with surface levels, entity-type and health colours; scaled fonts; frame with title/subtitle; buttons (primary, success, danger, ghost, icon); cards; search box; chips; dropdown; stat cards; label/value rows; badges; toggle switch; themed confirm dialog; empty and loading states; localized "time ago" and dates with translated month and weekday names.
+- [x] **Tool panel**: collapsible categories with icons, toggle switches and sliders for the player's own settings (override / server value), action buttons (save, timeline, highlights for admins), debug toggle for admins, presets.
+- [x] **Save Timeline** (F23–F28): sidebar with search (note, weapon, model, vehicle, position, date, type), sort (newest, oldest, health, pinned), filter chips (all, pinned, noted, world, autosaves), rich rows (time ago, date, pin/note/respawn icons, object and health badges), count and keyboard hint. Detail: header card (model, time, date, badges, health and armor bars), stat cards, info rows (position, angle, held weapon, vehicle, states, model), live clear/blocked status, preview, objects, respawn point, note, teleport/pin/delete/restore, partial restore, reload-key mode. Undo only when there is something to undo. Refresh, clear, loading state, ↑/↓/Enter/Delete keys.
+- [x] **Preview** (F27): player phantom with appearance and seated pose, object phantoms with vehicle parts, tinted green (free) / red (blocked) / blue (still on the map), rechecked live; a HUD banner; panels with a preview badge.
+- [x] **Object inspector** (F29): overlay above the timeline; search, sort (name, distance, health), categories; card grid with 3D previews, type colour, health bar and distance; detail with model, fields, freeze and gravity toggles, highlight, teleport, look at, copy menu, JSON editor, delete; delete all shown; refresh. JSON editor with live validation (line and column), format and reset, in Lua (v4 loaded Ace from a CDN).
+- [x] **World display** (F30–F35): panels on live saved objects and on phantoms, placed on the near side of the model at eye height; category tabs with counts; on-demand details for the focused panel (full saved object, vehicle runtime, NPC AI) plus live entity data; health and armor bars; base and preview badges; hints; Shift+E interact with ↑/↓ tabs, wheel scroll, ←/→ pile flip, H highlight, L link; piles with anchor on the looked-at member, peek cards, flip animation and badge; phantom reveal rules (player moved away, object missing or moved); highlights with tracers, halos, labels and off-screen arrows.
+- [x] **Debug**: animated report card (category colour, success, staggered steps, scrolling); server ring buffer and `rareload debug on|off|recent [n]|clear|diag`.
+- [x] **Anti-stuck** (F4, F42): method registry with saved enabled state and order, map-entity and emergency methods and a node-graph fallback; `rareload antistuck test|method`; candidate overlay in debug.
+- [x] **Admin**: `rareload history dump|clear <player>`.
+- **Accept:** every v4 feature listed in the audit has a v5 equivalent or a recorded reason for dropping it.
+
+**Differences from v4 in Phase 6b** (each is on purpose):
+- **One kit, one look**: every window, the tool panel, the world display, the HUD cards and the highlight labels use the same palette, fonts and widgets from `cl_ui`. v4 had a theme per screen (the timeline, the entity viewer and the tool panel each drew their own).
+- **Details on demand**: the world display gets a light summary of every object, and asks for the full saved object (physics bodies, network vars, modifiers, vehicle runtime, NPC AI) only for the panel under the crosshair (`object.detail`). v4 sent everything to every client and read many hard-coded per-base fields; v5 shows whatever the saved object contains, humanized, so new vehicle bases need no client code.
+- **JSON editor** runs in Lua with a syntax checker that reports line and column (`Util.CheckJSON`, unit-tested), plus format and reset. v4 loaded the Ace editor from a CDN, which needs internet and runs remote code in the game.
+- **Inspector cards** use GMod's cached spawn icons instead of one live model panel per card.
+- **Anti-stuck**: v4's "node graph" method actually walked the navmesh, which the navmesh method covers; there is no Lua access to AI node positions. v4's per-player "testing mode" is replaced by `rareload antistuck test [player]`, which draws every candidate with `debugoverlay` while debug is on.
+- **Highlights** work on the world display's records and on the inspector's objects; they need the world display (debug) except the inspector's, which draw from the saved position alone.
+- **Not carried over**: RTT baking of panels (performance only; Phase 7 measures whether it's needed), the language dropdown (D16), v4's periodic data-cleanup timer and permission backups (v5 cleans blobs at startup and with `rareload data cleanup`).
+- **Translations**: only English exists; the other eight languages are still to be written for the v5 keys.
+
+
 ### Phase 7 — Hardening & release (2–3 days) → tag `5.0.0-rc.1` → cutover
 - [ ] Full manual matrix (§30.3), including a multiplayer session with 3 or more players and ULX
 - [ ] Performance pass against §9

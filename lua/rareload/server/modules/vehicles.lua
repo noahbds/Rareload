@@ -107,6 +107,28 @@ local function schedule(ctx, list, done)
     end
 end
 
+-- The visible helper entities a vehicle base creates (wheels, rotors, turrets…), relative to the
+-- root, so a phantom of the vehicle can show them (F32). They are never restored from this list.
+local MAX_PARTS = 48
+
+local function phantomParts(veh)
+    local parts, seen = {}, { [veh] = true }
+    local function add(ent)
+        if seen[ent] or #parts >= MAX_PARTS or not IsValid(ent) then return end
+        seen[ent] = true
+        local model = ent:GetModel()
+        if not Snapshot.IsVehiclePart(ent) or ent:GetNoDraw() or not isstring(model) or not string.EndsWith(model, ".mdl") then return end
+        local lp, la = WorldToLocal(ent:GetPos(), ent:GetAngles(), veh:GetPos(), veh:GetAngles())
+        -- Rounded, so physics jitter doesn't make an unchanged vehicle look changed (L35).
+        parts[#parts + 1] = { model = model, skin = ent:GetSkin(),
+            lp = { math.Round(lp.x, 1), math.Round(lp.y, 1), math.Round(lp.z, 1) },
+            la = { math.Round(la.p), math.Round(la.y), math.Round(la.r) } }
+    end
+    for _, child in ipairs(veh:GetChildren()) do add(child) end
+    for _, ent in pairs(constraint.GetAllConstrainedEntities(veh)) do add(ent) end
+    return #parts > 0 and parts or nil
+end
+
 -- Module ------------------------------------------------------------------------------------------
 
 RARELOAD.Module({
@@ -142,7 +164,7 @@ RARELOAD.Module({
         for _, veh in ipairs(targets) do
             local adapter = Vehicles.AdapterFor(veh)
             if adapter then
-                local r = {}
+                local r = { adapter = adapter.id, parts = phantomParts(veh) }
                 if adapter.captureRoot then
                     local ok, t = pcall(adapter.captureRoot, veh)
                     r.root = ok and t or nil

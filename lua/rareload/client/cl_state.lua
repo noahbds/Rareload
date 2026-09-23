@@ -6,15 +6,18 @@ RARELOAD.State = RARELOAD.State or {
     objects = {},                           -- entry id -> saved objects of that entry
     saves = {},                             -- SteamID64 -> { nick, data, objects }: world display feed
     savesRev = 0,                           -- bumped on every feed change, for dirty checks (L28)
+    details = {},                           -- object id -> full saved object, asked for by the world display
+    antistuck = {},                         -- anti-stuck methods in order, for the server page
 }
 local State = RARELOAD.State
+State.details, State.antistuck = State.details or {}, State.antistuck or {}   -- after a dev reload
 
 local function changed(what, key)
     hook.Run("RareloadStateChanged", what, key)
 end
 
 RARELOAD.Net.On("history", function(p)
-    State.history = { rows = p.rows or {}, reload = p.reload or {} }
+    State.history = { rows = p.rows or {}, reload = p.reload or {}, undo = p.undo == true, loaded = true }
     changed("history")
 end)
 
@@ -31,6 +34,16 @@ RARELOAD.Net.On("saves", function(p)
     State.saves[p.sid] = p.save
     State.savesRev = State.savesRev + 1
     changed("saves", p.sid)
+end)
+
+RARELOAD.Net.On("object.detail", function(p)
+    State.details[p.objectId] = p.detail
+    changed("detail", p.objectId)
+end)
+
+RARELOAD.Net.On("antistuck", function(p)
+    State.antistuck = p.methods or {}
+    changed("antistuck")
 end)
 
 RARELOAD.Net.On("autosave", function()

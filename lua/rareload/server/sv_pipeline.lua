@@ -129,7 +129,7 @@ function Pipeline.Save(ply, opts)
 
     local prev = RARELOAD.History.Active(ply)
     local ctx = { ply = ply, opts = opts, prev = prev, shared = {} }
-    local session = RARELOAD.Log.Session("Save (" .. (opts.reason or "command") .. ")", ply)
+    local session = RARELOAD.Log.Session("Save (" .. (opts.reason or "command") .. ")", ply, "save")
 
     -- A partial save keeps the other modules' data from the current save.
     local data = {}
@@ -276,7 +276,7 @@ function Pipeline.Restore(ply, entry, opts)
     local ctx = setmetatable({
         ply = ply, entry = entry, reason = reason, only = opts.only, token = token,
         spawnDone = {}, shared = {}, spawned = {},
-        session = RARELOAD.Log.Session("Restore (" .. reason .. ")", ply),
+        session = RARELOAD.Log.Session("Restore (" .. reason .. ")", ply, "restore"),
     }, Ctx)
     if reason == "spawn" then
         pending[ply] = ctx

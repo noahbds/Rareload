@@ -119,21 +119,103 @@ local function navmeshPoints(pos, maxDist)
     return byDistance(pos, out)
 end
 
--- Last resort, at any distance: the map's player spawn points.
-local function spawnPoints(pos)
+local SPAWN_CLASSES = { "info_player_*", "gmod_player_start" }
+local LANDMARK_CLASSES = { "info_teleport_destination", "info_landmark", "info_target" }
+
+local function positionsOf(classes)
     local out = {}
-    for _, class in ipairs({ "info_player_*", "gmod_player_start" }) do
+    for _, class in ipairs(classes) do
         for _, ent in ipairs(ents.FindByClass(class)) do out[#out + 1] = ent:GetPos() end
+    end
+    return out
+end
+
+-- Spawn points, teleport destinations and landmarks near the saved spot: places a map maker meant
+-- players to stand.
+local function mapEntities(pos, maxDist)
+    local out = {}
+    for _, p in ipairs(positionsOf(SPAWN_CLASSES)) do out[#out + 1] = p end
+    for _, p in ipairs(positionsOf(LANDMARK_CLASSES)) do out[#out + 1] = p end
+    for i = #out, 1, -1 do
+        if out[i]:DistToSqr(pos) > maxDist * maxDist then table.remove(out, i) end
     end
     return byDistance(pos, out)
 end
 
-AntiStuck.METHODS = {
-    { id = "cached", fn = cached },
-    { id = "displacement", fn = displacement },
-    { id = "navmesh", fn = navmeshPoints },
-    { id = "spawnpoints", fn = spawnPoints },
-}
+-- Last resort, at any distance: every player spawn point on the map.
+local function emergency(pos)
+    return byDistance(pos, positionsOf(SPAWN_CLASSES))
+end
+
+-- Method registry (§19, §24): the order here is the default order.
+AntiStuck.methods = AntiStuck.methods or {}
+
+function AntiStuck.Method(def)
+    for i, m in ipairs(AntiStuck.methods) do
+        if m.id == def.id then AntiStuck.methods[i] = def return end
+    end
+    AntiStuck.methods[#AntiStuck.methods + 1] = def
+end
+
+AntiStuck.Method({ id = "cached", fn = cached })
+AntiStuck.Method({ id = "displacement", fn = displacement })
+AntiStuck.Method({ id = "navmesh", fn = navmeshPoints })
+AntiStuck.Method({ id = "mapEntities", fn = mapEntities })
+AntiStuck.Method({ id = "emergency", fn = emergency })
+
+-- Which methods run and in which order, saved for every map: { order = { ids }, disabled = { [id] = true } }.
+local CONFIG = "antistuck"
+
+local function config()
+    local c = RARELOAD.Store.Load(CONFIG)
+    return istable(c) and c or { v = RARELOAD.Store.SCHEMA, order = {}, disabled = {} }
+end
+
+-- Pure (unit-tested): the registry sorted by the saved order (unknown ids keep their registry order,
+-- after the ordered ones), with `enabled` set on each.
+function AntiStuck.Ordered(methods, cfg)
+    local rank = {}
+    for i, id in ipairs(cfg.order or {}) do rank[id] = i end
+    local list = {}
+    for i, m in ipairs(methods) do list[#list + 1] = { id = m.id, fn = m.fn, enabled = not (cfg.disabled or {})[m.id], index = i } end
+    table.sort(list, function(a, b)
+        local ra, rb = rank[a.id] or 1000 + a.index, rank[b.id] or 1000 + b.index
+        return ra < rb
+    end)
+    return list
+end
+
+function AntiStuck.List()
+    return AntiStuck.Ordered(AntiStuck.methods, config())
+end
+
+-- action: enable | disable | only | up | down | reset. Returns true, or false and a reason.
+function AntiStuck.Configure(action, id)
+    local list, cfg = AntiStuck.List(), config()
+    local known
+    for _, m in ipairs(list) do if m.id == id then known = m end end
+    if action ~= "reset" and not known then return false, "unknown method" end
+    cfg.disabled, cfg.order = cfg.disabled or {}, {}
+    if action == "reset" then
+        cfg.disabled = {}
+    elseif action == "enable" or action == "disable" then
+        cfg.disabled[id] = action == "disable" or nil
+    elseif action == "only" then
+        for _, m in ipairs(list) do cfg.disabled[m.id] = m.id ~= id or nil end
+    elseif action == "up" or action == "down" then
+        for i, m in ipairs(list) do
+            local j = i + (action == "up" and -1 or 1)
+            if m.id == id and list[j] then list[i], list[j] = list[j], list[i] break end
+        end
+    else
+        return false, "unknown action"
+    end
+    if action ~= "reset" then
+        for _, m in ipairs(list) do cfg.order[#cfg.order + 1] = m.id end
+    end
+    RARELOAD.Store.Save(CONFIG, cfg)
+    return true
+end
 
 -- Pure core (unit-tested): tries each method's candidates in order until `test` accepts one.
 -- Returns the accepted position and the method id, or nil when nothing fits before `deadline`.
@@ -147,11 +229,35 @@ function AntiStuck.Search(pos, maxDist, methods, test, deadline, clock)
     end
 end
 
-function AntiStuck.Resolve(pos, ply, crouched)
+-- `onTry(candidate, ok)` is called for every candidate tested (the test command draws them).
+function AntiStuck.Resolve(pos, ply, crouched, onTry)
     local test = function(candidate)
         local p = snap(candidate, ply, crouched)
-        if p and not AntiStuck.IsStuck(p, ply, crouched) then return p end
+        local free = p and not AntiStuck.IsStuck(p, ply, crouched)
+        if onTry then onTry(p or candidate, free) end
+        if free then return p end
+    end
+    local enabled = {}
+    for _, m in ipairs(AntiStuck.List()) do
+        if m.enabled then enabled[#enabled + 1] = m end
     end
     local deadline = SysTime() + RARELOAD.Get(nil, "asMaxSearchTime")
-    return AntiStuck.Search(pos, RARELOAD.Get(nil, "asMaxDistance"), AntiStuck.METHODS, test, deadline, SysTime)
+    return AntiStuck.Search(pos, RARELOAD.Get(nil, "asMaxDistance"), enabled, test, deadline, SysTime)
 end
+
+-- The server page's method list: read and change it over the network.
+local function pushMethods(ply)
+    local list = {}
+    for _, m in ipairs(AntiStuck.List()) do list[#list + 1] = { id = m.id, enabled = m.enabled } end
+    RARELOAD.Net.Push(ply, "antistuck", { methods = list })
+end
+
+RARELOAD.Net.Handle("antistuck.get", { priv = "rareload_anti_stuck", rate = 0.5, fn = pushMethods })
+
+RARELOAD.Net.Handle("antistuck.config", {
+    priv = "rareload_anti_stuck", rate = 0.1, args = { action = "string:16", id = "string:32?" },
+    fn = function(ply, a)
+        AntiStuck.Configure(a.action, a.id)
+        pushMethods(ply)
+    end,
+})

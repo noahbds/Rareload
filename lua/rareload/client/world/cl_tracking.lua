@@ -1,52 +1,87 @@
--- World display data (REWRITE_PLAN.md §21.7, F30–F32): links saved objects to live entities by their
--- Rareload ID, and turns the saves feed (or the timeline preview) into records to draw.
--- Shown to players with rareload_debug while the debug setting is on, and during a timeline preview.
+-- World display data (REWRITE_PLAN.md §21.7, F30–F32): turns the saves feed (players with
+-- rareload_debug while debug is on) or the timeline preview into records, links saved objects to
+-- live entities by their Rareload ID, and decides which phantoms show:
+--   a player's phantom when they are offline or away from their respawn point;
+--   an object's phantom when it is missing from the map or has moved.
+-- Preview phantoms are tinted: green = the spot is free, red = blocked, blue = still on the map.
 
 RARELOAD.World = RARELOAD.World or {}
 local World = RARELOAD.World
-local Util = RARELOAD.Util
+local Util, L, UI = RARELOAD.Util, RARELOAD.L, RARELOAD.UI
 
 World.live = World.live or {}   -- Rareload ID -> live entity
 World.records = World.records or {}
+
+local MOVED = 8              -- an object further than this from its saved spot has moved
+local AWAY = 32              -- a player further than this from their respawn point is away from it
+local CULL = 10000           -- phantoms further away are not created
+
+local TINT = {
+    player = Color(255, 255, 255, 150), object = Color(150, 200, 255, 120),
+    free = Color(140, 255, 170, 190), blocked = Color(255, 140, 130, 190), onMap = Color(120, 200, 255, 170),
+}
 
 function World.Active()
     local lp = LocalPlayer()
     return World.preview ~= nil or (IsValid(lp) and RARELOAD.Get(nil, "debug") and RARELOAD.Can(lp, "rareload_debug"))
 end
 
--- preview = { nick, data, objects }, or nil to stop previewing.
+-- preview = { id, nick, seated, data, objects }, or nil to stop previewing.
 function World.SetPreview(preview)
     World.preview = preview
     World.rev = nil
 end
 
-local function playerRecord(key, save, preview)
-    local t, look = save.data.transform, save.data.appearance
+-- Bodygroups as { [index] = value }: the appearance module saves a list, the duplicator a map.
+local function bodygroups(t, isList)
+    if not istable(t) then return nil end
+    local out = {}
+    if isList then
+        for i, v in ipairs(t) do out[i - 1] = v end
+    else
+        for k, v in pairs(t) do out[tonumber(k) or k] = v end
+    end
+    return out
+end
+
+local function playerRecord(key, save, extra)
+    local t, look = save.data.transform, save.data.appearance or {}
     local pos = t and Util.ToVector(t.pos)
     if not pos then return end
     local ang = Util.ToAngle(t.ang) or Angle()
-    return { key = key, kind = "player", pos = pos, ang = Angle(0, ang.y, 0), model = look and look.model or "models/player/kleiner.mdl",
-        title = save.nick, data = save.data, preview = preview }
+    local rec = {
+        key = key, kind = "player", pos = pos, ang = Angle(0, ang.y, 0), title = save.nick, data = save.data,
+        model = UI.IsModel(look.model) and look.model or "models/player/kleiner.mdl", skin = look.skin,
+        bodygroups = bodygroups(look.bodygroups, true), material = look.material, playerColor = Util.ToVector(look.playerColor),
+        seated = save.seated, objects = save.objects or {},
+    }
+    for k, v in pairs(extra) do rec[k] = v end
+    return rec
 end
 
-local function objectRecord(o, save, preview)
+local function objectRecord(key, o, save, extra)
     local pos = Util.ToVector(o.pos)
     if not pos or not o.id then return end
-    return { key = "o:" .. o.id, kind = "object", pos = pos, ang = Util.ToAngle(o.ang) or Angle(), model = o.model,
-        skin = o.skin, title = o.class, obj = o, owner = save.nick, preview = preview }
+    local rec = {
+        key = key, kind = "object", pos = pos, ang = Util.ToAngle(o.ang) or Angle(), model = o.model, skin = o.skin,
+        bodygroups = bodygroups(o.bodygroups, false), material = o.material, scale = o.scale, parts = o.parts,
+        title = o.class, obj = o, ownerNick = save.nick,
+    }
+    for k, v in pairs(extra) do rec[k] = v end
+    return rec
 end
 
 -- Rebuilt only when the feed or the preview changed (L28).
 local function rebuild()
     local out = {}
-    local function add(key, save, preview)
-        out[#out + 1] = playerRecord(key, save, preview)
-        for _, o in ipairs(save.objects or {}) do out[#out + 1] = objectRecord(o, save, preview) end
+    local function add(prefix, save, extra)
+        out[#out + 1] = playerRecord(prefix, save, extra)
+        for _, o in ipairs(save.objects or {}) do out[#out + 1] = objectRecord(prefix .. ":" .. o.id, o, save, extra) end
     end
     if World.preview then
-        add("p:preview", World.preview, true)
+        add("preview", World.preview, { preview = true, entryId = World.preview.id })
     else
-        for sid, save in pairs(RARELOAD.State.saves) do add("p:" .. sid, save, false) end
+        for sid, save in pairs(RARELOAD.State.saves) do add(sid, save, { sid = sid }) end
     end
     World.records = out
 end
@@ -60,13 +95,13 @@ local function scanLive()
     World.live = live
 end
 
--- The live entity of a record, if it exists.
+-- The live entity of an object record, if it exists.
 function World.LiveOf(rec)
     local ent = rec.obj and World.live[rec.obj.id]
     return IsValid(ent) and ent or nil
 end
 
--- The live entity with this Rareload ID, even while the world display is off (for the inspector).
+-- The live entity with this Rareload ID, even while the world display is off.
 function World.FindLive(id)
     if IsValid(World.live[id]) then return World.live[id] end
     for _, ent in ents.Iterator() do
@@ -74,17 +109,40 @@ function World.FindLive(id)
     end
 end
 
--- A player hull at the preview position, to color the preview green (free) or red (blocked).
-local function hullClear(pos)
-    local tr = util.TraceHull({ start = pos + Vector(0, 0, 1), endpos = pos + Vector(0, 0, 1),
-        mins = Vector(-16, -16, 0), maxs = Vector(16, 16, 72), mask = MASK_PLAYERSOLID, filter = LocalPlayer() })
-    return not tr.StartSolid
+-- The player a record belongs to, when they are on the server.
+function World.OwnerOf(rec)
+    if rec.preview then return LocalPlayer() end
+    local ply = rec.sid and player.GetBySteamID64(rec.sid)
+    return IsValid(ply) and ply or nil
 end
 
-local WHITE, OBJECT = Color(255, 255, 255, 140), Color(120, 180, 255, 110)
-local CLEAR, BLOCKED = Color(90, 255, 120, 150), Color(255, 80, 80, 150)
+-- A player hull at the spot: is it free?
+function World.SpotFree(pos, ignore)
+    local filter = { LocalPlayer() }
+    if IsValid(ignore) then filter[2] = ignore end
+    local tr = util.TraceHull({ start = pos, endpos = pos, mins = Vector(-16, -16, 4), maxs = Vector(16, 16, 72),
+        mask = MASK_PLAYERSOLID, filter = filter })
+    return not (tr.StartSolid or tr.AllSolid)
+end
 
--- 5 Hz: phantoms and the preview's clear/blocked check (F27); live links once a second.
+-- Whether the record's phantom shows, and its tint.
+local function phantomState(rec, origin)
+    if rec.pos:DistToSqr(origin) > CULL * CULL then return false end
+    if rec.kind == "player" then
+        if rec.preview then return true, World.SpotFree(rec.pos) and TINT.free or TINT.blocked end
+        local owner = World.OwnerOf(rec)
+        local away = not IsValid(owner) or owner:GetPos():DistToSqr(rec.pos) > AWAY * AWAY
+        return away or RARELOAD.Highlight.IsActive("player", rec.key), TINT.player
+    end
+    local live = World.LiveOf(rec)
+    if rec.preview then
+        if live then return true, TINT.onMap end
+        return true, World.SpotFree(rec.pos) and TINT.free or TINT.blocked
+    end
+    return not live or live:GetPos():DistToSqr(rec.pos) > MOVED * MOVED, TINT.object
+end
+
+-- 5 Hz: phantoms, their tints and visibility (F27, F31, F32); live links once a second.
 local ticks = 0
 timer.Create("Rareload.World.Update", 0.2, 0, function()
     if not World.Active() then
@@ -92,7 +150,7 @@ timer.Create("Rareload.World.Update", 0.2, 0, function()
         RARELOAD.Phantoms.Sync({})
         return
     end
-    local rev = World.preview and "preview" or RARELOAD.State.savesRev
+    local rev = World.preview and ("preview" .. tostring(World.preview.id) .. #(World.preview.objects or {})) or RARELOAD.State.savesRev
     if World.rev ~= rev then
         World.rev = rev
         rebuild()
@@ -101,15 +159,31 @@ timer.Create("Rareload.World.Update", 0.2, 0, function()
     if ticks % 5 == 0 then scanLive() end
     ticks = ticks + 1
 
-    local wanted = {}
+    local origin, wanted = LocalPlayer():GetPos(), {}
     for _, rec in ipairs(World.records) do
-        if rec.kind == "player" then
-            local col = WHITE
-            if rec.preview then col = hullClear(rec.pos) and CLEAR or BLOCKED end
-            wanted[rec.key] = { model = rec.model, pos = rec.pos, ang = rec.ang, color = col, player = true }
-        elseif not World.LiveOf(rec) then
-            wanted[rec.key] = { model = rec.model, pos = rec.pos, ang = rec.ang, skin = rec.skin, color = OBJECT }
+        local show, tint = phantomState(rec, origin)
+        rec.phantomShown = show
+        if show then
+            wanted[rec.key] = { model = rec.model, pos = rec.pos, ang = rec.ang, skin = rec.skin, bodygroups = rec.bodygroups,
+                material = rec.material, scale = rec.scale, parts = rec.parts, color = tint, player = rec.kind == "player",
+                seated = rec.seated, playerColor = rec.playerColor }
         end
     end
     RARELOAD.Phantoms.Sync(wanted)
+end)
+
+-- A banner while previewing, since the timeline window may be closed.
+hook.Add("HUDPaint", "Rareload.World.PreviewBanner", function()
+    if not World.preview then return end
+    local sc, C = UI.sc, UI.C
+    local text = L("world.preview_banner", World.preview.id, #(World.preview.objects or {}))
+    surface.SetFont("Rareload.BodyB")
+    local tw = surface.GetTextSize(text)
+    local w, h = tw + sc(36), sc(30)
+    local x, y = (ScrW() - w) / 2, sc(18)
+    draw.RoundedBox(sc(8), x, y, w, h, ColorAlpha(C.bgDark, 230))
+    surface.SetDrawColor(C.ok)
+    surface.DrawOutlinedRect(x, y, w, h, 1)
+    draw.RoundedBox(sc(4), x + sc(12), y + h / 2 - sc(4), sc(8), sc(8), C.ok)
+    draw.SimpleText(text, "Rareload.BodyB", x + sc(26), y + h / 2, C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 end)
