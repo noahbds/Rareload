@@ -23,6 +23,11 @@ local function save(tool, at)
 end
 
 function TOOL:LeftClick(trace)
+    -- Aiming at the sky or at nothing would put the respawn point in the void.
+    if not trace.Hit or trace.HitSky then
+        if SERVER then RARELOAD.Toast(self:GetOwner(), "toast.aim_ground", nil, "error") end
+        return false
+    end
     return save(self, trace.HitPos)
 end
 

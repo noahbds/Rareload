@@ -427,8 +427,7 @@ end
 
 function Timeline.Restore(r)
     if not r then return end
-    request("history.restore", { id = r.id })
-    UI.Notify(L("timeline.restoring"))
+    request("history.restore", { id = r.id })   -- the server's toast says when it's done
 end
 
 function Timeline.Delete(r)

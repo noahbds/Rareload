@@ -122,6 +122,11 @@ local function refuse(ply, opts, why)
     return false, why
 end
 
+-- A manual save copies every object the player owns, so saving faster than this only adds load
+-- (a player clicking the tool as fast as they can, on a big build, would lag the server).
+local MANUAL_COOLDOWN = 1
+local lastManual = setmetatable({}, { __mode = "k" })
+
 -- opts = { at?: Vector, reason?: string, only?: { [moduleId] = true }, silent?: bool, captureOnly?: bool,
 --          keepMissing?: bool (a module that captures nothing keeps its data from the current save) }
 -- Returns true plus "saved" or "unchanged", or false plus the reason. With captureOnly the entry is
@@ -134,6 +139,13 @@ function Pipeline.Save(ply, opts)
     if not ply:Alive() or ply:GetObserverMode() ~= OBS_MODE_NONE then return refuse(ply, opts, "state") end   -- E33
     if not RARELOAD.Util.PlayerKey(ply) then return refuse(ply, opts, "no steamid") end                      -- E24
     if hook.Run("RareloadCanSave", ply, opts.reason) == false then return refuse(ply, opts, "hook") end
+    if not opts.silent and not opts.captureOnly then
+        if CurTime() - (lastManual[ply] or -math.huge) < MANUAL_COOLDOWN then
+            RARELOAD.Toast(ply, "toast.save_wait", nil, "error")
+            return false, "cooldown"
+        end
+        lastManual[ply] = CurTime()
+    end
 
     local prev = RARELOAD.History.Active(ply)
     local ctx = { ply = ply, opts = opts, prev = prev, shared = {} }

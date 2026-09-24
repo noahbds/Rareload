@@ -109,7 +109,7 @@ Cmd.Register("perms", {
     end,
 })
 
--- Timeline from the console, until the timeline UI exists (Phase 6).
+-- The timeline from the console (the Save Timeline window does the same with buttons).
 local function playerOnly(fn)
     return function(ply, args, reply)
         if not IsValid(ply) then return reply("Only players have saves.") end

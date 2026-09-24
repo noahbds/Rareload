@@ -197,7 +197,7 @@ end
 local function objectCats(rec)
     local cats, add = builder()
     local o, live = rec.obj, RARELOAD.World.LiveOf(rec)
-    local detail = State.details[o.id]
+    local detail = State.details[State.DetailKey(rec.sid, rec.entryId, o.id)]
 
     add("basic", L("field.class"), o.class)
     add("basic", L("field.model"), o.model and string.GetFileFromFilename(o.model))
@@ -310,10 +310,10 @@ local function sizeOf(rec)
     return rec.cardW, rec.cardH
 end
 
-hook.Add("RareloadStateChanged", "Rareload.Panels.Detail", function(what, id)
+hook.Add("RareloadStateChanged", "Rareload.Panels.Detail", function(what, key)
     if what ~= "detail" then return end
     for _, rec in ipairs(RARELOAD.World.records) do
-        if rec.obj and rec.obj.id == id then rec.cats = nil end
+        if rec.obj and State.DetailKey(rec.sid, rec.entryId, rec.obj.id) == key then rec.cats = nil end
     end
 end)
 
@@ -325,10 +325,12 @@ end)
 -- server's rate limit for it). Returns true when it asked, or had to wait its turn.
 local asked, nextAsk = {}, 0
 local function askDetail(rec)
-    if rec.kind ~= "object" or State.details[rec.obj.id] or (asked[rec.obj.id] or 0) > RealTime() then return false end
+    if rec.kind ~= "object" then return false end
+    local key = State.DetailKey(rec.sid, rec.entryId, rec.obj.id)
+    if State.details[key] or (asked[key] or 0) > RealTime() then return false end
     if RealTime() < nextAsk then return true end
     nextAsk = RealTime() + 0.15
-    asked[rec.obj.id] = RealTime() + 5
+    asked[key] = RealTime() + 5
     RARELOAD.Net.Request("object.detail", { sid = rec.sid, entryId = rec.entryId, objectId = rec.obj.id })
     return true
 end

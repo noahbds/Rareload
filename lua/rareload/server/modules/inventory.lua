@@ -4,12 +4,20 @@ local function useGlobal(ply)
     return RARELOAD.Get(ply, "globalInventory") and RARELOAD.Can(ply, "rareload_global_inventory")
 end
 
+-- Whether this restore also restores ammo. Weapons are then given empty, since the ammo module
+-- sets every clip and reserve; otherwise they come with their usual starting ammo.
+local function ammoRestored(ply, ctx)
+    return ctx.entry.data.ammo ~= nil and (not ctx.only or ctx.only.ammo == true)
+        and RARELOAD.Get(ply, "keepAmmo") and RARELOAD.Can(ply, "rareload_restore_ammo")
+end
+
 -- Returns how many weapons could not be given (missing addon or blocked by PlayerCanPickupWeapon, E26).
 local function give(ply, classes, ctx)
     local skipped = 0
+    local empty = ammoRestored(ply, ctx)
     ply:SetSuppressPickupNotices(true)   -- G57
     for _, class in ipairs(classes) do
-        if isstring(class) and not IsValid(ply:Give(class, true)) and not ply:HasWeapon(class) then   -- G18
+        if isstring(class) and not IsValid(ply:Give(class, empty)) and not ply:HasWeapon(class) then   -- G18
             skipped = skipped + 1
         end
     end

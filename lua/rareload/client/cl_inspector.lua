@@ -518,9 +518,9 @@ function Inspector.Open(entryId)
     local deleteAll = frame:HeaderButton(L("inspector.delete_shown"), function()
         if #shown == 0 then return UI.Notify(L("inspector.nothing_shown"), "error") end
         UI.Confirm(L("inspector.delete_shown"), L("inspector.delete_confirm", #shown), function()
-            for i, o in ipairs(shown) do   -- object requests are limited to 5 per second
-                timer.Simple((i - 1) * 0.22, function() request("object.delete", { entryId = entryId, objectId = o.id }) end)
-            end
+            local ids = {}
+            for _, o in ipairs(shown) do ids[#ids + 1] = o.id end
+            request("object.deleteMany", { entryId = entryId, ids = table.concat(ids, ",") })
         end, L("inspector.delete"))
     end, { style = "danger", icon = "bin" })
     deleteAll:SetVisible(canManage())

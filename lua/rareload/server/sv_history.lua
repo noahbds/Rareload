@@ -139,7 +139,7 @@ end
 -- undone by removing what the restore created) is captured first, for undo (F26).
 function History.Restore(ply, id, comps)
     local entry = History.Get(ply, id)
-    if not entry then return false end
+    if not entry or not ply:Alive() then return false end   -- a dead player respawns at their respawn point
     local only = History.ModulesFor(comps)
 
     local undoOnly = {}
@@ -301,6 +301,35 @@ function History.DeleteObject(ply, entryId, objectId)
     end)
 end
 
+-- Deletes several objects at once: each snapshot is copied and stored once, not once per object.
+function History.DeleteObjects(ply, entryId, ids)
+    local d = History.Doc(ply)
+    local entry = find(d, entryId)
+    if not entry then return false, "no such save" end
+    local removed = 0
+    for _, kind in ipairs(WORLD_KINDS) do
+        local snap = RARELOAD.Pipeline.Payload(entry.data[kind])
+        local hit = false
+        for _, def in pairs(snap and snap.Entities or {}) do
+            if ids[RARELOAD.Snapshot.DefID(def)] then hit = true break end
+        end
+        if hit then
+            local copy = util.JSONToTable(util.TableToJSON(snap), true)
+            for index, def in pairs(copy.Entities) do
+                if ids[RARELOAD.Snapshot.DefID(def)] then
+                    copy.Entities[index] = nil
+                    removed = removed + 1
+                end
+            end
+            RARELOAD.Snapshot.PruneConstraints(copy)
+            entry.data[kind] = { ["$blob"] = RARELOAD.Store.BlobPut(copy) }
+        end
+    end
+    if removed == 0 then return false, "no such object" end
+    save(ply, d)
+    return true
+end
+
 -- flag: "frozen" or "nogravity"
 function History.FlagObject(ply, entryId, objectId, flag, value)
     local field = ({ frozen = "Frozen", nogravity = "NoGrav" })[flag]
@@ -362,10 +391,18 @@ function History.Info(data)
     return info
 end
 
+-- A note read back from disk: GMod's JSON turns a note like "[1 2 3]" into a Vector.
+local function noteText(note)
+    if isvector(note) then return string.format("[%g %g %g]", note.x, note.y, note.z) end
+    if isangle(note) then return string.format("{%g %g %g}", note.p, note.y, note.r) end
+    return note ~= nil and tostring(note) or nil
+end
+
 -- One row per entry.
 function History.Rows(ply)
     local d, rows = History.Doc(ply), {}
     for _, e in ipairs(d and d.entries or {}) do
+        e.note = noteText(e.note)
         local modules = {}
         for id in pairs(e.data) do modules[#modules + 1] = id end
         table.sort(modules)
@@ -407,6 +444,7 @@ handle("history.activate", "rareload_restore", { id = "uint" }, function(ply, a)
     if History.Activate(ply, a.id) then return "toast.activated", { a.id } end
 end)
 handle("history.restore", "rareload_restore", { id = "uint", comps = "string:128?" }, function(ply, a)
+    if not ply:Alive() then return "toast.restore_dead" end
     if History.Restore(ply, a.id, parseComps(a.comps)) then return "toast.restored", { a.id } end
 end)
 handle("history.undo", "rareload_restore", {}, function(ply)
@@ -442,7 +480,8 @@ RARELOAD.Net.Handle("object.detail", {
         end
         local detail = entry and History.ObjectDetail(entry, a.objectId)
         if detail then
-            RARELOAD.Net.Push(ply, "object.detail", { objectId = a.objectId, detail = detail }, { key = "detail:" .. a.objectId })
+            RARELOAD.Net.Push(ply, "object.detail", { sid = a.sid, entryId = a.entryId, objectId = a.objectId, detail = detail },
+                { key = "detail:" .. tostring(a.sid) .. ":" .. tostring(a.entryId) .. ":" .. a.objectId })
         end
     end,
 })
@@ -462,6 +501,12 @@ end
 
 objectOp("object.delete", { entryId = "uint", objectId = "string:32" }, function(ply, a)
     return History.DeleteObject(ply, a.entryId, a.objectId)
+end)
+-- ids: object IDs separated by commas.
+objectOp("object.deleteMany", { entryId = "uint", ids = "string:60000" }, function(ply, a)
+    local ids = {}
+    for id in string.gmatch(a.ids, "[%w]+") do ids[id] = true end
+    return History.DeleteObjects(ply, a.entryId, ids)
 end)
 objectOp("object.flag", { entryId = "uint", objectId = "string:32", flag = "string:16", value = "bool" }, function(ply, a)
     return History.FlagObject(ply, a.entryId, a.objectId, a.flag, a.value)
