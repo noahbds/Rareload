@@ -461,7 +461,8 @@ local function placement(ent, eye, h)
     local d = math.sqrt(dx * dx + dy * dy)
     local ux, uy = d > 1 and dx / d or 1, d > 1 and dy / d or 0
     local near = d - (math.abs(ux) * hx + math.abs(uy) * hy) - 6   -- from the viewer to the box's near side
-    if near < 32 then near = math.min(32, d) end                   -- standing at the model: just in front
+    local inside = near < 32
+    if inside then near = math.min(32, d) end                     -- standing at the model: just in front
 
     local size = math.max(hx * 2, hy * 2, mx.z - mn.z)
     local worldW = math.min(math.Clamp(size * 1.15, 42, 130), math.max(near, 1) * 0.6)
@@ -469,7 +470,7 @@ local function placement(ent, eye, h)
     local half = h * scale / 2
     local z = math.Clamp(eye.z, mn.z + half, mx.z + half + 8)
     local pos = Vector(eye.x + ux * near, eye.y + uy * near, z)
-    return pos, Angle(0, math.deg(math.atan2(uy, ux)) - 90, 90), scale
+    return pos, Angle(0, math.deg(math.atan2(uy, ux)) - 90, 90), scale, inside
 end
 
 -- Does the aim ray hit the panel's rectangle? Returns the distance to the panel.
@@ -486,25 +487,28 @@ end
 
 -- Frame -----------------------------------------------------------------------------------------------
 
--- Candidates in range and in view, nearest first, up to the draw budget.
+-- Candidates in range and in view, nearest edge first, up to the draw budget.
 local function candidates(eye, aim)
     local maxDist = RARELOAD.Get(nil, "wdDrawDistance")
     local out = {}
-    local reach = (maxDist + 300) ^ 2   -- the model is near its saved spot, or its phantom shows there
+    local reach = (maxDist + 1500) ^ 2   -- the model is near its saved spot, or its phantom shows there (big models reach far)
     for _, rec in ipairs(RARELOAD.World.records) do
         local ent = rec.pos:DistToSqr(eye) < reach and (rec.kind == "object" or rec.phantomShown) and anchorEnt(rec)
         if ent then
             local center = ent:WorldSpaceCenter()
             local delta = center - eye
             local dist = delta:Length()
-            if dist < maxDist and (dist < 150 or delta:Dot(aim) > dist * 0.64) then   -- ~50° cone, all around when close
-                local mn, mx = ent:OBBMins(), ent:OBBMaxs()
-                out[#out + 1] = { rec = rec, ent = ent, center = center, dist = dist,
-                    radius = math.max(mx.x - mn.x, mx.y - mn.y) / 2, half = (mx.z - mn.z) / 2 }
+            local mn, mx = ent:OBBMins(), ent:OBBMaxs()
+            local radius, half = math.max(mx.x - mn.x, mx.y - mn.y) / 2, (mx.z - mn.z) / 2
+            -- Measured to the model's edge, not its centre: next to a big model the centre can be far
+            -- off to the side. All around when close, else in a ~50° cone widened by the model's size.
+            local edge = math.max(dist - math.max(radius, half), 0)
+            if edge < maxDist and (edge < 150 or delta:Dot(aim) > dist * 0.64 - math.max(radius, half)) then
+                out[#out + 1] = { rec = rec, ent = ent, center = center, dist = dist, edge = edge, radius = radius, half = half }
             end
         end
     end
-    table.sort(out, function(a, b) return a.dist < b.dist end)
+    table.sort(out, function(a, b) return a.edge < b.edge end)
     local budget = RARELOAD.Get(nil, "wdMaxDrawPerFrame")
     for i = #out, budget + 1, -1 do out[i] = nil end
     return out
@@ -633,7 +637,7 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
         st.active = math.Clamp(st.active, 1, #g.members)
         g.active = g.members[st.active].rec
         g.h = panelHeight(g.active)
-        g.pos, g.ang, g.scale = placement(g.base.ent, eye, g.h)
+        g.pos, g.ang, g.scale, g.inside = placement(g.base.ent, eye, g.h)
         g.dist = eye:Distance(g.pos)
         local hit = hitTest(g.pos, g.ang, g.scale, g.h, eye, aim)
         if hit and g.dist < interact and (not focusDist or g.dist < focusDist) then focus, focusDist = g, g.dist end
@@ -654,8 +658,10 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
     for _, g in ipairs(groups) do
         local st = Panels.piles[g.key]
         local focused, locked = g == focus, lock and lock.pile == g.key
-        fade = (focused or locked) and 1 or math.Clamp((maxDist - g.base.dist) / (maxDist * FADE), 0, 1)
+        fade = (focused or locked) and 1 or math.Clamp((maxDist - g.base.edge) / (maxDist * FADE), 0, 1)
         surface.SetAlphaMultiplier(fade)
+        -- Standing at a big model, the panel can end up inside it; draw it over the model then.
+        if g.inside then cam.IgnoreZ(true) end
         cam.Start3D2D(g.pos, g.ang, g.scale)
             for k = math.min(#g.members - 1, 2), 1, -1 do   -- the next cards peek out behind
                 local ph = g.h * 0.94 ^ k
@@ -689,6 +695,7 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
                 if #g.members > 1 then hint(L("world.hint_pile", #g.members), hy + 30) end
             end
         cam.End3D2D()
+        if g.inside then cam.IgnoreZ(false) end
     end
     surface.SetAlphaMultiplier(1)
     fade = 1

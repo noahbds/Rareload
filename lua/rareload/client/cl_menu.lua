@@ -1,39 +1,46 @@
--- Menus generated from the settings registry (REWRITE_PLAN.md §21.3, §18, F37, F38), in v4's style:
--- a dark panel, collapsible categories with an icon and an accent bar, switch and slider rows, and
--- full-width action buttons.
---   the tool panel: the player's own settings, quick actions, highlights and debug for admins;
---   Utilities › Rareload › Server: server values, locks and anti-stuck methods (rareload_settings);
+-- Menus generated from the settings registry (REWRITE_PLAN.md §21.3, §18, F37, F38). Each setting
+-- shows in exactly one place:
+--   the tool panel: the player's own settings, quick actions, highlights and debug tools for admins;
+--   Utilities › Rareload › Server: server settings and the default of every player setting, each of
+--     which can be locked (rareload_settings);
 --   Utilities › Rareload › Client: this client's world display settings.
--- A blue dot marks a setting the player changed from the server's value; right-click one to go back
--- to the server's value. A lock marks a setting the server locked, a server icon a server-wide setting.
+-- The spawn menu is narrow, so labels wrap instead of running under the controls. Left of a label, a
+-- reset arrow means the player changed the setting (click it to use the server's value again) and a
+-- lock means the server decides it.
 
 RARELOAD.Menu = RARELOAD.Menu or {}
 local Menu = RARELOAD.Menu
 local L, UI = RARELOAD.L, RARELOAD.UI
 
-local BG, HEAD, TRACK = Color(35, 39, 47), Color(45, 50, 60), Color(50, 55, 65)
-local ACCENT, TEXT, TEXT2, FOOT = Color(65, 145, 255), Color(245, 245, 245), Color(180, 180, 190), Color(100, 105, 115)
+local BG, CARD, CARD_HI = Color(30, 33, 40), Color(41, 45, 54), Color(50, 55, 66)
+local ACCENT, TEXT, TEXT2, MUTED = Color(65, 145, 255), Color(240, 242, 247), Color(170, 176, 190), Color(110, 116, 130)
+local TRACK, SWITCH_OFF, HOVER = Color(60, 65, 77), Color(70, 75, 88), Color(255, 255, 255)
 local BUTTONS = {
-    green = Color(76, 175, 80), indigo = Color(88, 101, 242), orange = Color(255, 152, 0), yellow = Color(255, 193, 7),
-    cyan = Color(0, 188, 212), gray = Color(158, 158, 158),
+    green = Color(56, 158, 92), indigo = Color(88, 101, 242), orange = Color(214, 128, 20), yellow = Color(196, 150, 20),
+    cyan = Color(0, 150, 170), gray = Color(88, 94, 108),
 }
 
--- The spawn menu isn't scaled, so these sizes are fixed.
+-- The spawn menu isn't scaled, so sizes are fixed. No shadows: they blur small text.
 local function font(name, size, weight)
-    surface.CreateFont(name, { font = "Roboto", size = size, weight = weight, shadow = true, extended = true })
+    surface.CreateFont(name, { font = "Roboto", size = size, weight = weight, extended = true })
 end
-font("Rareload.Menu.Title", 30, 700)
-font("Rareload.Menu.Text", 19, 600)
-font("Rareload.Menu.Row", 17, 600)
-font("Rareload.Menu.Note", 14, 500)
+font("Rareload.Menu.Title", 26, 800)
+font("Rareload.Menu.Head", 17, 700)
+font("Rareload.Menu.Row", 16, 500)
+font("Rareload.Menu.Value", 16, 700)
+font("Rareload.Menu.Note", 13, 500)
+
+local GUTTER, PAD, LINE = 22, 8, 19   -- icon column, right padding, label line height
+local HEAD_H = 34
 
 local CATEGORIES = { "general", "player", "world", "timing", "server", "antistuck", "display" }
 local ICONS = {
     general = "cog", player = "user", world = "map", timing = "clock", server = "server", antistuck = "arrow_out",
-    display = "eye", actions = "lightning", highlight = "flag_yellow", debug = "wrench", locks = "lock", methods = "arrow_switch",
+    display = "eye", actions = "lightning", highlight = "flag_yellow", debug = "wrench", methods = "arrow_switch",
 }
+local SUFFIXES = { autoSaveInterval = "s", autoSaveAngleThreshold = "°", asMaxSearchTime = "s", toastHold = "s" }
 
-local function anim(from, to, speed) return Lerp(FrameTime() * (speed or 10), from, to) end
+local function anim(from, to, speed) return Lerp(math.min(FrameTime() * (speed or 12), 1), from, to) end
 
 -- Settings matching `filter`, grouped by category in menu order.
 local function grouped(filter)
@@ -54,7 +61,257 @@ local function grouped(filter)
     return out
 end
 
--- Widgets ---------------------------------------------------------------------------------------------
+-- Text ------------------------------------------------------------------------------------------------
+
+local wrapCache = {}
+
+-- `text` broken into lines no wider than `w`.
+local function wrap(text, fnt, w)
+    w = math.max(math.floor(w), 40)
+    local key = fnt .. "\1" .. w .. "\1" .. text
+    if wrapCache[key] then return wrapCache[key] end
+    surface.SetFont(fnt)
+    local lines, cur = {}, ""
+    for word in string.gmatch(text, "%S+") do
+        local try = cur == "" and word or cur .. " " .. word
+        if cur ~= "" and surface.GetTextSize(try) > w then
+            lines[#lines + 1] = cur
+            cur = word
+        else
+            cur = try
+        end
+    end
+    lines[#lines + 1] = cur
+    wrapCache[key] = lines
+    return lines
+end
+
+-- Rows ------------------------------------------------------------------------------------------------
+
+-- The icon in a row's left column: a lock (the server decides), or a reset arrow when the player
+-- changed the setting. opts.lock = { locked, toggle } makes the lock a switch (server page).
+local function gutterIcon(row)
+    local o = row.opts
+    if o.lock then return o.lock.locked and "lock" or "lock_open", o.lock.locked and 255 or 90 end
+    if o.locked then return "lock", 255 end
+    if o.changed then return "arrow_undo", row.gutterHover and 255 or 170 end
+end
+
+local function onGutterClick(row)
+    local o = row.opts
+    if o.lock then
+        o.lock.locked = not o.lock.locked
+        o.lock.toggle(o.lock.locked)
+        return true
+    end
+    if o.changed and o.reset then
+        o.reset()
+        return true
+    end
+end
+
+-- A setting row: the icon column, a wrapped label, a control `rightW` wide on the right of the label,
+-- and `belowH` pixels under it. opts = { tooltip, disabled, locked, changed, reset, lock, menu(dmenu) }.
+local function newRow(parent, label, opts, rightW, belowH)
+    local row = vgui.Create("DPanel", parent)
+    row:Dock(TOP)
+    row:DockMargin(0, 1, 0, 1)
+    row:SetTall(LINE + 12 + belowH)
+    row.opts, row.hover, row.lines, row.labelH = opts, 0, { label }, LINE
+    if opts.tooltip then row:SetTooltip(opts.tooltip) end
+
+    row.PerformLayout = function(self, w)
+        self.lines = wrap(label, "Rareload.Menu.Row", w - GUTTER - rightW - PAD - (rightW > 0 and 8 or 0))
+        self.labelH = #self.lines * LINE
+        local h = self.labelH + 12 + belowH
+        if self:GetTall() ~= h then self:SetTall(h) end
+        if self.LayoutBelow then self:LayoutBelow(w, h) end
+    end
+
+    row.PaintBase = function(self, w, h)
+        self.hover = anim(self.hover, self:IsHovered() and not opts.disabled and 1 or 0)
+        if self.hover > 0.01 then draw.RoundedBox(4, 0, 0, w, h, ColorAlpha(HOVER, 8 * self.hover)) end
+        local icon, alpha = gutterIcon(self)
+        if icon then UI.DrawIcon(icon, 3, 6 + math.floor((LINE - 16) / 2), 16, ColorAlpha(color_white, alpha)) end
+        for i, line in ipairs(self.lines) do
+            draw.SimpleText(line, "Rareload.Menu.Row", GUTTER, 6 + (i - 1) * LINE, opts.disabled and MUTED or TEXT)
+        end
+    end
+    row.Paint = row.PaintBase
+
+    row.Think = function(self)
+        self.gutterHover = self:IsHovered() and self:CursorPos() < GUTTER
+        self:SetCursor((self.gutterHover and gutterIcon(self)) and "hand" or (opts.disabled and "arrow" or "hand"))
+    end
+
+    -- Left click on the icon resets or locks; right click opens the row's menu.
+    row.OnMousePressed = function(self, code)
+        if code == MOUSE_LEFT and self.gutterHover and onGutterClick(self) then
+            surface.PlaySound("ui/buttonclick.wav")
+            return
+        end
+        if code == MOUSE_LEFT and not opts.disabled and self.Press then self:Press() end
+    end
+    row.OnMouseReleased = function(self, code)
+        if code == MOUSE_LEFT and self.Release then return self:Release() end
+        if code ~= MOUSE_RIGHT or opts.disabled and not opts.changed then return end
+        if not (opts.reset and opts.changed) and not opts.menu then return end
+        local m = DermaMenu()
+        if opts.reset and opts.changed then m:AddOption(L("menu.use_server_value"), opts.reset):SetIcon("icon16/arrow_undo.png") end
+        if opts.menu then opts.menu(m) end
+        m:Open()
+    end
+    return row
+end
+
+local function toggle(parent, label, value, onChange, opts)
+    local row = newRow(parent, label, opts, 40, 0)
+    row.value, row.knob = value, value and 1 or 0
+    row.Paint = function(self, w, h)
+        self:PaintBase(w, h)
+        self.knob = anim(self.knob, self.value and 1 or 0)
+        local sw, sh = 36, 18
+        local sx, sy = w - sw - PAD, math.floor(6 + self.labelH / 2 - sh / 2)
+        draw.RoundedBox(sh / 2, sx, sy, sw, sh, UI.Mix(SWITCH_OFF, opts.disabled and SWITCH_OFF or ACCENT, self.knob))
+        draw.RoundedBox((sh - 4) / 2, math.floor(sx + 2 + (sw - sh) * self.knob), sy + 2, sh - 4, sh - 4,
+            opts.disabled and TEXT2 or color_white)
+    end
+    row.Press = function(self)
+        self.value = not self.value
+        surface.PlaySound("ui/buttonclick.wav")
+        onChange(self.value)
+    end
+    return row
+end
+
+local function slider(parent, label, value, min, max, decimals, suffix, onChange, opts)
+    local function text(v) return string.format("%." .. decimals .. "f", v) .. (suffix or "") end
+    surface.SetFont("Rareload.Menu.Value")
+    local valueW = math.max(surface.GetTextSize(text(min)), surface.GetTextSize(text(max))) + 4
+    local row = newRow(parent, label, opts, valueW, 18)
+    row.value = value
+    row.Paint = function(self, w, h)
+        self:PaintBase(w, h)
+        draw.SimpleText(text(self.value), "Rareload.Menu.Value", w - PAD, 6, opts.disabled and MUTED or ACCENT, TEXT_ALIGN_RIGHT)
+        local tx, ty, tw = GUTTER, h - 14, w - GUTTER - PAD
+        local f = math.Clamp((self.value - min) / (max - min), 0, 1)
+        draw.RoundedBox(3, tx, ty, tw, 6, TRACK)
+        if f > 0 then draw.RoundedBox(3, tx, ty, math.max(tw * f, 6), 6, opts.disabled and MUTED or ACCENT) end
+        draw.RoundedBox(7, math.floor(tx + tw * f - 7), ty - 4, 14, 14, opts.disabled and TEXT2 or color_white)
+    end
+    row.Press = function(self)
+        self.dragging = true
+        self:MouseCapture(true)
+    end
+    row.Release = function(self)
+        if not self.dragging then return end
+        self.dragging = false
+        self:MouseCapture(false)
+        onChange(self.value)
+    end
+    local think = row.Think
+    row.Think = function(self)
+        think(self)
+        if not self.dragging then return end
+        local x = self:CursorPos()
+        self.value = math.Round(min + math.Clamp((x - GUTTER) / (self:GetWide() - GUTTER - PAD), 0, 1) * (max - min), decimals)
+    end
+    -- Right click: type an exact value.
+    local extra = opts.menu
+    opts.menu = function(m)
+        m:AddOption(L("menu.type_value"), function()
+            Derma_StringRequest(label, L("menu.type_value_help", text(min), text(max)), tostring(row.value), function(v)
+                if not tonumber(v) or not IsValid(row) then return end
+                row.value = math.Round(math.Clamp(tonumber(v), min, max), decimals)
+                onChange(row.value)
+            end)
+        end):SetIcon("icon16/pencil.png")
+        if extra then extra(m) end
+    end
+    return row
+end
+
+local function dropdown(parent, label, options, current, onSelect, opts)
+    local row = newRow(parent, label, opts, 0, 32)
+    local combo = vgui.Create("DComboBox", row)
+    combo:SetSortItems(false)
+    combo:SetFont("Rareload.Menu.Row")
+    combo:SetTextColor(TEXT)
+    combo:SetEnabled(not opts.disabled)
+    for _, o in ipairs(options) do combo:AddChoice(o.label, o.id, o.id == current) end
+    combo.Paint = function(self, w, h)
+        draw.RoundedBox(4, 0, 0, w, h, self:IsHovered() and CARD_HI or TRACK)
+    end
+    combo.OnSelect = function(_, _, _, id)
+        surface.PlaySound("ui/buttonclick.wav")
+        onSelect(id)
+    end
+    row.LayoutBelow = function(_, w, h)
+        combo:SetPos(GUTTER, h - 32)
+        combo:SetSize(w - GUTTER - PAD, 26)
+    end
+    return row
+end
+
+-- A full-width button; its icon and text are centred together.
+local function button(parent, text, icon, col, onClick)
+    local b = vgui.Create("DButton", parent)
+    b:Dock(TOP)
+    b:DockMargin(0, 3, 0, 3)
+    b:SetTall(32)
+    b:SetText("")
+    b.hover = 0
+    b.Paint = function(self, w, h)
+        self.hover = anim(self.hover, self:IsHovered() and 1 or 0)
+        local fill = UI.Mix(col, color_white, self.hover * 0.12)
+        if self:IsDown() then fill = UI.Mix(fill, color_black, 0.15) end
+        draw.RoundedBox(6, 0, 0, w, h, fill)
+        local label = UI.Clip(text, "Rareload.Menu.Value", w - 54)
+        surface.SetFont("Rareload.Menu.Value")
+        local x = math.floor((w - surface.GetTextSize(label) - 22) / 2)
+        UI.DrawIcon(icon, x, math.floor((h - 16) / 2), 16)
+        draw.SimpleText(label, "Rareload.Menu.Value", x + 22, h / 2, TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    end
+    b.DoClick = function()
+        surface.PlaySound("ui/buttonclick.wav")
+        onClick()
+    end
+    return b
+end
+
+-- Wrapped help text.
+local function note(parent, text)
+    local p = vgui.Create("DPanel", parent)
+    p:Dock(TOP)
+    p:DockMargin(0, 4, 0, 6)
+    p:SetTall(16)
+    p.lines = { text }
+    p.PerformLayout = function(self, w)
+        self.lines = wrap(text, "Rareload.Menu.Note", w - 4)
+        local h = #self.lines * 16
+        if self:GetTall() ~= h then self:SetTall(h) end
+    end
+    p.Paint = function(self)
+        for i, line in ipairs(self.lines) do draw.SimpleText(line, "Rareload.Menu.Note", 2, (i - 1) * 16, TEXT2) end
+    end
+    return p
+end
+
+-- A small caption over a group of sections.
+local function caption(parent, text)
+    text = string.upper(text)
+    local p = vgui.Create("DPanel", parent)
+    p:Dock(TOP)
+    p:DockMargin(8, 12, 8, 0)
+    p:SetTall(18)
+    p.Paint = function(_, w, h)
+        draw.SimpleText(text, "Rareload.Menu.Note", 2, h / 2, MUTED, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        surface.SetFont("Rareload.Menu.Note")
+        local tw = surface.GetTextSize(text)
+        surface.SetDrawColor(CARD_HI)
+        surface.DrawRect(tw + 10, math.floor(h / 2), w - tw - 12, 1)
+    end
+end
 
 local function arrow(x, y, size, rot, col)
     local a, poly = math.rad(rot), {}
@@ -67,29 +324,29 @@ local function arrow(x, y, size, rot, col)
     surface.DrawPoly(poly)
 end
 
--- A collapsible category. Returns the content panel rows are docked into.
-local function category(parent, title, icon, expanded)
+-- A collapsible section card. Returns the panel rows are docked into.
+local function section(parent, title, icon, open)
     local box = vgui.Create("DPanel", parent)
     box:Dock(TOP)
-    box:DockMargin(5, 5, 5, 2)
-    box:SetPaintBackground(false)
-    box.open = expanded ~= false
+    box:DockMargin(6, 6, 6, 0)
+    box:SetTall(HEAD_H)
+    box.open = open ~= false
+    box.Paint = function(_, w, h) draw.RoundedBox(6, 0, 0, w, h, CARD) end
 
     local head = vgui.Create("DButton", box)
     head:Dock(TOP)
-    head:SetTall(36)
+    head:SetTall(HEAD_H)
     head:SetText("")
     head.hover, head.rot = 0, box.open and 0 or -90
     head.Paint = function(self, w, h)
         self.hover = anim(self.hover, self:IsHovered() and 1 or 0)
-        self.rot = anim(self.rot, box.open and 0 or -90, 12)
-        local v = 10 * self.hover
-        draw.RoundedBox(6, 0, 0, w, h, Color(HEAD.r + v, HEAD.g + v, HEAD.b + v))
-        surface.SetDrawColor(ACCENT.r, ACCENT.g, ACCENT.b, 200)
-        surface.DrawRect(0, 4, 3, h - 8)
-        UI.DrawIcon(icon, 10, h / 2 - 8, 16)
-        draw.SimpleText(title, "Rareload.Menu.Text", 32, h / 2, TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        arrow(w - 20, h / 2, 5, self.rot, TEXT2)
+        self.rot = anim(self.rot, box.open and 0 or -90)
+        if self.hover > 0.01 then draw.RoundedBox(6, 0, 0, w, h, ColorAlpha(HOVER, 10 * self.hover)) end
+        surface.SetDrawColor(ACCENT)
+        surface.DrawRect(0, 8, 3, h - 16)
+        UI.DrawIcon(icon, 11, math.floor((h - 16) / 2), 16)
+        draw.SimpleText(UI.Clip(title, "Rareload.Menu.Head", w - 64), "Rareload.Menu.Head", 35, h / 2, TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        arrow(w - 16, h / 2, 5, self.rot, TEXT2)
     end
     head.DoClick = function()
         box.open = not box.open
@@ -98,10 +355,10 @@ local function category(parent, title, icon, expanded)
 
     local content = vgui.Create("DPanel", box)
     content:Dock(TOP)
-    content:DockMargin(8, 4, 8, 4)
+    content:DockMargin(6, 0, 4, 0)
     content:SetPaintBackground(false)
 
-    -- The height follows the rows, animated when the category opens or closes.
+    -- The height follows the rows, animated when the section opens or closes.
     box.Think = function(self)
         local target = 0
         if self.open then
@@ -109,232 +366,19 @@ local function category(parent, title, icon, expanded)
                 local _, top, _, bottom = row:GetDockMargin()
                 target = target + row:GetTall() + top + bottom
             end
-            target = target + 8
+            target = target + 6
         end
         self.height = self.height and anim(self.height, target, 15) or target
         if math.abs(self.height - target) < 0.5 then self.height = target end
         if self.applied ~= self.height then
             self.applied = self.height
-            content:SetTall(math.max(self.height - 8, 0))
-            self:SetTall(36 + self.height)
+            content:SetTall(math.max(self.height - 6, 0))
+            self:SetTall(HEAD_H + self.height)
             self:InvalidateParent(true)
         end
     end
     return content
 end
-
--- The icon or dot left of a control: server-wide, locked by the server, or changed from the server's value.
-local function marker(row, x, y)
-    if row.server then
-        UI.DrawIcon("server", x - 18, y - 8, 16)
-    elseif row.locked then
-        UI.DrawIcon("lock", x - 18, y - 8, 16)
-    elseif row.changed then
-        draw.RoundedBox(4, x - 12, y - 4, 8, 8, ACCENT)
-    end
-end
-
--- opts = { tooltip, disabled, locked, changed, server, reset }
-local function rowBase(row, opts)
-    row.locked, row.changed, row.server = opts.locked, opts.changed, opts.server
-    if opts.tooltip then row:SetTooltip(opts.tooltip) end
-    row.OnMouseReleased = function(_, code)
-        if code ~= MOUSE_RIGHT or not opts.reset then return end
-        local m = DermaMenu()
-        m:AddOption(L("menu.use_server_value"), opts.reset):SetIcon("icon16/arrow_undo.png")
-        m:Open()
-    end
-end
-
-local function toggle(parent, label, value, onChange, opts)
-    opts = opts or {}
-    local row = vgui.Create("DPanel", parent)
-    row:Dock(TOP)
-    row:DockMargin(0, 2, 0, 2)
-    row:SetTall(28)
-    row.value, row.knob, row.hover = value, value and 1 or 0, 0
-    rowBase(row, opts)
-    row.Paint = function(self, w, h)
-        self.hover = anim(self.hover, self:IsHovered() and not opts.disabled and 1 or 0)
-        self.knob = anim(self.knob, self.value and 1 or 0)
-        if self.hover > 0.01 then draw.RoundedBox(4, 0, 0, w, h, Color(255, 255, 255, 10 * self.hover)) end
-        draw.SimpleText(label, "Rareload.Menu.Row", 8, h / 2, opts.disabled and TEXT2 or TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        local sw, sh = 36, 18
-        local sx, sy = w - sw - 8, (h - sh) / 2
-        local on = opts.disabled and Color(90, 95, 105) or ACCENT
-        draw.RoundedBox(sh / 2, sx, sy, sw, sh, UI.Mix(Color(60, 65, 75), on, self.knob))
-        draw.RoundedBox((sh - 4) / 2, sx + 2 + (sw - sh) * self.knob, sy + 2, sh - 4, sh - 4, color_white)
-        marker(self, sx - 6, h / 2)
-    end
-    row.OnMousePressed = function(self, code)
-        if code ~= MOUSE_LEFT or opts.disabled then return end
-        self.value = not self.value
-        surface.PlaySound("ui/buttonclick.wav")
-        onChange(self.value)
-    end
-    return row
-end
-
-local function slider(parent, label, value, min, max, decimals, suffix, onChange, opts)
-    opts = opts or {}
-    local row = vgui.Create("DPanel", parent)
-    row:Dock(TOP)
-    row:DockMargin(0, 4, 0, 4)
-    row:SetTall(44)
-    row.value, row.hover = value, 0
-    rowBase(row, opts)
-    local function frac() return (row.value - min) / (max - min) end
-    row.Paint = function(self, w, h)
-        self.hover = anim(self.hover, self:IsHovered() and not opts.disabled and 1 or 0)
-        if self.hover > 0.01 then draw.RoundedBox(4, 0, 0, w, h, Color(255, 255, 255, 8 * self.hover)) end
-        draw.SimpleText(label, "Rareload.Menu.Row", 8, 10, opts.disabled and TEXT2 or TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        local text = string.format("%." .. decimals .. "f", self.value) .. (suffix or "")
-        draw.SimpleText(text, "Rareload.Menu.Row", w - 8, 10, opts.disabled and TEXT2 or ACCENT, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
-        surface.SetFont("Rareload.Menu.Row")
-        marker(self, w - 8 - surface.GetTextSize(text) - 6, 10)
-        local tx, ty, tw = 8, h - 14, w - 16
-        draw.RoundedBox(3, tx, ty, tw, 6, TRACK)
-        if frac() > 0 then draw.RoundedBox(3, tx, ty, tw * frac(), 6, opts.disabled and TEXT2 or ACCENT) end
-        draw.RoundedBox(6, tx + tw * frac() - 6, ty - 3, 12, 12, color_white)
-    end
-    row.Think = function(self)
-        if not self.dragging then return end
-        local x = self:CursorPos()
-        self.value = math.Round(min + math.Clamp((x - 8) / (self:GetWide() - 16), 0, 1) * (max - min), decimals)
-    end
-    row.OnMousePressed = function(self, code)
-        if code ~= MOUSE_LEFT or opts.disabled then return end
-        self.dragging = true
-        self:MouseCapture(true)
-    end
-    local rightClick = row.OnMouseReleased
-    row.OnMouseReleased = function(self, code)
-        if code == MOUSE_LEFT and self.dragging then
-            self.dragging = false
-            self:MouseCapture(false)
-            onChange(self.value)
-        else
-            rightClick(self, code)
-        end
-    end
-    return row
-end
-
-local function dropdown(parent, label, options, current, onSelect, opts)
-    opts = opts or {}
-    local row = vgui.Create("DPanel", parent)
-    row:Dock(TOP)
-    row:DockMargin(0, 2, 0, 2)
-    row:SetTall(30)
-    rowBase(row, opts)
-    row.Paint = function(self, w, h)
-        draw.SimpleText(label, "Rareload.Menu.Row", 8, h / 2, opts.disabled and TEXT2 or TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        marker(self, w - 154, h / 2)
-    end
-    local combo = vgui.Create("DComboBox", row)
-    combo:Dock(RIGHT)
-    combo:SetWide(140)
-    combo:DockMargin(0, 3, 8, 3)
-    combo:SetSortItems(false)
-    combo:SetTextColor(TEXT)
-    combo:SetEnabled(not opts.disabled)
-    for _, o in ipairs(options) do combo:AddChoice(o.label, o.id, o.id == current) end
-    combo.Paint = function(self, w, h)
-        draw.RoundedBox(4, 0, 0, w, h, TRACK)
-        if self:IsHovered() then draw.RoundedBox(4, 0, 0, w, h, Color(255, 255, 255, 12)) end
-    end
-    combo.OnSelect = function(_, _, _, id)
-        surface.PlaySound("ui/buttonclick.wav")
-        onSelect(id)
-    end
-    return row
-end
-
-local function button(parent, text, icon, col, onClick)
-    local b = vgui.Create("DButton", parent)
-    b:Dock(TOP)
-    b:DockMargin(0, 4, 0, 4)
-    b:SetTall(32)
-    b:SetText("")
-    b.hover, b.press = 0, 0
-    b.Paint = function(self, w, h)
-        self.hover = anim(self.hover, self:IsHovered() and 1 or 0)
-        self.press = anim(self.press, self:IsDown() and 1 or 0, 15)
-        local shade = -30 + 20 * self.hover - 10 * self.press
-        draw.RoundedBox(6, 0, 0, w, h, Color(math.Clamp(col.r + shade, 0, 255), math.Clamp(col.g + shade, 0, 255),
-            math.Clamp(col.b + shade, 0, 255), 200 + 55 * self.hover))
-        if self.hover > 0.01 then
-            surface.SetDrawColor(col.r, col.g, col.b, 100 * self.hover)
-            surface.DrawOutlinedRect(0, 0, w, h, 1)
-        end
-        UI.DrawIcon(icon, 12, h / 2 - 8 + self.press, 16)
-        draw.SimpleText(text, "Rareload.Menu.Row", w / 2 + 10, h / 2 + self.press, TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    end
-    b.DoClick = function()
-        surface.PlaySound("ui/buttonclick.wav")
-        onClick()
-    end
-    return b
-end
-
-local function note(parent, text)
-    local l = vgui.Create("DLabel", parent)
-    l:Dock(TOP)
-    l:DockMargin(8, 2, 8, 4)
-    l:SetFont("Rareload.Menu.Note")
-    l:SetTextColor(TEXT2)
-    l:SetWrap(true)
-    l:SetAutoStretchVertical(true)
-    l:SetText(text)
-    return l
-end
-
--- Panel -------------------------------------------------------------------------------------------------
-
--- Removes what a previous build added, paints the panel dark and adds the header.
-local function begin(panel, subtitle)
-    for _, old in ipairs(panel.rareloadItems or {}) do
-        if IsValid(old) then old:Remove() end
-    end
-    local before = {}
-    for _, child in ipairs(panel:GetChildren()) do before[child] = true end
-    panel.rareloadBefore = before
-    panel.Paint = function(_, w, h)
-        surface.SetDrawColor(BG)
-        surface.DrawRect(0, 0, w, h)
-    end
-
-    local header = vgui.Create("DPanel", panel)
-    header:Dock(TOP)
-    header:DockMargin(5, 5, 5, 8)
-    header:SetTall(50)
-    header.Paint = function(_, w, h)
-        draw.RoundedBox(8, 0, 0, w, h, HEAD)
-        surface.SetDrawColor(ACCENT)
-        surface.DrawRect(0, h - 3, w, 3)
-        draw.SimpleText("RARELOAD", "Rareload.Menu.Title", 12, h / 2 - 6, TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText(subtitle, "Rareload.Menu.Note", 12, h / 2 + 12, TEXT2, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText("v" .. RARELOAD.version, "Rareload.Menu.Row", w - 12, h / 2, ACCENT, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
-    end
-end
-
--- Adds the footer and remembers every panel this build added, so a rebuild removes exactly those.
-local function finish(panel)
-    local footer = vgui.Create("DPanel", panel)
-    footer:Dock(TOP)
-    footer:DockMargin(5, 10, 5, 5)
-    footer:SetTall(24)
-    footer.Paint = function(_, w, h)
-        draw.SimpleText(L("menu.made_by"), "Rareload.Menu.Note", w / 2, h / 2, FOOT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    end
-    panel.rareloadItems = {}
-    for _, child in ipairs(panel:GetChildren()) do
-        if not panel.rareloadBefore[child] then table.insert(panel.rareloadItems, child) end
-    end
-    panel:InvalidateLayout(true)
-end
-
-local SUFFIXES = { autoSaveInterval = "s", autoSaveAngleThreshold = "°", asMaxSearchTime = "s", toastHold = "s" }
 
 -- A control for one setting: switch, slider or dropdown. get() is the value shown, set(text) applies.
 local function control(parent, def, get, set, opts)
@@ -351,47 +395,101 @@ local function control(parent, def, get, set, opts)
         function(v) set(tostring(v)) end, opts)
 end
 
+-- Page --------------------------------------------------------------------------------------------------
+
+-- Removes what a previous build added, paints the panel and adds the header.
+local function begin(panel, subtitle)
+    for _, old in ipairs(panel.rareloadItems or {}) do
+        if IsValid(old) then old:Remove() end
+    end
+    local before = {}
+    for _, child in ipairs(panel:GetChildren()) do before[child] = true end
+    panel.rareloadBefore = before
+    panel.Paint = function(_, w, h)
+        surface.SetDrawColor(BG)
+        surface.DrawRect(0, 0, w, h)
+    end
+
+    local header = vgui.Create("DPanel", panel)
+    header:Dock(TOP)
+    header:DockMargin(6, 6, 6, 0)
+    header:SetTall(60)
+    header.Paint = function(_, w, h)
+        draw.RoundedBox(6, 0, 0, w, h, CARD)
+        surface.SetDrawColor(ACCENT)
+        surface.DrawRect(0, h - 3, w, 3)
+        draw.SimpleText("RARELOAD", "Rareload.Menu.Title", 12, 7, TEXT)
+        local version = "v" .. RARELOAD.version
+        surface.SetFont("Rareload.Menu.Note")
+        local vw = surface.GetTextSize(version)
+        draw.SimpleText(UI.Clip(subtitle, "Rareload.Menu.Note", w - vw - 36), "Rareload.Menu.Note", 13, 37, TEXT2)
+        draw.SimpleText(version, "Rareload.Menu.Note", w - 12, 37, ACCENT, TEXT_ALIGN_RIGHT)
+    end
+end
+
+-- Adds the footer and remembers every panel this build added, so a rebuild removes exactly those.
+local function finish(panel)
+    local footer = vgui.Create("DPanel", panel)
+    footer:Dock(TOP)
+    footer:DockMargin(6, 10, 6, 6)
+    footer:SetTall(20)
+    footer.Paint = function(_, w, h)
+        draw.SimpleText(L("menu.made_by"), "Rareload.Menu.Note", w / 2, h / 2, MUTED, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+    panel.rareloadItems = {}
+    for _, child in ipairs(panel:GetChildren()) do
+        if not panel.rareloadBefore[child] then table.insert(panel.rareloadItems, child) end
+    end
+    panel:InvalidateLayout(true)
+end
+
+-- A help card under the header.
+local function intro(panel, text)
+    local box = vgui.Create("DPanel", panel)
+    box:Dock(TOP)
+    box:DockMargin(6, 6, 6, 0)
+    box:DockPadding(10, 6, 10, 2)
+    box.Paint = function(_, w, h) draw.RoundedBox(6, 0, 0, w, h, CARD) end
+    local n = note(box, text)
+    box.Think = function(self)   -- the note's height is known once it has been laid out
+        local h = n:GetTall() + 18
+        if self:GetTall() ~= h then
+            self:SetTall(h)
+            self:InvalidateParent(true)
+        end
+    end
+end
+
 -- Tool panel ----------------------------------------------------------------------------------------
 
 function Menu.BuildToolPanel(panel)
     Menu.toolPanel = panel
     local lp = LocalPlayer()
     begin(panel, L("menu.subtitle"))
+    intro(panel, L("menu.tool_help"))
 
-    -- Player settings set the player's own value; server settings (debug has its own section) are
-    -- shown to everyone and changed by admins.
-    local canSet = RARELOAD.Can(lp, "rareload_settings")
-    local function serverRow(content, def)
-        control(content, def, function() return RARELOAD.ServerValue(def.key) end,
-            function(v) RARELOAD.Net.Request("settings.set", { key = def.key, value = v }) end, {
-            disabled = not canSet, server = true,
-            tooltip = L("setting." .. def.key .. ".help") .. "\n" .. (canSet and L("menu.server_setting") or L("menu.server_setting_denied")),
-        })
-    end
-    local function playerRow(content, def)
-        local pref = GetConVar(def.pref)
-        local locked = RARELOAD.IsLocked(def.key)
-        local noPriv = def.priv and not RARELOAD.Can(lp, def.priv)
-        control(content, def, function() return RARELOAD.Get(lp, def.key) end, function(v) RunConsoleCommand(def.pref, v) end, {
-            disabled = locked or noPriv, locked = locked,
-            changed = not locked and pref ~= nil and pref:GetFloat() ~= -1,
-            tooltip = locked and L("menu.locked") or noPriv and L("menu.no_priv") or nil,
-            reset = function()
-                RunConsoleCommand(def.pref, "-1")
-                timer.Simple(0.2, Menu.Rebuild)
-            end,
-        })
-    end
-    for _, group in ipairs(grouped(function(def) return def.scope ~= "client" and def.key ~= "debug" end)) do
-        local content = category(panel, L("category." .. group.name), ICONS[group.name], group.name == "general" or group.name == "player")
+    for _, group in ipairs(grouped(function(def) return def.scope == "player" end)) do
+        local content = section(panel, L("category." .. group.name), ICONS[group.name], group.name ~= "timing")
         for _, def in ipairs(group.defs) do
-            if def.scope == "server" then serverRow(content, def) else playerRow(content, def) end
+            local pref = GetConVar(def.pref)
+            local locked = RARELOAD.IsLocked(def.key)
+            local noPriv = def.priv and not RARELOAD.Can(lp, def.priv)
+            control(content, def, function() return RARELOAD.Get(lp, def.key) end, function(v) RunConsoleCommand(def.pref, v) end, {
+                disabled = locked or noPriv, locked = locked,
+                changed = not locked and pref ~= nil and pref:GetFloat() ~= -1,
+                tooltip = locked and L("menu.locked") or noPriv and L("menu.no_priv") or nil,
+                reset = function()
+                    RunConsoleCommand(def.pref, "-1")
+                    timer.Simple(0.2, Menu.Rebuild)
+                end,
+            })
         end
     end
 
-    local actions = category(panel, L("menu.actions"), ICONS.actions)
+    local actions = section(panel, L("menu.actions"), ICONS.actions)
     button(actions, L("menu.save_here"), "disk", BUTTONS.green, function() RunConsoleCommand("rareload", "save") end)
     button(actions, L("menu.open_timeline"), "time", BUTTONS.indigo, function() RARELOAD.Timeline.Open() end)
+    button(actions, L("menu.client_settings"), "monitor", BUTTONS.gray, function() Menu.Open("client") end)
     if RARELOAD.Can(lp, "rareload_settings") then
         button(actions, L("menu.server_settings"), "cog_edit", BUTTONS.orange, function() Menu.Open("server") end)
     end
@@ -403,16 +501,14 @@ function Menu.BuildToolPanel(panel)
     end)
 
     if RARELOAD.Can(lp, "rareload_debug") then
-        local hl = category(panel, L("menu.highlights"), ICONS.highlight, false)
+        local hl = section(panel, L("menu.highlights"), ICONS.highlight, false)
+        note(hl, L("menu.highlights_help"))
         button(hl, L("menu.highlight_all"), "flag_yellow", BUTTONS.yellow, function() RARELOAD.Highlight.Command("all") end)
         button(hl, L("menu.highlight_link"), "connect", BUTTONS.cyan, function() RARELOAD.Highlight.Command("link") end)
         button(hl, L("menu.highlight_players"), "user_green", BUTTONS.green, function() RARELOAD.Highlight.Command("players") end)
         button(hl, L("menu.highlight_clear"), "cross", BUTTONS.gray, function() RARELOAD.Highlight.Command("clear") end)
 
-        local dbg = category(panel, L("menu.debug"), ICONS.debug, false)
-        control(dbg, RARELOAD.Settings.debug, function() return RARELOAD.ServerValue("debug") end,
-            function(v) RARELOAD.Net.Request("settings.set", { key = "debug", value = v }) end,
-            { disabled = not canSet, tooltip = not canSet and L("menu.no_priv") or nil })
+        local dbg = section(panel, L("menu.debug"), ICONS.debug, false)
         button(dbg, L("menu.debug_diag"), "report", BUTTONS.indigo, function() RunConsoleCommand("rareload", "debug", "diag") end)
     end
     finish(panel)
@@ -421,48 +517,37 @@ end
 -- Utilities pages -----------------------------------------------------------------------------------
 
 local function buildServer(panel)
-    begin(panel, L("menu.server_help"))
+    begin(panel, L("menu.server"))
     if not RARELOAD.Can(LocalPlayer(), "rareload_settings") then
-        note(panel, L("menu.server_denied")):DockMargin(12, 8, 12, 8)
+        intro(panel, L("menu.server_denied"))
         return finish(panel)
     end
+    intro(panel, L("menu.server_help"))
+    local function setter(def) return function(v) RARELOAD.Net.Request("settings.set", { key = def.key, value = v }) end end
 
-    for _, group in ipairs(grouped(function(def) return def.scope ~= "client" end)) do
-        local content = category(panel, L("category." .. group.name), ICONS[group.name], group.name == "general" or group.name == "server")
+    caption(panel, L("menu.server_caption"))
+    for _, group in ipairs(grouped(function(def) return def.scope == "server" end)) do
+        local content = section(panel, L("category." .. group.name), ICONS[group.name])
         for _, def in ipairs(group.defs) do
-            local tooltip = L("setting." .. def.key .. ".help") .. (def.scope == "player" and "\n" .. L("menu.default_hint") or "")
-            control(content, def, function() return RARELOAD.ServerValue(def.key) end,
-                function(v) RARELOAD.Net.Request("settings.set", { key = def.key, value = v }) end, { tooltip = tooltip })
-        end
-    end
-
-    local locks = category(panel, L("menu.locks"), ICONS.locks, false)
-    note(locks, L("menu.locks_help"))
-    for _, group in ipairs(grouped(function(def) return def.scope == "player" end)) do
-        for _, def in ipairs(group.defs) do
-            toggle(locks, L("setting." .. def.key), RARELOAD.IsLocked(def.key), function(v)
-                RARELOAD.Net.Request("settings.lock", { key = def.key, locked = v })
-            end)
+            control(content, def, function() return RARELOAD.ServerValue(def.key) end, setter(def), {})
         end
     end
 
     if RARELOAD.Can(LocalPlayer(), "rareload_anti_stuck") then
-        local methods = category(panel, L("menu.methods"), ICONS.methods, false)
+        local methods = section(panel, L("menu.methods"), ICONS.methods, false)
         local function config(action, id) RARELOAD.Net.Request("antistuck.config", { action = action, id = id }) end
         local function fill()
             methods:Clear()
             note(methods, L("menu.methods_help"))
             for i, m in ipairs(RARELOAD.State.antistuck) do
-                local row = toggle(methods, i .. ". " .. L("antistuck." .. m.id), m.enabled,
-                    function(v) config(v and "enable" or "disable", m.id) end, { tooltip = L("antistuck." .. m.id .. ".help") })
-                row.OnMouseReleased = function(_, code)
-                    if code ~= MOUSE_RIGHT then return end
-                    local menu = DermaMenu()
-                    menu:AddOption(L("menu.move_up"), function() config("up", m.id) end):SetIcon("icon16/arrow_up.png")
-                    menu:AddOption(L("menu.move_down"), function() config("down", m.id) end):SetIcon("icon16/arrow_down.png")
-                    menu:AddOption(L("menu.only_this"), function() config("only", m.id) end):SetIcon("icon16/star.png")
-                    menu:Open()
-                end
+                toggle(methods, i .. ". " .. L("antistuck." .. m.id), m.enabled, function(v) config(v and "enable" or "disable", m.id) end, {
+                    tooltip = L("antistuck." .. m.id .. ".help"),
+                    menu = function(menu)
+                        menu:AddOption(L("menu.move_up"), function() config("up", m.id) end):SetIcon("icon16/arrow_up.png")
+                        menu:AddOption(L("menu.move_down"), function() config("down", m.id) end):SetIcon("icon16/arrow_down.png")
+                        menu:AddOption(L("menu.only_this"), function() config("only", m.id) end):SetIcon("icon16/star.png")
+                    end,
+                })
             end
             button(methods, L("menu.methods_reset"), "arrow_undo", BUTTONS.gray, function() config("reset") end)
         end
@@ -470,13 +555,28 @@ local function buildServer(panel)
         hook.Add("RareloadStateChanged", methods, function(_, what) if what == "antistuck" then fill() end end)
         RARELOAD.Net.Request("antistuck.get")
     end
+
+    -- Player defaults: the lock in the left column forces the server's value on every player.
+    caption(panel, L("menu.defaults_caption"))
+    note(panel, L("menu.defaults_help")):DockMargin(14, 4, 14, 0)
+    for _, group in ipairs(grouped(function(def) return def.scope == "player" end)) do
+        local content = section(panel, L("category." .. group.name), ICONS[group.name], false)
+        for _, def in ipairs(group.defs) do
+            control(content, def, function() return RARELOAD.ServerValue(def.key) end, setter(def), {
+                lock = { locked = RARELOAD.IsLocked(def.key), toggle = function(locked)
+                    RARELOAD.Net.Request("settings.lock", { key = def.key, locked = locked })
+                end },
+            })
+        end
+    end
     finish(panel)
 end
 
 local function buildClient(panel)
-    begin(panel, L("menu.client_help"))
+    begin(panel, L("menu.client"))
+    intro(panel, L("menu.client_help"))
     for _, group in ipairs(grouped(function(def) return def.scope == "client" end)) do
-        local content = category(panel, L("category." .. group.name), ICONS[group.name])
+        local content = section(panel, L("category." .. group.name), ICONS[group.name])
         for _, def in ipairs(group.defs) do
             control(content, def, function() return RARELOAD.Get(nil, def.key) end, function(v) RunConsoleCommand(def.convar, v) end, {})
         end
@@ -503,6 +603,7 @@ end)
 
 -- Rebuilds every open panel, e.g. after a language change (G75) or a lock change.
 function Menu.Rebuild()
+    wrapCache = {}
     local builders = { { Menu.toolPanel, Menu.BuildToolPanel }, { Menu.pages.server, buildServer }, { Menu.pages.client, buildClient } }
     for _, b in ipairs(builders) do
         if IsValid(b[1]) then b[2](b[1]) end

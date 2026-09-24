@@ -86,14 +86,19 @@ surface.CreateFont("Rareload.Label", { font = "Roboto", size = 19, weight = 700,
 -- Silk icons shipped with GMod.
 local icons = {}
 function UI.Icon(name)
-    icons[name] = icons[name] or Material("icon16/" .. name .. ".png", "smooth")
+    icons[name] = icons[name] or Material("icon16/" .. name .. ".png")
     return icons[name]
 end
 
+-- The icons are 16 px images: drawn at a whole multiple of 16 on whole pixels they stay sharp, so the
+-- icon is snapped to that and centred in the `size` box asked for.
+function UI.IconSize(size) return math.max(1, math.floor(size / 16 + 0.25)) * 16 end
+
 function UI.DrawIcon(name, x, y, size, col)
+    local s = UI.IconSize(size)
     surface.SetDrawColor(col or color_white)
     surface.SetMaterial(UI.Icon(name))
-    surface.DrawTexturedRect(x, y, size, size)
+    surface.DrawTexturedRect(math.floor(x + (size - s) / 2 + 0.5), math.floor(y + (size - s) / 2 + 0.5), s, s)
 end
 
 -- A rounded label with a tinted background; returns its width.
@@ -297,10 +302,11 @@ function UI.Button(parent, text, onClick, opts)
         box(sc(7), w, h, fill)
         surface.SetFont("Rareload.BodyB")
         local tw = surface.GetTextSize(self.label)
-        local iw = self.icon and sc(16) + sc(6) or 0
-        local x = (w - tw - iw) / 2
-        if self.icon then UI.DrawIcon(self.icon, x, (h - sc(16)) / 2, sc(16), self:IsEnabled() and color_white or C.textOff) end
-        draw.SimpleText(self.label, "Rareload.BodyB", x + iw, h / 2, textCol, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        local is = UI.IconSize(sc(16))
+        local iw = self.icon and is + sc(7) or 0
+        local x = math.floor((w - tw - iw) / 2)
+        if self.icon then UI.DrawIcon(self.icon, x, math.floor((h - is) / 2), is, self:IsEnabled() and color_white or C.textOff) end
+        draw.SimpleText(self.label, "Rareload.BodyB", x + iw, math.floor(h / 2), textCol, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         if self.active then
             local r = sc(3) + sc(1.5) * math.abs(math.sin(RealTime() * 4))
             draw.RoundedBox(r, sc(12) - r, h / 2 - r, r * 2, r * 2, textCol)
@@ -312,7 +318,7 @@ function UI.Button(parent, text, onClick, opts)
     end
     function b:SizeToLabel(pad)
         surface.SetFont("Rareload.BodyB")
-        self:SetWide(surface.GetTextSize(self.label) + (self.icon and sc(22) or 0) + sc(pad or 28))
+        self:SetWide(surface.GetTextSize(self.label) + (self.icon and UI.IconSize(sc(16)) + sc(7) or 0) + sc(pad or 28))
     end
     return b
 end

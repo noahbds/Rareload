@@ -105,14 +105,14 @@ local function buildRow(parent, row, isSelected, onClick)
         local bar = row.active and C.ok or selected and C.accent
         if bar then draw.RoundedBox(sc(3), 0, sc(9), sc(3), h - sc(18), bar) end
 
-        local pad, isz = sc(14), sc(14)
+        local pad, isz = sc(14), UI.IconSize(sc(16))
         draw.SimpleText(UI.TimeAgo(row.time), "Rareload.BodyB", pad, sc(10), C.text)
         draw.SimpleText(UI.Date(row.time, "short") .. "  ·  " .. L("reason." .. row.reason), "Rareload.Small", pad, sc(33), C.text3)
 
         local x = w - sc(12)
         local function icon(name, cond)
             if not cond then return end
-            UI.DrawIcon(name, x - isz, sc(11), isz)
+            UI.DrawIcon(name, math.floor(x - isz), sc(11), isz)
             x = x - isz - sc(6)
         end
         icon("star", row.pinned)
@@ -127,8 +127,8 @@ local function buildRow(parent, row, isSelected, onClick)
             local text = tostring(n)
             surface.SetFont("Rareload.Small")
             local tw = surface.GetTextSize(text)
-            draw.SimpleText(text, "Rareload.Small", rx, iy + sc(1), col, TEXT_ALIGN_RIGHT)
-            local ix = rx - tw - sc(3) - isz
+            draw.SimpleText(text, "Rareload.Small", rx, iy + isz / 2, col, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+            local ix = math.floor(rx - tw - sc(4) - isz)
             UI.DrawIcon(iconName, ix, iy, isz)
             rx = ix - sc(9)
         end

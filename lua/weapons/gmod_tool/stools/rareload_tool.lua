@@ -26,8 +26,10 @@ function TOOL:LeftClick(trace)
     return save(self, trace.HitPos)
 end
 
+-- Saving where you stand aims at nothing, so no tool beam: returning false skips the shoot effect.
 function TOOL:RightClick()
-    return save(self, nil)
+    save(self, nil)
+    return false
 end
 
 function TOOL:Reload()
