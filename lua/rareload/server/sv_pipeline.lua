@@ -107,6 +107,14 @@ function Pipeline.Payload(value)
     return value
 end
 
+-- Runs fn like ProtectedCall (an error is still printed with its stack), and also returns the error
+-- text and how long it took in ms, for the report card.
+local function run(fn, ...)
+    local started = SysTime()
+    local ok, err = xpcall(fn, function(e) ErrorNoHaltWithStack(e) return tostring(e) end, ...)
+    return ok, not ok and err or nil, (SysTime() - started) * 1000
+end
+
 -- Save --------------------------------------------------------------------------------------------
 
 local function refuse(ply, opts, why)
@@ -143,11 +151,12 @@ function Pipeline.Save(ply, opts)
             data[def.id] = nil
             if allowed(def, ply, true) then
                 local out
-                local ok = ProtectedCall(function() out = def.save(ply, ctx) end)
+                local ok, err, ms = run(function() out = def.save(ply, ctx) end)
                 if not ok then
                     out = prev and Pipeline.Payload(prev.data[def.id])   -- fail soft: keep the last good value
                 end
-                session:step(ok and "ok" or "fail", def.id, ok and out ~= nil and def.summary and def.summary(out) or "")
+                local detail = not ok and err or out == nil and "nothing to save" or def.summary and def.summary(out) or ""
+                session:step(ok and "ok" or "fail", def.id, detail, ms)
                 if out ~= nil and def.heavy and not opts.captureOnly then
                     out = { ["$blob"] = RARELOAD.Store.BlobPut(out) }
                 end
@@ -160,14 +169,20 @@ function Pipeline.Save(ply, opts)
     local entry = { time = os.time(), reason = opts.reason or "command", data = data }
     if opts.captureOnly then return true, "captured", entry end
 
+    local info = { reason = opts.reason or "command", auto = opts.silent == true }
     if prev and RARELOAD.Util.Equal(prev.data, data) then
-        if not opts.silent then RARELOAD.Toast(ply, "toast.unchanged") end
+        if not opts.silent then
+            RARELOAD.Toast(ply, "toast.unchanged")
+            info.result, info.entry = "unchanged", prev.id
+            session:finish(info)   -- silent saves (autosave) that change nothing aren't worth a card
+        end
         return true, "unchanged"
     end
 
     RARELOAD.History.Append(ply, entry)
     if not opts.silent then RARELOAD.Toast(ply, "toast.saved", nil, "ok") end
-    session:finish()
+    info.result, info.entry = "saved", entry.id
+    session:finish(info)
     hook.Run("RareloadSaved", ply, entry)
     return true, "saved"
 end
@@ -207,8 +222,8 @@ function Ctx:waitFor(pred, timeout, fn, onTimeout)
     self:nextTick(poll)
 end
 
-function Ctx:step(status, title, detail)
-    self.session:step(status, title, detail)
+function Ctx:step(status, title, detail, ms)
+    self.session:step(status, title, detail, ms)
 end
 
 -- Remembers entities this restore created, including ones created later (E14), for undo.
@@ -254,13 +269,13 @@ runFrom = function(ctx, i)
                 ctx:step("fail", def.id, "saved data is missing")
             else
                 ctx._waiting, ctx._resumeAt = false, i
-                local ok = ProtectedCall(def.restore, ctx.ply, data, ctx)
-                ctx:step(ok and "ok" or "fail", def.id, ok and def.summary and def.summary(data) or "")
+                local ok, err, ms = run(def.restore, ctx.ply, data, ctx)
+                ctx:step(ok and "ok" or "fail", def.id, not ok and err or def.summary and def.summary(data) or "", ms)
                 if ok and ctx._waiting then return end
             end
         end
     end
-    ctx.session:finish()
+    ctx.session:finish({ reason = ctx.reason, entry = ctx.entry.id })
     hook.Run("RareloadRestored", ctx.ply, ctx.entry)
 end
 

@@ -154,7 +154,7 @@ RARELOAD.Setting("wdMaxDrawPerFrame", { type = "int", default = 16, min = 1, max
 RARELOAD.Setting("wdInteractDistance", { type = "int", default = 2000, min = 100, max = 5000, scope = "client",
     category = "display", help = "World display: how far away you can focus an info panel" })
 RARELOAD.Setting("toastHold", { type = "float", default = 6, min = 1, max = 30, scope = "client",
-    category = "display", help = "Seconds a debug report card stays on screen" })
+    category = "display", help = "Seconds a debug report card stays on screen (cards with more steps stay a little longer)" })
 
 -- Admins change server values and locks from the client over the network; values are parsed like
 -- a convar.

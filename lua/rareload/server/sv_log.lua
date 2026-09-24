@@ -60,11 +60,13 @@ RARELOAD.Log = setmetatable({}, {
 local Session = {}
 Session.__index = Session
 
-function Session:step(status, title, detail)
-    self.steps[#self.steps + 1] = { status = status, title = title, detail = detail or "" }
+-- `ms`: how long the step took, when it was timed.
+function Session:step(status, title, detail, ms)
+    self.steps[#self.steps + 1] = { status = status, title = title, detail = detail or "", ms = ms and math.Round(ms, 2) }
 end
 
-function Session:finish()
+-- info = { entry? (save number), result? ("saved" | "unchanged"), reason?, auto? } for the card.
+function Session:finish(info)
     if not RARELOAD.Get(nil, "debug") then return end
     local ms = math.Round((SysTime() - self.started) * 1000, 1)
     local who = IsValid(self.ply) and self.ply:Nick() or "?"
@@ -72,7 +74,7 @@ function Session:finish()
     MsgC(COLORS.info, "[Rareload] ", color_white, string.format("%s: %s (%s ms)\n", self.title, who, ms))
     for _, s in ipairs(self.steps) do
         MsgC(COLORS[s.status == "ok" and "verbose" or s.status == "warn" and "warn" or "error"],
-            "    " .. s.status .. " ", color_white, s.title .. "  " .. s.detail .. "\n")
+            "    " .. s.status .. " ", color_white, s.title .. "  " .. s.detail .. (s.ms and "  (" .. s.ms .. " ms)" or "") .. "\n")
     end
 
     local ok = true
@@ -89,7 +91,8 @@ function Session:finish()
             if ply:IsListenServerHost() then host = ply else admins[#admins + 1] = ply end
         end
     end
-    local card = { title = self.title, player = who, ms = ms, steps = self.steps, kind = self.kind, ok = ok }
+    local card = { title = self.title, player = who, ms = ms, steps = self.steps, kind = self.kind, ok = ok,
+        info = info or {}, map = game.GetMap() }
     if #admins > 0 then RARELOAD.Net.Push(admins, "debug", card) end
     if host then
         card.quiet = true
