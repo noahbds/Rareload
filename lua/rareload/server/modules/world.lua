@@ -77,7 +77,7 @@ RARELOAD.Module({
         end
         local snap = Snapshot.CaptureFor(ply, ctx, "npcs", targets)
         if not snap then return nil end
-        snap.ai = {}
+        snap.ai = snap.ai or {}   -- deleted NPCs kept in the save already carry theirs
         for _, npc in ipairs(targets) do snap.ai[Snapshot.ID(npc)] = captureAI(npc) end
         return snap
     end,

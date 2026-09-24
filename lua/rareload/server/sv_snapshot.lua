@@ -188,18 +188,90 @@ function Snapshot.Merge(old, fresh)
     return fresh
 end
 
+-- Pure: when `overwriteDeleted` is off, objects of the old snapshot that are missing from the fresh one
+-- (deleted from the map since) stay saved, with their constraints, their NPC AI state and their
+-- vehicle runtime. Both snapshots are keyed by live entity indexes, so the kept objects are
+-- renumbered after the fresh ones, in a fixed order so saving twice gives the same snapshot (and the
+-- second save counts as unchanged). The old snapshot is cached save data and is never modified.
+local function sortedKeys(t)
+    local keys = {}
+    for k in pairs(t or {}) do keys[#keys + 1] = k end
+    table.sort(keys, function(a, b)
+        local x, y = tonumber(a), tonumber(b)
+        if x and y then return x < y end
+        return tostring(a) < tostring(b)
+    end)
+    return keys
+end
+
+function Snapshot.KeepDeleted(old, fresh)
+    local have, top = {}, 0   -- have: ID -> index in the fresh snapshot
+    for index, def in pairs(fresh.Entities) do
+        local id = Snapshot.DefID(def)
+        if id then have[id] = index end
+        top = math.max(top, tonumber(index) or 0)
+    end
+
+    -- Old index (as text; JSON may turn it into a number) -> index in the result, for every old object.
+    local moved, kept = {}, {}
+    for _, index in ipairs(sortedKeys(old.Entities)) do
+        local def = old.Entities[index]
+        local id = Snapshot.DefID(def)
+        if id and have[id] then
+            moved[tostring(index)] = have[id]
+        elseif id then
+            top = top + 1
+            moved[tostring(index)], kept[tostring(index)] = top, true
+            fresh.Entities[top] = def
+            for _, field in ipairs({ "ai", "runtime" }) do
+                local value = istable(old[field]) and (old[field][id] or old[field][tonumber(id)])   -- all-digit IDs come back as numbers
+                if value then
+                    fresh[field] = fresh[field] or {}
+                    fresh[field][id] = value
+                end
+            end
+        end
+    end
+
+    -- Constraints touching a kept object; ones between objects still on the map are in the fresh snapshot.
+    local n = 0
+    for _, key in ipairs(sortedKeys(old.Constraints)) do
+        local c = old.Constraints[key]
+        local ends, keep, touches = {}, istable(c) and istable(c.Entity), false
+        for i, e in pairs(keep and c.Entity or {}) do
+            local to = moved[tostring(e.Index)]
+            if not e.World and not to then keep = false break end
+            touches = touches or kept[tostring(e.Index)] == true
+            local copy = table.Merge({}, e)   -- shallow: only Index changes
+            copy.Index = to or e.Index
+            ends[i] = copy
+        end
+        if keep and touches then
+            n = n + 1
+            local copy = table.Merge({}, c)
+            copy.Entity = ends
+            fresh.Constraints["kept" .. n] = copy
+        end
+    end
+    return fresh
+end
+
 -- One ownership scan per save, shared by the world and vehicle modules.
 function Snapshot.Owned(ply, ctx)
     ctx.shared.owned = ctx.shared.owned or RARELOAD.Ownership.Owned(ply)
     return ctx.shared.owned
 end
 
--- Captures a module's targets and applies the merge rule against that module's previous save.
+-- Captures a module's targets and applies the merge rules against that module's previous save.
 function Snapshot.CaptureFor(ply, ctx, moduleId, targets)
     local snap = Snapshot.Capture(targets)
     local old = ctx.prev and RARELOAD.Pipeline.Payload(ctx.prev.data[moduleId])
     if snap and old and not RARELOAD.Get(ply, "overwriteModified") then
         snap = Snapshot.Merge(old, snap)
+    end
+    if istable(old) and not RARELOAD.Get(ply, "overwriteDeleted") then
+        snap = Snapshot.KeepDeleted(old, snap or { Entities = {}, Constraints = {} })
+        if not next(snap.Entities) then snap = nil end
     end
     return snap
 end

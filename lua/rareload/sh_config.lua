@@ -118,6 +118,8 @@ RARELOAD.Setting("keepVehicles", { type = "bool", default = true, scope = "playe
     priv = "rareload_restore_vehicles", help = "Save and restore your vehicles and put you back in your seat" })
 RARELOAD.Setting("overwriteModified", { type = "bool", default = false, scope = "player", category = "world",
     help = "On save, overwrite objects that are already saved (off keeps their saved state)" })
+RARELOAD.Setting("overwriteDeleted", { type = "bool", default = true, scope = "player", category = "world",
+    help = "On save, drop saved objects that were deleted from the map (off keeps them saved)" })
 RARELOAD.Setting("autoSave", { type = "bool", default = false, scope = "player", category = "general",
     priv = "rareload_save", help = "Save automatically when something changes" })
 RARELOAD.Setting("autoSaveInterval", { type = "int", default = 5, min = 1, max = 600, scope = "player",

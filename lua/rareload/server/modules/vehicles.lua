@@ -160,7 +160,7 @@ RARELOAD.Module({
         local snap = Snapshot.CaptureFor(ply, ctx, "vehicles", targets)
         if not snap then return nil end
 
-        snap.runtime = {}
+        snap.runtime = snap.runtime or {}   -- deleted vehicles kept in the save already carry theirs
         for _, veh in ipairs(targets) do
             local adapter = Vehicles.AdapterFor(veh)
             if adapter then
