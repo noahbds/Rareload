@@ -12,6 +12,13 @@ local IN, OUT, STAGGER, MAX_CARDS = 0.35, 0.4, 0.035, 4
 
 local cards = {}
 
+-- Any value as text. JSON turns strings shaped like "[x y z]" or "{p y r}" into Vectors and Angles.
+local function text(v)
+    if isvector(v) then return string.format("%.0f, %.0f, %.0f", v.x, v.y, v.z) end
+    if isangle(v) then return string.format("%.0f, %.0f, %.0f", v.p, v.y, v.r) end
+    return tostring(v == nil and "" or v)
+end
+
 -- `quiet`: the host, whose console already shows the server's printout.
 RARELOAD.Net.On("debug", function(r)
     local C = UI.C
@@ -19,7 +26,7 @@ RARELOAD.Net.On("debug", function(r)
         MsgC(C.accent, "[Rareload] ", color_white, string.format("%s: %s (%s ms)\n", r.title, r.player, r.ms))
         for _, s in ipairs(r.steps or {}) do
             MsgC(C[STATUS[s.status]] or color_white, "    " .. s.status .. " ", color_white,
-                s.title .. "  " .. s.detail .. (s.ms and "  (" .. s.ms .. " ms)" or "") .. "\n")
+                text(s.title) .. "  " .. text(s.detail) .. (s.ms and "  (" .. s.ms .. " ms)" or "") .. "\n")
         end
     end
     table.insert(cards, 1, { r = r, t0 = RealTime() })
@@ -37,6 +44,7 @@ end
 
 -- A module's name, or the step title as is (steps like "anti-stuck" aren't modules).
 local function stepName(title)
+    title = text(title)
     local name = L("module." .. title)
     return name == "rareload.module." .. title and title or name
 end
@@ -105,7 +113,8 @@ local function prepare(card)
     local maxH = ScrH() * 0.72
     local y, rows = head + sc(8), {}
     for i, s in ipairs(steps) do
-        local lines = s.detail ~= "" and wrap(s.detail, "Rareload.Small", textW, 3) or {}
+        local detail = text(s.detail)
+        local lines = detail ~= "" and wrap(detail, "Rareload.Small", textW, 3) or {}
         local h = sc(24) + #lines * sc(16) + sc(8)
         if y + h + sc(44) > maxH and i < #steps then
             card.more = #steps - i + 1
@@ -197,7 +206,8 @@ hook.Add("HUDPaint", "Rareload.Debug.Card", function()
     local now, y = RealTime(), sc(96)
     for i = #cards, 1, -1 do
         local card = cards[i]
-        if not card.h then prepare(card) end
+        -- A card that can't be laid out is dropped, instead of failing again every frame.
+        if not card.h and not ProtectedCall(prepare, card) then card.h, card.hold = 0, -math.huge end
         if now - card.t0 > IN + card.hold + OUT then table.remove(cards, i) end
     end
 

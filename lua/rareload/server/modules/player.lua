@@ -48,8 +48,9 @@ RARELOAD.Module({
         RARELOAD.AntiStuck.Watch(ply, pos)
     end,
 
+    -- Not "[x y z]": GMod's JSON reads a string of that shape back as a Vector.
     summary = function(d)
-        return "[" .. fmt(d.pos[1]) .. " " .. fmt(d.pos[2]) .. " " .. fmt(d.pos[3]) .. "]"
+        return fmt(d.pos[1]) .. ", " .. fmt(d.pos[2]) .. ", " .. fmt(d.pos[3])
     end,
 })
 
