@@ -11,10 +11,12 @@ local Panels = RARELOAD.Panels
 local L, UI, Util, State = RARELOAD.L, RARELOAD.UI, RARELOAD.Util, RARELOAD.State
 local C = UI.C
 
--- Every card has the same size whatever its tab and content (rows scroll), so it never changes shape.
--- The body fits 9 rows, and the 10 tabs an object can have.
-local W, HEAD, SIDE, ROW, TAB, VISIBLE = 560, 76, 158, 30, 27, 9
-local CARD_H = HEAD + 12 + VISIBLE * ROW
+-- A card is sized to its own content: as wide as its longest title and values, as tall as its largest
+-- tab (at most VISIBLE rows; longer tabs scroll), within MIN_W..MAX_W. The size is the same on every tab and only grows, so
+-- the card doesn't jump when tabs are switched or live values change. Text keeps one size on every
+-- card: the scale comes from REF_W, not from the card's width.
+local REF_W, MIN_W, MAX_W = 560, 380, 860
+local HEAD, SIDE, ROW, TAB, VISIBLE = 76, 158, 30, 30, 9
 local CLUSTER = 8            -- models closer than this (edge to edge) form a pile
 local ANIM = 0.28
 local FADE = 0.2             -- the last 20% of the draw distance fades panels out
@@ -267,6 +269,29 @@ local function objectCats(rec)
     return cats
 end
 
+-- Whether the header shows a health bar on the right.
+local function hasBar(rec)
+    return rec.kind == "player" and rec.data.health ~= nil or rec.obj ~= nil and (rec.obj.maxHp or 0) > 0
+end
+
+-- The width and height `rec`'s content needs (see REF_W above); never smaller than before.
+local function measure(rec)
+    local need, rows = 0, 0
+    surface.SetFont("Rareload.Panel")
+    for _, id in ipairs(rec.tabs) do
+        rows = math.max(rows, #rec.cats[id])
+        for _, line in ipairs(rec.cats[id]) do
+            local lw, vw = surface.GetTextSize(line.label), surface.GetTextSize(line.value)
+            need = math.max(need, lw + vw + 40 + (line.swatch and 28 or 0))
+        end
+    end
+    surface.SetFont("Rareload.PanelTitle")
+    local title = surface.GetTextSize(rec.title or "?") + 26 + (hasBar(rec) and 240 or 24)
+    local w = math.Clamp(math.max(SIDE + 16 + need, title), MIN_W, MAX_W)
+    local h = HEAD + 12 + math.max(#rec.tabs * TAB, math.min(rows, VISIBLE) * ROW, ROW * 3)
+    rec.cardW, rec.cardH = math.max(rec.cardW or 0, math.ceil(w)), math.max(rec.cardH or 0, h)
+end
+
 -- The record's tabs, rebuilt at most once a second (live values change) or when details arrive.
 local function catsOf(rec)
     if not rec.cats or RealTime() - rec.catsAt > 1 then
@@ -275,8 +300,14 @@ local function catsOf(rec)
         for _, id in ipairs(CATS[rec.kind]) do
             if rec.cats[id] then rec.tabs[#rec.tabs + 1] = id end
         end
+        measure(rec)
     end
     return rec.cats, rec.tabs
+end
+
+local function sizeOf(rec)
+    catsOf(rec)
+    return rec.cardW, rec.cardH
 end
 
 hook.Add("RareloadStateChanged", "Rareload.Panels.Detail", function(what, id)
@@ -355,7 +386,7 @@ local function drawCard(rec, focused, locked)
     view.tab = math.Clamp(view.tab, 1, math.max(#tabs, 1))
     local tab = tabs[view.tab]
     local lines = tab and cats[tab] or {}
-    local h = CARD_H
+    local W, h = sizeOf(rec)
     local x, y = -W / 2, -h / 2
 
     draw.RoundedBox(10, x, y, W, h, BG)
@@ -367,7 +398,7 @@ local function drawCard(rec, focused, locked)
     -- Title, status and badges.
     local kindCol = rec.kind == "player" and C.player or UI.KIND_COLORS[rec.obj.kind] or C.text
     draw.RoundedBox(4, x + 12, y + 14, 6, 44, kindCol)
-    draw.SimpleText(UI.Clip(rec.title or "?", "Rareload.PanelTitle", W - 250), "Rareload.PanelTitle", x + 26, y + 6, color_white)
+    draw.SimpleText(UI.Clip(rec.title or "?", "Rareload.PanelTitle", W - (hasBar(rec) and 266 or 50)), "Rareload.PanelTitle", x + 26, y + 6, color_white)
     local text, col = status(rec)
     surface.SetFont("Rareload.PanelSmall")
     local sw = surface.GetTextSize(text)
@@ -425,9 +456,12 @@ local function drawCard(rec, focused, locked)
             surface.SetDrawColor(ALT_ROW)
             surface.DrawRect(cx - 4, ry, cw + 8, ROW)
         end
+        -- The label gets what the value leaves, but at least 40% when both are too long.
         surface.SetFont("Rareload.Panel")
-        local lw = math.min(surface.GetTextSize(line.label), cw * 0.55)
-        draw.SimpleText(UI.Clip(line.label, "Rareload.Panel", cw * 0.55), "Rareload.Panel", cx, ry + ROW / 2, C.text2, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        local room = cw - (line.swatch and 28 or 0) - 16
+        local labelMax = math.max(room - surface.GetTextSize(line.value), room * 0.4)
+        local lw = math.min(surface.GetTextSize(line.label), labelMax)
+        draw.SimpleText(UI.Clip(line.label, "Rareload.Panel", labelMax), "Rareload.Panel", cx, ry + ROW / 2, C.text2, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         local vx = cx + cw
         if line.swatch then
             draw.RoundedBox(4, vx - 20, ry + 6, 20, ROW - 12, line.swatch)
@@ -465,7 +499,7 @@ end
 -- the model's box on the viewer's side, turned to face the viewer, at eye height: never lower than the
 -- model's bottom nor higher than just above its top, so it stays attached to the model. As wide as the
 -- model, and never wider than 60% of the distance to it.
-local function placement(ent, eye, h)
+local function placement(ent, eye, w, h)
     local mn, mx = ent:WorldSpaceAABB()
     local hx, hy = (mx.x - mn.x) / 2, (mx.y - mn.y) / 2
     local cx, cy = mn.x + hx, mn.y + hy
@@ -477,8 +511,7 @@ local function placement(ent, eye, h)
     if inside then near = math.min(32, d) end                     -- standing at the model: just in front
 
     local size = math.max(hx * 2, hy * 2, mx.z - mn.z)
-    local worldW = math.min(math.Clamp(size * 1.15, 42, 130), math.max(near, 1) * 0.6)
-    local scale = worldW / W
+    local scale = math.min(math.Clamp(size * 1.15, 42, 130) / REF_W, math.max(near, 1) * 0.6 / w)
     local half = h * scale / 2
     local z = math.Clamp(eye.z, mn.z + half, mx.z + half + 8)
     local pos = Vector(eye.x + ux * near, eye.y + uy * near, z)
@@ -486,13 +519,13 @@ local function placement(ent, eye, h)
 end
 
 -- Does the aim ray hit the panel's rectangle? Returns the distance to the panel.
-local function hitTest(pos, ang, scale, h, eye, aim)
+local function hitTest(pos, ang, scale, w, h, eye, aim)
     local normal = (pos - eye):GetNormalized()
     local denom = aim:Dot(normal)
     if denom <= 1e-4 then return nil end
     local t = (pos - eye):Dot(normal) / denom
     local rel = eye + aim * t - pos
-    if math.abs(rel:Dot(ang:Forward())) <= W / 2 * scale and math.abs(rel:Dot(ang:Right())) <= h / 2 * scale then
+    if math.abs(rel:Dot(ang:Forward())) <= w / 2 * scale and math.abs(rel:Dot(ang:Right())) <= h / 2 * scale then
         return t
     end
 end
@@ -648,10 +681,10 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
         end
         st.active = math.Clamp(st.active, 1, #g.members)
         g.active = g.members[st.active].rec
-        g.h = CARD_H
-        g.pos, g.ang, g.scale, g.inside = placement(g.base.ent, eye, g.h)
+        g.w, g.h = sizeOf(g.active)
+        g.pos, g.ang, g.scale, g.inside = placement(g.base.ent, eye, g.w, g.h)
         g.dist = eye:Distance(g.pos)
-        local hit = hitTest(g.pos, g.ang, g.scale, g.h, eye, aim)
+        local hit = hitTest(g.pos, g.ang, g.scale, g.w, g.h, eye, aim)
         if hit and g.dist < interact and (not focusDist or g.dist < focusDist) then focus, focusDist = g, g.dist end
     end
 
@@ -676,17 +709,17 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
         if g.inside then cam.IgnoreZ(true) end
         cam.Start3D2D(g.pos, g.ang, g.scale)
             for k = math.min(#g.members - 1, 2), 1, -1 do   -- the next cards peek out behind
-                local ph = g.h * 0.94 ^ k
-                draw.RoundedBox(10, -W / 2 * 0.94 ^ k + 26 * k, -ph / 2 - 22 * k, W * 0.94 ^ k, ph, Color(18, 22, 30, 200 - k * 50))
-                draw.RoundedBoxEx(10, -W / 2 * 0.94 ^ k + 26 * k, -ph / 2 - 22 * k, W * 0.94 ^ k, 46, Color(28, 34, 46, 220 - k * 50), true, true, false, false)
+                local ph, pw = g.h * 0.94 ^ k, g.w * 0.94 ^ k
+                draw.RoundedBox(10, -pw / 2 + 26 * k, -ph / 2 - 22 * k, pw, ph, Color(18, 22, 30, 200 - k * 50))
+                draw.RoundedBoxEx(10, -pw / 2 + 26 * k, -ph / 2 - 22 * k, pw, 46, Color(28, 34, 46, 220 - k * 50), true, true, false, false)
             end
             local anim = st.anim
             local t = anim and (RealTime() - anim.t0) / ANIM or 1
             if t >= 1 then st.anim, anim = nil, nil end
             if anim then
                 local e = easeOutBack(t)
-                if anim.from then drawMoved(anim.from, anim.dir * t * W * 0.55, -t * g.h * 0.14, Lerp(t, 1, 0.82), 1 - t * t, false, false) end
-                drawMoved(g.active, -anim.dir * (1 - e) * W * 0.1, (1 - e) * g.h * 0.05, Lerp(e, 0.9, 1), Lerp(t, 0.6, 1), focused, locked)
+                if anim.from then drawMoved(anim.from, anim.dir * t * g.w * 0.55, -t * g.h * 0.14, Lerp(t, 1, 0.82), 1 - t * t, false, false) end
+                drawMoved(g.active, -anim.dir * (1 - e) * g.w * 0.1, (1 - e) * g.h * 0.05, Lerp(e, 0.9, 1), Lerp(t, 0.6, 1), focused, locked)
             else
                 drawCard(g.active, focused, locked)
             end
