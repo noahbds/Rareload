@@ -508,7 +508,7 @@ end
 function Inspector.Open(entryId)
     if IsValid(Inspector.frame) then Inspector.frame:Remove() end
     local row = State.Row(entryId)
-    local subtitle = row and (L("timeline.preview_title", entryId) .. "  ·  " .. UI.Date(row.time, "long")) or ""
+    local subtitle = row and (L("save_no", entryId) .. "  ·  " .. UI.Date(row.time, "long")) or ""
     local frame = UI.Window({ title = L("inspector.title"), subtitle = subtitle, w = 1180, h = 740, overlay = true })
     Inspector.frame = frame
     local kind, sort, search, selectedId, shown = "all", "name", "", nil, {}

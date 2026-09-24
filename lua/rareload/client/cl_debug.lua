@@ -94,8 +94,9 @@ local function prepare(card)
     card.pill = fails > 0 and L("debug.failed", fails) or warns > 0 and L("debug.warnings", warns) or L("debug.ok")
     card.icon = fails > 0 and "exclamation" or r.kind == "save" and "disk" or "arrow_refresh"
 
-    local what = r.kind == "restore" and L("debug.restored") or info.result == "unchanged" and L("debug.unchanged") or L("debug.saved")
-    card.title = what .. (info.entry and "  #" .. info.entry or "")
+    -- An undo restores a copy taken before the last restore, which has no number.
+    local key = r.kind == "restore" and "debug.restored" or info.result == "unchanged" and "debug.unchanged" or "debug.saved"
+    card.title = info.entry and L(key, info.entry) or L("debug.restored_plain")
     card.sub = table.concat({ reasonName(info.reason or r.kind), r.player or "?", r.map or game.GetMap() }, "  ·  ")
 
     local head = sc(58)

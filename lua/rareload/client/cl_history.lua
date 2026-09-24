@@ -20,9 +20,9 @@ local function objectsOf(row)
     return (i.entities or 0) + (i.npcs or 0) + (i.vehicles or 0)
 end
 
--- A save's number ("#3"), the same accent as on the debug report cards. Returns its width.
+-- A save's number ("Save No. 3") in the accent colour. Returns its width.
 local function drawNumber(id, font, x, y)
-    local text = "#" .. tostring(id)
+    local text = L("save_no", id)
     surface.SetFont(font)
     draw.SimpleText(text, font, x, y, C.accentHi)
     return (surface.GetTextSize(text))
@@ -31,7 +31,7 @@ end
 -- Everything a search can match: note, type, held weapon, model, vehicle, position, dates.
 local function searchText(row)
     local i = row.info or {}
-    return string.lower(table.concat({ "#" .. row.id, row.note or "", L("reason." .. row.reason), i.active or "",
+    return string.lower(table.concat({ "#" .. row.id, L("save_no", row.id), row.note or "", L("reason." .. row.reason), i.active or "",
         i.active and UI.WeaponName(i.active) or "", i.model or "", i.vehicle or "", UI.Pos(i.pos),
         UI.Date(row.time, "long"), UI.Date(row.time, "short"), UI.TimeAgo(row.time) }, " "))
 end
@@ -67,7 +67,7 @@ function Timeline.Preview(row)
     local function show()
         local look = info.look or {}
         RARELOAD.World.SetPreview({
-            id = row.id, nick = L("timeline.preview_title", row.id), seated = info.vehicle ~= nil,
+            id = row.id, nick = L("save_no", row.id), seated = info.vehicle ~= nil,
             data = { transform = { pos = info.pos, ang = info.ang }, health = info.hp and { hp = info.hp, armor = info.armor } or nil,
                 appearance = { model = info.model, skin = look.skin, bodygroups = look.bodygroups, material = look.material,
                     playerColor = look.playerColor, color = look.color } },
