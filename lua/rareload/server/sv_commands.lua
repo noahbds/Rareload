@@ -89,6 +89,15 @@ Cmd.Register("settings", {
     end,
 })
 
+Cmd.Register("settings reset", {
+    priv = "rareload_settings",
+    help = "Put every server setting, player default and anti-stuck method back to its default; remove all locks",
+    fn = function(ply, _, reply)
+        local changed = RARELOAD.ResetSettings(IsValid(ply) and ply:Nick() or "Console")
+        reply(changed .. " settings were reset to their defaults.")
+    end,
+})
+
 Cmd.Register("perms", {
     help = "Show which Rareload privileges you have",
     fn = function(ply, _, reply)

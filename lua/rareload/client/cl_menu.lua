@@ -607,6 +607,15 @@ local function buildServer(panel)
         RARELOAD.Net.Request("antistuck.get")
     end
 
+    local reset = section(panel, L("menu.defaults_reset_title"), "arrow_undo", false)
+    note(reset, L("menu.defaults_reset_help"))
+    button(reset, L("menu.defaults_reset"), "arrow_undo", BUTTONS.orange, function()
+        UI.Confirm(L("menu.defaults_reset"), L("menu.defaults_reset_confirm"), function()
+            RARELOAD.Net.Request("settings.reset")
+            if RARELOAD.Can(LocalPlayer(), "rareload_anti_stuck") then RARELOAD.Net.Request("antistuck.get") end   -- the method list
+        end, L("menu.defaults_reset"))
+    end)
+
     -- Player defaults: the lock in the left column forces the server's value on every player.
     caption(panel, L("menu.defaults_caption"))
     note(panel, L("menu.defaults_help")):DockMargin(14, 4, 14, 0)
@@ -631,6 +640,12 @@ local function buildClient(panel)
             control(content, def, function() return RARELOAD.Get(nil, def.key) end, function(v) RunConsoleCommand(def.convar, v) end, {})
         end
     end
+    local reset = section(panel, L("menu.actions"), ICONS.actions)
+    button(reset, L("menu.client_reset"), "arrow_undo", BUTTONS.gray, function()
+        for _, def in pairs(RARELOAD.Settings) do
+            if def.scope == "client" then RunConsoleCommand(def.convar, def.cv:GetDefault()) end
+        end
+    end)
     finish(panel)
 end
 

@@ -163,6 +163,34 @@ RARELOAD.Setting("toastHold", { type = "float", default = 6, min = 1, max = 30, 
 -- Admins change server values and locks from the client over the network; values are parsed like
 -- a convar.
 if SERVER then
+    -- Puts every server setting and every player default back to its default, removes all locks and
+    -- restores the default anti-stuck methods and order. Players' own values (rareload_pref_*) are
+    -- theirs; each resets them in the tool panel. Returns how many settings changed.
+    function RARELOAD.ResetSettings(who)
+        local changed = 0
+        for _, def in pairs(Settings) do
+            if def.scope ~= "client" and def.cv:GetString() ~= def.cv:GetDefault() then
+                def.cv:SetString(def.cv:GetDefault())
+                changed = changed + 1
+            end
+        end
+        if locks:GetString() ~= "" then
+            locks:SetString("")
+            changed = changed + 1
+        end
+        RARELOAD.AntiStuck.Configure("reset")
+        RARELOAD.Log("settings"):info("%s reset every setting to its default (%d changed)", who, changed)
+        return changed
+    end
+
+    RARELOAD.Net.Handle("settings.reset", {
+        priv = "rareload_settings",
+        rate = 1,
+        fn = function(ply)
+            RARELOAD.Toast(ply, "toast.settings_reset", { RARELOAD.ResetSettings(ply:Nick()) }, "ok")
+        end,
+    })
+
     RARELOAD.Net.Handle("settings.set", {
         priv = "rareload_settings",
         rate = 0.1,
