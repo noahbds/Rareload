@@ -1,7 +1,7 @@
 -- Object inspector (REWRITE_PLAN.md §21.6, F29): the objects inside one save, as an overlay above the
 -- timeline. A rail to search, sort and filter; a grid of cards; a detail pane with the object's facts
 -- and actions (highlight, teleport, look at, copy) and, with rareload_manage_objects, freeze and
--- gravity flags, delete (one or all shown) and a JSON editor that checks the text as you type.
+-- gravity flags, delete (one or all shown) and a coloured JSON editor that checks the text as you type.
 
 RARELOAD.Inspector = RARELOAD.Inspector or {}
 local Inspector = RARELOAD.Inspector
@@ -37,11 +37,160 @@ end
 
 -- JSON editor ---------------------------------------------------------------------------------------
 
+-- The coloured editor: Ace (the code editor v4 used) in a DHTML page, with JSON colours, folding,
+-- bracket matching, search (Ctrl+F), Ctrl+S to save, the error line marked as you type and a count of
+-- changed keys. Ace comes from cdnjs; without internet the editor falls back to a plain text box.
+local ACE = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/"
+local EDITOR_HTML = [[
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; background: #121419; overflow: hidden; }
+  #editor { position: absolute; inset: 0; font-size: 14px; }
+  .ace_editor, .ace_gutter { background: #121419 !important; }
+  .ace_gutter { color: #5c616e !important; }
+  .ace_active-line, .ace_gutter-active-line { background: #1c1f27 !important; }
+  .rl-error { position: absolute; background: rgba(240, 80, 80, 0.22); border-bottom: 1px solid #f05050; }
+</style>
+<script src="]] .. ACE .. [[ace.min.js"></script>
+</head><body><div id="editor"></div><script>
+var editor, original = {}, marker = null, timer = null, parts = [];
+if (window.ace) {
+  ace.config.set("basePath", "]] .. ACE .. [[");
+  editor = ace.edit("editor", {
+    mode: "ace/mode/json", theme: "ace/theme/tomorrow_night", useWorker: false, showPrintMargin: false,
+    tabSize: 2, useSoftTabs: true, wrap: true, fontSize: "14px", scrollPastEnd: 0.3, highlightActiveLine: true
+  });
+  editor.commands.addCommand({ name: "save", bindKey: { win: "Ctrl-S", mac: "Command-S" },
+    exec: function () { rareload.save(editor.getValue()); } });
+  editor.session.on("change", function () { clearTimeout(timer); timer = setTimeout(check, 200); });
+}
+var push = function (part) { parts.push(part); };
+var load = function (isOriginal) {
+  var text = parts.join(""); parts = [];
+  if (isOriginal) { try { original = JSON.parse(text); } catch (e) { original = {}; } }
+  editor.session.setValue(text);
+  editor.focus();
+  check();
+};
+var format = function () {
+  try { editor.session.setValue(JSON.stringify(JSON.parse(editor.getValue()), null, 2)); } catch (e) {}
+};
+var where = function (msg, src) {
+  var m = msg.match(/line (\d+) column (\d+)/i);
+  if (m) return { row: +m[1] - 1, col: +m[2] - 1 };
+  m = msg.match(/position (\d+)/i);
+  if (!m) return null;
+  var lines = src.slice(0, +m[1]).split("\n");
+  return { row: lines.length - 1, col: lines[lines.length - 1].length };
+};
+var check = function () {
+  var src = editor.getValue(), s = editor.session;
+  if (marker !== null) { s.removeMarker(marker); marker = null; }
+  s.clearAnnotations();
+  try {
+    var t = JSON.parse(src), changed = 0, k;
+    if (t === null || typeof t !== "object" || Array.isArray(t)) throw new Error("the object must be a JSON object { }");
+    for (k in t) if (JSON.stringify(t[k]) !== JSON.stringify(original[k])) changed++;
+    for (k in original) if (!(k in t)) changed++;
+    rareload.status(true, 0, 0, "", changed);
+  } catch (e) {
+    var msg = String(e.message || e).replace(/ in JSON.*$/, ""), at = where(String(e.message || e), src);
+    if (at) {
+      var Range = ace.require("ace/range").Range;
+      marker = s.addMarker(new Range(at.row, 0, at.row, Infinity), "rl-error", "fullLine");
+      s.setAnnotations([{ row: at.row, column: at.col, text: msg, type: "error" }]);
+    }
+    rareload.status(false, at ? at.row + 1 : 0, at ? at.col + 1 : 0, msg, 0);
+  }
+};
+// Tells Lua the page is up once its callbacks exist.
+(function ready() { if (window.rareload && rareload.ready) rareload.ready(!!window.ace); else setTimeout(ready, 50); })();
+</script></body></html>]]
+
+-- Feeds `text` to the page in pieces, never cutting a UTF-8 character, then loads it.
+local function sendText(html, text, isOriginal)
+    local i = 1
+    while i <= #text do
+        local j = math.min(i + 16000, #text)
+        while j < #text and bit.band(string.byte(text, j + 1), 0xC0) == 0x80 do j = j - 1 end
+        html:QueueJavascript("push(\"" .. string.JavascriptSafe(string.sub(text, i, j)) .. "\")")
+        i = j + 1
+    end
+    html:QueueJavascript("load(" .. tostring(isOriginal == true) .. ")")
+end
+
+-- The Ace editor. Calls onReady(api) once Ace loaded, or onFail() when it can't load.
+-- api = { get(fn(text)), set(text), format() }; onStatus(ok, line, col, why, changed) runs as you type.
+local function aceEditor(parent, json, onStatus, onSave, onReady, onFail)
+    local html = vgui.Create("DHTML", parent)
+    html:Dock(FILL)
+    local api, pending, done = {}, nil, false
+    local function fail()
+        if done then return end
+        done = true
+        html:Remove()
+        onFail()
+    end
+    html:AddFunction("rareload", "ready", function(ok)
+        if done then return end
+        if not ok then return fail() end
+        done = true
+        sendText(html, json, true)
+        onReady(api)
+    end)
+    html:AddFunction("rareload", "status", onStatus)
+    html:AddFunction("rareload", "save", onSave)
+    html:AddFunction("rareload", "text", function(text)
+        if pending then pending(text) end
+        pending = nil
+    end)
+    function api.get(fn)
+        pending = fn
+        html:QueueJavascript("rareload.text(editor.getValue())")
+    end
+    function api.set(text) sendText(html, text) end
+    function api.format() html:QueueJavascript("format()") end
+
+    html:SetHTML(EDITOR_HTML)
+    timer.Simple(6, function() if IsValid(html) and not done then fail() end end)   -- the CDN didn't answer
+    return html
+end
+
+-- The plain text box, checked in Lua; the same api as aceEditor.
+local function plainEditor(parent, json, original, onStatus)
+    local text = UI.TextEntry(parent, nil, true)
+    text:Dock(FILL)
+    text:SetValue(json)
+    local function check()
+        local ok, line, col, why = Util.CheckJSON(text:GetValue())
+        local changed = 0
+        local edited = ok and util.JSONToTable(text:GetValue())
+        if edited then
+            for k, v in pairs(edited) do
+                if util.TableToJSON({ v }) ~= util.TableToJSON({ original[k] }) then changed = changed + 1 end
+            end
+            for k in pairs(original) do if edited[k] == nil then changed = changed + 1 end end
+        end
+        onStatus(ok, line, col, why, changed)
+    end
+    text.OnChange = function() timer.Create("Rareload.Inspector.Check", 0.25, 1, function() if IsValid(text) then check() end end) end
+    check()
+    return {
+        get = function(fn) fn(text:GetValue()) end,
+        set = function(value) text:SetValue(value) check() end,
+        format = function()
+            local t = util.JSONToTable(text:GetValue())
+            if t then text:SetValue(util.TableToJSON(t, true)) check() end
+        end,
+    }
+end
+
 -- Only keys whose value changed are sent; the server checks each against the saved object (S6).
 local function openEditor(entryId, objectId, json)
     local original = util.JSONToTable(json) or {}
-    local frame = UI.Window({ title = L("inspector.edit_title"), subtitle = objectId, w = 760, h = 720, overlay = true })
-    local status = { ok = true }
+    local frame = UI.Window({ title = L("inspector.edit_title"), subtitle = objectId, w = 860, h = 760, overlay = true })
+    local status = { ok = true, changed = 0, loading = true }
+    local editor
 
     local bar = vgui.Create("DPanel", frame)
     bar:Dock(BOTTOM)
@@ -49,44 +198,35 @@ local function openEditor(entryId, objectId, json)
     bar:DockMargin(0, sc(8), 0, 0)
     bar.Paint = function() end
 
-    local text = UI.TextEntry(frame, nil, true)
-    text:Dock(FILL)
-    text:SetValue(json)
-
     local statusLine = vgui.Create("DPanel", frame)
     statusLine:Dock(BOTTOM)
     statusLine:SetTall(sc(22))
     statusLine:DockMargin(0, sc(6), 0, 0)
     statusLine.Paint = function(_, w, h)
-        local msg = status.ok and L("inspector.json_ok") or L("inspector.json_error", status.line, status.col, status.why)
-        UI.DrawIcon(status.ok and "accept" or "exclamation", 0, (h - sc(16)) / 2, sc(16))
-        draw.SimpleText(msg, "Rareload.Small", sc(22), h / 2, status.ok and C.ok or C.bad, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        local msg, col, icon
+        if status.loading then
+            msg, col, icon = L("inspector.json_loading"), C.text3, "hourglass"
+        elseif status.ok then
+            msg, col, icon = L("inspector.json_ok"), C.ok, "accept"
+        else
+            msg, col, icon = status.line > 0 and L("inspector.json_error", status.line, status.col, status.why) or status.why, C.bad, "exclamation"
+        end
+        UI.DrawIcon(icon, 0, (h - sc(16)) / 2, sc(16))
+        draw.SimpleText(UI.Clip(msg, "Rareload.Small", w * 0.6), "Rareload.Small", sc(22), h / 2, col, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        local right = status.changed > 0 and L("inspector.json_changed", status.changed) or ""
+        if status.plain then right = L("inspector.json_plain") .. (right ~= "" and "  ·  " .. right or "") end
+        draw.SimpleText(right, "Rareload.Small", w, h / 2, status.changed > 0 and C.warn or C.text3, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
     end
 
     local save
-    local function check()
-        local ok, line, col, why = Util.CheckJSON(text:GetValue())
-        status = { ok = ok, line = line, col = col, why = why }
-        save:SetEnabled(ok)
+    local function onStatus(ok, line, col, why, changed)
+        status = { ok = ok, line = tonumber(line) or 0, col = tonumber(col) or 0, why = why, changed = tonumber(changed) or 0,
+            plain = status.plain }
+        if IsValid(save) then save:SetEnabled(ok and status.changed > 0) end
     end
-    text.OnChange = function() timer.Create("Rareload.Inspector.Check", 0.25, 1, function() if IsValid(text) then check() end end) end
-
-    local format = UI.Button(bar, L("inspector.json_format"), function()
-        local t = util.JSONToTable(text:GetValue())
-        if t then text:SetValue(util.TableToJSON(t, true)) check() end
-    end, { style = "ghost", icon = "text_align_left" })
-    format:Dock(LEFT)
-    format:SizeToLabel()
-    local reset = UI.Button(bar, L("inspector.json_reset"), function()
-        text:SetValue(json)
-        check()
-    end, { style = "ghost", icon = "arrow_undo" })
-    reset:Dock(LEFT)
-    reset:DockMargin(sc(6), 0, 0, 0)
-    reset:SizeToLabel()
-    save = UI.Button(bar, L("inspector.edit_save"), function()
-        local edited = util.JSONToTable(text:GetValue())
-        if not edited then return end
+    local function send(text)
+        local edited = util.JSONToTable(text or "")
+        if not IsValid(frame) or not edited then return end
         local changes = {}
         for k, v in pairs(edited) do
             if util.TableToJSON({ v }) ~= util.TableToJSON({ original[k] }) then changes[k] = v end
@@ -96,9 +236,30 @@ local function openEditor(entryId, objectId, json)
             UI.Notify(L("inspector.edit_sent"))
         end
         frame:Close()
+    end
+
+    aceEditor(frame, json, onStatus, send, function(api) editor = api end, function()
+        status.plain = true
+        editor = plainEditor(frame, json, original, onStatus)
+    end)
+
+    local format = UI.Button(bar, L("inspector.json_format"), function()
+        if editor then editor.format() end
+    end, { style = "ghost", icon = "text_align_left" })
+    format:Dock(LEFT)
+    format:SizeToLabel()
+    local reset = UI.Button(bar, L("inspector.json_reset"), function()
+        if editor then editor.set(json) end
+    end, { style = "ghost", icon = "arrow_undo" })
+    reset:Dock(LEFT)
+    reset:DockMargin(sc(6), 0, 0, 0)
+    reset:SizeToLabel()
+    save = UI.Button(bar, L("inspector.edit_save"), function()
+        if editor then editor.get(send) end
     end, { style = "success", solid = true, icon = "disk" })
     save:Dock(RIGHT)
     save:SizeToLabel()
+    save:SetEnabled(false)
 end
 
 hook.Add("RareloadStateChanged", "Rareload.Inspector.Editor", function(what, p)
@@ -119,7 +280,7 @@ local function toggleHighlight(obj)
     local pos = Util.ToVector(obj.pos)
     if not pos then return end
     return RARELOAD.Highlight.Toggle("saved", highlightId(obj), {
-        pos = pos, label = obj.class, live = function() return RARELOAD.World.FindLive(obj.id) end,
+        pos = pos, label = UI.ObjectName(obj.class, obj.model), live = function() return RARELOAD.World.FindLive(obj.id) end,
     })
 end
 
@@ -142,7 +303,7 @@ local function buildCard(parent, obj, isSelected, onClick)
         draw.RoundedBox(sc(8), sc(8), sc(8), w - sc(16), sc(108), C.bgDark)
     end
     card.PaintOver = function(_, w)
-        draw.SimpleText(UI.Clip(obj.class or "?", "Rareload.Small", w - sc(16)), "Rareload.Small", w / 2, sc(124), C.text, TEXT_ALIGN_CENTER)
+        draw.SimpleText(UI.Clip(UI.ObjectName(obj.class, obj.model), "Rareload.Small", w - sc(16)), "Rareload.Small", w / 2, sc(124), C.text, TEXT_ALIGN_CENTER)
         local y = sc(144)
         if obj.maxHp and obj.maxHp > 0 then
             draw.RoundedBox(sc(3), sc(14), y, w - sc(28), sc(5), C.bgDark)
@@ -418,7 +579,7 @@ function Inspector.Open(entryId)
         for _, o in ipairs(all) do
             local k = isWeapon(o) and "weapons" or o.kind
             counts[k] = (counts[k] or 0) + 1
-            local text = string.lower((o.class or "") .. " " .. (o.model or "") .. " " .. (o.id or ""))
+            local text = string.lower(UI.ObjectName(o.class, o.model) .. " " .. (o.class or "") .. " " .. (o.model or "") .. " " .. (o.id or ""))
             if (kind == "all" or kind == k or kind == o.kind) and (search == "" or string.find(text, search, 1, true)) then
                 shown[#shown + 1] = o
             end
@@ -426,7 +587,7 @@ function Inspector.Open(entryId)
         table.sort(shown, function(a, b)
             if sort == "distance" then return distanceTo(a) < distanceTo(b) end
             if sort == "health" then return (a.hp or 0) > (b.hp or 0) end
-            return (a.class or "") < (b.class or "")
+            return UI.ObjectName(a.class, a.model) < UI.ObjectName(b.class, b.model)
         end)
         grid:Clear()
         local isSelected = function(id) return id == selectedId end

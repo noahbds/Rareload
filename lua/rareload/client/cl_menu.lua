@@ -5,7 +5,7 @@
 --   Utilities › Rareload › Server: server values, locks and anti-stuck methods (rareload_settings);
 --   Utilities › Rareload › Client: this client's world display settings.
 -- A blue dot marks a setting the player changed from the server's value; right-click one to go back
--- to the server's value. A lock marks a setting the server locked.
+-- to the server's value. A lock marks a setting the server locked, a server icon a server-wide setting.
 
 RARELOAD.Menu = RARELOAD.Menu or {}
 local Menu = RARELOAD.Menu
@@ -123,18 +123,20 @@ local function category(parent, title, icon, expanded)
     return content
 end
 
--- The dot or lock left of a control: changed from the server's value, or locked by the server.
+-- The icon or dot left of a control: server-wide, locked by the server, or changed from the server's value.
 local function marker(row, x, y)
-    if row.locked then
+    if row.server then
+        UI.DrawIcon("server", x - 18, y - 8, 16)
+    elseif row.locked then
         UI.DrawIcon("lock", x - 18, y - 8, 16)
     elseif row.changed then
         draw.RoundedBox(4, x - 12, y - 4, 8, 8, ACCENT)
     end
 end
 
--- opts = { tooltip, disabled, locked, changed, reset }
+-- opts = { tooltip, disabled, locked, changed, server, reset }
 local function rowBase(row, opts)
-    row.locked, row.changed = opts.locked, opts.changed
+    row.locked, row.changed, row.server = opts.locked, opts.changed, opts.server
     if opts.tooltip then row:SetTooltip(opts.tooltip) end
     row.OnMouseReleased = function(_, code)
         if code ~= MOUSE_RIGHT or not opts.reset then return end
@@ -356,21 +358,34 @@ function Menu.BuildToolPanel(panel)
     local lp = LocalPlayer()
     begin(panel, L("menu.subtitle"))
 
-    for _, group in ipairs(grouped(function(def) return def.scope == "player" end)) do
+    -- Player settings set the player's own value; server settings (debug has its own section) are
+    -- shown to everyone and changed by admins.
+    local canSet = RARELOAD.Can(lp, "rareload_settings")
+    local function serverRow(content, def)
+        control(content, def, function() return RARELOAD.ServerValue(def.key) end,
+            function(v) RARELOAD.Net.Request("settings.set", { key = def.key, value = v }) end, {
+            disabled = not canSet, server = true,
+            tooltip = L("setting." .. def.key .. ".help") .. "\n" .. (canSet and L("menu.server_setting") or L("menu.server_setting_denied")),
+        })
+    end
+    local function playerRow(content, def)
+        local pref = GetConVar(def.pref)
+        local locked = RARELOAD.IsLocked(def.key)
+        local noPriv = def.priv and not RARELOAD.Can(lp, def.priv)
+        control(content, def, function() return RARELOAD.Get(lp, def.key) end, function(v) RunConsoleCommand(def.pref, v) end, {
+            disabled = locked or noPriv, locked = locked,
+            changed = not locked and pref ~= nil and pref:GetFloat() ~= -1,
+            tooltip = locked and L("menu.locked") or noPriv and L("menu.no_priv") or nil,
+            reset = function()
+                RunConsoleCommand(def.pref, "-1")
+                timer.Simple(0.2, Menu.Rebuild)
+            end,
+        })
+    end
+    for _, group in ipairs(grouped(function(def) return def.scope ~= "client" and def.key ~= "debug" end)) do
         local content = category(panel, L("category." .. group.name), ICONS[group.name], group.name == "general" or group.name == "player")
         for _, def in ipairs(group.defs) do
-            local pref = GetConVar(def.pref)
-            local locked = RARELOAD.IsLocked(def.key)
-            local noPriv = def.priv and not RARELOAD.Can(lp, def.priv)
-            control(content, def, function() return RARELOAD.Get(lp, def.key) end, function(v) RunConsoleCommand(def.pref, v) end, {
-                disabled = locked or noPriv, locked = locked,
-                changed = not locked and pref ~= nil and pref:GetFloat() ~= -1,
-                tooltip = locked and L("menu.locked") or noPriv and L("menu.no_priv") or nil,
-                reset = function()
-                    RunConsoleCommand(def.pref, "-1")
-                    timer.Simple(0.2, Menu.Rebuild)
-                end,
-            })
+            if def.scope == "server" then serverRow(content, def) else playerRow(content, def) end
         end
     end
 
@@ -395,7 +410,6 @@ function Menu.BuildToolPanel(panel)
         button(hl, L("menu.highlight_clear"), "cross", BUTTONS.gray, function() RARELOAD.Highlight.Command("clear") end)
 
         local dbg = category(panel, L("menu.debug"), ICONS.debug, false)
-        local canSet = RARELOAD.Can(lp, "rareload_settings")
         control(dbg, RARELOAD.Settings.debug, function() return RARELOAD.ServerValue("debug") end,
             function(v) RARELOAD.Net.Request("settings.set", { key = "debug", value = v }) end,
             { disabled = not canSet, tooltip = not canSet and L("menu.no_priv") or nil })

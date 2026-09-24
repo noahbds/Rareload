@@ -21,9 +21,16 @@ local TINT = {
     free = Color(140, 255, 170, 190), blocked = Color(255, 140, 130, 190), onMap = Color(120, 200, 255, 170),
 }
 
+-- Asked several times a frame, so the permission check is refreshed twice a second.
+local active, activeUntil = false, 0
 function World.Active()
-    local lp = LocalPlayer()
-    return World.preview ~= nil or (IsValid(lp) and RARELOAD.Get(nil, "debug") and RARELOAD.Can(lp, "rareload_debug"))
+    if World.preview ~= nil then return true end
+    if RealTime() > activeUntil then
+        local lp = LocalPlayer()
+        active = IsValid(lp) and RARELOAD.Get(nil, "debug") and RARELOAD.Can(lp, "rareload_debug") or false
+        activeUntil = RealTime() + 0.5
+    end
+    return active
 end
 
 -- preview = { id, nick, seated, data, objects }, or nil to stop previewing.
@@ -65,7 +72,7 @@ local function objectRecord(key, o, save, extra)
     local rec = {
         key = key, kind = "object", pos = pos, ang = Util.ToAngle(o.ang) or Angle(), model = o.model, skin = o.skin,
         bodygroups = bodygroups(o.bodygroups, false), material = o.material, scale = o.scale, parts = o.parts,
-        title = o.class, obj = o, ownerNick = save.nick,
+        title = UI.ObjectName(o.class, o.model), obj = o, ownerNick = save.nick,
     }
     for k, v in pairs(extra) do rec[k] = v end
     return rec
@@ -164,9 +171,12 @@ timer.Create("Rareload.World.Update", 0.2, 0, function()
         local show, tint = phantomState(rec, origin)
         rec.phantomShown = show
         if show then
-            wanted[rec.key] = { model = rec.model, pos = rec.pos, ang = rec.ang, skin = rec.skin, bodygroups = rec.bodygroups,
+            local w = { model = rec.model, pos = rec.pos, ang = rec.ang, skin = rec.skin, bodygroups = rec.bodygroups,
                 material = rec.material, scale = rec.scale, parts = rec.parts, color = tint, player = rec.kind == "player",
                 seated = rec.seated, playerColor = rec.playerColor }
+            rec.phantomSig = rec.phantomSig or RARELOAD.Phantoms.Signature(w)   -- records are rebuilt when their data changes
+            w.sig = rec.phantomSig
+            wanted[rec.key] = w
         end
     end
     RARELOAD.Phantoms.Sync(wanted)

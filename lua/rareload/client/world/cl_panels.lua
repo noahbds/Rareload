@@ -1,8 +1,9 @@
 -- Info panels over saved players and objects (REWRITE_PLAN.md §21.7, F30, F33, F34).
--- Each panel has category tabs. A panel sits just above its model (the phantom when one shows), facing
--- the viewer, sized to the model. The nearest panels are drawn up to `wdMaxDrawPerFrame`; panels of
--- models that touch form a pile showing one card at a time. The panel under the crosshair is the
--- focus: its full saved object is asked from the server once and added to its tabs.
+-- Each panel has category tabs. A panel stands on the side of its model (the phantom when one shows)
+-- facing the viewer, at eye height as far as the model's height allows, sized to the model. The nearest
+-- panels are drawn up to `wdMaxDrawPerFrame` and fade out towards `wdDrawDistance`; panels of models
+-- that touch form a pile showing one card at a time. The panel under the crosshair is the focus: its
+-- full saved object is asked from the server once and added to its tabs.
 -- Other addons' modules show in the "other" tab, through Panels.Format(id, fn) or a generic list (§24).
 
 RARELOAD.Panels = RARELOAD.Panels or { formatters = {}, view = {}, piles = {} }
@@ -13,6 +14,12 @@ local C = UI.C
 local W, HEAD, SIDE, ROW, TAB, VISIBLE = 560, 76, 158, 30, 32, 9
 local CLUSTER = 8            -- models closer than this (edge to edge) form a pile
 local ANIM = 0.28
+local FADE = 0.2             -- the last 20% of the draw distance fades panels out
+
+-- Colours drawn every frame, made once.
+local BG, HEAD_BG, SIDE_BG, ALT_ROW = Color(15, 18, 24, 245), Color(26, 31, 41, 255), Color(20, 24, 30, 255), Color(40, 47, 60, 120)
+local BAR_BG, TRACK, HINT_BG = Color(20, 24, 30), Color(25, 30, 40), Color(18, 22, 30, 225)
+local ACCENT_DIM, BADGE_BG = ColorAlpha(C.accent, 120), ColorAlpha(C.accent, 200)
 
 local CATS = {
     player = { "basic", "position", "equipment", "appearance", "stats", "world", "other" },
@@ -324,7 +331,7 @@ local function panelHeight(rec)
 end
 
 local function bar(x, y, w, h, frac, col, text)
-    draw.RoundedBox(4, x, y, w, h, Color(20, 24, 30))
+    draw.RoundedBox(4, x, y, w, h, BAR_BG)
     if frac > 0 then draw.RoundedBox(4, x, y, math.max(8, w * math.Clamp(frac, 0, 1)), h, col) end
     if text then draw.SimpleText(text, "Rareload.PanelSmall", x + w / 2, y + h / 2, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER) end
 end
@@ -339,9 +346,9 @@ local function drawCard(rec, focused, locked)
     local h = panelHeight(rec)
     local x, y = -W / 2, -h / 2
 
-    draw.RoundedBox(10, x, y, W, h, Color(15, 18, 24, 245))
-    draw.RoundedBoxEx(10, x, y, W, HEAD, Color(26, 31, 41, 255), true, true, false, false)
-    surface.SetDrawColor(ColorAlpha(C.accent, focused and 255 or 120))
+    draw.RoundedBox(10, x, y, W, h, BG)
+    draw.RoundedBoxEx(10, x, y, W, HEAD, HEAD_BG, true, true, false, false)
+    surface.SetDrawColor(focused and C.accent or ACCENT_DIM)
     surface.DrawRect(x, y + HEAD - 2, W, 2)
     surface.DrawOutlinedRect(x, y, W, h, focused and 2 or 1)
 
@@ -378,7 +385,7 @@ local function drawCard(rec, focused, locked)
 
     -- Tabs on the left.
     local ty = y + HEAD + 6
-    surface.SetDrawColor(20, 24, 30, 255)
+    surface.SetDrawColor(SIDE_BG)
     surface.DrawRect(x, ty - 4, SIDE, h - HEAD - 4)
     for i, id in ipairs(tabs) do
         local active = i == view.tab
@@ -403,7 +410,7 @@ local function drawCard(rec, focused, locked)
     for i = 1, math.min(#lines, VISIBLE) do
         local line = lines[i + view.scroll]
         if i % 2 == 0 then
-            surface.SetDrawColor(40, 47, 60, 120)
+            surface.SetDrawColor(ALT_ROW)
             surface.DrawRect(cx - 4, ry, cw + 8, ROW)
         end
         surface.SetFont("Rareload.Panel")
@@ -421,7 +428,7 @@ local function drawCard(rec, focused, locked)
     if maxScroll > 0 then
         local trackH = math.min(#lines, VISIBLE) * ROW
         local gripH = trackH * VISIBLE / #lines
-        draw.RoundedBox(3, x + W - 6, y + HEAD + 6, 4, trackH, Color(25, 30, 40))
+        draw.RoundedBox(3, x + W - 6, y + HEAD + 6, 4, trackH, TRACK)
         draw.RoundedBox(3, x + W - 6, y + HEAD + 6 + (trackH - gripH) * view.scroll / maxScroll, 4, gripH, C.accent)
     end
     return h
@@ -431,30 +438,38 @@ end
 local function hint(text, y, col)
     surface.SetFont("Rareload.PanelSmall")
     local tw = surface.GetTextSize(text)
-    draw.RoundedBox(6, -tw / 2 - 10, y, tw + 20, 26, Color(18, 22, 30, 225))
+    draw.RoundedBox(6, -tw / 2 - 10, y, tw + 20, 26, HINT_BG)
     draw.SimpleText(text, "Rareload.PanelSmall", 0, y + 13, col or color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 end
 
 -- Placement -------------------------------------------------------------------------------------------
 
--- The entity a record's panel is placed by: the live object, else its phantom.
--- The model a record's panel sits on: its phantom when one shows (the saved state), else the live object.
+-- The model a record's panel stands by: its phantom when one shows (the saved state), else the live object.
 local function anchorEnt(rec)
     return RARELOAD.Phantoms.Get(rec.key) or RARELOAD.World.LiveOf(rec)
 end
 
--- Draw position, angle and scale of a panel `h` pixels tall for `ent`: just above the model, centred
--- on it, so it stays attached as the viewer moves; turned to face the viewer; as wide as the model,
--- and never wider than 60% of the distance to it.
+-- Draw position, angle and scale of a panel `h` pixels tall for `ent`. The panel stands just outside
+-- the model's box on the viewer's side, turned to face the viewer, at eye height: never lower than the
+-- model's bottom nor higher than just above its top, so it stays attached to the model. As wide as the
+-- model, and never wider than 60% of the distance to it.
 local function placement(ent, eye, h)
     local mn, mx = ent:WorldSpaceAABB()
-    local size = math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z)
-    local top = Vector((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, mx.z)
-    local worldW = math.min(math.Clamp(size * 1.15, 42, 130), math.max(eye:Distance(top), 1) * 0.6)
+    local hx, hy = (mx.x - mn.x) / 2, (mx.y - mn.y) / 2
+    local cx, cy = mn.x + hx, mn.y + hy
+    local dx, dy = cx - eye.x, cy - eye.y
+    local d = math.sqrt(dx * dx + dy * dy)
+    local ux, uy = d > 1 and dx / d or 1, d > 1 and dy / d or 0
+    local near = d - (math.abs(ux) * hx + math.abs(uy) * hy) - 6   -- from the viewer to the box's near side
+    if near < 32 then near = math.min(32, d) end                   -- standing at the model: just in front
+
+    local size = math.max(hx * 2, hy * 2, mx.z - mn.z)
+    local worldW = math.min(math.Clamp(size * 1.15, 42, 130), math.max(near, 1) * 0.6)
     local scale = worldW / W
-    local pos = top + Vector(0, 0, 8 + h * scale / 2)
-    local facing = (pos - eye):Angle()
-    return pos, Angle(0, facing.y - 90, 90), scale
+    local half = h * scale / 2
+    local z = math.Clamp(eye.z, mn.z + half, mx.z + half + 8)
+    local pos = Vector(eye.x + ux * near, eye.y + uy * near, z)
+    return pos, Angle(0, math.deg(math.atan2(uy, ux)) - 90, 90), scale
 end
 
 -- Does the aim ray hit the panel's rectangle? Returns the distance to the panel.
@@ -475,8 +490,9 @@ end
 local function candidates(eye, aim)
     local maxDist = RARELOAD.Get(nil, "wdDrawDistance")
     local out = {}
+    local reach = (maxDist + 300) ^ 2   -- the model is near its saved spot, or its phantom shows there
     for _, rec in ipairs(RARELOAD.World.records) do
-        local ent = (rec.kind == "object" or rec.phantomShown) and anchorEnt(rec)
+        local ent = rec.pos:DistToSqr(eye) < reach and (rec.kind == "object" or rec.phantomShown) and anchorEnt(rec)
         if ent then
             local center = ent:WorldSpaceCenter()
             local delta = center - eye
@@ -571,15 +587,17 @@ local function easeOutBack(t)
     return 1 + 2.70158 * u * u * u + 1.70158 * u * u
 end
 
+local fade = 1   -- alpha of the pile being drawn
+
 -- Draws `rec`'s card moved by (dx, dy), scaled by s, at alpha a (the plane is already open).
 local function drawMoved(rec, dx, dy, s, a, focused, locked)
     local m = Matrix()
     m:Translate(Vector(dx, dy, 0))
     m:Scale(Vector(s, s, 1))
     cam.PushModelMatrix(m, true)
-    surface.SetAlphaMultiplier(a)
+    surface.SetAlphaMultiplier(a * fade)
     drawCard(rec, focused, locked)
-    surface.SetAlphaMultiplier(1)
+    surface.SetAlphaMultiplier(fade)
     cam.PopModelMatrix()
 end
 
@@ -632,9 +650,12 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
     if focus then askDetail(focus.active) end
 
     table.sort(groups, function(a, b) return a.dist > b.dist end)   -- farthest first
+    local maxDist = RARELOAD.Get(nil, "wdDrawDistance")
     for _, g in ipairs(groups) do
         local st = Panels.piles[g.key]
         local focused, locked = g == focus, lock and lock.pile == g.key
+        fade = (focused or locked) and 1 or math.Clamp((maxDist - g.base.dist) / (maxDist * FADE), 0, 1)
+        surface.SetAlphaMultiplier(fade)
         cam.Start3D2D(g.pos, g.ang, g.scale)
             for k = math.min(#g.members - 1, 2), 1, -1 do   -- the next cards peek out behind
                 local ph = g.h * 0.94 ^ k
@@ -655,7 +676,7 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
                 local label = st.active .. " / " .. #g.members
                 surface.SetFont("Rareload.Label")
                 local bw = surface.GetTextSize(label) + 20
-                draw.RoundedBox(6, -bw / 2, -g.h / 2 - 32, bw, 26, ColorAlpha(C.accent, 200))
+                draw.RoundedBox(6, -bw / 2, -g.h / 2 - 32, bw, 26, BADGE_BG)
                 draw.SimpleText(label, "Rareload.Label", 0, -g.h / 2 - 19, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
             end
             local hy = g.h / 2 + 8
@@ -669,6 +690,8 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
             end
         cam.End3D2D()
     end
+    surface.SetAlphaMultiplier(1)
+    fade = 1
 
     -- Forget piles not seen for a while.
     for key, st in pairs(Panels.piles) do

@@ -30,9 +30,12 @@ local function decode(raw)
     return istable(t) and t or nil
 end
 
+local encoded = {}   -- rel -> JSON of a dirty document that was already encoded (blobs)
+
 local function writeNow(rel, doc)
     local base = ROOT .. rel
-    local json = util.TableToJSON(doc)
+    local json = encoded[rel] or util.TableToJSON(doc)
+    encoded[rel] = nil
     if not json then
         log():error("could not encode %s", rel)
         return false
@@ -90,7 +93,7 @@ end
 function Store.Save(rel, doc)
     if readonly[rel] then return false end
     cache[rel] = doc
-    dirty[rel] = doc
+    dirty[rel], encoded[rel] = doc, nil
     if not timer.Exists("Rareload.Store.Flush") then
         timer.Create("Rareload.Store.Flush", 0.5, 1, Store.Flush)
     end
@@ -102,7 +105,7 @@ function Store.Delete(rel)
     for _, suffix in ipairs({ ".json", ".tmp.json", ".bak.json" }) do
         file.Delete(base .. suffix)
     end
-    cache[rel], dirty[rel], readonly[rel] = nil, nil, nil
+    cache[rel], dirty[rel], encoded[rel], readonly[rel] = nil, nil, nil, nil
 end
 
 -- Blobs: heavy module data (world snapshots) stored once by content hash, so identical snapshots
@@ -113,10 +116,12 @@ local function blobRel(hash)
 end
 
 function Store.BlobPut(data)
-    local hash = util.SHA256(util.TableToJSON(data)):sub(1, 16)
+    local json = util.TableToJSON(data)
+    local hash = util.SHA256(json):sub(1, 16)
     local rel = blobRel(hash)
     if cache[rel] == nil and not file.Exists(ROOT .. rel .. ".json", "DATA") then
         Store.Save(rel, data)
+        encoded[rel] = json   -- written as is, not encoded a second time
     end
     return hash
 end

@@ -74,7 +74,7 @@ if SERVER then
         handlers[op] = def
     end
 
-    local function enqueue(ply, topic, key, chunks)
+    local function enqueue(ply, topic, key, chunks, urgent)
         if not ready[ply] then return end   -- G14: nothing is sent before the client is loaded
         local queue = queues[ply] or {}
         queues[ply] = queue
@@ -86,23 +86,30 @@ if SERVER then
             end
         end
         nextId = nextId % 2147483647 + 1
-        queue[#queue + 1] = { id = nextId, topic = topic, key = key, chunks = chunks, next = 1 }
+        local t = { id = nextId, topic = topic, key = key, chunks = chunks, next = 1 }
+        -- An urgent push (a toast) goes ahead of everything that hasn't started sending.
+        local at = #queue + 1
+        if urgent then at = (queue[1] and queue[1].next > 1) and 2 or 1 end
+        table.insert(queue, math.min(at, #queue + 1), t)
     end
 
     -- target: a player, a list of players, or nil for every ready player.
+    -- opts = { key? (a newer push with the same key replaces a waiting one), urgent? }
     function Net.Push(target, topic, payload, opts)
         local chunks = Net.Split(util.Compress(util.TableToJSON(payload)), CHUNK)
         local key = opts and opts.key or topic
+        local urgent = opts and opts.urgent
         if isentity(target) then
-            enqueue(target, topic, key, chunks)
+            enqueue(target, topic, key, chunks, urgent)
         else
             for _, ply in ipairs(target or select(2, player.Iterator())) do
-                enqueue(ply, topic, key, chunks)
+                enqueue(ply, topic, key, chunks, urgent)
             end
         end
     end
 
-    -- At most one chunk per client per tick, and never more than MAX_INFLIGHT unacknowledged bytes (G11).
+    -- At most CHUNK bytes per client per tick (several small pushes fit in one tick), and never more
+    -- than MAX_INFLIGHT unacknowledged bytes (G11). The client acknowledges every chunk.
     hook.Add("Tick", "Rareload.Net.Send", function()
         local now = CurTime()
         for ply, queue in pairs(queues) do
@@ -115,9 +122,11 @@ if SERVER then
                 for id, rec in pairs(sent) do
                     if now - rec.t > ACK_TIMEOUT then sent[id] = nil else pending = pending + rec.bytes end
                 end
-                if pending < MAX_INFLIGHT then
+                local budget = CHUNK
+                while queue[1] and pending < MAX_INFLIGHT and budget > 0 do
                     local t = queue[1]
                     local chunk = t.chunks[t.next]
+                    if #chunk > budget and budget < CHUNK then break end
                     net.Start(SYNC)
                     net.WriteUInt(t.id, 32)
                     net.WriteString(t.topic)
@@ -126,9 +135,8 @@ if SERVER then
                     net.WriteUInt(#chunk, 16)
                     net.WriteData(chunk, #chunk)
                     net.Send(ply)
-                    local rec = sent[t.id] or { bytes = 0 }
-                    rec.bytes, rec.t = rec.bytes + #chunk, now
-                    sent[t.id] = rec
+                    sent[t.id .. ":" .. t.next] = { bytes = #chunk, t = now }
+                    pending, budget = pending + #chunk, budget - #chunk
                     t.next = t.next + 1
                     if t.next > #t.chunks then table.remove(queue, 1) end
                 end
@@ -170,15 +178,15 @@ if SERVER then
     })
 
     Net.Handle("ack", {
-        args = { id = "uint" },
+        args = { id = "uint", part = "uint" },
         fn = function(ply, a)
-            if inflight[ply] then inflight[ply][a.id] = nil end
+            if inflight[ply] then inflight[ply][a.id .. ":" .. a.part] = nil end
         end,
     })
 
     -- Toasts carry a translation key and arguments; the client localizes them (L29).
     function RARELOAD.Toast(ply, key, args, kind)
-        Net.Push(ply, "toast", { key = key, args = args or {}, kind = kind or "info" }, { key = "toast:" .. key })
+        Net.Push(ply, "toast", { key = key, args = args or {}, kind = kind or "info" }, { key = "toast:" .. key, urgent = true })
     end
 end
 
@@ -212,6 +220,7 @@ if CLIENT then
         for tid, p in pairs(partial) do
             if now - p.t > 10 then partial[tid] = nil end
         end
+        Net.Request("ack", { id = id, part = index })
         local p = partial[id] or { parts = {}, got = 0 }
         partial[id] = p
         p.t = now
@@ -222,7 +231,6 @@ if CLIENT then
         if p.got < total then return end
 
         partial[id] = nil
-        Net.Request("ack", { id = id })
         local json = util.Decompress(table.concat(p.parts), MAX_TRANSFER)
         local payload = json and util.JSONToTable(json, true)
         local fn = topics[topic]

@@ -508,7 +508,7 @@ local changed = {}
 refresh = function(ply)
     changed[ply] = true
     if timer.Exists("Rareload.History.Push") then return end
-    timer.Create("Rareload.History.Push", 0.5, 1, function()
+    timer.Create("Rareload.History.Push", 0.1, 1, function()
         for p in pairs(changed) do
             if IsValid(p) then
                 pushRows(p)

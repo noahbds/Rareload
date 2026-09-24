@@ -133,14 +133,14 @@ RARELOAD.Setting("enableInAllGamemodes", { type = "bool", default = false, scope
 RARELOAD.Setting("debug", { type = "bool", default = false, scope = "server", category = "server",
     help = "Print Rareload debug logs, send report cards to admins and show the world display" })
 RARELOAD.Setting("deathCleanupMode", { type = "enum", values = { "off", "all", "owned", "saved" }, default = "off",
-    scope = "server", category = "server", help = "Before respawning a dead player: off, clean the whole map, "
+    scope = "server", category = "world", help = "Before respawning a dead player: off, clean the whole map, "
         .. "remove their own objects, or remove only their saved objects" })
-RARELOAD.Setting("disconnectCleanup", { type = "bool", default = false, scope = "server", category = "server",
+RARELOAD.Setting("disconnectCleanup", { type = "bool", default = false, scope = "server", category = "world",
     help = "Remove a player's objects when they disconnect" })
-RARELOAD.Setting("maxVehicles", { type = "int", default = 0, min = 0, max = 100, scope = "server", category = "server",
+RARELOAD.Setting("maxVehicles", { type = "int", default = 0, min = 0, max = 100, scope = "server", category = "world",
     help = "Most vehicles restored per player (0 = no limit)" })
 RARELOAD.Setting("respectSpawnLimits", { type = "bool", default = not game.SinglePlayer(), scope = "server",
-    category = "server", help = "Restored objects go through Sandbox spawn permissions and sbox_max limits (D10)" })
+    category = "world", help = "Restored objects go through Sandbox spawn permissions and sbox_max limits (D10)" })
 RARELOAD.Setting("asMaxSearchTime", { type = "float", default = 1.5, min = 0.05, max = 5, scope = "server",
     category = "antistuck", help = "Anti-stuck: seconds to spend looking for a free spot" })
 RARELOAD.Setting("asMaxDistance", { type = "int", default = 1200, min = 64, max = 8192, scope = "server",

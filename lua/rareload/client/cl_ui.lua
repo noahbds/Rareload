@@ -50,6 +50,8 @@ end
 function UI.sc(v) return math.floor(v * UI.S + 0.5) end
 local sc = UI.sc
 
+local clipCache, clipCount = {}, 0   -- UI.Clip results, below
+
 local function createFonts()
     UI.S = math.Clamp(ScrH() / 1080, 0.85, 2)
     local function font(name, size, weight)
@@ -67,7 +69,10 @@ local function createFonts()
     font("Rareload.Mono", 14, 500)
 end
 createFonts()
-hook.Add("OnScreenSizeChanged", "Rareload.UI.Fonts", createFonts)
+hook.Add("OnScreenSizeChanged", "Rareload.UI.Fonts", function()
+    createFonts()
+    clipCache, clipCount = {}, 0
+end)
 
 -- Fixed-size fonts for the tool screen and the world display, which don't depend on the screen.
 surface.CreateFont("Rareload.Screen", { font = "Roboto", size = 22, weight = 600, extended = true })
@@ -104,12 +109,24 @@ function UI.DrawBadge(text, x, y, col, font, alignRight)
 end
 
 -- Clips text to `maxW` pixels with an ellipsis.
+-- Results are cached: panels clip the same texts every frame. The cache is emptied when it grows
+-- large and when fonts change size.
 function UI.Clip(text, font, maxW)
     text = tostring(text)
+    maxW = math.floor(maxW)
+    local key = font .. "\1" .. maxW .. "\1" .. text
+    local hit = clipCache[key]
+    if hit then return hit end
+    if clipCount > 4000 then clipCache, clipCount = {}, 0 end
+
+    local out = text
     surface.SetFont(font)
-    if surface.GetTextSize(text) <= maxW then return text end
-    while #text > 1 and surface.GetTextSize(text .. "…") > maxW do text = string.sub(text, 1, -2) end
-    return text .. "…"
+    if surface.GetTextSize(text) > maxW then
+        while #out > 1 and surface.GetTextSize(out .. "…") > maxW do out = string.sub(out, 1, -2) end
+        out = out .. "…"
+    end
+    clipCache[key], clipCount = out, clipCount + 1
+    return out
 end
 
 -- Formatting --------------------------------------------------------------------------------------
@@ -157,6 +174,32 @@ function UI.WeaponName(class)
     local stored = weapons.GetStored(class)
     local name = stored and stored.PrintName or class
     return language.GetPhrase((string.gsub(name, "^#", "")))
+end
+
+-- A readable name for a saved object: the spawn menu's name of a vehicle, NPC or scripted entity,
+-- the model's file name for a prop, else the class. Cached until the language changes.
+local objectNames = {}
+hook.Add("RareloadLanguageChanged", "Rareload.UI.ObjectNames", function() objectNames = {} end)
+
+function UI.ObjectName(class, model)
+    class = tostring(class or "?")
+    local key = class .. "|" .. tostring(model)
+    if objectNames[key] then return objectNames[key] end
+    local name
+    if string.StartsWith(class, "prop_") and not string.StartsWith(class, "prop_vehicle") then
+        name = isstring(model) and string.StripExtension(string.GetFileFromFilename(model)) or nil
+    else
+        -- Vehicle entries are keyed by spawn name, not class; GetForEdit reads them without a copy (G67).
+        for _, v in pairs(list.GetForEdit("Vehicles")) do
+            if v.Class == class and (v.Model == model or not name) then name = v.Name end
+        end
+        local npc = list.GetEntry("NPC", class)
+        local stored = scripted_ents.GetStored(class)
+        name = name or (npc and npc.Name) or (stored and stored.t and stored.t.PrintName)
+    end
+    name = isstring(name) and name ~= "" and language.GetPhrase((string.gsub(name, "^#", ""))) or class
+    objectNames[key] = name
+    return name
 end
 
 -- util.IsValidModel is false for models the client hasn't loaded yet, so a mounted file counts too.
@@ -238,12 +281,14 @@ function UI.Button(parent, text, onClick, opts)
     b:SetTall(sc(opts.tall or 32))
     b.label, b.icon = text, opts.icon
     function b:SetLabel(t) self.label = t end
+    -- An active toggle button is drawn solid with a pulsing dot.
+    function b:SetActive(on) self.active = on end
     b.Paint = function(self, w, h)
         local a = self:IsEnabled() and hoverAnim(self, self:IsHovered()) or 0
         local fill, textCol
         if not self:IsEnabled() then
             fill, textCol = C.bgDark, C.textOff
-        elseif opts.solid then
+        elseif opts.solid or self.active then
             fill, textCol = UI.Mix(col, color_white, a * 0.15), Color(15, 17, 22)
         else
             fill, textCol = UI.Mix(UI.Mix(C.surface, col, 0.14), col, a * 0.55), UI.Mix(C.text, color_white, a)
@@ -256,6 +301,10 @@ function UI.Button(parent, text, onClick, opts)
         local x = (w - tw - iw) / 2
         if self.icon then UI.DrawIcon(self.icon, x, (h - sc(16)) / 2, sc(16), self:IsEnabled() and color_white or C.textOff) end
         draw.SimpleText(self.label, "Rareload.BodyB", x + iw, h / 2, textCol, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        if self.active then
+            local r = sc(3) + sc(1.5) * math.abs(math.sin(RealTime() * 4))
+            draw.RoundedBox(r, sc(12) - r, h / 2 - r, r * 2, r * 2, textCol)
+        end
     end
     b.DoClick = function(self)
         surface.PlaySound("ui/buttonclickrelease.wav")

@@ -152,26 +152,22 @@ function Snapshot.PruneConstraints(snap)
 end
 
 -- Copies exactly `targets` (nothing constrained to them that isn't a target) with their shared constraints.
+-- Each target is copied once: duplicator.Copy would copy a target's whole contraption again for every
+-- target in it. CopyEntTable also ignores DoNotDuplicate, which some vehicle bases set on their roots.
 function Snapshot.Capture(targets)
     duplicator.SetLocalPos(vector_origin)
     duplicator.SetLocalAng(angle_zero)
-    local acc, keep = { Entities = {}, Constraints = {} }, {}
+    local snap = { Entities = {}, Constraints = {} }
 
     for _, ent in ipairs(targets) do
-        keep[ent:EntIndex()] = true
-        duplicator.StoreEntityModifier(ent, "rareload", { id = Snapshot.ID(ent), hp = ent:Health(), maxHp = ent:GetMaxHealth() })
-
-        -- Some bases flag their roots DoNotDuplicate; the duplicator would skip them entirely.
-        local tbl = ent:GetTable()
-        local own = rawget(tbl, "DoNotDuplicate")
-        if ent.DoNotDuplicate then tbl.DoNotDuplicate = false end
-        ProtectedCall(function() acc = duplicator.Copy(ent, acc) end)
-        tbl.DoNotDuplicate = own
-    end
-
-    local snap = { Entities = {}, Constraints = acc.Constraints }
-    for index, def in pairs(acc.Entities) do
-        if keep[index] then snap.Entities[index] = tagColors(def, 0) end
+        if duplicator.IsAllowed(ent.ClassOverride or ent:GetClass()) then
+            duplicator.StoreEntityModifier(ent, "rareload", { id = Snapshot.ID(ent), hp = ent:Health(), maxHp = ent:GetMaxHealth() })
+            ProtectedCall(function() snap.Entities[ent:EntIndex()] = tagColors(duplicator.CopyEntTable(ent), 0) end)
+            -- Keyed like duplicator.Copy does, so a constraint between two targets is kept once.
+            for _, c in pairs(constraint.GetTable(ent)) do
+                if IsValid(c.Constraint) then snap.Constraints[c.Constraint:GetCreationID()] = c end
+            end
+        end
     end
     Snapshot.PruneConstraints(snap)
     for key, c in pairs(snap.Constraints) do snap.Constraints[key] = tagColors(c, 0) end

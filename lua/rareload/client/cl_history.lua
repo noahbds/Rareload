@@ -251,6 +251,13 @@ local function buildDetail(host, sel)
         Timeline.Preview(on and r or nil)
         if on then UI.Notify(L("timeline.preview_hint")) end
     end, { style = "info", icon = "eye" })
+    -- Follows the preview even when it is turned off elsewhere (`rareload preview off`).
+    D.preview.Think = function(self)
+        local r = row()
+        local on = r ~= nil and Timeline.Previewing(r.id)
+        self:SetActive(on)
+        self:SetLabel(on and L("timeline.preview_hide") or L("timeline.preview_show"))
+    end
     D.objects = UI.Button(host, "", function()
         local r = row()
         if r then RARELOAD.Inspector.Open(r.id) end
@@ -375,7 +382,6 @@ local function updateDetail(D, r)
     D.setActive:SetVisible(not r.active)
     D.pin:SetLabel(r.pinned and L("timeline.unpin") or L("timeline.pin"))
     D.teleport:SetVisible(RARELOAD.Can(LocalPlayer(), "rareload_teleport") and r.info.pos ~= nil)
-    D.preview:SetLabel(Timeline.Previewing(r.id) and L("timeline.preview_hide") or L("timeline.preview_show"))
     local n = objectsOf(r)
     D.objects:SetLabel(n > 0 and L("timeline.objects", n) or L("timeline.objects_none"))
     D.objects:SetEnabled(n > 0)

@@ -64,8 +64,10 @@ RARELOAD.UI.Command("highlight", function(args) Highlight.Command(args[1] or "al
 
 -- Live entities and owners are looked up once a second; the rest once per frame.
 local resolved, frame, nextLookup = {}, -1, 0
+local NONE = {}
 
 local function resolve()
+    if next(Highlight.entries) == nil then return NONE end
     if FrameNumber() == frame then return resolved end
     frame, resolved = FrameNumber(), {}
     local lookup = RealTime() > nextLookup

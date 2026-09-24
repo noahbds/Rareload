@@ -36,11 +36,12 @@ local function signature(w)
     return table.concat({ w.model, w.skin or 0, w.material or "", w.scale or 1, #(w.parts or {}), tostring(w.seated),
         util.TableToJSON(w.bodygroups or {}) }, "|")
 end
+Phantoms.Signature = signature
 
 local function build(w)
     local ent = newModel(w.model)
     if not ent then return end
-    ent.rareloadSig = signature(w)
+    ent.rareloadSig = w.sig or signature(w)
     ent:SetSkin(w.skin or 0)
     for index, value in pairs(w.bodygroups or {}) do
         if isnumber(index) then ent:SetBodygroup(index, value) end
@@ -83,12 +84,13 @@ local function remove(ent)
 end
 
 -- wanted = { [key] = { model, pos, ang, color, skin?, bodygroups?, material?, scale?, parts?, player?,
--- seated?, playerColor? } }. Phantoms not in `wanted` are removed.
+-- seated?, playerColor?, sig? (Phantoms.Signature of the entry, when the caller keeps it) } }.
+-- Phantoms not in `wanted` are removed.
 function Phantoms.Sync(wanted)
     local reg, count = Phantoms.reg, 0
     for key, ent in pairs(reg) do
         local w = wanted[key]
-        if not IsValid(ent) or not w or ent.rareloadSig ~= signature(w) then
+        if not IsValid(ent) or not w or ent.rareloadSig ~= (w.sig or signature(w)) then
             remove(ent)
             reg[key] = nil
         else
