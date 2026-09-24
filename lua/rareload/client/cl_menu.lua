@@ -6,7 +6,8 @@
 --   Utilities › Rareload › Client: this client's world display settings.
 -- The spawn menu is narrow, so labels wrap instead of running under the controls. Left of a label, a
 -- reset arrow means the player changed the setting (click it to use the server's value again) and a
--- lock means the server decides it.
+-- lock means the server decides it. Rows re-read their value and lock a few times a second, so changes
+-- made by an admin (or on another page) show at once, without rebuilding the page.
 
 RARELOAD.Menu = RARELOAD.Menu or {}
 local Menu = RARELOAD.Menu
@@ -32,6 +33,7 @@ font("Rareload.Menu.Note", 13, 500)
 
 local GUTTER, PAD, LINE = 22, 8, 19   -- icon column, right padding, label line height
 local HEAD_H = 34
+local SYNC, HOLD = 0.25, 1   -- seconds between re-reads; after a click, the row waits for the change to arrive
 
 local CATEGORIES = { "general", "player", "world", "timing", "server", "antistuck", "display" }
 local ICONS = {
@@ -111,7 +113,8 @@ local function onGutterClick(row)
 end
 
 -- A setting row: the icon column, a wrapped label, a control `rightW` wide on the right of the label,
--- and `belowH` pixels under it. opts = { tooltip, disabled, locked, changed, reset, lock, menu(dmenu) }.
+-- and `belowH` pixels under it. opts = { tooltip, disabled, locked, changed, reset, lock, menu(dmenu),
+-- refresh(opts) (re-reads the flags) }. row:Sync() re-reads the value; see control().
 local function newRow(parent, label, opts, rightW, belowH)
     local row = vgui.Create("DPanel", parent)
     row:Dock(TOP)
@@ -139,18 +142,34 @@ local function newRow(parent, label, opts, rightW, belowH)
     end
     row.Paint = row.PaintBase
 
+    row.nextSync, row.holdUntil = 0, 0
     row.Think = function(self)
         self.gutterHover = self:IsHovered() and self:CursorPos() < GUTTER
         self:SetCursor((self.gutterHover and gutterIcon(self)) and "hand" or (opts.disabled and "arrow" or "hand"))
+        local now = RealTime()
+        if now < self.nextSync or now < self.holdUntil or self.dragging then return end
+        self.nextSync = now + SYNC
+        if opts.refresh then
+            opts.refresh(opts)
+            if opts.tooltip ~= self.tooltip then
+                self.tooltip = opts.tooltip
+                self:SetTooltip(opts.tooltip or false)
+            end
+        end
+        if self.Sync then self:Sync() end
     end
 
     -- Left click on the icon resets or locks; right click opens the row's menu.
     row.OnMousePressed = function(self, code)
         if code == MOUSE_LEFT and self.gutterHover and onGutterClick(self) then
+            self.holdUntil = RealTime() + HOLD
             surface.PlaySound("ui/buttonclick.wav")
             return
         end
-        if code == MOUSE_LEFT and not opts.disabled and self.Press then self:Press() end
+        if code == MOUSE_LEFT and not opts.disabled and self.Press then
+            self.holdUntil = RealTime() + HOLD
+            self:Press()
+        end
     end
     row.OnMouseReleased = function(self, code)
         if code == MOUSE_LEFT and self.Release then return self:Release() end
@@ -207,6 +226,7 @@ local function slider(parent, label, value, min, max, decimals, suffix, onChange
         if not self.dragging then return end
         self.dragging = false
         self:MouseCapture(false)
+        self.holdUntil = RealTime() + HOLD
         onChange(self.value)
     end
     local think = row.Think
@@ -223,6 +243,7 @@ local function slider(parent, label, value, min, max, decimals, suffix, onChange
             Derma_StringRequest(label, L("menu.type_value_help", text(min), text(max)), tostring(row.value), function(v)
                 if not tonumber(v) or not IsValid(row) then return end
                 row.value = math.Round(math.Clamp(tonumber(v), min, max), decimals)
+                row.holdUntil = RealTime() + HOLD
                 onChange(row.value)
             end)
         end):SetIcon("icon16/pencil.png")
@@ -242,9 +263,22 @@ local function dropdown(parent, label, options, current, onSelect, opts)
     combo.Paint = function(self, w, h)
         draw.RoundedBox(4, 0, 0, w, h, self:IsHovered() and CARD_HI or TRACK)
     end
+    row.combo = combo
     combo.OnSelect = function(_, _, _, id)
+        if row.syncing then return end
+        row.holdUntil = RealTime() + HOLD
         surface.PlaySound("ui/buttonclick.wav")
         onSelect(id)
+    end
+    -- Shows `id` without sending it back.
+    row.Select = function(self, id)
+        for i, o in ipairs(options) do
+            if o.id == id and combo:GetSelectedID() ~= i then
+                self.syncing = true
+                combo:ChooseOptionID(i)
+                self.syncing = false
+            end
+        end
     end
     row.LayoutBelow = function(_, w, h)
         combo:SetPos(GUTTER, h - 32)
@@ -381,18 +415,37 @@ local function section(parent, title, icon, open)
 end
 
 -- A control for one setting: switch, slider or dropdown. get() is the value shown, set(text) applies.
+-- The row keeps showing get(): a value changed elsewhere (another admin, a command) shows at once.
 local function control(parent, def, get, set, opts)
     local label = L("setting." .. def.key)
-    opts.tooltip = opts.tooltip or L("setting." .. def.key .. ".help")
+    local help = L("setting." .. def.key .. ".help")
+    local refresh = opts.refresh
+    opts.refresh = function(o)
+        o.tooltip = nil
+        if refresh then refresh(o) end
+        o.tooltip = o.tooltip or help
+    end
+    opts.refresh(opts)
+
+    local row
     if def.type == "bool" then
-        return toggle(parent, label, get(), function(v) set(v and "1" or "0") end, opts)
+        row = toggle(parent, label, get(), function(v) set(v and "1" or "0") end, opts)
+        row.Sync = function(self) self.value = get() end
     elseif def.type == "enum" then
         local options = {}
         for _, v in ipairs(def.values) do options[#options + 1] = { id = v, label = L("setting." .. def.key .. "." .. v) } end
-        return dropdown(parent, label, options, get(), set, opts)
+        row = dropdown(parent, label, options, get(), set, opts)
+        row.Sync = function(self)
+            self:Select(get())
+            self.combo:SetEnabled(not opts.disabled)
+        end
+    else
+        row = slider(parent, label, get(), def.min, def.max, def.type == "float" and 1 or 0, SUFFIXES[def.key],
+            function(v) set(tostring(v)) end, opts)
+        row.Sync = function(self) self.value = get() end
     end
-    return slider(parent, label, get(), def.min, def.max, def.type == "float" and 1 or 0, SUFFIXES[def.key],
-        function(v) set(tostring(v)) end, opts)
+    row.tooltip = opts.tooltip
+    return row
 end
 
 -- Page --------------------------------------------------------------------------------------------------
@@ -472,16 +525,15 @@ function Menu.BuildToolPanel(panel)
         local content = section(panel, L("category." .. group.name), ICONS[group.name], group.name ~= "timing")
         for _, def in ipairs(group.defs) do
             local pref = GetConVar(def.pref)
-            local locked = RARELOAD.IsLocked(def.key)
             local noPriv = def.priv and not RARELOAD.Can(lp, def.priv)
             control(content, def, function() return RARELOAD.Get(lp, def.key) end, function(v) RunConsoleCommand(def.pref, v) end, {
-                disabled = locked or noPriv, locked = locked,
-                changed = not locked and pref ~= nil and pref:GetFloat() ~= -1,
-                tooltip = locked and L("menu.locked") or noPriv and L("menu.no_priv") or nil,
-                reset = function()
-                    RunConsoleCommand(def.pref, "-1")
-                    timer.Simple(0.2, Menu.Rebuild)
+                refresh = function(o)
+                    o.locked = RARELOAD.IsLocked(def.key)
+                    o.disabled = o.locked or noPriv
+                    o.changed = not o.locked and pref ~= nil and pref:GetFloat() ~= -1
+                    o.tooltip = o.locked and L("menu.locked") or noPriv and L("menu.no_priv") or nil
                 end,
+                reset = function() RunConsoleCommand(def.pref, "-1") end,
             })
         end
     end
@@ -497,7 +549,6 @@ function Menu.BuildToolPanel(panel)
         for _, def in pairs(RARELOAD.Settings) do
             if def.pref then RunConsoleCommand(def.pref, "-1") end
         end
-        timer.Simple(0.3, Menu.Rebuild)
     end)
 
     if RARELOAD.Can(lp, "rareload_debug") then
@@ -563,9 +614,8 @@ local function buildServer(panel)
         local content = section(panel, L("category." .. group.name), ICONS[group.name], false)
         for _, def in ipairs(group.defs) do
             control(content, def, function() return RARELOAD.ServerValue(def.key) end, setter(def), {
-                lock = { locked = RARELOAD.IsLocked(def.key), toggle = function(locked)
-                    RARELOAD.Net.Request("settings.lock", { key = def.key, locked = locked })
-                end },
+                lock = { toggle = function(locked) RARELOAD.Net.Request("settings.lock", { key = def.key, locked = locked }) end },
+                refresh = function(o) o.lock.locked = RARELOAD.IsLocked(def.key) end,
             })
         end
     end
@@ -601,7 +651,7 @@ hook.Add("PopulateToolMenu", "Rareload.Menu", function()
     end)
 end)
 
--- Rebuilds every open panel, e.g. after a language change (G75) or a lock change.
+-- Rebuilds every open panel after a language change (G75).
 function Menu.Rebuild()
     wrapCache = {}
     local builders = { { Menu.toolPanel, Menu.BuildToolPanel }, { Menu.pages.server, buildServer }, { Menu.pages.client, buildClient } }
@@ -617,7 +667,6 @@ function Menu.Open(page)
 end
 
 hook.Add("RareloadLanguageChanged", "Rareload.Menu", Menu.Rebuild)
-cvars.AddChangeCallback("sv_rareload_locked", function() Menu.Rebuild() end, "Rareload.Menu")
 
 RARELOAD.UI.Command("menu", function(args)
     Menu.Open(({ server = "server", client = "client" })[args[1] or ""])
