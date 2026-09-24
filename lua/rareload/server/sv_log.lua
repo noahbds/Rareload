@@ -75,19 +75,25 @@ function Session:finish()
             "    " .. s.status .. " ", color_white, s.title .. "  " .. s.detail .. "\n")
     end
 
-    -- The listen-server host already sees the server console above.
-    local admins = {}
-    for _, ply in player.Iterator() do
-        if RARELOAD.Can(ply, "rareload_debug") and not ply:IsListenServerHost() then admins[#admins + 1] = ply end
-    end
     local ok = true
     for _, s in ipairs(self.steps) do
         if s.status == "fail" then ok = false end
     end
     remember(ok and "info" or "warn", self.kind, string.format("%s: %s (%s ms)", self.title, who, ms))
-    if #admins > 0 then
-        RARELOAD.Net.Push(admins, "debug", { title = self.title, player = who, ms = ms, steps = self.steps,
-            kind = self.kind, ok = ok })
+
+    -- Every admin gets the card, the host too (in singleplayer the player is the host). The host shares
+    -- the server's console, which printed the report above, so its client doesn't print it again.
+    local admins, host = {}, nil
+    for _, ply in player.Iterator() do
+        if RARELOAD.Can(ply, "rareload_debug") then
+            if ply:IsListenServerHost() then host = ply else admins[#admins + 1] = ply end
+        end
+    end
+    local card = { title = self.title, player = who, ms = ms, steps = self.steps, kind = self.kind, ok = ok }
+    if #admins > 0 then RARELOAD.Net.Push(admins, "debug", card) end
+    if host then
+        card.quiet = true
+        RARELOAD.Net.Push(host, "debug", card)
     end
 end
 

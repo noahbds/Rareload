@@ -8,11 +8,14 @@ local IN, OUT, STAGGER, ROWS = 0.45, 0.5, 0.045, 8
 
 local card
 
+-- `quiet`: the host, whose console already shows the server's printout.
 RARELOAD.Net.On("debug", function(r)
     local C = RARELOAD.UI.C
-    MsgC(C.accent, "[Rareload] ", color_white, string.format("%s: %s (%s ms)\n", r.title, r.player, r.ms))
-    for _, s in ipairs(r.steps or {}) do
-        MsgC(C[STATUS[s.status]] or color_white, "    " .. s.status .. " ", color_white, s.title .. "  " .. s.detail .. "\n")
+    if not r.quiet then
+        MsgC(C.accent, "[Rareload] ", color_white, string.format("%s: %s (%s ms)\n", r.title, r.player, r.ms))
+        for _, s in ipairs(r.steps or {}) do
+            MsgC(C[STATUS[s.status]] or color_white, "    " .. s.status .. " ", color_white, s.title .. "  " .. s.detail .. "\n")
+        end
     end
     card = { r = r, t0 = RealTime() }
 end)
