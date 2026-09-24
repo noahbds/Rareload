@@ -2,8 +2,8 @@
 -- Each panel has category tabs. A panel stands on the side of its model (the phantom when one shows)
 -- facing the viewer, at eye height as far as the model's height allows, sized to the model. The nearest
 -- panels are drawn up to `wdMaxDrawPerFrame` and fade out towards `wdDrawDistance`; panels of models
--- that touch form a pile showing one card at a time. The panel under the crosshair is the focus: its
--- full saved object is asked from the server once and added to its tabs.
+-- that touch form a pile showing one card at a time. The panel under the crosshair is the focus. Each
+-- object's full saved data is asked from the server once, for every panel in view, and fills its tabs.
 -- Other addons' modules show in the "other" tab, through Panels.Format(id, fn) or a generic list (§24).
 
 RARELOAD.Panels = RARELOAD.Panels or { formatters = {}, view = {}, piles = {} }
@@ -11,7 +11,10 @@ local Panels = RARELOAD.Panels
 local L, UI, Util, State = RARELOAD.L, RARELOAD.UI, RARELOAD.Util, RARELOAD.State
 local C = UI.C
 
-local W, HEAD, SIDE, ROW, TAB, VISIBLE = 560, 76, 158, 30, 32, 9
+-- Every card has the same size whatever its tab and content (rows scroll), so it never changes shape.
+-- The body fits 9 rows, and the 10 tabs an object can have.
+local W, HEAD, SIDE, ROW, TAB, VISIBLE = 560, 76, 158, 30, 27, 9
+local CARD_H = HEAD + 12 + VISIBLE * ROW
 local CLUSTER = 8            -- models closer than this (edge to edge) form a pile
 local ANIM = 0.28
 local FADE = 0.2             -- the last 20% of the draw distance fades panels out
@@ -287,12 +290,27 @@ hook.Add("RareloadLanguageChanged", "Rareload.Panels", function()
     for _, rec in ipairs(RARELOAD.World.records) do rec.cats = nil end
 end)
 
--- Asks the server once for everything saved about an object (when its panel gets the focus).
-local asked = {}
+-- Asks the server once for everything saved about an object, at most one request every 0.15 s (the
+-- server's rate limit for it). Returns true when it asked, or had to wait its turn.
+local asked, nextAsk = {}, 0
 local function askDetail(rec)
-    if rec.kind ~= "object" or State.details[rec.obj.id] or (asked[rec.obj.id] or 0) > RealTime() then return end
+    if rec.kind ~= "object" or State.details[rec.obj.id] or (asked[rec.obj.id] or 0) > RealTime() then return false end
+    if RealTime() < nextAsk then return true end
+    nextAsk = RealTime() + 0.15
     asked[rec.obj.id] = RealTime() + 5
     RARELOAD.Net.Request("object.detail", { sid = rec.sid, entryId = rec.entryId, objectId = rec.obj.id })
+    return true
+end
+
+-- Details of every panel in view are fetched, the focused one first, so cards are complete when they
+-- appear instead of gaining tabs when looked at.
+local function prefetch(focus, groups)
+    if focus and askDetail(focus.active) then return end
+    for _, g in ipairs(groups) do
+        for _, m in ipairs(g.members) do
+            if askDetail(m.rec) then return end
+        end
+    end
 end
 
 -- The tab and scroll the viewer chose for a record.
@@ -323,12 +341,6 @@ end
 
 -- Drawing ---------------------------------------------------------------------------------------------
 
-local function panelHeight(rec)
-    local cats, tabs = catsOf(rec)
-    local tab = tabs[math.Clamp(Panels.View(rec).tab, 1, math.max(#tabs, 1))]
-    local rows = tab and #cats[tab] or 0
-    return HEAD + 12 + math.max(#tabs * TAB, math.min(rows, VISIBLE) * ROW, ROW * 3)
-end
 
 local function bar(x, y, w, h, frac, col, text)
     draw.RoundedBox(4, x, y, w, h, BAR_BG)
@@ -343,7 +355,7 @@ local function drawCard(rec, focused, locked)
     view.tab = math.Clamp(view.tab, 1, math.max(#tabs, 1))
     local tab = tabs[view.tab]
     local lines = tab and cats[tab] or {}
-    local h = panelHeight(rec)
+    local h = CARD_H
     local x, y = -W / 2, -h / 2
 
     draw.RoundedBox(10, x, y, W, h, BG)
@@ -636,7 +648,7 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
         end
         st.active = math.Clamp(st.active, 1, #g.members)
         g.active = g.members[st.active].rec
-        g.h = panelHeight(g.active)
+        g.h = CARD_H
         g.pos, g.ang, g.scale, g.inside = placement(g.base.ent, eye, g.h)
         g.dist = eye:Distance(g.pos)
         local hit = hitTest(g.pos, g.ang, g.scale, g.h, eye, aim)
@@ -651,7 +663,7 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
     end
     if lock then focus = Panels.groups[lock.pile] end
     Panels.focus = focus
-    if focus then askDetail(focus.active) end
+    prefetch(focus, groups)
 
     table.sort(groups, function(a, b) return a.dist > b.dist end)   -- farthest first
     local maxDist = RARELOAD.Get(nil, "wdDrawDistance")
