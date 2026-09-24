@@ -119,12 +119,23 @@ duplicator.RegisterEntityModifier("rareload", function(_, ent, data)
     end
 end)
 
--- Colors lose their type in JSON (Vectors and Angles don't), so they are tagged (L18).
-local function tagColors(v, depth)
+-- What a saved value may be: what JSON keeps. CopyEntTable copies the entity's whole Lua table, which
+-- can hold live references (a WAC aircraft keeps its rotors, seats and engine sounds there). The saved
+-- copy stays in memory, and the generic paste merges the saved table into the new entity, so stale
+-- references would overwrite the new entity's own and point at removed entities (NULL).
+local KEEP = { string = true, number = true, boolean = true, table = true, Vector = true, Angle = true }
+
+-- A copy with only plain data, and colors tagged since they lose their type in JSON (L18). Tables
+-- nested deeper than 16 levels are dropped: entity tables can refer to themselves.
+local function plainData(v, depth)
     if IsColor(v) then return { __color = { v.r, v.g, v.b, v.a } } end
-    if not istable(v) or depth > 8 then return v end
+    if not istable(v) then return v end
+    if depth > 16 then return nil end
     local out = {}
-    for k, x in pairs(v) do out[k] = tagColors(x, depth + 1) end
+    for k, x in pairs(v) do
+        local kt = type(k)
+        if KEEP[type(x)] and (kt == "string" or kt == "number") then out[k] = plainData(x, depth + 1) end
+    end
     return out
 end
 
@@ -162,7 +173,7 @@ function Snapshot.Capture(targets)
     for _, ent in ipairs(targets) do
         if duplicator.IsAllowed(ent.ClassOverride or ent:GetClass()) then
             duplicator.StoreEntityModifier(ent, "rareload", { id = Snapshot.ID(ent), hp = ent:Health(), maxHp = ent:GetMaxHealth() })
-            ProtectedCall(function() snap.Entities[ent:EntIndex()] = tagColors(duplicator.CopyEntTable(ent), 0) end)
+            ProtectedCall(function() snap.Entities[ent:EntIndex()] = plainData(duplicator.CopyEntTable(ent), 0) end)
             -- Keyed like duplicator.Copy does, so a constraint between two targets is kept once.
             for _, c in pairs(constraint.GetTable(ent)) do
                 if IsValid(c.Constraint) then snap.Constraints[c.Constraint:GetCreationID()] = c end
@@ -170,7 +181,7 @@ function Snapshot.Capture(targets)
         end
     end
     Snapshot.PruneConstraints(snap)
-    for key, c in pairs(snap.Constraints) do snap.Constraints[key] = tagColors(c, 0) end
+    for key, c in pairs(snap.Constraints) do snap.Constraints[key] = plainData(c, 0) end
     return next(snap.Entities) and snap or nil
 end
 
