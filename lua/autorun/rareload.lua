@@ -2,7 +2,7 @@
 -- Files only register at include time; real work starts on the RareloadLoaded hook.
 
 RARELOAD = RARELOAD or {}
-RARELOAD.version = "5.0.0-dev2"
+RARELOAD.version = "5.0.0-dev3"
 RARELOAD.API = 1
 -- Bumped on every (re)load so registries can tell a reload apart from a duplicate registration.
 RARELOAD.loadGen = (RARELOAD.loadGen or 0) + 1

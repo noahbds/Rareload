@@ -327,9 +327,13 @@ local function aircraftOf(seat)
     return IsValid(a) and a or nil
 end
 
+-- Kept outside the entity's table: that table is saved with the aircraft, so a flag stored there
+-- came back on the restored aircraft and it was never patched.
+local patched = setmetatable({}, { __mode = "k" })
+
 local function patchWAC(ent)
-    if not isWAC(ent) or not isfunction(ent.receiveInput) or ent.RareloadPatchedInput then return end
-    ent.RareloadPatchedInput = true
+    if not isWAC(ent) or not isfunction(ent.receiveInput) or patched[ent] then return end
+    patched[ent] = true
     local original = ent.receiveInput
     ent.receiveInput = function(self, name, value, seatIndex)
         seatIndex = tonumber(seatIndex) or 1
@@ -363,6 +367,8 @@ Vehicles.Adapter({
         patchWAC(ent)
         ply.wac = ply.wac or {}
         if ply.wac.mouseInput == nil then ply.wac.mouseInput = false end
+        -- WAC sets this only when entering with Use, and compares it to CurTime() on every input.
+        ply.wac.lastEnter = ply.wac.lastEnter or CurTime()
         if isfunction(ent.updateSeats) then pcall(ent.updateSeats, ent) end
     end,
 })

@@ -185,7 +185,7 @@ RARELOAD.Module({
     restore = function(ply, snap, ctx)
         local max = RARELOAD.Get(nil, "maxVehicles")
         local report = Snapshot.Restore(snap, ply, { kind = "vehicles", limit = max > 0 and max or nil })
-        Snapshot.Report(ctx, "vehicles", report)
+        Snapshot.Report(ctx, "vehicles", report, true)
 
         -- Vehicles still on the map (a respawn on the same map) are reseated too (L13).
         local list = {}

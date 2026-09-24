@@ -383,8 +383,9 @@ function Snapshot.FreezePenetrating(entities)
 end
 
 -- Reports what a restore skipped, remembers what it created (for undo, E14), and freezes objects that
--- spawned inside each other one tick later, once physics has run.
-function Snapshot.Report(ctx, label, report)
+-- spawned inside each other one tick later, once physics has run. Vehicles pass `keepMoving`: their
+-- bodies overlap their own rotors, wheels and seats by design, so they would always be frozen.
+function Snapshot.Report(ctx, label, report, keepMoving)
     local created = 0
     for _, ent in pairs(report.created) do
         if IsValid(ent) then
@@ -397,6 +398,7 @@ function Snapshot.Report(ctx, label, report)
         ctx:step("warn", label, #missing .. " missing models (addon not installed?): " .. table.concat(missing, ", ", 1, math.min(3, #missing)))
     end
     if report.rejected > 0 then ctx:step("warn", label, report.rejected .. " not restored (not allowed, limit reached or no room)") end
+    if keepMoving then return created end
     ctx:nextTick(function()
         local frozen = Snapshot.FreezePenetrating(report.created)
         if frozen > 0 then ctx:step("warn", label, frozen .. " overlapping objects frozen") end
