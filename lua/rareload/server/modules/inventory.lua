@@ -20,12 +20,22 @@ local function give(ply, classes, ctx)
     end
 end
 
-local function classesFor(ply, saved)
+-- The classes to give, with the saved held weapon first: the first weapon given is the one in hand,
+-- and the list is sorted, so otherwise gmod_camera (first alphabetically) would be held for a moment
+-- and the click that respawned the player would take a screenshot with it.
+local function classesFor(ply, saved, ctx)
+    local classes = saved
     if useGlobal(ply) then
         local global = RARELOAD.Store.PData(ply, "global_inventory")
-        if istable(global) then return global end
+        if istable(global) then classes = global end
     end
-    return saved
+    local held = ctx.entry.data.activeWeapon
+    local out = {}
+    if isstring(held) and table.HasValue(classes, held) then out[1] = held end
+    for _, class in ipairs(classes) do
+        if class ~= held then out[#out + 1] = class end
+    end
+    return out
 end
 
 RARELOAD.Module({
@@ -48,7 +58,7 @@ RARELOAD.Module({
     spawn = {
         hook = "PlayerLoadout",
         fn = function(ply, d, ctx)
-            give(ply, classesFor(ply, d), ctx)
+            give(ply, classesFor(ply, d, ctx), ctx)
             return true
         end,
     },
@@ -56,7 +66,7 @@ RARELOAD.Module({
     restore = function(ply, d, ctx)
         if ctx.spawnDone.weapons then return end
         ply:StripWeapons()
-        give(ply, classesFor(ply, d), ctx)
+        give(ply, classesFor(ply, d, ctx), ctx)
     end,
 
     summary = function(d) return #d .. " weapons" end,

@@ -729,3 +729,22 @@ RARELOAD.Net.On("cmd", function(p)
     local fn = UI.commands[p.name]
     if fn then fn(p.args or {}) end
 end)
+
+-- The click that respawns a player is still held when Rareload hands their weapons back, and must not
+-- fire them (the camera would take a screenshot, the tool gun would save). Attacks are ignored after a
+-- respawn until both buttons are released, for at most 3 seconds.
+local wasAlive, blockUntil = true, 0
+hook.Add("CreateMove", "Rareload.RespawnClick", function(cmd)
+    local lp = LocalPlayer()
+    if not IsValid(lp) then return end
+    local alive = lp:Alive()
+    if alive and not wasAlive and RARELOAD.Get(lp, "enabled") then blockUntil = RealTime() + 3 end
+    wasAlive = alive
+    if RealTime() > blockUntil then return end
+    if not cmd:KeyDown(IN_ATTACK) and not cmd:KeyDown(IN_ATTACK2) then
+        blockUntil = 0
+        return
+    end
+    cmd:RemoveKey(IN_ATTACK)
+    cmd:RemoveKey(IN_ATTACK2)
+end)

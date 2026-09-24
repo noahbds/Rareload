@@ -91,7 +91,7 @@ function RARELOAD.Get(ply, key)
     return value
 end
 
--- Categories, in menu order: general, player, inventory, world, autosave, history, server, antistuck, display.
+-- Categories, in menu order: general, player, world, timing, server, antistuck, display.
 RARELOAD.Setting("enabled", { type = "bool", default = true, scope = "player", category = "general",
     priv = "rareload_restore", help = "Respawn players at their Rareload save" })
 RARELOAD.Setting("antiStuck", { type = "bool", default = true, scope = "player", category = "general",
@@ -104,11 +104,11 @@ RARELOAD.Setting("keepStates", { type = "bool", default = true, scope = "player"
     priv = "rareload_restore_states", help = "Restore noclip, godmode, notarget, frozen and flashlight" })
 RARELOAD.Setting("keepAppearance", { type = "bool", default = true, scope = "player", category = "player",
     priv = "rareload_restore_appearance", help = "Restore the player model, skin, bodygroups and colors" })
-RARELOAD.Setting("keepInventory", { type = "bool", default = true, scope = "player", category = "inventory",
+RARELOAD.Setting("keepInventory", { type = "bool", default = true, scope = "player", category = "player",
     priv = "rareload_restore_inventory", help = "Restore weapons and the active weapon" })
-RARELOAD.Setting("keepAmmo", { type = "bool", default = true, scope = "player", category = "inventory",
+RARELOAD.Setting("keepAmmo", { type = "bool", default = true, scope = "player", category = "player",
     priv = "rareload_restore_ammo", help = "Restore reserve ammo and clips" })
-RARELOAD.Setting("globalInventory", { type = "bool", default = false, scope = "player", category = "inventory",
+RARELOAD.Setting("globalInventory", { type = "bool", default = false, scope = "player", category = "player",
     priv = "rareload_global_inventory", help = "Use one inventory across all maps" })
 RARELOAD.Setting("keepEntities", { type = "bool", default = true, scope = "player", category = "world",
     priv = "rareload_restore_entities", help = "Save and restore the props and entities you own" })
@@ -118,16 +118,16 @@ RARELOAD.Setting("keepVehicles", { type = "bool", default = true, scope = "playe
     priv = "rareload_restore_vehicles", help = "Save and restore your vehicles and put you back in your seat" })
 RARELOAD.Setting("overwriteModified", { type = "bool", default = false, scope = "player", category = "world",
     help = "On save, overwrite objects that are already saved (off keeps their saved state)" })
-RARELOAD.Setting("autoSave", { type = "bool", default = false, scope = "player", category = "autosave",
+RARELOAD.Setting("autoSave", { type = "bool", default = false, scope = "player", category = "general",
     priv = "rareload_save", help = "Save automatically when something changes" })
 RARELOAD.Setting("autoSaveInterval", { type = "int", default = 5, min = 1, max = 600, scope = "player",
-    category = "autosave", help = "Autosave: minimum seconds between two saves" })
+    category = "timing", help = "Autosave: minimum seconds between two saves" })
 RARELOAD.Setting("autoSaveAngleThreshold", { type = "float", default = 10, min = 1, max = 180, scope = "player",
-    category = "autosave", help = "Autosave: degrees of view change that count as a change" })
+    category = "timing", help = "Autosave: degrees of view change that count as a change" })
 RARELOAD.Setting("historySize", { type = "int", default = 125, min = 1, max = 1000, scope = "player",
-    category = "history", capBy = "historySizeMax", help = "How many saves each player keeps per map" })
+    category = "timing", capBy = "historySizeMax", help = "How many saves each player keeps per map" })
 RARELOAD.Setting("historySizeMax", { type = "int", default = 150, min = 1, max = 1000, scope = "server",
-    category = "history", help = "Upper limit for historySize, so players can't fill the disk" })
+    category = "timing", help = "Upper limit for historySize, so players can't fill the disk" })
 RARELOAD.Setting("enableInAllGamemodes", { type = "bool", default = false, scope = "server", category = "server",
     help = "Also run Rareload in gamemodes not derived from Sandbox (D19)" })
 RARELOAD.Setting("debug", { type = "bool", default = false, scope = "server", category = "server",

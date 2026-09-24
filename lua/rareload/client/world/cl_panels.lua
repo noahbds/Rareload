@@ -1,5 +1,5 @@
 -- Info panels over saved players and objects (REWRITE_PLAN.md §21.7, F30, F33, F34).
--- Each panel has category tabs. A panel stands on the near side of its model at eye height, facing
+-- Each panel has category tabs. A panel sits just above its model (the phantom when one shows), facing
 -- the viewer, sized to the model. The nearest panels are drawn up to `wdMaxDrawPerFrame`; panels of
 -- models that touch form a pile showing one card at a time. The panel under the crosshair is the
 -- focus: its full saved object is asked from the server once and added to its tabs.
@@ -12,7 +12,6 @@ local C = UI.C
 
 local W, HEAD, SIDE, ROW, TAB, VISIBLE = 560, 76, 158, 30, 32, 9
 local CLUSTER = 8            -- models closer than this (edge to edge) form a pile
-local EYE_BAND = 150
 local ANIM = 0.28
 
 local CATS = {
@@ -439,31 +438,23 @@ end
 -- Placement -------------------------------------------------------------------------------------------
 
 -- The entity a record's panel is placed by: the live object, else its phantom.
+-- The model a record's panel sits on: its phantom when one shows (the saved state), else the live object.
 local function anchorEnt(rec)
-    return RARELOAD.World.LiveOf(rec) or RARELOAD.Phantoms.Get(rec.key)
+    return RARELOAD.Phantoms.Get(rec.key) or RARELOAD.World.LiveOf(rec)
 end
 
--- Draw position, angle and scale of a panel for `ent`: on the near side of the model (measured
--- horizontally, so a tall model doesn't push it forward), at eye height within a band around the
--- model, facing the viewer, as wide as the model and never wider than 60% of the view distance.
-local function placement(ent, eye)
-    local mn, mx = ent:OBBMins(), ent:OBBMaxs()
-    local hx, hy, hz = (mx.x - mn.x) / 2, (mx.y - mn.y) / 2, (mx.z - mn.z) / 2
-    local center = ent:LocalToWorld((mn + mx) / 2)
-    local dx, dy = center.x - eye.x, center.y - eye.y
-    local d = math.sqrt(dx * dx + dy * dy)
-    local dirx, diry = d > 1 and dx / d or 1, d > 1 and dy / d or 0
-    local ang = ent:GetAngles()
-    local f, r, u = ang:Forward(), ang:Right(), ang:Up()
-    local reach = math.abs(dirx * f.x + diry * f.y) * hx + math.abs(dirx * r.x + diry * r.y) * hy + math.abs(dirx * u.x + diry * u.y) * hz
-    local near = math.max(d - reach - 6, math.min(32, d))
-    local band = math.max(EYE_BAND, hz * 2)
-    local pos = Vector(eye.x + dirx * near, eye.y + diry * near, math.Clamp(eye.z, center.z - band, center.z + band))
-
-    local worldW = math.Clamp(math.max(hx, hy, hz) * 2 * 1.15, 42, 130)
-    worldW = math.min(worldW, math.max(near, 1) * 0.6)
+-- Draw position, angle and scale of a panel `h` pixels tall for `ent`: just above the model, centred
+-- on it, so it stays attached as the viewer moves; turned to face the viewer; as wide as the model,
+-- and never wider than 60% of the distance to it.
+local function placement(ent, eye, h)
+    local mn, mx = ent:WorldSpaceAABB()
+    local size = math.max(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z)
+    local top = Vector((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, mx.z)
+    local worldW = math.min(math.Clamp(size * 1.15, 42, 130), math.max(eye:Distance(top), 1) * 0.6)
+    local scale = worldW / W
+    local pos = top + Vector(0, 0, 8 + h * scale / 2)
     local facing = (pos - eye):Angle()
-    return pos, Angle(0, facing.y - 90, 90), worldW / W
+    return pos, Angle(0, facing.y - 90, 90), scale
 end
 
 -- Does the aim ray hit the panel's rectangle? Returns the distance to the panel.
@@ -532,6 +523,15 @@ end
 
 -- The member of a pile the viewer looks at most (a small bonus keeps last frame's choice, and
 -- bigger models win ties), so the pile sits by what the player is facing.
+-- The biggest model of a pile, which the pile's panel sits on (stable while the viewer looks around).
+local function baseOf(g)
+    local best = g.members[1]
+    for _, m in ipairs(g.members) do
+        if m.radius + m.half > best.radius + best.half then best = m end
+    end
+    return best
+end
+
 local function anchorOf(g, eye, aim)
     local st = Panels.piles[g.key]
     local best, score = g.members[1], -2
@@ -606,6 +606,7 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
         Panels.groups[g.key] = g
         local st = pileState(g)
         local anchor = anchorOf(g, eye, aim)
+        g.base = baseOf(g)
         st.anchor = anchor.rec.key
         local lockedHere = lock and lock.pile == g.key
         if not lockedHere then
@@ -614,7 +615,7 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
         st.active = math.Clamp(st.active, 1, #g.members)
         g.active = g.members[st.active].rec
         g.h = panelHeight(g.active)
-        g.pos, g.ang, g.scale = placement(anchor.ent, eye)
+        g.pos, g.ang, g.scale = placement(g.base.ent, eye, g.h)
         g.dist = eye:Distance(g.pos)
         local hit = hitTest(g.pos, g.ang, g.scale, g.h, eye, aim)
         if hit and g.dist < interact and (not focusDist or g.dist < focusDist) then focus, focusDist = g, g.dist end
