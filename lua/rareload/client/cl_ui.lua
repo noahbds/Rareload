@@ -303,7 +303,7 @@ function UI.Button(parent, text, onClick, opts)
         surface.SetFont("Rareload.BodyB")
         local tw = surface.GetTextSize(self.label)
         local is = UI.IconSize(sc(16))
-        local iw = self.icon and is + sc(7) or 0
+        local iw = self.icon and is + (self.label ~= "" and sc(7) or 0) or 0   -- no gap on an icon-only button
         local x = math.floor((w - tw - iw) / 2)
         if self.icon then UI.DrawIcon(self.icon, x, math.floor((h - is) / 2), is, self:IsEnabled() and color_white or C.textOff) end
         draw.SimpleText(self.label, "Rareload.BodyB", x + iw, math.floor(h / 2), textCol, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
@@ -318,7 +318,7 @@ function UI.Button(parent, text, onClick, opts)
     end
     function b:SizeToLabel(pad)
         surface.SetFont("Rareload.BodyB")
-        self:SetWide(surface.GetTextSize(self.label) + (self.icon and UI.IconSize(sc(16)) + sc(7) or 0) + sc(pad or 28))
+        self:SetWide(surface.GetTextSize(self.label) + (self.icon and UI.IconSize(sc(16)) + (self.label ~= "" and sc(7) or 0) or 0) + sc(pad or 28))
     end
     return b
 end

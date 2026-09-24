@@ -39,13 +39,16 @@ end
 
 -- The coloured editor: Ace (the code editor v4 used) in a DHTML page, with JSON colours, folding,
 -- bracket matching, search (Ctrl+F), Ctrl+S to save, the error line marked as you type and a count of
--- changed keys. Ace comes from cdnjs; without internet the editor falls back to a plain text box.
+-- changed keys. Ace comes from cdnjs. The editor falls back to a plain text box when Ace can't load (no
+-- internet), on Awesomium (Chromium 17, some Linux setups; Ace needs CEF), or when Ace loaded but
+-- drew nothing. GMod runs CEF 86 on Windows and 137 through GModPatchTool on macOS/Linux (wiki: Chromium
+-- Web Renderer), so the page sticks to what CEF 86 supports.
 local ACE = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/"
 local EDITOR_HTML = [[
 <!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
   html, body { margin: 0; height: 100%; background: #121419; overflow: hidden; }
-  #editor { position: absolute; inset: 0; font-size: 14px; }
+  #editor { position: absolute; top: 0; left: 0; right: 0; bottom: 0; font-size: 14px; }
   .ace_editor, .ace_gutter { background: #121419 !important; }
   .ace_gutter { color: #5c616e !important; }
   .ace_active-line, .ace_gutter-active-line { background: #1c1f27 !important; }
@@ -63,14 +66,23 @@ if (window.ace) {
   editor.commands.addCommand({ name: "save", bindKey: { win: "Ctrl-S", mac: "Command-S" },
     exec: function () { rareload.save(editor.getValue()); } });
   editor.session.on("change", function () { clearTimeout(timer); timer = setTimeout(check, 200); });
+  // The page can be laid out before the panel has its size; Ace must measure again.
+  window.addEventListener("resize", function () { editor.resize(); });
 }
 var push = function (part) { parts.push(part); };
 var load = function (isOriginal) {
   var text = parts.join(""); parts = [];
   if (isOriginal) { try { original = JSON.parse(text); } catch (e) { original = {}; } }
   editor.session.setValue(text);
+  editor.resize(true);
   editor.focus();
   check();
+  // Did Ace draw anything? Lua switches to the plain text box if not, and logs what it saw.
+  setTimeout(function () {
+    var box = document.getElementById("editor").getBoundingClientRect();
+    rareload.rendered(document.querySelectorAll(".ace_line").length, Math.round(box.width), Math.round(box.height),
+      navigator.userAgent);
+  }, 800);
 };
 var format = function () {
   try { editor.session.setValue(JSON.stringify(JSON.parse(editor.getValue()), null, 2)); } catch (e) {}
@@ -103,8 +115,11 @@ var check = function () {
     rareload.status(false, at ? at.row + 1 : 0, at ? at.col + 1 : 0, msg, 0);
   }
 };
-// Tells Lua the page is up once its callbacks exist.
-(function ready() { if (window.rareload && rareload.ready) rareload.ready(!!window.ace); else setTimeout(ready, 50); })();
+// Tells Lua the page is up once its callbacks exist (Lua adds them when the document is ready).
+var IS_AWESOMIUM = navigator.userAgent.toLowerCase().indexOf("awesomium") !== -1;
+(function ready() {
+  if (window.rareload && rareload.ready) rareload.ready(!!window.ace && !IS_AWESOMIUM); else setTimeout(ready, 50);
+})();
 </script></body></html>]]
 
 -- Feeds `text` to the page in pieces, never cutting a UTF-8 character, then loads it.
@@ -124,26 +139,40 @@ end
 local function aceEditor(parent, json, onStatus, onSave, onReady, onFail)
     local html = vgui.Create("DHTML", parent)
     html:Dock(FILL)
-    local api, pending, done = {}, nil, false
-    local function fail()
-        if done then return end
-        done = true
+    local api, pending, started, failed = {}, nil, false, false
+    local function fail(why)
+        if failed then return end
+        failed = true
+        if why then MsgC(UI.C.warn, "[Rareload] ", color_white, "JSON editor: " .. why .. "; using the plain text box\n") end
         html:Remove()
         onFail()
     end
-    html:AddFunction("rareload", "ready", function(ok)
-        if done then return end
-        if not ok then return fail() end
-        done = true
-        sendText(html, json, true)
-        onReady(api)
-    end)
-    html:AddFunction("rareload", "status", onStatus)
-    html:AddFunction("rareload", "save", onSave)
-    html:AddFunction("rareload", "text", function(text)
-        if pending then pending(text) end
-        pending = nil
-    end)
+
+    -- AddFunction only works once the document has loaded (wiki: DHTML:AddFunction), and queued
+    -- Javascript can run too early while IsLoading lags (GMod issue #4541), so everything starts here.
+    local ready = html.OnDocumentReady
+    html.OnDocumentReady = function(self, url)
+        ready(self, url)
+        if self.rareloadCallbacks then return end
+        self.rareloadCallbacks = true
+        self:AddFunction("rareload", "ready", function(ok)
+            if started or failed then return end
+            if not ok then return fail("Ace couldn't load (no internet, or an old web engine)") end
+            started = true
+            sendText(self, json, true)
+            onReady(api)
+        end)
+        self:AddFunction("rareload", "rendered", function(lines, w, h, agent)
+            if failed or (tonumber(lines) or 0) > 0 and (tonumber(w) or 0) > 0 and (tonumber(h) or 0) > 0 then return end
+            fail(string.format("Ace drew nothing (%s lines, %sx%s px, %s)", tostring(lines), tostring(w), tostring(h), tostring(agent)))
+        end)
+        self:AddFunction("rareload", "status", onStatus)
+        self:AddFunction("rareload", "save", onSave)
+        self:AddFunction("rareload", "text", function(text)
+            if pending then pending(text) end
+            pending = nil
+        end)
+    end
     function api.get(fn)
         pending = fn
         html:QueueJavascript("rareload.text(editor.getValue())")
@@ -152,7 +181,9 @@ local function aceEditor(parent, json, onStatus, onSave, onReady, onFail)
     function api.format() html:QueueJavascript("format()") end
 
     html:SetHTML(EDITOR_HTML)
-    timer.Simple(6, function() if IsValid(html) and not done then fail() end end)   -- the CDN didn't answer
+    timer.Simple(6, function()   -- the page or the CDN didn't answer
+        if IsValid(html) and not started then fail("the page didn't answer in 6 s") end
+    end)
     return html
 end
 
@@ -161,6 +192,7 @@ local function plainEditor(parent, json, original, onStatus)
     local text = UI.TextEntry(parent, nil, true)
     text:Dock(FILL)
     text:SetValue(json)
+    parent:InvalidateLayout(true)   -- it replaces the removed editor after the window was laid out
     local function check()
         local ok, line, col, why = Util.CheckJSON(text:GetValue())
         local changed = 0
