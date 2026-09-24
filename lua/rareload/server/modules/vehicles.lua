@@ -195,7 +195,8 @@ RARELOAD.Module({
             local id = ent.RareloadID
             local p0 = def and def.PhysicsObjects and (def.PhysicsObjects[0] or def.PhysicsObjects["0"])
             list[#list + 1] = {
-                ent = ent, adapter = adapter, runtime = snap.runtime and snap.runtime[id],
+                -- An all-digit ID comes back from JSON as a number key.
+                ent = ent, adapter = adapter, runtime = snap.runtime and (snap.runtime[id] or snap.runtime[tonumber(id)]),
                 seat = snap.seat and snap.seat.vehicle == id and snap.seat.seat or nil,
                 pos = def and def.Pos, ang = def and def.Angle, frozen = p0 and p0.Frozen,
             }

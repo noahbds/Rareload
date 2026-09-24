@@ -136,7 +136,11 @@ end
 local function phantomState(rec, origin)
     if rec.pos:DistToSqr(origin) > CULL * CULL then return false end
     if rec.kind == "player" then
-        if rec.preview then return true, World.SpotFree(rec.pos) and TINT.free or TINT.blocked end
+        if rec.preview then
+            -- Standing on the spot would put the camera inside the phantom.
+            if LocalPlayer():GetPos():DistToSqr(rec.pos) < AWAY * AWAY then return false end
+            return true, World.SpotFree(rec.pos) and TINT.free or TINT.blocked
+        end
         local owner = World.OwnerOf(rec)
         local away = not IsValid(owner) or owner:GetPos():DistToSqr(rec.pos) > AWAY * AWAY
         return away or RARELOAD.Highlight.IsActive("player", rec.key), TINT.player

@@ -689,7 +689,7 @@ function UI.Window(opts)
     -- Drag from anywhere in the header, not only the top 24 pixels.
     frame.OnMousePressed = function(self)
         local x, y = self:ScreenToLocal(gui.MouseX(), gui.MouseY())
-        if x > self:GetWide() - sc(20) and y > self:GetTall() - sc(20) then
+        if self:GetSizable() and x > self:GetWide() - sc(20) and y > self:GetTall() - sc(20) then
             self.Sizing = { gui.MouseX() - self:GetWide(), gui.MouseY() - self:GetTall() }
             self:MouseCapture(true)
         elseif y < headH then

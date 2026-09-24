@@ -58,7 +58,10 @@ timer.Create("Rareload.Autosave", 1, 0, function()
             local d = dirty[ply]
             if d and now - (lastSave[ply] or 0) >= RARELOAD.Get(ply, "autoSaveInterval") and safeToSave(ply) then
                 dirty[ply], lastSave[ply] = nil, now
-                local _, result = RARELOAD.Pipeline.Save(ply, { only = d, reason = "auto", silent = true })
+                -- Only the changed modules are saved over the current save; without one, everything is,
+                -- or the first autosave (just the spawn loadout) would have no position.
+                local only = RARELOAD.History.Active(ply) and d or nil
+                local _, result = RARELOAD.Pipeline.Save(ply, { only = only, reason = "auto", silent = true })
                 if result == "saved" then RARELOAD.Net.Push(ply, "autosave", {}) end   -- the tool screen's bar
             end
         end

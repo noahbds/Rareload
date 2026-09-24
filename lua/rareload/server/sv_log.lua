@@ -59,6 +59,7 @@ RARELOAD.Log = setmetatable({}, {
 
 local Session = {}
 Session.__index = Session
+local cardCount = 0
 
 -- `ms`: how long the step took, when it was timed.
 function Session:step(status, title, detail, ms)
@@ -93,10 +94,14 @@ function Session:finish(info)
     end
     local card = { title = self.title, player = who, ms = ms, steps = self.steps, kind = self.kind, ok = ok,
         info = info or {}, map = game.GetMap() }
-    if #admins > 0 then RARELOAD.Net.Push(admins, "debug", card) end
+    -- Each card has its own key: cards finished in the same tick (a cleanup saves every player) would
+    -- otherwise replace each other before being sent.
+    cardCount = cardCount + 1
+    local opts = { key = "debug:" .. cardCount }
+    if #admins > 0 then RARELOAD.Net.Push(admins, "debug", card, opts) end
     if host then
         card.quiet = true
-        RARELOAD.Net.Push(host, "debug", card)
+        RARELOAD.Net.Push(host, "debug", card, opts)
     end
 end
 

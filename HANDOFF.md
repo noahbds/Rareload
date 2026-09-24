@@ -72,20 +72,33 @@ conversation doesn't have. `*.md` files are not shipped with the addon (see `add
 - In singleplayer `gmod_camera`'s attack runs `jpeg`: the held weapon is given first, and attack
   buttons are ignored after a respawn until released.
 
-## Last changes (RC pass, 2026-09-25) — to verify in game
+## RC1 pass (2026-09-25) — verified in game on Windows
 
-1. Weapons get their normal starting ammo when ammo isn't restored ("Keep ammo" off, or a timeline
-   restore of weapons only).
-2. World panel details are cached per player + save + object and refreshed when that save changes.
-3. Notes and player names that look like `[1 2 3]` stay text (client and server).
-4. Manual saves have a 1 s cooldown ("Wait a moment before saving again").
-5. "Delete shown" in the Objects window is one request (`object.deleteMany`).
-6. Timeline restore while dead is refused; tool left click on the sky is refused; duplicate
-   "Restoring…" notice removed; tool reload help text clarified.
+Starting ammo when ammo isn't restored, the world panel detail cache, `[1 2 3]` notes/names, the 1 s
+manual save cooldown, `object.deleteMany`, restore refused while dead, and the redesigned report cards.
 
-Also still unconfirmed in game: the JSON editor showing in GMod's browser (it now falls back to a plain
-text box and prints `[Rareload] JSON editor: …` when Ace doesn't draw), and the look of the redesigned
-report cards.
+## RC2 fixes (2026-09-25, not committed yet)
+
+- `cl_state`: `forgetDetails` was called before its `local function` (nil global): every
+  `history.objects` push errored on the client.
+- `sh_net`: `ready`/queues/rate limits are kept on `Net._state`, so `rareload dev reload` (or a
+  refresh of `sh_net`) no longer silently stops every push to connected players. `Net.Handle` only
+  errors when a *different* file registers an opcode, so Lua auto-refresh of `sv_history`,
+  `sh_config` or `sv_antistuck` no longer breaks the running server (`refresh` was left nil).
+- Report cards: one net key per card (cards finished in the same tick replaced each other); a
+  player named like `[1 2 3]` no longer drops the card.
+- World display: the timeline preview hides your own phantom while you stand on the spot (the
+  camera was inside it: giant glasses and a black box). Unbreakable props (health 0 of 1) show no
+  health bar.
+- Autosave with no current save does a full save (the first one had only the spawn loadout).
+- `AntiStuck.Configure` with an unknown action no longer wipes the cached method order.
+- All-digit object IDs (numeric JSON keys) now find their vehicle runtime / NPC AI in the vehicle
+  restore and object info.
+- A Confirm dialog can't be resized from its corner; `rareload history` prints "No. N";
+  `rareload history restore` while dead says so.
+
+Still unconfirmed in game: the JSON editor in GMod's browser (it falls back to a plain text box and
+prints `[Rareload] JSON editor: …` when Ace doesn't draw). Version is still `5.0.0-rc.1`.
 
 ## Next steps
 

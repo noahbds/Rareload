@@ -22,6 +22,9 @@ end
 -- `quiet`: the host, whose console already shows the server's printout.
 RARELOAD.Net.On("debug", function(r)
     local C = UI.C
+    -- A player named like "[1 2 3]" arrives as a Vector; show the name as it was typed.
+    if isvector(r.player) then r.player = string.format("[%g %g %g]", r.player.x, r.player.y, r.player.z) end
+    if isangle(r.player) then r.player = string.format("{%g %g %g}", r.player.p, r.player.y, r.player.r) end
     if not r.quiet then
         MsgC(C.accent, "[Rareload] ", color_white, string.format("%s: %s (%s ms)\n", r.title, r.player, r.ms))
         for _, s in ipairs(r.steps or {}) do

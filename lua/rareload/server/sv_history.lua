@@ -206,14 +206,16 @@ local function objectInfo(def, kind, snap)
     local phys = istable(def.PhysicsObjects) and (def.PhysicsObjects[0] or def.PhysicsObjects["0"]) or {}
     local rl = istable(mods.rareload) and mods.rareload or {}
     local id = RARELOAD.Snapshot.DefID(def)
-    local runtime = id and istable(snap.runtime) and snap.runtime[id] or nil
-    local ai = id and istable(snap.ai) and snap.ai[id] or nil
+    -- An all-digit ID comes back from JSON as a number key.
+    local runtime = id and istable(snap.runtime) and (snap.runtime[id] or snap.runtime[tonumber(id)]) or nil
+    local ai = id and istable(snap.ai) and (snap.ai[id] or snap.ai[tonumber(id)]) or nil
     return {
         id = id, kind = kind, class = def.Class, model = def.Model, skin = def.Skin,
         pos = isvector(def.Pos) and RARELOAD.Util.Vec(def.Pos) or nil,
         ang = isangle(def.Angle) and RARELOAD.Util.Ang(def.Angle) or nil,
         frozen = phys.Frozen or nil, nograv = phys.NoGrav or nil,
-        hp = rl.hp, maxHp = rl.maxHp, scale = def.ModelScale, bodygroups = def.BodyG,
+        -- Unbreakable props report 0 health out of 1: that isn't health worth showing.
+        hp = rl.hp, maxHp = (tonumber(rl.hp) or 0) > 0 and rl.maxHp or nil, scale = def.ModelScale, bodygroups = def.BodyG,
         material = istable(mods.material) and mods.material.MaterialOverride or nil,
         color = istable(mods.colour) and mods.colour.Color or nil,   -- tagged { __color = { r, g, b, a } }
         base = runtime and runtime.adapter, parts = runtime and runtime.parts,
@@ -248,8 +250,8 @@ end
 function History.ObjectDetail(entry, objectId)
     return eachObject(entry, function(def, _, snap)
         if RARELOAD.Snapshot.DefID(def) == objectId then
-            return { def = def, ai = istable(snap.ai) and snap.ai[objectId] or nil,
-                runtime = istable(snap.runtime) and snap.runtime[objectId] or nil }
+            return { def = def, ai = istable(snap.ai) and (snap.ai[objectId] or snap.ai[tonumber(objectId)]) or nil,
+                runtime = istable(snap.runtime) and (snap.runtime[objectId] or snap.runtime[tonumber(objectId)]) or nil }
         end
     end)
 end

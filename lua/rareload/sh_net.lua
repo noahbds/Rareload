@@ -58,19 +58,24 @@ if SERVER then
 
     Net._handlers = Net._handlers or {}
     local handlers = Net._handlers
-    local ready = setmetatable({}, { __mode = "k" })
-    local queues = setmetatable({}, { __mode = "k" })     -- ply -> transfers waiting to be sent
-    local inflight = setmetatable({}, { __mode = "k" })   -- ply -> transferId -> { bytes, t }
-    local lastCall = setmetatable({}, { __mode = "k" })   -- ply -> op -> CurTime of last accepted call
-    local nextId = 0
+    -- Kept across a Lua reload: clients say they're ready only once, so a reload that forgot it
+    -- would stop every push to the players already in game.
+    local function weak() return setmetatable({}, { __mode = "k" }) end
+    Net._state = Net._state or { ready = weak(), queues = weak(), inflight = weak(), lastCall = weak() }
+    local ready = Net._state.ready
+    local queues = Net._state.queues       -- ply -> transfers waiting to be sent
+    local inflight = Net._state.inflight   -- ply -> transferId -> { bytes, t }
+    local lastCall = Net._state.lastCall   -- ply -> op -> CurTime of last accepted call
+    local nextId = Net._state.nextId or 0
 
     -- `def` = { priv?, rate?, args? (schema), fn(ply, args) }.
+    -- The same file registering again is a Lua auto-refresh of that file, not a duplicate.
     function Net.Handle(op, def)
         local prev = handlers[op]
-        if prev and prev.gen == RARELOAD.loadGen then
+        def.gen, def.src = RARELOAD.loadGen, debug.getinfo(2, "S").short_src
+        if prev and prev.gen == def.gen and prev.src ~= def.src then
             error("[Rareload] net opcode registered twice: " .. op, 2)   -- L31
         end
-        def.gen = RARELOAD.loadGen
         handlers[op] = def
     end
 
@@ -86,6 +91,7 @@ if SERVER then
             end
         end
         nextId = nextId % 2147483647 + 1
+        Net._state.nextId = nextId
         local t = { id = nextId, topic = topic, key = key, chunks = chunks, next = 1 }
         -- An urgent push (a toast) goes ahead of everything that hasn't started sending.
         local at = #queue + 1

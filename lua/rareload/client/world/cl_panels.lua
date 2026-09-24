@@ -222,7 +222,7 @@ local function objectCats(rec)
     add("state", L("field.frozen"), yesNo(o.frozen))
     add("state", L("field.gravity"), yesNo(not o.nograv))
     if o.maxHp and o.maxHp > 0 then add("state", L("field.saved_health"), (o.hp or 0) .. " / " .. o.maxHp, UI.HealthColor(o.hp, o.maxHp)) end
-    if live and live:GetMaxHealth() > 0 then add("state", L("field.live_health"), live:Health() .. " / " .. live:GetMaxHealth()) end
+    if live and live:Health() > 0 and live:GetMaxHealth() > 0 then add("state", L("field.live_health"), live:Health() .. " / " .. live:GetMaxHealth()) end
     if o.npcState then add("state", L("field.npc_state"), L("world.npc_state." .. (STATE_NAMES[o.npcState] or "none")), C.npc) end
     if live and live.GetDriver and IsValid(live:GetDriver()) then add("state", L("field.driver"), live:GetDriver():Nick(), C.vehicle) end
 

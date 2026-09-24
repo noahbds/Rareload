@@ -152,7 +152,7 @@ Cmd.Register("history", {
         local target = targetOf(ply, args, reply)
         if not target then return end
         for _, row in ipairs(RARELOAD.History.Rows(target)) do
-            reply(string.format("  %s%s #%-4d %s  %-10s %s%s", row.active and "*" or " ", row.pinned and "P" or " ",
+            reply(string.format("  %s%s No. %-4d %s  %-10s %s%s", row.active and "*" or " ", row.pinned and "P" or " ",
                 row.id, os.date("%Y-%m-%d %H:%M:%S", row.time), row.reason, table.concat(row.modules, ","),
                 row.note and ("  \"" .. row.note .. "\"") or ""))
         end
@@ -163,6 +163,7 @@ Cmd.Register("history restore", {
     priv = "rareload_restore", usage = "<id> [position,health,inventory,ammo,appearance,states,world]",
     help = "Restore a save now (all components by default)",
     fn = playerOnly(function(ply, args, reply)
+        if not ply:Alive() then return reply("Respawn first, then restore the save.") end
         result(reply, RARELOAD.History.Restore(ply, tonumber(args[1]), RARELOAD.History.ParseComps(args[2])), "restore")
     end),
 })

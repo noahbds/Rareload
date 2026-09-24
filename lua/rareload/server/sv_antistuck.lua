@@ -165,6 +165,7 @@ AntiStuck.Method({ id = "emergency", fn = emergency })
 
 -- Which methods run and in which order, saved for every map: { order = { ids }, disabled = { [id] = true } }.
 local CONFIG = "antistuck"
+local ACTIONS = { enable = true, disable = true, only = true, up = true, down = true, reset = true }
 
 local function config()
     local c = RARELOAD.Store.Load(CONFIG)
@@ -194,6 +195,8 @@ function AntiStuck.Configure(action, id)
     local list, cfg = AntiStuck.List(), config()
     local known
     for _, m in ipairs(list) do if m.id == id then known = m end end
+    -- Checked before `cfg` (the cached document) is changed.
+    if not ACTIONS[action] then return false, "unknown action" end
     if action ~= "reset" and not known then return false, "unknown method" end
     cfg.disabled, cfg.order = cfg.disabled or {}, {}
     if action == "reset" then
@@ -207,8 +210,6 @@ function AntiStuck.Configure(action, id)
             local j = i + (action == "up" and -1 or 1)
             if m.id == id and list[j] then list[i], list[j] = list[j], list[i] break end
         end
-    else
-        return false, "unknown action"
     end
     if action ~= "reset" then
         for _, m in ipairs(list) do cfg.order[#cfg.order + 1] = m.id end

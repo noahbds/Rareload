@@ -25,6 +25,18 @@ local function asText(v)
     return v
 end
 
+-- Details are kept per player, save and object: the same object differs between two saves, and a
+-- player's respawn point (the world display feed, no save number) changes with every save.
+function State.DetailKey(sid, entryId, objectId)
+    return tostring(sid or "") .. "|" .. tostring(entryId or "") .. "|" .. tostring(objectId)
+end
+
+local function forgetDetails(prefix)
+    for key in pairs(State.details) do
+        if string.StartsWith(key, prefix) then State.details[key] = nil end
+    end
+end
+
 RARELOAD.Net.On("history", function(p)
     for _, row in ipairs(p.rows or {}) do row.note = asText(row.note) end
     State.history = { rows = p.rows or {}, reload = p.reload or {}, undo = p.undo == true, loaded = true }
@@ -40,18 +52,6 @@ end)
 RARELOAD.Net.On("object.def", function(p)
     changed("def", p)
 end)
-
--- Details are kept per player, save and object: the same object differs between two saves, and a
--- player's respawn point (the world display feed, no save number) changes with every save.
-function State.DetailKey(sid, entryId, objectId)
-    return tostring(sid or "") .. "|" .. tostring(entryId or "") .. "|" .. tostring(objectId)
-end
-
-local function forgetDetails(prefix)
-    for key in pairs(State.details) do
-        if string.StartsWith(key, prefix) then State.details[key] = nil end
-    end
-end
 
 RARELOAD.Net.On("saves", function(p)
     if p.save then p.save.nick = asText(p.save.nick) end
