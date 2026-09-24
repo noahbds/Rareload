@@ -180,7 +180,7 @@ function History.ReloadConfig(ply)
     return cfg
 end
 
--- Returns a toast key describing the outcome.
+-- Returns a toast key describing the outcome, and the number of the save it's about.
 function History.ReloadKey(ply)
     local cfg = History.ReloadConfig(ply)
     local comps = cfg.comps and next(cfg.comps) and cfg.comps or nil
@@ -189,12 +189,12 @@ function History.ReloadKey(ply)
 
     if cfg.mode == "restore_current" then
         History.Restore(ply, active.id, comps)
-        return "toast.reload.restored"
+        return "toast.reload.restored", active.id
     end
     if not previous then return "toast.reload.no_previous" end
     if cfg.mode == "restore_previous" then History.Restore(ply, previous.id, comps) end
     History.Activate(ply, previous.id)   -- walking back one save at a time
-    return cfg.mode == "restore_previous" and "toast.reload.restored" or "toast.reload.previous"
+    return cfg.mode == "restore_previous" and "toast.reload.restored" or "toast.reload.previous", previous.id
 end
 
 -- Objects inside saves (F29) ----------------------------------------------------------------------
@@ -392,8 +392,8 @@ History.ParseComps = parseComps
 
 local function handle(op, priv, args, fn)
     RARELOAD.Net.Handle(op, { priv = priv, rate = 0.2, args = args, fn = function(ply, a)
-        local key = fn(ply, a)
-        if key then RARELOAD.Toast(ply, key) end
+        local key, args = fn(ply, a)
+        if key then RARELOAD.Toast(ply, key, args) end
         pushRows(ply)
     end })
 end
@@ -404,10 +404,10 @@ handle("history.note", "rareload_restore", { id = "uint", note = "string:256" },
 handle("history.delete", "rareload_restore", { id = "uint" }, function(ply, a) History.Delete(ply, a.id) end)
 handle("history.clear", "rareload_restore", {}, function(ply) History.Clear(ply) end)
 handle("history.activate", "rareload_restore", { id = "uint" }, function(ply, a)
-    return History.Activate(ply, a.id) and "toast.activated" or nil
+    if History.Activate(ply, a.id) then return "toast.activated", { a.id } end
 end)
 handle("history.restore", "rareload_restore", { id = "uint", comps = "string:128?" }, function(ply, a)
-    return History.Restore(ply, a.id, parseComps(a.comps)) and "toast.restored" or nil
+    if History.Restore(ply, a.id, parseComps(a.comps)) then return "toast.restored", { a.id } end
 end)
 handle("history.undo", "rareload_restore", {}, function(ply)
     return History.Undo(ply) and "toast.undone" or "toast.nothing_to_undo"

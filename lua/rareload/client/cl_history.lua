@@ -20,6 +20,14 @@ local function objectsOf(row)
     return (i.entities or 0) + (i.npcs or 0) + (i.vehicles or 0)
 end
 
+-- A save's number ("#3"), the same accent as on the debug report cards. Returns its width.
+local function drawNumber(id, font, x, y)
+    local text = "#" .. tostring(id)
+    surface.SetFont(font)
+    draw.SimpleText(text, font, x, y, C.accentHi)
+    return (surface.GetTextSize(text))
+end
+
 -- Everything a search can match: note, type, held weapon, model, vehicle, position, dates.
 local function searchText(row)
     local i = row.info or {}
@@ -106,7 +114,8 @@ local function buildRow(parent, row, isSelected, onClick)
         if bar then draw.RoundedBox(sc(3), 0, sc(9), sc(3), h - sc(18), bar) end
 
         local pad, isz = sc(14), UI.IconSize(sc(16))
-        draw.SimpleText(UI.TimeAgo(row.time), "Rareload.BodyB", pad, sc(10), C.text)
+        local nw = drawNumber(row.id, "Rareload.BodyB", pad, sc(10))
+        draw.SimpleText(UI.TimeAgo(row.time), "Rareload.BodyB", pad + nw + sc(8), sc(10), C.text)
         draw.SimpleText(UI.Date(row.time, "short") .. "  ·  " .. L("reason." .. row.reason), "Rareload.Small", pad, sc(33), C.text3)
 
         local x = w - sc(12)
@@ -155,7 +164,8 @@ local function buildDetail(host, sel)
         local r = row()
         if not r then return end
         local x = sc(118)
-        draw.SimpleText(UI.TimeAgo(r.time), "Rareload.H1", x, sc(12), C.text)
+        local nw = drawNumber(r.id, "Rareload.H1", x, sc(12))
+        draw.SimpleText(UI.TimeAgo(r.time), "Rareload.H1", x + nw + sc(10), sc(12), C.text)
         draw.SimpleText(UI.Date(r.time, "long"), "Rareload.Small", x, sc(42), C.text2)
         local bx = x
         if r.active then bx = bx + UI.DrawBadge(L("timeline.is_active"), bx, sc(64), C.ok) + sc(6) end

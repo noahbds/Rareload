@@ -172,7 +172,7 @@ function Pipeline.Save(ply, opts)
     local info = { reason = opts.reason or "command", auto = opts.silent == true }
     if prev and RARELOAD.Util.Equal(prev.data, data) then
         if not opts.silent then
-            RARELOAD.Toast(ply, "toast.unchanged")
+            RARELOAD.Toast(ply, "toast.unchanged", { prev.id })
             info.result, info.entry = "unchanged", prev.id
             session:finish(info)   -- silent saves (autosave) that change nothing aren't worth a card
         end
@@ -180,7 +180,7 @@ function Pipeline.Save(ply, opts)
     end
 
     RARELOAD.History.Append(ply, entry)
-    if not opts.silent then RARELOAD.Toast(ply, "toast.saved", nil, "ok") end
+    if not opts.silent then RARELOAD.Toast(ply, "toast.saved", { entry.id }, "ok") end
     info.result, info.entry = "saved", entry.id
     session:finish(info)
     hook.Run("RareloadSaved", ply, entry)

@@ -36,7 +36,8 @@ function TOOL:Reload()
     if CLIENT then return false end
     local ply = self:GetOwner()
     if not RARELOAD.Can(ply, "rareload_use_tool") or not RARELOAD.Can(ply, "rareload_restore") then return denied(ply) end
-    RARELOAD.Toast(ply, RARELOAD.History.ReloadKey(ply))
+    local key, id = RARELOAD.History.ReloadKey(ply)
+    RARELOAD.Toast(ply, key, id and { id })
     return false
 end
 
