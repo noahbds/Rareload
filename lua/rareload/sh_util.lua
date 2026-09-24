@@ -48,9 +48,9 @@ function Util.PlayerKey(ply)
     if id and id ~= "0" then return id end
 end
 
--- "keepAmmo" -> "keep_ammo" (convar names are generated from setting keys, §6.2).
+-- "keepAmmo" -> "keep_ammo", "keepNPCs" -> "keep_npcs" (convar names are generated from setting keys, §6.2).
 function Util.Snake(key)
-    return (key:gsub("%u", function(c) return "_" .. c:lower() end))
+    return (string.lower((key:gsub("(%l)(%u)", "%1_%2"))))
 end
 
 -- Checks JSON syntax. Returns true, or false with the line, column and a short reason of the first

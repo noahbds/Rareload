@@ -84,7 +84,10 @@ Cmd.Register("settings", {
         for _, key in ipairs(keys) do
             local def = RARELOAD.Settings[key]
             local names = def.convar .. (def.pref and " / " .. def.pref or "")
-            reply(string.format("  %-22s %-8s %s", key, tostring(RARELOAD.Get(ply, key)), names))
+            -- Client settings only exist on each client; the server can't read them.
+            local value = def.scope == "client" and "(client)" or RARELOAD.Get(ply, key)
+            if def.type == "float" and isnumber(value) then value = string.format("%g", math.Round(value, 3)) end
+            reply(string.format("  %-22s %-8s %s", key, tostring(value), names))
         end
     end,
 })

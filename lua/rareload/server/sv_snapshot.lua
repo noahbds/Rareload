@@ -298,8 +298,20 @@ local function spawnKind(ply, def, kind)
     return "sents", hook.Run("PlayerSpawnSENT", ply, def.Class)
 end
 
+-- Why a saved object was not restored, as shown on the report card.
+Snapshot.SKIP_REASONS = {
+    addon = "addon not installed",          -- the class is gone: only classes the duplicator allowed were saved
+    model = "model missing",                -- content from an addon that isn't installed (E7)
+    denied = "not allowed",                 -- blocked by a spawn hook, the duplicator or Rareload (S7)
+    limit = "spawn limit reached",          -- sbox_max<kind>
+    max = "Rareload vehicle limit reached", -- sv_rareload_max_vehicles
+    room = "server entity limit reached",   -- G62
+    failed = "could not be created",        -- the duplicator returned nothing for it
+}
+
 -- opts = { kind = "props"|"npcs"|"vehicles", limit? = max defs to paste, filter?(def) -> bool }
--- Returns { created = { [index] = ent }, existing = { ent }, rejected = n, missing = { model = true } }.
+-- Returns { created = { [index] = ent }, existing = { ent }, total = n,
+--           skipped = { { reason = key of SKIP_REASONS, what = class or model } } }.
 function Snapshot.Restore(snap, ply, opts)
     local live = {}
     for _, ent in ents.Iterator() do
@@ -309,36 +321,43 @@ function Snapshot.Restore(snap, ply, opts)
     local limits = RARELOAD.Get(nil, "respectSpawnLimits") and IsValid(ply)
     local counts, kinds = {}, {}
     local room = EDICT_LIMIT - ents.GetEdictCount()
-    local report = { created = {}, existing = {}, rejected = 0, missing = {} }
+    local report = { created = {}, existing = {}, total = 0, skipped = {} }
     local paste = {}
 
     for index, def in pairs(snap.Entities) do
-        local id = Snapshot.DefID(def)
-        local model = def.Model
-        local ok = true
+        report.total = report.total + 1
+        local id, model, class = Snapshot.DefID(def), def.Model, def.Class
+        local why, what = nil, class
         if id and IsValid(live[id]) then
             report.existing[#report.existing + 1] = live[id]   -- already on the map (F15, L13)
-            ok = false
-        elseif DENIED[def.Class] or not duplicator.IsAllowed(def.Class) or (opts.filter and not opts.filter(def)) then
-            ok = false
+        elseif not isstring(class) or not duplicator.IsAllowed(class) and not scripted_ents.GetStored(class) then
+            why = "addon"
+        elseif DENIED[class] or not duplicator.IsAllowed(class) or (opts.filter and not opts.filter(def)) then
+            why = "denied"
         elseif isstring(model) and string.StartsWith(model, "models/") and not util.IsValidModel(model) then
-            report.missing[model] = true   -- content from an addon that isn't installed (E7)
-            ok = false
+            why, what = "model", model
         elseif limits then
             local kind, allowed = spawnKind(ply, def, opts.kind)
             kinds[index] = kind
             counts[kind] = (counts[kind] or 0) + 1
             local max = GetConVar("sbox_max" .. kind)
-            ok = allowed ~= false and not (max and ply:GetCount(kind) + counts[kind] > max:GetInt())
+            if allowed == false then
+                why = "denied"
+            elseif max and ply:GetCount(kind) + counts[kind] > max:GetInt() then
+                why = "limit"
+            end
         end
-        if ok and (room <= 0 or (opts.limit and table.Count(paste) >= opts.limit)) then ok = false end
-
-        if ok then
-            paste[index] = revive(def, 0)
-            room = room - 1
-        elseif not (id and IsValid(live[id])) then
-            report.rejected = report.rejected + 1
+        if not why and not (id and IsValid(live[id])) then
+            if opts.limit and table.Count(paste) >= opts.limit then
+                why = "max"
+            elseif room <= 0 then
+                why = "room"
+            else
+                paste[index] = revive(def, 0)
+                room = room - 1
+            end
         end
+        if why then report.skipped[#report.skipped + 1] = { reason = why, what = tostring(what) } end
     end
 
     if next(paste) then
@@ -347,6 +366,11 @@ function Snapshot.Restore(snap, ply, opts)
         local constraints = revive(snap.Constraints or {}, 0)
         -- With spawn limits on, the player is the paste owner, so constraint limits apply too.
         report.created = duplicator.Paste(limits and ply or nil, paste, constraints)
+        for index, def in pairs(paste) do
+            if not IsValid(report.created[index]) then
+                report.skipped[#report.skipped + 1] = { reason = "failed", what = tostring(def.Class) }
+            end
+        end
     end
 
     if IsValid(ply) and next(report.created) then
@@ -393,11 +417,30 @@ function Snapshot.Report(ctx, label, report, keepMoving)
             ctx:spawnedAdd(ent)
         end
     end
-    local missing = table.GetKeys(report.missing)
-    if #missing > 0 then
-        ctx:step("warn", label, #missing .. " missing models (addon not installed?): " .. table.concat(missing, ", ", 1, math.min(3, #missing)))
+    -- What was skipped and why, e.g. "0 of 2 restored · addon not installed: timedoor, lvs_item_gear".
+    if #report.skipped > 0 then
+        local byReason, order = {}, {}
+        for _, s in ipairs(report.skipped) do
+            if not byReason[s.reason] then
+                byReason[s.reason] = { n = 0, names = {}, seen = {}, unique = 0 }
+                order[#order + 1] = s.reason
+            end
+            local r = byReason[s.reason]
+            r.n = r.n + 1
+            if not r.seen[s.what] then
+                r.seen[s.what], r.unique = true, r.unique + 1
+                if #r.names < 3 then r.names[#r.names + 1] = string.GetFileFromFilename(s.what) end
+            end
+        end
+        local parts = { created .. " of " .. report.total .. " restored" }
+        if #report.existing > 0 then parts[1] = parts[1] .. ", " .. #report.existing .. " already on the map" end
+        for _, reason in ipairs(order) do
+            local r = byReason[reason]
+            parts[#parts + 1] = Snapshot.SKIP_REASONS[reason] .. " (" .. r.n .. "): " .. table.concat(r.names, ", ")
+                .. (r.unique > #r.names and ", …" or "")
+        end
+        ctx:step("warn", label, table.concat(parts, " · "))
     end
-    if report.rejected > 0 then ctx:step("warn", label, report.rejected .. " not restored (not allowed, limit reached or no room)") end
     if keepMoving then return created end
     ctx:nextTick(function()
         local frozen = Snapshot.FreezePenetrating(report.created)
