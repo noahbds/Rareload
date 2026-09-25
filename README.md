@@ -1,3 +1,3 @@
-# Rareload — Position, Inventory, and World State for Garry's Mod
+# Rareload — Legacy
 
-Version: 4.0
+Version: 4.0-Legacy
