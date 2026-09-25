@@ -5,9 +5,9 @@
 RARELOAD.AntiStuck = RARELOAD.AntiStuck or {}
 local AntiStuck = RARELOAD.AntiStuck
 
-local CELL = 256          -- cached safe positions closer than this count as the same spot
-local CACHE_CAP = 512     -- L10
-local STEP = 32           -- displacement ring spacing
+local CELL = 256      -- cached safe positions closer than this count as the same spot
+local CACHE_CAP = 512 -- L10
+local STEP = 32       -- displacement ring spacing
 local DIRECTIONS = 16
 local UP, DOWN = Vector(0, 0, 18), Vector(0, 0, 256)
 
@@ -20,7 +20,8 @@ function AntiStuck.IsStuck(pos, ply, crouched)
     local mins, maxs = hull(ply, crouched)
     -- IsInWorld only checks one point (G70), so test the middle of the hull, not the feet.
     if not util.IsInWorld(pos + Vector(0, 0, maxs.z * 0.5)) then return true, "outside the map" end
-    local tr = util.TraceHull({ start = pos, endpos = pos, mins = mins, maxs = maxs, mask = MASK_PLAYERSOLID, filter = ply })
+    local tr = util.TraceHull({ start = pos, endpos = pos, mins = mins, maxs = maxs, mask = MASK_PLAYERSOLID, filter =
+    ply })
     if tr.StartSolid or tr.AllSolid then return true, "blocked" end
     return false
 end
@@ -28,8 +29,14 @@ end
 -- Drops a candidate onto the floor below it; nil if there is no floor or it starts inside something.
 local function snap(point, ply, crouched)
     local mins, maxs = hull(ply, crouched)
-    local tr = util.TraceHull({ start = point + UP, endpos = point - DOWN, mins = mins, maxs = maxs,
-        mask = MASK_PLAYERSOLID, filter = ply })
+    local tr = util.TraceHull({
+        start = point + UP,
+        endpos = point - DOWN,
+        mins = mins,
+        maxs = maxs,
+        mask = MASK_PLAYERSOLID,
+        filter = ply
+    })
     if tr.StartSolid or not tr.Hit then return nil end
     return tr.HitPos
 end
@@ -152,7 +159,10 @@ AntiStuck.methods = AntiStuck.methods or {}
 
 function AntiStuck.Method(def)
     for i, m in ipairs(AntiStuck.methods) do
-        if m.id == def.id then AntiStuck.methods[i] = def return end
+        if m.id == def.id then
+            AntiStuck.methods[i] = def
+            return
+        end
     end
     AntiStuck.methods[#AntiStuck.methods + 1] = def
 end
@@ -178,7 +188,8 @@ function AntiStuck.Ordered(methods, cfg)
     local rank = {}
     for i, id in ipairs(cfg.order or {}) do rank[id] = i end
     local list = {}
-    for i, m in ipairs(methods) do list[#list + 1] = { id = m.id, fn = m.fn, enabled = not (cfg.disabled or {})[m.id], index = i } end
+    for i, m in ipairs(methods) do list[#list + 1] = { id = m.id, fn = m.fn, enabled = not (cfg.disabled or {})[m.id], index =
+        i } end
     table.sort(list, function(a, b)
         local ra, rb = rank[a.id] or 1000 + a.index, rank[b.id] or 1000 + b.index
         return ra < rb
@@ -208,7 +219,10 @@ function AntiStuck.Configure(action, id)
     elseif action == "up" or action == "down" then
         for i, m in ipairs(list) do
             local j = i + (action == "up" and -1 or 1)
-            if m.id == id and list[j] then list[i], list[j] = list[j], list[i] break end
+            if m.id == id and list[j] then
+                list[i], list[j] = list[j], list[i]
+                break
+            end
         end
     end
     if action ~= "reset" then
@@ -256,7 +270,9 @@ end
 RARELOAD.Net.Handle("antistuck.get", { priv = "rareload_anti_stuck", rate = 0.5, fn = pushMethods })
 
 RARELOAD.Net.Handle("antistuck.config", {
-    priv = "rareload_anti_stuck", rate = 0.1, args = { action = "string:16", id = "string:32?" },
+    priv = "rareload_anti_stuck",
+    rate = 0.1,
+    args = { action = "string:16", id = "string:32?" },
     fn = function(ply, a)
         AntiStuck.Configure(a.action, a.id)
         pushMethods(ply)

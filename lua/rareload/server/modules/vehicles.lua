@@ -6,7 +6,7 @@
 local Snapshot = RARELOAD.Snapshot
 local Vehicles = RARELOAD.Vehicles
 
-local STEP = 0.05          -- seconds between scheduler steps for one vehicle
+local STEP = 0.05 -- seconds between scheduler steps for one vehicle
 local SETTLE_STEPS = 8
 local RESEAT_STEPS = 35
 
@@ -120,9 +120,12 @@ local function phantomParts(veh)
         if not Snapshot.IsVehiclePart(ent) or ent:GetNoDraw() or not isstring(model) or not string.EndsWith(model, ".mdl") then return end
         local lp, la = WorldToLocal(ent:GetPos(), ent:GetAngles(), veh:GetPos(), veh:GetAngles())
         -- Rounded, so physics jitter doesn't make an unchanged vehicle look changed (L35).
-        parts[#parts + 1] = { model = model, skin = ent:GetSkin(),
+        parts[#parts + 1] = {
+            model = model,
+            skin = ent:GetSkin(),
             lp = { math.Round(lp.x, 1), math.Round(lp.y, 1), math.Round(lp.z, 1) },
-            la = { math.Round(la.p), math.Round(la.y), math.Round(la.r) } }
+            la = { math.Round(la.p), math.Round(la.y), math.Round(la.r) }
+        }
     end
     for _, child in ipairs(veh:GetChildren()) do add(child) end
     for _, ent in pairs(constraint.GetAllConstrainedEntities(veh)) do add(ent) end
@@ -160,7 +163,7 @@ RARELOAD.Module({
         local snap = Snapshot.CaptureFor(ply, ctx, "vehicles", targets)
         if not snap then return nil end
 
-        snap.runtime = snap.runtime or {}   -- deleted vehicles kept in the save already carry theirs
+        snap.runtime = snap.runtime or {} -- deleted vehicles kept in the save already carry theirs
         for _, veh in ipairs(targets) do
             local adapter = Vehicles.AdapterFor(veh)
             if adapter then
@@ -196,9 +199,13 @@ RARELOAD.Module({
             local p0 = def and def.PhysicsObjects and (def.PhysicsObjects[0] or def.PhysicsObjects["0"])
             list[#list + 1] = {
                 -- An all-digit ID comes back from JSON as a number key.
-                ent = ent, adapter = adapter, runtime = snap.runtime and (snap.runtime[id] or snap.runtime[tonumber(id)]),
+                ent = ent,
+                adapter = adapter,
+                runtime = snap.runtime and (snap.runtime[id] or snap.runtime[tonumber(id)]),
                 seat = snap.seat and snap.seat.vehicle == id and snap.seat.seat or nil,
-                pos = def and def.Pos, ang = def and def.Angle, frozen = p0 and p0.Frozen,
+                pos = def and def.Pos,
+                ang = def and def.Angle,
+                frozen = p0 and p0.Frozen,
             }
         end
         for index, ent in pairs(report.created) do

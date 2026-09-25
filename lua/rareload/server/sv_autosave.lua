@@ -1,11 +1,11 @@
 -- Event-driven autosave (REWRITE_PLAN.md §15.7, G73): engine events mark the modules that changed,
 -- and a once-a-second check saves only those, at most every `autoSaveInterval` seconds per player.
 
-local MOVE = 64 * 64   -- squared distance that counts as "moved"
+local MOVE = 64 * 64                                -- squared distance that counts as "moved"
 
-local dirty = setmetatable({}, { __mode = "k" })       -- ply -> { [moduleId] = true }
-local lastSave = setmetatable({}, { __mode = "k" })    -- ply -> CurTime of the last autosave
-local base = setmetatable({}, { __mode = "k" })        -- ply -> { pos, yaw } at the last save or spawn
+local dirty = setmetatable({}, { __mode = "k" })    -- ply -> { [moduleId] = true }
+local lastSave = setmetatable({}, { __mode = "k" }) -- ply -> CurTime of the last autosave
+local base = setmetatable({}, { __mode = "k" })     -- ply -> { pos, yaw } at the last save or spawn
 
 local function mark(ply, ...)
     if not IsValid(ply) or not ply:IsPlayer() then return end
@@ -62,7 +62,7 @@ timer.Create("Rareload.Autosave", 1, 0, function()
                 -- or the first autosave (just the spawn loadout) would have no position.
                 local only = RARELOAD.History.Active(ply) and d or nil
                 local _, result = RARELOAD.Pipeline.Save(ply, { only = only, reason = "auto", silent = true })
-                if result == "saved" then RARELOAD.Net.Push(ply, "autosave", {}) end   -- the tool screen's bar
+                if result == "saved" then RARELOAD.Net.Push(ply, "autosave", {}) end -- the tool screen's bar
             end
         end
     end

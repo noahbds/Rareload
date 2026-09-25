@@ -15,9 +15,9 @@ end
 local function give(ply, classes, ctx)
     local skipped = 0
     local empty = ammoRestored(ply, ctx)
-    ply:SetSuppressPickupNotices(true)   -- G57
+    ply:SetSuppressPickupNotices(true)                                                               -- G57
     for _, class in ipairs(classes) do
-        if isstring(class) and not IsValid(ply:Give(class, empty)) and not ply:HasWeapon(class) then   -- G18
+        if isstring(class) and not IsValid(ply:Give(class, empty)) and not ply:HasWeapon(class) then -- G18
             skipped = skipped + 1
         end
     end
@@ -56,7 +56,7 @@ RARELOAD.Module({
     save = function(ply)
         local classes = {}
         for _, w in ipairs(ply:GetWeapons()) do classes[#classes + 1] = w:GetClass() end
-        table.sort(classes)   -- stable order, so an unchanged inventory compares equal (L35)
+        table.sort(classes) -- stable order, so an unchanged inventory compares equal (L35)
         if useGlobal(ply) then RARELOAD.Store.PData(ply, "global_inventory", classes) end
         return classes
     end,
@@ -106,7 +106,7 @@ RARELOAD.Module({
     restore = function(ply, d)
         ply:RemoveAllAmmo()
         for name, count in pairs(d.reserve or {}) do
-            local id = game.GetAmmoID(tostring(name))   -- JSON turns the "357" ammo name into a number
+            local id = game.GetAmmoID(tostring(name)) -- JSON turns the ammo name into a number
             if id and id >= 0 then
                 local max = game.GetAmmoMax(id)
                 ply:SetAmmo(max > 0 and math.min(count, max) or count, id)

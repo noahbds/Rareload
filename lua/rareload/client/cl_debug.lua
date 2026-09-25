@@ -1,11 +1,3 @@
--- Debug report cards sent to admins while the `debug` setting is on (REWRITE_PLAN.md §22, F41):
--- printed to the console and shown as a card for each save and restore. A card shows what happened
--- (saved, nothing changed, restored), why (tool, respawn, timeline…), the save number, the total time
--- and, for every step, its status, how long it took with a bar relative to the slowest step, and its
--- full detail (a summary, or the error). Every step is shown at once, nothing scrolls, and the card
--- stays longer when it has more to read. Autosaves get a one-line card. Up to 4 cards stack, newest on
--- top. Blue = save, green = restore, orange = a warning, red = a step failed.
-
 local L, UI = RARELOAD.L, RARELOAD.UI
 local STATUS = { ok = "ok", warn = "warn", fail = "bad" }
 local IN, OUT, STAGGER, MAX_CARDS = 0.35, 0.4, 0.035, 4
@@ -75,7 +67,7 @@ local function wrap(text, fnt, w, max)
         lines[max] = UI.Clip(table.concat(lines, " ", max), fnt, w)
         for i = #lines, max + 1, -1 do lines[i] = nil end
     end
-    for i, line in ipairs(lines) do lines[i] = UI.Clip(line, fnt, w) end   -- a single word longer than a line
+    for i, line in ipairs(lines) do lines[i] = UI.Clip(line, fnt, w) end -- a single word longer than a line
     return lines
 end
 
@@ -98,7 +90,8 @@ local function prepare(card)
     card.icon = fails > 0 and "exclamation" or r.kind == "save" and "disk" or "arrow_refresh"
 
     -- An undo restores a copy taken before the last restore, which has no number.
-    local key = r.kind == "restore" and "debug.restored" or info.result == "unchanged" and "debug.unchanged" or "debug.saved"
+    local key = r.kind == "restore" and "debug.restored" or info.result == "unchanged" and "debug.unchanged" or
+    "debug.saved"
     card.title = info.entry and L(key, info.entry) or L("debug.restored_plain")
     card.sub = table.concat({ reasonName(info.reason or r.kind), r.player or "?", r.map or game.GetMap() }, "  ·  ")
 
@@ -124,8 +117,16 @@ local function prepare(card)
             card.more = #steps - i + 1
             break
         end
-        rows[#rows + 1] = { s = s, y = y, h = h, lines = lines, name = stepName(s.title), time = s.ms and ms(s.ms),
-            frac = slowest > 0 and (tonumber(s.ms) or 0) / slowest or 0, col = C[STATUS[s.status]] or C.text }
+        rows[#rows + 1] = {
+            s = s,
+            y = y,
+            h = h,
+            lines = lines,
+            name = stepName(s.title),
+            time = s.ms and ms(s.ms),
+            frac = slowest > 0 and (tonumber(s.ms) or 0) / slowest or 0,
+            col = C[STATUS[s.status]] or C.text
+        }
         y = y + h
     end
     card.rows = rows
@@ -135,7 +136,10 @@ end
 
 -- Drawing ---------------------------------------------------------------------------------------------
 
-local function ease(t) t = t - 1 return t * t * t + 1 end
+local function ease(t)
+    t = t - 1
+    return t * t * t + 1
+end
 
 local function statusMark(status, x, y, s, col)
     surface.SetDrawColor(col)
@@ -165,7 +169,8 @@ local function drawCard(card, x, y, age)
     UI.DrawIcon(card.icon, x + pad + (box - icon) / 2, y + sc(12) + (box - icon) / 2, icon)
     local tx = x + pad + box + sc(12)
     draw.SimpleText(card.title, "Rareload.H2", tx, y + sc(11), C.text)
-    draw.SimpleText(UI.Clip(card.sub, "Rareload.Small", w - (tx - x) - sc(110)), "Rareload.Small", tx, y + sc(33), C.text3)
+    draw.SimpleText(UI.Clip(card.sub, "Rareload.Small", w - (tx - x) - sc(110)), "Rareload.Small", tx, y + sc(33),
+        C.text3)
     draw.SimpleText(ms(r.ms), "Rareload.BodyB", x + w - pad, y + sc(12), C.text, TEXT_ALIGN_RIGHT)
     UI.DrawBadge(card.pill, x + w - pad, y + sc(33), accent, "Rareload.Tiny", true)
 
@@ -176,17 +181,19 @@ local function drawCard(card, x, y, age)
         surface.DrawRect(x + pad, y + sc(58), w - pad * 2, 1)
         local alpha = surface.GetAlphaMultiplier()
         for i, row in ipairs(card.rows) do
-            local t = math.Clamp((age - IN * 0.6 - i * STAGGER) / 0.18, 0, 1)   -- rows fade in one after the other
+            local t = math.Clamp((age - IN * 0.6 - i * STAGGER) / 0.18, 0, 1) -- rows fade in one after the other
             if t > 0 then
                 surface.SetAlphaMultiplier(alpha * t)
                 local ry = y + row.y + (1 - t) * sc(6)
                 statusMark(row.s.status, x + pad, ry + sc(5), sc(10), row.col)
                 draw.SimpleText(row.name, "Rareload.BodyB", x + pad + sc(22), ry, C.text)
-                if row.time then draw.SimpleText(row.time, "Rareload.Small", x + w - pad, ry + sc(1), C.text3, TEXT_ALIGN_RIGHT) end
+                if row.time then draw.SimpleText(row.time, "Rareload.Small", x + w - pad, ry + sc(1), C.text3,
+                        TEXT_ALIGN_RIGHT) end
                 -- How long this step took, relative to the slowest one.
                 local bx, bw = x + pad + sc(22), w - pad * 2 - sc(22)
                 draw.RoundedBox(sc(2), bx, ry + sc(19), bw, sc(3), ColorAlpha(C.line, 120))
-                if row.frac > 0 then draw.RoundedBox(sc(2), bx, ry + sc(19), math.max(bw * row.frac, sc(3)), sc(3), ColorAlpha(row.col, 200)) end
+                if row.frac > 0 then draw.RoundedBox(sc(2), bx, ry + sc(19), math.max(bw * row.frac, sc(3)), sc(3),
+                        ColorAlpha(row.col, 200)) end
                 for j, line in ipairs(row.lines) do
                     draw.SimpleText(line, "Rareload.Small", bx, ry + sc(24) + (j - 1) * sc(16),
                         row.s.status == "ok" and C.text2 or row.col)
@@ -218,7 +225,7 @@ hook.Add("HUDPaint", "Rareload.Debug.Card", function()
     for _, card in ipairs(cards) do
         local age = now - card.t0
         local slide = age < IN and 1 - ease(age / IN) or age > IN + card.hold and ease((age - IN - card.hold) / OUT) or 0
-        card.y = card.y and Lerp(math.min(FrameTime() * 12, 1), card.y, y) or y   -- cards move down as new ones arrive
+        card.y = card.y and Lerp(math.min(FrameTime() * 12, 1), card.y, y) or y -- cards move down as new ones arrive
         local x = ScrW() - card.w - sc(16) + slide * (card.w + sc(30))
         surface.SetAlphaMultiplier(1 - slide * 0.8)
         drawCard(card, x, card.y, age)

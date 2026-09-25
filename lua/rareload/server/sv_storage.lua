@@ -8,8 +8,8 @@ local Store = RARELOAD.Store
 Store.SCHEMA = 5
 local ROOT = "rareload/"
 
-Store._cache = Store._cache or {}     -- rel -> document, or false when there is none
-Store._dirty = Store._dirty or {}     -- rel -> document waiting to be written
+Store._cache = Store._cache or {} -- rel -> document, or false when there is none
+Store._dirty = Store._dirty or {} -- rel -> document waiting to be written
 local cache, dirty = Store._cache, Store._dirty
 local readonly = {}
 
@@ -26,11 +26,11 @@ end
 
 local function decode(raw)
     if not raw or raw == "" then return nil end
-    local t = util.JSONToTable(raw, true)   -- ignoreLimits: big saves must load (G1)
+    local t = util.JSONToTable(raw, true) -- ignoreLimits: big saves must load (G1)
     return istable(t) and t or nil
 end
 
-local encoded = {}   -- rel -> JSON of a dirty document that was already encoded (blobs)
+local encoded = {} -- rel -> JSON of a dirty document that was already encoded (blobs)
 
 local function writeNow(rel, doc)
     local base = ROOT .. rel
@@ -42,7 +42,7 @@ local function writeNow(rel, doc)
     end
     local main, tmp, bak = base .. ".json", base .. ".tmp.json", base .. ".bak.json"
     file.CreateDir(string.GetPathFromFilename(base))
-    if file.Write(tmp, json) == false then   -- returns nil on older game builds, false on failure (G5)
+    if file.Write(tmp, json) == false then -- returns nil on older game builds, false on failure (G5)
         log():error("could not write %s", tmp)
         return false
     end
@@ -121,7 +121,7 @@ function Store.BlobPut(data)
     local rel = blobRel(hash)
     if cache[rel] == nil and not file.Exists(ROOT .. rel .. ".json", "DATA") then
         Store.Save(rel, data)
-        encoded[rel] = json   -- written as is, not encoded a second time
+        encoded[rel] = json -- written as is, not encoded a second time
     end
     return hash
 end
@@ -136,7 +136,7 @@ function Store.GC()
     local dir = Store.MapDir()
     local used = {}
     for _, name in ipairs(file.Find(ROOT .. dir .. "/*.json", "DATA") or {}) do
-        local id = name:match("^(%d+)%.json$")   -- saves docs are named <SteamID64>.json
+        local id = name:match("^(%d+)%.json$") -- saves docs are named <SteamID64>.json
         local doc = id and (cache[dir .. "/" .. id] or decode(file.Read(ROOT .. dir .. "/" .. name, "DATA")))
         for _, entry in ipairs(doc and doc.entries or {}) do
             for _, value in pairs(entry.data or {}) do

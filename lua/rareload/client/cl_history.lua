@@ -31,7 +31,8 @@ end
 -- Everything a search can match: note, type, held weapon, model, vehicle, position, dates.
 local function searchText(row)
     local i = row.info or {}
-    return string.lower(table.concat({ "#" .. row.id, L("save_no", row.id), row.note or "", L("reason." .. row.reason), i.active or "",
+    return string.lower(table.concat(
+    { "#" .. row.id, L("save_no", row.id), row.note or "", L("reason." .. row.reason), i.active or "",
         i.active and UI.WeaponName(i.active) or "", i.model or "", i.vehicle or "", UI.Pos(i.pos),
         UI.Date(row.time, "long"), UI.Date(row.time, "short"), UI.TimeAgo(row.time) }, " "))
 end
@@ -67,10 +68,21 @@ function Timeline.Preview(row)
     local function show()
         local look = info.look or {}
         RARELOAD.World.SetPreview({
-            id = row.id, nick = L("save_no", row.id), seated = info.vehicle ~= nil,
-            data = { transform = { pos = info.pos, ang = info.ang }, health = info.hp and { hp = info.hp, armor = info.armor } or nil,
-                appearance = { model = info.model, skin = look.skin, bodygroups = look.bodygroups, material = look.material,
-                    playerColor = look.playerColor, color = look.color } },
+            id = row.id,
+            nick = L("save_no", row.id),
+            seated = info.vehicle ~= nil,
+            data = {
+                transform = { pos = info.pos, ang = info.ang },
+                health = info.hp and { hp = info.hp, armor = info.armor } or nil,
+                appearance = {
+                    model = info.model,
+                    skin = look.skin,
+                    bodygroups = look.bodygroups,
+                    material = look.material,
+                    playerColor = look.playerColor,
+                    color = look.color
+                }
+            },
             objects = State.objects[row.id] or {},
         })
     end
@@ -93,8 +105,14 @@ end)
 local function spotFree(pos)
     local v = RARELOAD.Util.ToVector(pos)
     if not v then return true end
-    local tr = util.TraceHull({ start = v, endpos = v, mins = Vector(-16, -16, 4), maxs = Vector(16, 16, 72),
-        mask = MASK_PLAYERSOLID, filter = LocalPlayer() })
+    local tr = util.TraceHull({
+        start = v,
+        endpos = v,
+        mins = Vector(-16, -16, 4),
+        maxs = Vector(16, 16, 72),
+        mask = MASK_PLAYERSOLID,
+        filter = LocalPlayer()
+    })
     return not (tr.StartSolid or tr.AllSolid)
 end
 
@@ -109,14 +127,16 @@ local function buildRow(parent, row, isSelected, onClick)
     b.Paint = function(self, w, h)
         local selected = isSelected(row.id)
         self.anim = Lerp(FrameTime() * 12, self.anim or 0, (self:IsHovered() or selected) and 1 or 0)
-        draw.RoundedBox(sc(9), 0, 0, w, h, UI.Mix(C.surface, ColorAlpha(C.accent, 255), selected and 0.18 or self.anim * 0.08))
+        draw.RoundedBox(sc(9), 0, 0, w, h,
+            UI.Mix(C.surface, ColorAlpha(C.accent, 255), selected and 0.18 or self.anim * 0.08))
         local bar = row.active and C.ok or selected and C.accent
         if bar then draw.RoundedBox(sc(3), 0, sc(9), sc(3), h - sc(18), bar) end
 
         local pad, isz = sc(14), UI.IconSize(sc(16))
         local nw = drawNumber(row.id, "Rareload.BodyB", pad, sc(10))
         draw.SimpleText(UI.TimeAgo(row.time), "Rareload.BodyB", pad + nw + sc(8), sc(10), C.text)
-        draw.SimpleText(UI.Date(row.time, "short") .. "  ·  " .. L("reason." .. row.reason), "Rareload.Small", pad, sc(33), C.text3)
+        draw.SimpleText(UI.Date(row.time, "short") .. "  ·  " .. L("reason." .. row.reason), "Rareload.Small", pad,
+            sc(33), C.text3)
 
         local x = w - sc(12)
         local function icon(name, cond)
@@ -176,10 +196,13 @@ local function buildDetail(host, sel)
         local barX, barY, barW = x, h - sc(22), w - x - sc(16)
         draw.RoundedBox(sc(4), barX, barY, barW, sc(8), C.bgDark)
         if i.hp then
-            draw.RoundedBox(sc(4), barX, barY, math.max(sc(4), barW * math.Clamp(i.hp / 100, 0, 1)), sc(8), UI.HealthColor(i.hp, 100))
+            draw.RoundedBox(sc(4), barX, barY, math.max(sc(4), barW * math.Clamp(i.hp / 100, 0, 1)), sc(8),
+                UI.HealthColor(i.hp, 100))
         end
-        draw.SimpleText(i.hp and (math.floor(i.hp) .. " HP") or L("ui.not_saved"), "Rareload.Tiny", barX, barY - sc(13), C.text3)
-        draw.SimpleText(i.armor and L("timeline.armor", math.floor(i.armor)) or "", "Rareload.Tiny", barX + barW, barY - sc(13),
+        draw.SimpleText(i.hp and (math.floor(i.hp) .. " HP") or L("ui.not_saved"), "Rareload.Tiny", barX, barY - sc(13),
+            C.text3)
+        draw.SimpleText(i.armor and L("timeline.armor", math.floor(i.armor)) or "", "Rareload.Tiny", barX + barW,
+            barY - sc(13),
             C.info, TEXT_ALIGN_RIGHT)
     end, C.bgDark)
     D.header:Dock(TOP)
@@ -192,12 +215,12 @@ local function buildDetail(host, sel)
     D.stats = UI.Stats(host, function()
         local i = (row() or {}).info or {}
         return {
-            { L("field.health"), i.hp and math.floor(i.hp), i.hp and UI.HealthColor(i.hp, 100) },
-            { L("field.armor"), i.armor and math.floor(i.armor), C.info },
-            { L("field.weapons"), i.weapons, C.text },
-            { L("kind.entities"), i.entities or 0, C.prop },
-            { L("kind.npcs"), i.npcs or 0, C.npc },
-            { L("kind.vehicles"), i.vehicles or 0, C.vehicle },
+            { L("field.health"),  i.hp and math.floor(i.hp),       i.hp and UI.HealthColor(i.hp, 100) },
+            { L("field.armor"),   i.armor and math.floor(i.armor), C.info },
+            { L("field.weapons"), i.weapons,                       C.text },
+            { L("kind.entities"), i.entities or 0,                 C.prop },
+            { L("kind.npcs"),     i.npcs or 0,                     C.npc },
+            { L("kind.vehicles"), i.vehicles or 0,                 C.vehicle },
         }
     end)
     D.stats:Dock(TOP)
@@ -210,13 +233,15 @@ local function buildDetail(host, sel)
         local a = RARELOAD.Util.ToAngle(i.ang)
         local list = {
             { L("field.position"), UI.Pos(i.pos) },
-            { L("field.angle"), a and string.format("%.0f, %.0f, %.0f", a.p, a.y, a.r) or "-", C.text2 },
-            { L("field.active_weapon"), i.active and UI.WeaponName(i.active) or (i.weapons and L("ui.none") or L("ui.not_saved")),
+            { L("field.angle"),    a and string.format("%.0f, %.0f, %.0f", a.p, a.y, a.r) or "-", C.text2 },
+            { L("field.active_weapon"), i.active and UI.WeaponName(i.active) or
+            (i.weapons and L("ui.none") or L("ui.not_saved")),
                 i.active and C.text or C.textOff },
         }
         if i.vehicle then list[#list + 1] = { L("field.vehicle"), i.vehicle, C.vehicle } end
         if i.crouched then list[#list + 1] = { L("field.crouched"), L("ui.yes"), C.text2 } end
-        list[#list + 1] = { L("field.states"), i.states and UI.States(i.states) or L("ui.not_saved"), i.states and C.warn or C.textOff }
+        list[#list + 1] = { L("field.states"), i.states and UI.States(i.states) or L("ui.not_saved"), i.states and C
+        .warn or C.textOff }
         list[#list + 1] = { L("field.model"), i.model or L("ui.not_saved"), i.model and C.text2 or C.textOff }
         return list
     end)
@@ -230,11 +255,12 @@ local function buildDetail(host, sel)
     D.status.Paint = function(self, w, h)
         local r = row()
         if not r then return end
-        if (self.next or 0) < RealTime() then   -- the live free/blocked check, 3 times a second
+        if (self.next or 0) < RealTime() then -- the live free/blocked check, 3 times a second
             self.next, self.free = RealTime() + 0.33, spotFree(r.info.pos)
         end
         UI.DrawIcon(self.free and "accept" or "exclamation", 0, (h - sc(16)) / 2, sc(16))
-        draw.SimpleText(self.free and L("timeline.spot_free") or L("timeline.spot_blocked"), "Rareload.Small", sc(22), h / 2,
+        draw.SimpleText(self.free and L("timeline.spot_free") or L("timeline.spot_blocked"), "Rareload.Small", sc(22),
+            h / 2,
             self.free and C.ok or C.bad, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
 
@@ -248,8 +274,10 @@ local function buildDetail(host, sel)
         b:SetParent(p)
         p.PerformLayout = function(_, w, h)
             local half = (w - sc(6)) / 2
-            a:SetPos(0, 0) a:SetSize(half, h)
-            b:SetPos(half + sc(6), 0) b:SetSize(half, h)
+            a:SetPos(0, 0)
+            a:SetSize(half, h)
+            b:SetPos(half + sc(6), 0)
+            b:SetSize(half, h)
         end
         return p
     end
@@ -275,7 +303,8 @@ local function buildDetail(host, sel)
     pair(D.preview, D.objects)
 
     D.banner = UI.Card(host, function(_, w, h)
-        draw.SimpleText(L("timeline.is_active"), "Rareload.BodyB", w / 2, h / 2, C.ok, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        draw.SimpleText(L("timeline.is_active"), "Rareload.BodyB", w / 2, h / 2, C.ok, TEXT_ALIGN_CENTER,
+            TEXT_ALIGN_CENTER)
     end, ColorAlpha(C.ok, 40))
     D.banner:Dock(TOP)
     D.banner:SetTall(sc(34))
@@ -316,7 +345,8 @@ local function buildDetail(host, sel)
         local r = row()
         if r then request("history.pin", { id = r.id, pinned = not r.pinned }) end
     end, { style = "warn", icon = "star" })
-    D.delete = UI.Button(D.actions, L("timeline.delete"), function() Timeline.Delete(row()) end, { style = "danger", icon = "cross" })
+    D.delete = UI.Button(D.actions, L("timeline.delete"), function() Timeline.Delete(row()) end,
+        { style = "danger", icon = "cross" })
     D.restore = UI.Button(D.actions, L("timeline.restore_all"), function() Timeline.Restore(row()) end,
         { style = "success", solid = true, icon = "arrow_rotate_clockwise" })
     D.actions.PerformLayout = function(_, w, h)
@@ -378,7 +408,8 @@ local function buildDetail(host, sel)
     return D
 end
 
-local DETAIL_PARTS = { "header", "stats", "rows", "status", "banner", "setActive", "note", "actions", "partTitle", "parts",
+local DETAIL_PARTS = { "header", "stats", "rows", "status", "banner", "setActive", "note", "actions", "partTitle",
+    "parts",
     "applyParts", "reloadTitle", "mode", "reloadHelp" }
 
 local function updateDetail(D, r)
@@ -395,7 +426,7 @@ local function updateDetail(D, r)
     local n = objectsOf(r)
     D.objects:SetLabel(n > 0 and L("timeline.objects", n) or L("timeline.objects_none"))
     D.objects:SetEnabled(n > 0)
-    D.reloadTitle:SetText(string.upper(L("timeline.reload_key", input.LookupBinding("+reload") or "R")))   -- G81
+    D.reloadTitle:SetText(string.upper(L("timeline.reload_key", input.LookupBinding("+reload") or "R"))) -- G81
     D.reloadTitle:SizeToContents()
     if not D.note:HasFocus() then D.note:SetValue(r.note or "") end
     local comps = State.history.reload.comps or {}
@@ -427,7 +458,7 @@ end
 
 function Timeline.Restore(r)
     if not r then return end
-    request("history.restore", { id = r.id })   -- the server's toast says when it's done
+    request("history.restore", { id = r.id }) -- the server's toast says when it's done
 end
 
 function Timeline.Delete(r)
@@ -447,11 +478,14 @@ function Timeline.Open()
     local rows = {}
     local refresh
 
-    local undo = frame:HeaderButton(L("timeline.undo"), function() request("history.undo") end, { style = "warn", icon = "arrow_undo" })
+    local undo = frame:HeaderButton(L("timeline.undo"), function() request("history.undo") end,
+        { style = "warn", icon = "arrow_undo" })
     frame:HeaderButton(L("timeline.clear"), function()
-        UI.Confirm(L("timeline.clear"), L("timeline.clear_confirm"), function() request("history.clear") end, L("timeline.clear"))
+        UI.Confirm(L("timeline.clear"), L("timeline.clear_confirm"), function() request("history.clear") end,
+            L("timeline.clear"))
     end, { style = "danger", icon = "bin" })
-    frame:HeaderButton(L("timeline.refresh"), function() request("history.get") end, { style = "info", icon = "arrow_refresh" })
+    frame:HeaderButton(L("timeline.refresh"), function() request("history.get") end,
+        { style = "info", icon = "arrow_refresh" })
 
     local side = vgui.Create("DPanel", frame)
     side:Dock(LEFT)
@@ -529,7 +563,10 @@ function Timeline.Open()
         local m = DermaMenu()
         m:SetSkin("Rareload")
         for _, s in ipairs(sorts) do
-            m:AddOption(s.label, function() sort = s.id refresh() end):SetChecked(s.id == sort)
+            m:AddOption(s.label, function()
+                sort = s.id
+                refresh()
+            end):SetChecked(s.id == sort)
         end
         m:Open()
     end

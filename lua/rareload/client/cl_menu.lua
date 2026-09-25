@@ -1,14 +1,3 @@
--- Menus generated from the settings registry (REWRITE_PLAN.md §21.3, §18, F37, F38). Each setting
--- shows in exactly one place:
---   the tool panel: the player's own settings, quick actions, highlights and debug tools for admins;
---   Utilities › Rareload › Server: server settings and the default of every player setting, each of
---     which can be locked (rareload_settings);
---   Utilities › Rareload › Client: this client's world display settings.
--- The spawn menu is narrow, so labels wrap instead of running under the controls. Left of a label, a
--- reset arrow means the player changed the setting (click it to use the server's value again) and a
--- lock means the server decides it. Rows re-read their value and lock a few times a second, so changes
--- made by an admin (or on another page) show at once, without rebuilding the page.
-
 RARELOAD.Menu = RARELOAD.Menu or {}
 local Menu = RARELOAD.Menu
 local L, UI = RARELOAD.L, RARELOAD.UI
@@ -17,8 +6,12 @@ local BG, CARD, CARD_HI = Color(30, 33, 40), Color(41, 45, 54), Color(50, 55, 66
 local ACCENT, TEXT, TEXT2, MUTED = Color(65, 145, 255), Color(240, 242, 247), Color(170, 176, 190), Color(110, 116, 130)
 local TRACK, SWITCH_OFF, HOVER = Color(60, 65, 77), Color(70, 75, 88), Color(255, 255, 255)
 local BUTTONS = {
-    green = Color(56, 158, 92), indigo = Color(88, 101, 242), orange = Color(214, 128, 20), yellow = Color(196, 150, 20),
-    cyan = Color(0, 150, 170), gray = Color(88, 94, 108),
+    green = Color(56, 158, 92),
+    indigo = Color(88, 101, 242),
+    orange = Color(214, 128, 20),
+    yellow = Color(196, 150, 20),
+    cyan = Color(0, 150, 170),
+    gray = Color(88, 94, 108),
 }
 
 -- The spawn menu isn't scaled, so sizes are fixed. No shadows: they blur small text.
@@ -31,14 +24,23 @@ font("Rareload.Menu.Row", 16, 500)
 font("Rareload.Menu.Value", 16, 700)
 font("Rareload.Menu.Note", 13, 500)
 
-local GUTTER, PAD, LINE = 22, 8, 19   -- icon column, right padding, label line height
+local GUTTER, PAD, LINE = 22, 8, 19 -- icon column, right padding, label line height
 local HEAD_H = 34
-local SYNC, HOLD = 0.25, 1   -- seconds between re-reads; after a click, the row waits for the change to arrive
+local SYNC, HOLD = 0.25, 1          -- seconds between re-reads; after a click, the row waits for the change to arrive
 
 local CATEGORIES = { "general", "player", "world", "timing", "server", "antistuck", "display" }
 local ICONS = {
-    general = "cog", player = "user", world = "map", timing = "clock", server = "server", antistuck = "arrow_out",
-    display = "eye", actions = "lightning", highlight = "flag_yellow", debug = "wrench", methods = "arrow_switch",
+    general = "cog",
+    player = "user",
+    world = "map",
+    timing = "clock",
+    server = "server",
+    antistuck = "arrow_out",
+    display = "eye",
+    actions = "lightning",
+    highlight = "flag_yellow",
+    debug = "wrench",
+    methods = "arrow_switch",
 }
 local SUFFIXES = { autoSaveInterval = "s", autoSaveAngleThreshold = "°", asMaxSearchTime = "s", toastHold = "s" }
 
@@ -176,7 +178,8 @@ local function newRow(parent, label, opts, rightW, belowH)
         if code ~= MOUSE_RIGHT or opts.disabled and not opts.changed then return end
         if not (opts.reset and opts.changed) and not opts.menu then return end
         local m = DermaMenu()
-        if opts.reset and opts.changed then m:AddOption(L("menu.use_server_value"), opts.reset):SetIcon("icon16/arrow_undo.png") end
+        if opts.reset and opts.changed then m:AddOption(L("menu.use_server_value"), opts.reset):SetIcon(
+            "icon16/arrow_undo.png") end
         if opts.menu then opts.menu(m) end
         m:Open()
     end
@@ -211,7 +214,8 @@ local function slider(parent, label, value, min, max, decimals, suffix, onChange
     row.value = value
     row.Paint = function(self, w, h)
         self:PaintBase(w, h)
-        draw.SimpleText(text(self.value), "Rareload.Menu.Value", w - PAD, 6, opts.disabled and MUTED or ACCENT, TEXT_ALIGN_RIGHT)
+        draw.SimpleText(text(self.value), "Rareload.Menu.Value", w - PAD, 6, opts.disabled and MUTED or ACCENT,
+            TEXT_ALIGN_RIGHT)
         local tx, ty, tw = GUTTER, h - 14, w - GUTTER - PAD
         local f = math.Clamp((self.value - min) / (max - min), 0, 1)
         draw.RoundedBox(3, tx, ty, tw, 6, TRACK)
@@ -234,7 +238,8 @@ local function slider(parent, label, value, min, max, decimals, suffix, onChange
         think(self)
         if not self.dragging then return end
         local x = self:CursorPos()
-        self.value = math.Round(min + math.Clamp((x - GUTTER) / (self:GetWide() - GUTTER - PAD), 0, 1) * (max - min), decimals)
+        self.value = math.Round(min + math.Clamp((x - GUTTER) / (self:GetWide() - GUTTER - PAD), 0, 1) * (max - min),
+            decimals)
     end
     -- Right click: type an exact value.
     local extra = opts.menu
@@ -379,7 +384,8 @@ local function section(parent, title, icon, open)
         surface.SetDrawColor(ACCENT)
         surface.DrawRect(0, 8, 3, h - 16)
         UI.DrawIcon(icon, 11, math.floor((h - 16) / 2), 16)
-        draw.SimpleText(UI.Clip(title, "Rareload.Menu.Head", w - 64), "Rareload.Menu.Head", 35, h / 2, TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(UI.Clip(title, "Rareload.Menu.Head", w - 64), "Rareload.Menu.Head", 35, h / 2, TEXT,
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         arrow(w - 16, h / 2, 5, self.rot, TEXT2)
     end
     head.DoClick = function()
@@ -487,7 +493,8 @@ local function finish(panel)
     footer:DockMargin(6, 10, 6, 6)
     footer:SetTall(20)
     footer.Paint = function(_, w, h)
-        draw.SimpleText(L("menu.made_by"), "Rareload.Menu.Note", w / 2, h / 2, MUTED, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        draw.SimpleText(L("menu.made_by"), "Rareload.Menu.Note", w / 2, h / 2, MUTED, TEXT_ALIGN_CENTER,
+            TEXT_ALIGN_CENTER)
     end
     panel.rareloadItems = {}
     for _, child in ipairs(panel:GetChildren()) do
@@ -504,7 +511,7 @@ local function intro(panel, text)
     box:DockPadding(10, 6, 10, 2)
     box.Paint = function(_, w, h) draw.RoundedBox(6, 0, 0, w, h, CARD) end
     local n = note(box, text)
-    box.Think = function(self)   -- the note's height is known once it has been laid out
+    box.Think = function(self) -- the note's height is known once it has been laid out
         local h = n:GetTall() + 18
         if self:GetTall() ~= h then
             self:SetTall(h)
@@ -526,7 +533,8 @@ function Menu.BuildToolPanel(panel)
         for _, def in ipairs(group.defs) do
             local pref = GetConVar(def.pref)
             local noPriv = def.priv and not RARELOAD.Can(lp, def.priv)
-            control(content, def, function() return RARELOAD.Get(lp, def.key) end, function(v) RunConsoleCommand(def.pref, v) end, {
+            control(content, def, function() return RARELOAD.Get(lp, def.key) end,
+                function(v) RunConsoleCommand(def.pref, v) end, {
                 refresh = function(o)
                     o.locked = RARELOAD.IsLocked(def.key)
                     o.disabled = o.locked or noPriv
@@ -554,13 +562,16 @@ function Menu.BuildToolPanel(panel)
     if RARELOAD.Can(lp, "rareload_debug") then
         local hl = section(panel, L("menu.highlights"), ICONS.highlight, false)
         note(hl, L("menu.highlights_help"))
-        button(hl, L("menu.highlight_all"), "flag_yellow", BUTTONS.yellow, function() RARELOAD.Highlight.Command("all") end)
+        button(hl, L("menu.highlight_all"), "flag_yellow", BUTTONS.yellow,
+            function() RARELOAD.Highlight.Command("all") end)
         button(hl, L("menu.highlight_link"), "connect", BUTTONS.cyan, function() RARELOAD.Highlight.Command("link") end)
-        button(hl, L("menu.highlight_players"), "user_green", BUTTONS.green, function() RARELOAD.Highlight.Command("players") end)
+        button(hl, L("menu.highlight_players"), "user_green", BUTTONS.green,
+            function() RARELOAD.Highlight.Command("players") end)
         button(hl, L("menu.highlight_clear"), "cross", BUTTONS.gray, function() RARELOAD.Highlight.Command("clear") end)
 
         local dbg = section(panel, L("menu.debug"), ICONS.debug, false)
-        button(dbg, L("menu.debug_diag"), "report", BUTTONS.indigo, function() RunConsoleCommand("rareload", "debug", "diag") end)
+        button(dbg, L("menu.debug_diag"), "report", BUTTONS.indigo,
+            function() RunConsoleCommand("rareload", "debug", "diag") end)
     end
     finish(panel)
 end
@@ -591,12 +602,16 @@ local function buildServer(panel)
             methods:Clear()
             note(methods, L("menu.methods_help"))
             for i, m in ipairs(RARELOAD.State.antistuck) do
-                toggle(methods, i .. ". " .. L("antistuck." .. m.id), m.enabled, function(v) config(v and "enable" or "disable", m.id) end, {
+                toggle(methods, i .. ". " .. L("antistuck." .. m.id), m.enabled,
+                    function(v) config(v and "enable" or "disable", m.id) end, {
                     tooltip = L("antistuck." .. m.id .. ".help"),
                     menu = function(menu)
-                        menu:AddOption(L("menu.move_up"), function() config("up", m.id) end):SetIcon("icon16/arrow_up.png")
-                        menu:AddOption(L("menu.move_down"), function() config("down", m.id) end):SetIcon("icon16/arrow_down.png")
-                        menu:AddOption(L("menu.only_this"), function() config("only", m.id) end):SetIcon("icon16/star.png")
+                        menu:AddOption(L("menu.move_up"), function() config("up", m.id) end):SetIcon(
+                        "icon16/arrow_up.png")
+                        menu:AddOption(L("menu.move_down"), function() config("down", m.id) end):SetIcon(
+                        "icon16/arrow_down.png")
+                        menu:AddOption(L("menu.only_this"), function() config("only", m.id) end):SetIcon(
+                        "icon16/star.png")
                     end,
                 })
             end
@@ -612,7 +627,7 @@ local function buildServer(panel)
     button(reset, L("menu.defaults_reset"), "arrow_undo", BUTTONS.orange, function()
         UI.Confirm(L("menu.defaults_reset"), L("menu.defaults_reset_confirm"), function()
             RARELOAD.Net.Request("settings.reset")
-            if RARELOAD.Can(LocalPlayer(), "rareload_anti_stuck") then RARELOAD.Net.Request("antistuck.get") end   -- the method list
+            if RARELOAD.Can(LocalPlayer(), "rareload_anti_stuck") then RARELOAD.Net.Request("antistuck.get") end -- the method list
         end, L("menu.defaults_reset"))
     end)
 
@@ -623,7 +638,8 @@ local function buildServer(panel)
         local content = section(panel, L("category." .. group.name), ICONS[group.name], false)
         for _, def in ipairs(group.defs) do
             control(content, def, function() return RARELOAD.ServerValue(def.key) end, setter(def), {
-                lock = { toggle = function(locked) RARELOAD.Net.Request("settings.lock", { key = def.key, locked = locked }) end },
+                lock = { toggle = function(locked) RARELOAD.Net.Request("settings.lock",
+                        { key = def.key, locked = locked }) end },
                 refresh = function(o) o.lock.locked = RARELOAD.IsLocked(def.key) end,
             })
         end
@@ -637,7 +653,8 @@ local function buildClient(panel)
     for _, group in ipairs(grouped(function(def) return def.scope == "client" end)) do
         local content = section(panel, L("category." .. group.name), ICONS[group.name])
         for _, def in ipairs(group.defs) do
-            control(content, def, function() return RARELOAD.Get(nil, def.key) end, function(v) RunConsoleCommand(def.convar, v) end, {})
+            control(content, def, function() return RARELOAD.Get(nil, def.key) end,
+                function(v) RunConsoleCommand(def.convar, v) end, {})
         end
     end
     local reset = section(panel, L("menu.actions"), ICONS.actions)

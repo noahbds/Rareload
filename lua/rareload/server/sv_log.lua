@@ -4,8 +4,10 @@
 
 local LEVELS = { error = 1, warn = 2, info = 3, verbose = 4 }
 local COLORS = {
-    error = Color(255, 90, 90), warn = Color(255, 200, 80),
-    info = Color(120, 200, 255), verbose = Color(160, 160, 160),
+    error = Color(255, 90, 90),
+    warn = Color(255, 200, 80),
+    info = Color(120, 200, 255),
+    verbose = Color(160, 160, 160),
 }
 
 local function shouldPrint(level)
@@ -42,7 +44,6 @@ function RARELOAD.LogClear()
 end
 
 for level in pairs(LEVELS) do
-    -- The message is only formatted when it will actually be printed.
     Logger[level] = function(self, fmt, ...)
         if not shouldPrint(level) then return end
         local text = string.format(fmt, ...)
@@ -75,7 +76,8 @@ function Session:finish(info)
     MsgC(COLORS.info, "[Rareload] ", color_white, string.format("%s: %s (%s ms)\n", self.title, who, ms))
     for _, s in ipairs(self.steps) do
         MsgC(COLORS[s.status == "ok" and "verbose" or s.status == "warn" and "warn" or "error"],
-            "    " .. s.status .. " ", color_white, s.title .. "  " .. s.detail .. (s.ms and "  (" .. s.ms .. " ms)" or "") .. "\n")
+            "    " .. s.status .. " ", color_white,
+            s.title .. "  " .. s.detail .. (s.ms and "  (" .. s.ms .. " ms)" or "") .. "\n")
     end
 
     local ok = true
@@ -84,18 +86,22 @@ function Session:finish(info)
     end
     remember(ok and "info" or "warn", self.kind, string.format("%s: %s (%s ms)", self.title, who, ms))
 
-    -- Every admin gets the card, the host too (in singleplayer the player is the host). The host shares
-    -- the server's console, which printed the report above, so its client doesn't print it again.
     local admins, host = {}, nil
     for _, ply in player.Iterator() do
         if RARELOAD.Can(ply, "rareload_debug") then
             if ply:IsListenServerHost() then host = ply else admins[#admins + 1] = ply end
         end
     end
-    local card = { title = self.title, player = who, ms = ms, steps = self.steps, kind = self.kind, ok = ok,
-        info = info or {}, map = game.GetMap() }
-    -- Each card has its own key: cards finished in the same tick (a cleanup saves every player) would
-    -- otherwise replace each other before being sent.
+    local card = {
+        title = self.title,
+        player = who,
+        ms = ms,
+        steps = self.steps,
+        kind = self.kind,
+        ok = ok,
+        info = info or {},
+        map = game.GetMap()
+    }
     cardCount = cardCount + 1
     local opts = { key = "debug:" .. cardCount }
     if #admins > 0 then RARELOAD.Net.Push(admins, "debug", card, opts) end

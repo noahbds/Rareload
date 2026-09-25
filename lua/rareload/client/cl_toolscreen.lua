@@ -95,7 +95,8 @@ local function drawIcon(kind, x, y, size, alpha, p)
     surface.SetDrawColor(255, 255, 255, alpha)
     draw.NoTexture()
     if kind == "check" then
-        local ax, ay, bx, by, cx, cy = x - size * 0.35, y, x - size * 0.1, y + size * 0.28, x + size * 0.38, y - size * 0.3
+        local ax, ay, bx, by, cx, cy = x - size * 0.35, y, x - size * 0.1, y + size * 0.28, x + size * 0.38,
+            y - size * 0.3
         thickLine(ax, ay, Lerp(math.min(1, q * 2), ax, bx), Lerp(math.min(1, q * 2), ay, by), t)
         if q > 0.5 then thickLine(bx, by, Lerp((q - 0.5) * 2, bx, cx), Lerp((q - 0.5) * 2, by, cy), t) end
     elseif kind == "warn" then
@@ -135,7 +136,8 @@ local function drawOverlay(w, h)
     surface.SetDrawColor(0, 0, 0, alpha * 0.75)
     surface.DrawRect(0, 0, w, h)
     drawIcon(o.icon, w / 2, h / 2 - 20, 50, alpha, math.min(1, p * 2.2))
-    draw.SimpleText(L(o.text), "Rareload.Screen", w / 2, h / 2 + 55, Color(255, 255, 255, alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    draw.SimpleText(L(o.text), "Rareload.Screen", w / 2, h / 2 + 55, Color(255, 255, 255, alpha), TEXT_ALIGN_CENTER,
+        TEXT_ALIGN_CENTER)
 end
 
 local function valueText(f)
@@ -166,13 +168,17 @@ local function drawAutosave(w, h)
         end
     end
     if frac > 0 then draw.RoundedBox(8, 10, y + 2, (w - 20) * frac, BAR - 4, col) end
-    draw.SimpleText(text, "Rareload.Screen", w / 2 + 1, y + BAR / 2 + 1, Color(0, 0, 0, 180), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    draw.SimpleText(text, "Rareload.Screen", w / 2 + 1, y + BAR / 2 + 1, Color(0, 0, 0, 180), TEXT_ALIGN_CENTER,
+        TEXT_ALIGN_CENTER)
     draw.SimpleText(text, "Rareload.Screen", w / 2, y + BAR / 2, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 end
 
 -- The list scrolls down, pauses, scrolls back up, and pauses again.
 local function updateScroll(maxScroll)
-    if maxScroll <= 0 then state.scroll = 0 return end
+    if maxScroll <= 0 then
+        state.scroll = 0
+        return
+    end
     if RealTime() < state.pauseUntil then return end
     state.scroll = math.Clamp(state.scroll + state.dir * 15 * FrameTime(), 0, maxScroll)
     if state.scroll == maxScroll or state.scroll == 0 then
@@ -194,7 +200,8 @@ function Screen.Draw(w, h)
     surface.SetMaterial(GRADIENT)
     surface.SetDrawColor(255, 255, 255, 35)
     surface.DrawTexturedRect(0, 0, w, HEADER)
-    draw.SimpleText("RARELOAD", "Rareload.ScreenTitle", w / 2, HEADER / 2, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    draw.SimpleText("RARELOAD", "Rareload.ScreenTitle", w / 2, HEADER / 2, color_white, TEXT_ALIGN_CENTER,
+        TEXT_ALIGN_CENTER)
 
     local enabled = RARELOAD.Get(lp, "enabled")
     draw.RoundedBox(8, 10, 60, w - 20, 30, enabled and C.ok or C.bad)
@@ -218,7 +225,8 @@ function Screen.Draw(w, h)
             surface.SetFont("Rareload.Screen")
             local vw = surface.GetTextSize(text)
             fittedText(L("setting." .. f.key), 40, y + 10, w - 15 - vw - 8 - 40, color_white)
-            draw.SimpleText(text, "Rareload.Screen", w - 15, y + 10, on == nil and color_white or dot, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+            draw.SimpleText(text, "Rareload.Screen", w - 15, y + 10, on == nil and color_white or dot, TEXT_ALIGN_RIGHT,
+                TEXT_ALIGN_CENTER)
         end
     end
     render.SetScissorRect(0, 0, 0, 0, false)
@@ -227,6 +235,7 @@ function Screen.Draw(w, h)
     if state.overlay then
         drawOverlay(w, h)
     elseif not autosave then
-        draw.SimpleText("v" .. RARELOAD.version, "Rareload.Screen", w - 10, h - 4, Color(150, 150, 150, 180), TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
+        draw.SimpleText("v" .. RARELOAD.version, "Rareload.Screen", w - 10, h - 4, Color(150, 150, 150, 180),
+            TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
     end
 end

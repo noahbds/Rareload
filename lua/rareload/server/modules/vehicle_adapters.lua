@@ -130,7 +130,7 @@ Vehicles.Adapter({
     id = "source",
     priority = 0,
     matches = function(ent) return ent:IsVehicle() end,
-    isReady = function(ent) return physReady(ent) and (not ent.IsValidVehicle or ent:IsValidVehicle()) end,   -- G69
+    isReady = function(ent) return physReady(ent) and (not ent.IsValidVehicle or ent:IsValidVehicle()) end, -- G69
     captureRoot = function(ent)
         local t = { health = get(ent, "Health", isnumber), maxHealth = get(ent, "GetMaxHealth", isnumber) }
         captureCosmetic(ent, t)
@@ -151,10 +151,14 @@ Vehicles.Adapter({
     isReady = physReady,
     captureRoot = function(ent)
         local t = {
-            active = get(ent, "GetActive", isbool), lights = get(ent, "GetLightsEnabled", isbool),
-            handbrake = get(ent, "GetHandbrake", isbool), health = get(ent, "GetCurHealth", isnumber),
-            maxHealth = get(ent, "GetMaxHealth", isnumber), fuel = get(ent, "GetFuel", isnumber),
-            maxFuel = get(ent, "GetMaxFuel", isnumber), fuelType = get(ent, "GetFuelType"),
+            active = get(ent, "GetActive", isbool),
+            lights = get(ent, "GetLightsEnabled", isbool),
+            handbrake = get(ent, "GetHandbrake", isbool),
+            health = get(ent, "GetCurHealth", isnumber),
+            maxHealth = get(ent, "GetMaxHealth", isnumber),
+            fuel = get(ent, "GetFuel", isnumber),
+            maxFuel = get(ent, "GetMaxFuel", isnumber),
+            fuelType = get(ent, "GetFuelType"),
         }
         captureCosmetic(ent, t)
         return t
@@ -168,7 +172,7 @@ Vehicles.Adapter({
         set(ent, "SetLightsEnabled", t.lights)
         set(ent, "SetHandbrake", t.handbrake)
         applyCosmetic(ent, t, isfunction(ent.SetColors) and "SetColors" or "SetColor")
-        set(ent, "SetActive", t.active)   -- last: it starts the drivetrain
+        set(ent, "SetActive", t.active) -- last: it starts the drivetrain
     end,
 })
 
@@ -201,9 +205,12 @@ Vehicles.Adapter({
     end,
     captureRoot = function(ent)
         local t = {
-            engineActive = get(ent, "GetEngineActive", isbool), active = get(ent, "GetActive", isbool),
-            hp = get(ent, "GetHP", isnumber), maxHp = get(ent, "GetMaxHP", isnumber),
-            damaged = get(ent, "GetDamaged", isbool), ambientLight = get(ent, "GetAmbientLight"),
+            engineActive = get(ent, "GetEngineActive", isbool),
+            active = get(ent, "GetActive", isbool),
+            hp = get(ent, "GetHP", isnumber),
+            maxHp = get(ent, "GetMaxHP", isnumber),
+            damaged = get(ent, "GetDamaged", isbool),
+            ambientLight = get(ent, "GetAmbientLight"),
         }
         captureCosmetic(ent, t)
         return t
@@ -221,8 +228,12 @@ Vehicles.Adapter({
         local out = {}
         for _, c in ipairs(lvsComponents(ent)) do
             local lp = ent:WorldToLocal(c:GetPos())
-            out[#out + 1] = { class = c:GetClass(), pos = { lp.x, lp.y, lp.z }, hp = get(c, "GetHP", isnumber),
-                maxHp = get(c, "GetMaxHP", isnumber) }
+            out[#out + 1] = {
+                class = c:GetClass(),
+                pos = { lp.x, lp.y, lp.z },
+                hp = get(c, "GetHP", isnumber),
+                maxHp = get(c, "GetMaxHP", isnumber)
+            }
         end
         return #out > 0 and out or nil
     end,
@@ -255,16 +266,22 @@ Vehicles.Adapter({
     captureRoot = function(ent)
         local ang = get(ent, "GetTurretAngle", isangle)
         local t = {
-            engineState = get(ent, "GetEngineState", isnumber), chassisHealth = get(ent, "GetChassisHealth", isnumber),
-            engineHealth = get(ent, "GetEngineHealth", isnumber), tireHealth = get(ent, "GetTireHealth", isnumber),
-            isOnFire = get(ent, "GetIsOnFire", isbool), gear = get(ent, "GetGear", isnumber),
-            headlight = get(ent, "GetHeadlightState", isnumber), siren = get(ent, "GetSirenState", isnumber),
-            turnSignal = get(ent, "GetTurnSignalState", isnumber), lockState = get(ent, "GetLockState", isnumber),
-            isLocked = get(ent, "GetIsLocked", isbool), weaponIndex = get(ent, "GetWeaponIndex", isnumber),
+            engineState = get(ent, "GetEngineState", isnumber),
+            chassisHealth = get(ent, "GetChassisHealth", isnumber),
+            engineHealth = get(ent, "GetEngineHealth", isnumber),
+            tireHealth = get(ent, "GetTireHealth", isnumber),
+            isOnFire = get(ent, "GetIsOnFire", isbool),
+            gear = get(ent, "GetGear", isnumber),
+            headlight = get(ent, "GetHeadlightState", isnumber),
+            siren = get(ent, "GetSirenState", isnumber),
+            turnSignal = get(ent, "GetTurnSignalState", isnumber),
+            lockState = get(ent, "GetLockState", isnumber),
+            isLocked = get(ent, "GetIsLocked", isbool),
+            weaponIndex = get(ent, "GetWeaponIndex", isnumber),
             turret = ang and RARELOAD.Util.Ang(ang),
         }
         captureCosmetic(ent, t)
-        t.color = nil   -- Glide's paint is tuning data it restores itself
+        t.color = nil -- Glide's paint is tuning data it restores itself
         return t
     end,
     applyRoot = function(ent, t)
@@ -281,7 +298,7 @@ Vehicles.Adapter({
         set(ent, "SetTurretAngle", RARELOAD.Util.ToAngle(t.turret))
         set(ent, "SetWeaponIndex", t.weaponIndex)
         applyCosmetic(ent, t)
-        set(ent, "SetEngineState", t.engineState)   -- last: it drives lights and sound
+        set(ent, "SetEngineState", t.engineState) -- last: it drives lights and sound
     end,
 })
 
@@ -293,9 +310,12 @@ Vehicles.Adapter({
     isReady = physReady,
     captureRoot = function(ent)
         local t = {
-            active = get(ent, "GetActive", isbool), engineActive = get(ent, "GetEngineActive", isbool),
-            isLocked = get(ent, "GetIsLocked", isbool), hp = get(ent, "GetHP", isnumber),
-            shield = get(ent, "GetShield", isnumber), lgear = get(ent, "GetLGear", isnumber),
+            active = get(ent, "GetActive", isbool),
+            engineActive = get(ent, "GetEngineActive", isbool),
+            isLocked = get(ent, "GetIsLocked", isbool),
+            hp = get(ent, "GetHP", isnumber),
+            shield = get(ent, "GetShield", isnumber),
+            lgear = get(ent, "GetLGear", isnumber),
             rgear = get(ent, "GetRGear", isnumber),
         }
         captureCosmetic(ent, t)

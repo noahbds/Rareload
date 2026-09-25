@@ -164,7 +164,8 @@ local function aceEditor(parent, json, onStatus, onSave, onReady, onFail)
         end)
         self:AddFunction("rareload", "rendered", function(lines, w, h, agent)
             if failed or (tonumber(lines) or 0) > 0 and (tonumber(w) or 0) > 0 and (tonumber(h) or 0) > 0 then return end
-            fail(string.format("Ace drew nothing (%s lines, %sx%s px, %s)", tostring(lines), tostring(w), tostring(h), tostring(agent)))
+            fail(string.format("Ace drew nothing (%s lines, %sx%s px, %s)", tostring(lines), tostring(w), tostring(h),
+                tostring(agent)))
         end)
         self:AddFunction("rareload", "status", onStatus)
         self:AddFunction("rareload", "save", onSave)
@@ -177,11 +178,13 @@ local function aceEditor(parent, json, onStatus, onSave, onReady, onFail)
         pending = fn
         html:QueueJavascript("rareload.text(editor.getValue())")
     end
+
     function api.set(text) sendText(html, text) end
+
     function api.format() html:QueueJavascript("format()") end
 
     html:SetHTML(EDITOR_HTML)
-    timer.Simple(6, function()   -- the page or the CDN didn't answer
+    timer.Simple(6, function() -- the page or the CDN didn't answer
         if IsValid(html) and not started then fail("the page didn't answer in 6 s") end
     end)
     return html
@@ -192,7 +195,7 @@ local function plainEditor(parent, json, original, onStatus)
     local text = UI.TextEntry(parent, nil, true)
     text:Dock(FILL)
     text:SetValue(json)
-    parent:InvalidateLayout(true)   -- it replaces the removed editor after the window was laid out
+    parent:InvalidateLayout(true) -- it replaces the removed editor after the window was laid out
     local function check()
         local ok, line, col, why = Util.CheckJSON(text:GetValue())
         local changed = 0
@@ -205,14 +208,21 @@ local function plainEditor(parent, json, original, onStatus)
         end
         onStatus(ok, line, col, why, changed)
     end
-    text.OnChange = function() timer.Create("Rareload.Inspector.Check", 0.25, 1, function() if IsValid(text) then check() end end) end
+    text.OnChange = function() timer.Create("Rareload.Inspector.Check", 0.25, 1,
+            function() if IsValid(text) then check() end end) end
     check()
     return {
         get = function(fn) fn(text:GetValue()) end,
-        set = function(value) text:SetValue(value) check() end,
+        set = function(value)
+            text:SetValue(value)
+            check()
+        end,
         format = function()
             local t = util.JSONToTable(text:GetValue())
-            if t then text:SetValue(util.TableToJSON(t, true)) check() end
+            if t then
+                text:SetValue(util.TableToJSON(t, true))
+                check()
+            end
         end,
     }
 end
@@ -241,19 +251,29 @@ local function openEditor(entryId, objectId, json)
         elseif status.ok then
             msg, col, icon = L("inspector.json_ok"), C.ok, "accept"
         else
-            msg, col, icon = status.line > 0 and L("inspector.json_error", status.line, status.col, status.why) or status.why, C.bad, "exclamation"
+            msg, col, icon =
+            status.line > 0 and L("inspector.json_error", status.line, status.col, status.why) or status.why, C.bad,
+                "exclamation"
         end
         UI.DrawIcon(icon, 0, (h - sc(16)) / 2, sc(16))
-        draw.SimpleText(UI.Clip(msg, "Rareload.Small", w * 0.6), "Rareload.Small", sc(22), h / 2, col, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(UI.Clip(msg, "Rareload.Small", w * 0.6), "Rareload.Small", sc(22), h / 2, col, TEXT_ALIGN_LEFT,
+            TEXT_ALIGN_CENTER)
         local right = status.changed > 0 and L("inspector.json_changed", status.changed) or ""
         if status.plain then right = L("inspector.json_plain") .. (right ~= "" and "  ·  " .. right or "") end
-        draw.SimpleText(right, "Rareload.Small", w, h / 2, status.changed > 0 and C.warn or C.text3, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(right, "Rareload.Small", w, h / 2, status.changed > 0 and C.warn or C.text3, TEXT_ALIGN_RIGHT,
+            TEXT_ALIGN_CENTER)
     end
 
     local save
     local function onStatus(ok, line, col, why, changed)
-        status = { ok = ok, line = tonumber(line) or 0, col = tonumber(col) or 0, why = why, changed = tonumber(changed) or 0,
-            plain = status.plain }
+        status = {
+            ok = ok,
+            line = tonumber(line) or 0,
+            col = tonumber(col) or 0,
+            why = why,
+            changed = tonumber(changed) or 0,
+            plain = status.plain
+        }
         if IsValid(save) then save:SetEnabled(ok and status.changed > 0) end
     end
     local function send(text)
@@ -335,15 +355,18 @@ local function buildCard(parent, obj, isSelected, onClick)
         draw.RoundedBox(sc(8), sc(8), sc(8), w - sc(16), sc(108), C.bgDark)
     end
     card.PaintOver = function(_, w)
-        draw.SimpleText(UI.Clip(UI.ObjectName(obj.class, obj.model), "Rareload.Small", w - sc(16)), "Rareload.Small", w / 2, sc(124), C.text, TEXT_ALIGN_CENTER)
+        draw.SimpleText(UI.Clip(UI.ObjectName(obj.class, obj.model), "Rareload.Small", w - sc(16)), "Rareload.Small",
+            w / 2, sc(124), C.text, TEXT_ALIGN_CENTER)
         local y = sc(144)
         if obj.maxHp and obj.maxHp > 0 then
             draw.RoundedBox(sc(3), sc(14), y, w - sc(28), sc(5), C.bgDark)
-            draw.RoundedBox(sc(3), sc(14), y, (w - sc(28)) * math.Clamp((obj.hp or 0) / obj.maxHp, 0, 1), sc(5), UI.HealthColor(obj.hp, obj.maxHp))
+            draw.RoundedBox(sc(3), sc(14), y, (w - sc(28)) * math.Clamp((obj.hp or 0) / obj.maxHp, 0, 1), sc(5),
+                UI.HealthColor(obj.hp, obj.maxHp))
             y = y + sc(12)
         end
         local d = distanceTo(obj)
-        if d < math.huge then draw.SimpleText(L("inspector.units", math.Round(d)), "Rareload.Tiny", w / 2, y, C.text3, TEXT_ALIGN_CENTER) end
+        if d < math.huge then draw.SimpleText(L("inspector.units", math.Round(d)), "Rareload.Tiny", w / 2, y, C.text3,
+                TEXT_ALIGN_CENTER) end
         if isLive(obj.id) then UI.DrawIcon("world", w - sc(28), sc(12), sc(16)) end
     end
     if UI.IsModel(obj.model) then
@@ -377,13 +400,14 @@ local function buildDetail(host, entryId, sel)
         if not o then return {} end
         local live = isLive(o.id)
         local list = {
-            { L("field.id"), o.id or "?" }, { L("field.class"), o.class or "?" }, { L("field.model"), o.model or "-", C.text2 },
-            { L("field.kind"), L("kind." .. (isWeapon(o) and "weapons" or o.kind)), UI.KIND_COLORS[o.kind] },
+            { L("field.id"),       o.id or "?" }, { L("field.class"), o.class or "?" }, { L("field.model"), o.model or "-", C.text2 },
+            { L("field.kind"),     L("kind." .. (isWeapon(o) and "weapons" or o.kind)), UI.KIND_COLORS[o.kind] },
             { L("field.position"), UI.Pos(o.pos) }, { L("field.angle"), UI.Pos(o.ang), C.text2 },
             { L("field.distance"), distanceTo(o) < math.huge and L("inspector.units", math.Round(distanceTo(o))) or "-", C.text2 },
-            { L("field.status"), live and L("world.live") or L("world.missing"), live and C.ok or C.warn },
+            { L("field.status"),   live and L("world.live") or L("world.missing"),                                       live and C.ok or C.warn },
         }
-        if o.maxHp and o.maxHp > 0 then list[#list + 1] = { L("field.health"), (o.hp or 0) .. " / " .. o.maxHp, UI.HealthColor(o.hp, o.maxHp) } end
+        if o.maxHp and o.maxHp > 0 then list[#list + 1] = { L("field.health"), (o.hp or 0) .. " / " .. o.maxHp, UI
+                .HealthColor(o.hp, o.maxHp) } end
         if o.skin and o.skin ~= 0 then list[#list + 1] = { L("field.skin"), tostring(o.skin) } end
         if o.scale then list[#list + 1] = { L("field.scale"), tostring(o.scale) } end
         if o.material and o.material ~= "" then list[#list + 1] = { L("field.material"), o.material } end
@@ -416,8 +440,10 @@ local function buildDetail(host, entryId, sel)
         b:SetParent(p)
         p.PerformLayout = function(_, w, h)
             local half = (w - sc(6)) / 2
-            a:SetPos(0, 0) a:SetSize(half, h)
-            b:SetPos(half + sc(6), 0) b:SetSize(half, h)
+            a:SetPos(0, 0)
+            a:SetSize(half, h)
+            b:SetPos(half + sc(6), 0)
+            b:SetSize(half, h)
         end
         return p
     end
@@ -514,7 +540,8 @@ function Inspector.Open(entryId)
     local kind, sort, search, selectedId, shown = "all", "name", "", nil, {}
     local refresh
 
-    frame:HeaderButton(L("timeline.refresh"), function() request("history.objects", { id = entryId }) end, { style = "info", icon = "arrow_refresh" })
+    frame:HeaderButton(L("timeline.refresh"), function() request("history.objects", { id = entryId }) end,
+        { style = "info", icon = "arrow_refresh" })
     local deleteAll = frame:HeaderButton(L("inspector.delete_shown"), function()
         if #shown == 0 then return UI.Notify(L("inspector.nothing_shown"), "error") end
         UI.Confirm(L("inspector.delete_shown"), L("inspector.delete_confirm", #shown), function()
@@ -562,8 +589,10 @@ function Inspector.Open(entryId)
             elseif self:IsHovered() then
                 draw.RoundedBox(sc(6), 0, 0, w, h, C.surface)
             end
-            draw.SimpleText(L("kind." .. k), "Rareload.Body", sc(14), h / 2, on and C.accentHi or C.text2, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-            draw.SimpleText(tostring(counts[k] or 0), "Rareload.Small", w - sc(10), h / 2, C.text3, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+            draw.SimpleText(L("kind." .. k), "Rareload.Body", sc(14), h / 2, on and C.accentHi or C.text2,
+                TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+            draw.SimpleText(tostring(counts[k] or 0), "Rareload.Small", w - sc(10), h / 2, C.text3, TEXT_ALIGN_RIGHT,
+                TEXT_ALIGN_CENTER)
         end
         b.DoClick = function()
             kind = k
@@ -611,7 +640,8 @@ function Inspector.Open(entryId)
         for _, o in ipairs(all) do
             local k = isWeapon(o) and "weapons" or o.kind
             counts[k] = (counts[k] or 0) + 1
-            local text = string.lower(UI.ObjectName(o.class, o.model) .. " " .. (o.class or "") .. " " .. (o.model or "") .. " " .. (o.id or ""))
+            local text = string.lower(UI.ObjectName(o.class, o.model) ..
+            " " .. (o.class or "") .. " " .. (o.model or "") .. " " .. (o.id or ""))
             if (kind == "all" or kind == k or kind == o.kind) and (search == "" or string.find(text, search, 1, true)) then
                 shown[#shown + 1] = o
             end
@@ -632,7 +662,8 @@ function Inspector.Open(entryId)
             e:SetSize(math.max(scroll:GetWide() - sc(24), sc(400)), sc(200))
         end
         grid:Layout()
-        stat:SetText(#shown > MAX_CARDS and L("inspector.showing_first", MAX_CARDS, #shown) or L("inspector.showing", #shown))
+        stat:SetText(#shown > MAX_CARDS and L("inspector.showing_first", MAX_CARDS, #shown) or
+        L("inspector.showing", #shown))
         stat:SizeToContents()
         select(selectedId)
     end

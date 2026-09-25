@@ -107,7 +107,8 @@ Cmd.Register("perms", {
         local names = table.GetKeys(RARELOAD.Privs)
         table.sort(names)
         for _, name in ipairs(names) do
-            reply(string.format("  %-3s %-36s %s", RARELOAD.Can(ply, name) and "yes" or "no", name, RARELOAD.Privs[name].desc))
+            reply(string.format("  %-3s %-36s %s", RARELOAD.Can(ply, name) and "yes" or "no", name,
+                RARELOAD.Privs[name].desc))
         end
     end,
 })
@@ -135,12 +136,18 @@ end
 -- Admins can name another player as the first argument of the timeline commands.
 local function targetOf(ply, args, reply)
     if args[1] and not tonumber(args[1]) then
-        if not RARELOAD.Can(ply, "rareload_admin") then reply("Only admins can act on other players.") return nil end
+        if not RARELOAD.Can(ply, "rareload_admin") then
+            reply("Only admins can act on other players.")
+            return nil
+        end
         local target = Cmd.FindPlayer(table.remove(args, 1))
         if not target then reply("No such player.") end
         return target
     end
-    if not IsValid(ply) then reply("Name a player.") return nil end
+    if not IsValid(ply) then
+        reply("Name a player.")
+        return nil
+    end
     return ply
 end
 
@@ -149,7 +156,8 @@ local function result(reply, ok, what)
 end
 
 Cmd.Register("history", {
-    priv = "rareload_restore", usage = "[player]",
+    priv = "rareload_restore",
+    usage = "[player]",
     help = "List saves on this map (* = respawn point, P = pinned); admins can name a player",
     fn = function(ply, args, reply)
         local target = targetOf(ply, args, reply)
@@ -163,7 +171,8 @@ Cmd.Register("history", {
 })
 
 Cmd.Register("history restore", {
-    priv = "rareload_restore", usage = "<id> [position,health,inventory,ammo,appearance,states,world]",
+    priv = "rareload_restore",
+    usage = "<id> [position,health,inventory,ammo,appearance,states,world]",
     help = "Restore a save now (all components by default)",
     fn = playerOnly(function(ply, args, reply)
         if not ply:Alive() then return reply("Respawn first, then restore the save.") end
@@ -172,24 +181,32 @@ Cmd.Register("history restore", {
 })
 
 Cmd.Register("history activate", {
-    priv = "rareload_restore", usage = "<id>", help = "Make a save your respawn point",
-    fn = playerOnly(function(ply, args, reply) result(reply, RARELOAD.History.Activate(ply, tonumber(args[1])), "activate") end),
+    priv = "rareload_restore",
+    usage = "<id>",
+    help = "Make a save your respawn point",
+    fn = playerOnly(function(ply, args, reply) result(reply, RARELOAD.History.Activate(ply, tonumber(args[1])),
+            "activate") end),
 })
 
 Cmd.Register("history undo", {
-    priv = "rareload_restore", help = "Undo the last restore",
+    priv = "rareload_restore",
+    help = "Undo the last restore",
     fn = playerOnly(function(ply, _, reply) result(reply, RARELOAD.History.Undo(ply), "undo") end),
 })
 
 Cmd.Register("history pin", {
-    priv = "rareload_restore", usage = "<id> [0]", help = "Pin a save so it's never pruned (0 unpins)",
+    priv = "rareload_restore",
+    usage = "<id> [0]",
+    help = "Pin a save so it's never pruned (0 unpins)",
     fn = playerOnly(function(ply, args, reply)
         result(reply, RARELOAD.History.SetPinned(ply, tonumber(args[1]), args[2] ~= "0"), "pin")
     end),
 })
 
 Cmd.Register("history note", {
-    priv = "rareload_restore", usage = "<id> <text>", help = "Attach a note to a save",
+    priv = "rareload_restore",
+    usage = "<id> <text>",
+    help = "Attach a note to a save",
     fn = playerOnly(function(ply, args, reply)
         local id = tonumber(table.remove(args, 1))
         result(reply, RARELOAD.History.SetNote(ply, id, string.sub(table.concat(args, " "), 1, 256)), "note")
@@ -197,12 +214,15 @@ Cmd.Register("history note", {
 })
 
 Cmd.Register("history delete", {
-    priv = "rareload_restore", usage = "<id>", help = "Delete a save",
+    priv = "rareload_restore",
+    usage = "<id>",
+    help = "Delete a save",
     fn = playerOnly(function(ply, args, reply) result(reply, RARELOAD.History.Delete(ply, tonumber(args[1])), "delete") end),
 })
 
 Cmd.Register("history clear", {
-    priv = "rareload_restore", usage = "[player]",
+    priv = "rareload_restore",
+    usage = "[player]",
     help = "Delete every save except pinned ones and the respawn point; admins can name a player",
     fn = function(ply, args, reply)
         local target = targetOf(ply, args, reply)
@@ -211,7 +231,8 @@ Cmd.Register("history clear", {
 })
 
 Cmd.Register("history reload", {
-    priv = "rareload_use_tool", usage = "<set_previous|restore_current|restore_previous> [components]",
+    priv = "rareload_use_tool",
+    usage = "<set_previous|restore_current|restore_previous> [components]",
     help = "Choose what the tool's reload key does",
     fn = playerOnly(function(ply, args, reply)
         if not RARELOAD.History.RELOAD_MODES[args[1]] then return reply("Unknown mode.") end
@@ -223,11 +244,13 @@ Cmd.Register("history reload", {
 local function coords(args)
     local x, y, z = tonumber(args[1]), tonumber(args[2]), tonumber(args[3])
     local v = RARELOAD.Util.ToVector({ x, y, z })
-    return v and util.IsInWorld(v) and v or nil   -- L5
+    return v and util.IsInWorld(v) and v or nil -- L5
 end
 
 Cmd.Register("tp", {
-    priv = "rareload_teleport", usage = "<x> <y> <z>", help = "Teleport to a position",
+    priv = "rareload_teleport",
+    usage = "<x> <y> <z>",
+    help = "Teleport to a position",
     fn = playerOnly(function(ply, args, reply)
         local pos = coords(args)
         if not pos then return reply("Not a position inside the map.") end
@@ -238,7 +261,9 @@ Cmd.Register("tp", {
 })
 
 Cmd.Register("lookat", {
-    priv = "rareload_teleport", usage = "<x> <y> <z>", help = "Turn to face a position",
+    priv = "rareload_teleport",
+    usage = "<x> <y> <z>",
+    help = "Turn to face a position",
     fn = playerOnly(function(ply, args, reply)
         local pos = coords(args)
         if not pos then return reply("Not a position inside the map.") end
@@ -247,7 +272,8 @@ Cmd.Register("lookat", {
 })
 
 Cmd.Register("antistuck test", {
-    priv = "rareload_anti_stuck", usage = "[player]",
+    priv = "rareload_anti_stuck",
+    usage = "[player]",
     help = "Look for a free spot from where a player stands (debug draws the candidates)",
     fn = function(ply, args, reply)
         local target = args[1] and Cmd.FindPlayer(args[1]) or ply
@@ -259,7 +285,7 @@ Cmd.Register("antistuck test", {
         local mins, maxs = target:OBBMins(), target:OBBMaxs()
         local found, method = AntiStuck.Resolve(pos, target, crouched, function(p, free)
             tried = tried + 1
-            if RARELOAD.Get(nil, "debug") and tried <= 200 then   -- G83
+            if RARELOAD.Get(nil, "debug") and tried <= 200 then -- G83
                 debugoverlay.Box(p, mins, maxs, 8, free and Color(0, 255, 0, 30) or Color(255, 0, 0, 8))
             end
         end)
@@ -270,7 +296,8 @@ Cmd.Register("antistuck test", {
 })
 
 Cmd.Register("antistuck method", {
-    priv = "rareload_anti_stuck", usage = "[list|enable|disable|only|up|down|reset] [method]",
+    priv = "rareload_anti_stuck",
+    usage = "[list|enable|disable|only|up|down|reset] [method]",
     help = "Show or change which anti-stuck methods run, and in which order",
     fn = function(_, args, reply)
         local action = args[1] or "list"
@@ -285,7 +312,8 @@ Cmd.Register("antistuck method", {
 })
 
 Cmd.Register("data cleanup", {
-    priv = "rareload_data_cleanup", help = "Delete saved world data no save uses any more",
+    priv = "rareload_data_cleanup",
+    help = "Delete saved world data no save uses any more",
     fn = function(_, _, reply) reply("Removed " .. RARELOAD.Store.GC() .. " unused blobs.") end,
 })
 
@@ -302,7 +330,8 @@ for name, def in pairs(CLIENT_COMMANDS) do
 end
 
 Cmd.Register("debug", {
-    priv = "rareload_debug", usage = "<on|off|recent [n]|clear|diag>",
+    priv = "rareload_debug",
+    usage = "<on|off|recent [n]|clear|diag>",
     help = "Turn debug on or off, show recent log events, or print a diagnostic",
     fn = function(_, args, reply)
         local sub = args[1] or "diag"
@@ -311,7 +340,8 @@ Cmd.Register("debug", {
             reply("Debug " .. sub .. ".")
         elseif sub == "recent" then
             for _, e in ipairs(RARELOAD.LogRecent(math.Clamp(tonumber(args[2]) or 30, 1, 500))) do
-                reply(string.format("  %s %-7s %-10s %s", os.date("%H:%M:%S", e.t), e.level, tostring(e.category), e.text))
+                reply(string.format("  %s %-7s %-10s %s", os.date("%H:%M:%S", e.t), e.level, tostring(e.category), e
+                .text))
             end
         elseif sub == "clear" then
             RARELOAD.LogClear()
@@ -328,7 +358,8 @@ Cmd.Register("debug", {
                 if m.enabled then methods[#methods + 1] = m.id end
             end
             local counts = RARELOAD.LogRing.counts
-            reply("Rareload " .. RARELOAD.version .. " on " .. game.GetMap() .. (game.SinglePlayer() and " (singleplayer)" or ""))
+            reply("Rareload " ..
+            RARELOAD.version .. " on " .. game.GetMap() .. (game.SinglePlayer() and " (singleplayer)" or ""))
             reply("  debug " .. (RARELOAD.Get(nil, "debug") and "on" or "off") .. ", gamemode "
                 .. (RARELOAD.Pipeline.Enabled() and "supported" or "not supported") .. ", navmesh "
                 .. (navmesh.IsLoaded() and "loaded" or "missing"))

@@ -5,10 +5,10 @@ RARELOAD.Net = RARELOAD.Net or {}
 local Net = RARELOAD.Net
 
 local SYNC, REQ = "rareload.sync", "rareload.req"
-local CHUNK = 60000                      -- G10
-local MAX_REQUEST = 64 * 1024            -- S2
-local MAX_TRANSFER = 16 * 1024 * 1024    -- S11
-local MAX_INFLIGHT = 96 * 1024           -- S13
+local CHUNK = 60000                   -- G10
+local MAX_REQUEST = 64 * 1024         -- S2
+local MAX_TRANSFER = 16 * 1024 * 1024 -- S11
+local MAX_INFLIGHT = 96 * 1024        -- S13
 local ACK_TIMEOUT = 30
 
 -- Pure helpers (unit-tested) ---------------------------------------------------------------------
@@ -63,9 +63,9 @@ if SERVER then
     local function weak() return setmetatable({}, { __mode = "k" }) end
     Net._state = Net._state or { ready = weak(), queues = weak(), inflight = weak(), lastCall = weak() }
     local ready = Net._state.ready
-    local queues = Net._state.queues       -- ply -> transfers waiting to be sent
-    local inflight = Net._state.inflight   -- ply -> transferId -> { bytes, t }
-    local lastCall = Net._state.lastCall   -- ply -> op -> CurTime of last accepted call
+    local queues = Net._state.queues     -- ply -> transfers waiting to be sent
+    local inflight = Net._state.inflight -- ply -> transferId -> { bytes, t }
+    local lastCall = Net._state.lastCall -- ply -> op -> CurTime of last accepted call
     local nextId = Net._state.nextId or 0
 
     -- `def` = { priv?, rate?, args? (schema), fn(ply, args) }.
@@ -74,13 +74,13 @@ if SERVER then
         local prev = handlers[op]
         def.gen, def.src = RARELOAD.loadGen, debug.getinfo(2, "S").short_src
         if prev and prev.gen == def.gen and prev.src ~= def.src then
-            error("[Rareload] net opcode registered twice: " .. op, 2)   -- L31
+            error("[Rareload] net opcode registered twice: " .. op, 2) -- L31
         end
         handlers[op] = def
     end
 
     local function enqueue(ply, topic, key, chunks, urgent)
-        if not ready[ply] then return end   -- G14: nothing is sent before the client is loaded
+        if not ready[ply] then return end -- G14: nothing is sent before the client is loaded
         local queue = queues[ply] or {}
         queues[ply] = queue
         -- A newer push of the same key replaces one that hasn't started sending.
@@ -167,7 +167,7 @@ if SERVER then
 
         if h.priv and not RARELOAD.Can(ply, h.priv) then return end
 
-        local args, err = Net.Validate(h.args or {}, util.JSONToTable(raw) or {})   -- default limits (S12)
+        local args, err = Net.Validate(h.args or {}, util.JSONToTable(raw) or {}) -- default limits (S12)
         if not args then
             RARELOAD.Log("net"):warn("%s sent a bad %q request: %s", ply:Nick(), op, err)
             return
@@ -192,7 +192,8 @@ if SERVER then
 
     -- Toasts carry a translation key and arguments; the client localizes them (L29).
     function RARELOAD.Toast(ply, key, args, kind)
-        Net.Push(ply, "toast", { key = key, args = args or {}, kind = kind or "info" }, { key = "toast:" .. key, urgent = true })
+        Net.Push(ply, "toast", { key = key, args = args or {}, kind = kind or "info" },
+            { key = "toast:" .. key, urgent = true })
     end
 end
 

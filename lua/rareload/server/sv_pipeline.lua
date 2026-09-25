@@ -291,9 +291,6 @@ runFrom = function(ctx, i)
     hook.Run("RareloadRestored", ctx.ply, ctx.entry)
 end
 
--- opts = { reason?: "spawn"|"timeline"|"undo"|..., only?: { [moduleId] = true } }
--- On a spawn, modules with a `spawn` hook run inside the gamemode's own spawn hooks (G16, G17);
--- everything else runs one tick later, once the gamemode has applied its spawn defaults.
 function Pipeline.Restore(ply, entry, opts)
     opts = opts or {}
     local token = (tokens[ply] or 0) + 1

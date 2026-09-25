@@ -1,11 +1,3 @@
--- Settings registry: each setting is declared once here and gets its convars generated
--- (REWRITE_PLAN.md §13.2, §18). Settings are declared when a feature reads them, never earlier (B7).
---   server scope: sv_rareload_<name>, replicated so clients can read it too.
---   player scope: the same server convar is the default; each player can override it with the
---                 userinfo convar rareload_pref_<name>, where -1 means "use the server value" (D13).
---                 An admin can lock it to the server value (D3).
---   client scope: cl_rareload_<name>, purely visual, never seen by the server.
-
 RARELOAD.Settings = RARELOAD.Settings or {}
 local Settings = RARELOAD.Settings
 
@@ -49,7 +41,7 @@ function RARELOAD.Setting(key, def)
         lo, hi, default = 0, 1, def.default and "1" or "0"
     end
     def.key = key
-    def.order = def.order or (Settings[key] and Settings[key].order) or table.Count(Settings) + 1   -- menu order
+    def.order = def.order or (Settings[key] and Settings[key].order) or table.Count(Settings) + 1 -- menu order
     Settings[key] = def
 
     if def.scope == "client" then
@@ -59,7 +51,7 @@ function RARELOAD.Setting(key, def)
     end
 
     def.convar = "sv_rareload_" .. name
-    def.cv = CreateConVar(def.convar, default, FCVAR_ARCHIVE + FCVAR_REPLICATED, def.help, lo, hi)   -- G42
+    def.cv = CreateConVar(def.convar, default, FCVAR_ARCHIVE + FCVAR_REPLICATED, def.help, lo, hi) -- G42
     if def.scope == "player" then
         def.pref = "rareload_pref_" .. name
         if CLIENT then
@@ -91,81 +83,261 @@ function RARELOAD.Get(ply, key)
     return value
 end
 
--- Categories, in menu order: general, player, world, timing, server, antistuck, display.
--- Defaults are for the usual Sandbox player: a save is what's on the map when you save (both
--- overwrite settings on); autosave, when turned on, keeps a save every 30 s at most and ignores
--- just looking around, so it doesn't push manual saves out of a 50-save history; the anti-stuck
--- search runs in one server frame, so it gets 0.3 s at most (it usually needs a few ms).
-RARELOAD.Setting("enabled", { type = "bool", default = true, scope = "player", category = "general",
-    priv = "rareload_restore", help = "Respawn players at their Rareload save" })
-RARELOAD.Setting("antiStuck", { type = "bool", default = true, scope = "player", category = "general",
-    help = "Move players out of blocked saved positions" })
-RARELOAD.Setting("skipRestoreOnDeath", { type = "bool", default = false, scope = "player", category = "general",
-    help = "Don't restore the save when respawning after a death" })
-RARELOAD.Setting("keepHealth", { type = "bool", default = true, scope = "player", category = "player",
-    priv = "rareload_restore_health_armor", help = "Restore health and armor" })
-RARELOAD.Setting("keepStates", { type = "bool", default = true, scope = "player", category = "player",
-    priv = "rareload_restore_states", help = "Restore noclip, godmode, notarget, frozen and flashlight" })
-RARELOAD.Setting("keepAppearance", { type = "bool", default = true, scope = "player", category = "player",
-    priv = "rareload_restore_appearance", help = "Restore the player model, skin, bodygroups and colors" })
-RARELOAD.Setting("keepInventory", { type = "bool", default = true, scope = "player", category = "player",
-    priv = "rareload_restore_inventory", help = "Restore weapons and the active weapon" })
-RARELOAD.Setting("keepAmmo", { type = "bool", default = true, scope = "player", category = "player",
-    priv = "rareload_restore_ammo", help = "Restore reserve ammo and clips" })
-RARELOAD.Setting("globalInventory", { type = "bool", default = false, scope = "player", category = "player",
-    priv = "rareload_global_inventory", help = "Use one inventory across all maps" })
-RARELOAD.Setting("keepEntities", { type = "bool", default = true, scope = "player", category = "world",
-    priv = "rareload_restore_entities", help = "Save and restore the props and entities you own" })
-RARELOAD.Setting("keepNPCs", { type = "bool", default = true, scope = "player", category = "world",
-    priv = "rareload_restore_npcs", help = "Save and restore the NPCs you own" })
-RARELOAD.Setting("keepVehicles", { type = "bool", default = true, scope = "player", category = "world",
-    priv = "rareload_restore_vehicles", help = "Save and restore your vehicles and put you back in your seat" })
-RARELOAD.Setting("overwriteModified", { type = "bool", default = true, scope = "player", category = "world",
-    help = "On save, overwrite objects that are already saved (off keeps their saved state)" })
-RARELOAD.Setting("overwriteDeleted", { type = "bool", default = true, scope = "player", category = "world",
-    help = "On save, drop saved objects that were deleted from the map (off keeps them saved)" })
-RARELOAD.Setting("autoSave", { type = "bool", default = false, scope = "player", category = "general",
-    priv = "rareload_save", help = "Save automatically when something changes" })
-RARELOAD.Setting("autoSaveInterval", { type = "int", default = 30, min = 1, max = 600, scope = "player",
-    category = "timing", help = "Autosave: minimum seconds between two saves" })
-RARELOAD.Setting("autoSaveAngleThreshold", { type = "float", default = 45, min = 1, max = 180, scope = "player",
-    category = "timing", help = "Autosave: degrees of view change that count as a change" })
-RARELOAD.Setting("historySize", { type = "int", default = 50, min = 1, max = 1000, scope = "player",
-    category = "timing", capBy = "historySizeMax", help = "How many saves each player keeps per map" })
-RARELOAD.Setting("historySizeMax", { type = "int", default = 100, min = 1, max = 1000, scope = "server",
-    category = "timing", help = "Upper limit for historySize, so players can't fill the disk" })
-RARELOAD.Setting("enableInAllGamemodes", { type = "bool", default = false, scope = "server", category = "server",
-    help = "Also run Rareload in gamemodes not derived from Sandbox (D19)" })
-RARELOAD.Setting("debug", { type = "bool", default = false, scope = "server", category = "server",
-    help = "Print Rareload debug logs, send report cards to admins and show the world display" })
-RARELOAD.Setting("deathCleanupMode", { type = "enum", values = { "off", "all", "owned", "saved" }, default = "off",
-    scope = "server", category = "world", help = "Before respawning a dead player: off, clean the whole map, "
-        .. "remove their own objects, or remove only their saved objects" })
-RARELOAD.Setting("disconnectCleanup", { type = "bool", default = false, scope = "server", category = "world",
-    help = "Remove a player's objects when they disconnect" })
-RARELOAD.Setting("maxVehicles", { type = "int", default = 0, min = 0, max = 100, scope = "server", category = "world",
-    help = "Most vehicles restored per player (0 = no limit)" })
-RARELOAD.Setting("respectSpawnLimits", { type = "bool", default = not game.SinglePlayer(), scope = "server",
-    category = "world", help = "Restored objects go through Sandbox spawn permissions and sbox_max limits (D10)" })
-RARELOAD.Setting("asMaxSearchTime", { type = "float", default = 0.3, min = 0.05, max = 5, scope = "server",
-    category = "antistuck", help = "Anti-stuck: seconds to spend looking for a free spot" })
-RARELOAD.Setting("asMaxDistance", { type = "int", default = 1200, min = 64, max = 8192, scope = "server",
-    category = "antistuck", help = "Anti-stuck: how far from the saved position to look" })
-RARELOAD.Setting("wdDrawDistance", { type = "int", default = 800, min = 100, max = 5000, scope = "client",
-    category = "display", help = "World display: how far away saved objects show an info panel" })
-RARELOAD.Setting("wdMaxDrawPerFrame", { type = "int", default = 16, min = 1, max = 100, scope = "client",
-    category = "display", help = "World display: most info panels drawn at once" })
-RARELOAD.Setting("wdInteractDistance", { type = "int", default = 400, min = 100, max = 5000, scope = "client",
-    category = "display", help = "World display: how far away you can focus an info panel" })
-RARELOAD.Setting("toastHold", { type = "float", default = 6, min = 1, max = 30, scope = "client",
-    category = "display", help = "Seconds a debug report card stays on screen (cards with more steps stay a little longer)" })
+RARELOAD.Setting("enabled", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "general",
+    priv = "rareload_restore",
+    help = "Respawn players at their Rareload save"
+})
+RARELOAD.Setting("antiStuck", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "general",
+    help = "Move players out of blocked saved positions"
+})
+RARELOAD.Setting("skipRestoreOnDeath", {
+    type = "bool",
+    default = false,
+    scope = "player",
+    category = "general",
+    help = "Don't restore the save when respawning after a death"
+})
+RARELOAD.Setting("keepHealth", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "player",
+    priv = "rareload_restore_health_armor",
+    help = "Restore health and armor"
+})
+RARELOAD.Setting("keepStates", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "player",
+    priv = "rareload_restore_states",
+    help = "Restore noclip, godmode, notarget, frozen and flashlight"
+})
+RARELOAD.Setting("keepAppearance", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "player",
+    priv = "rareload_restore_appearance",
+    help = "Restore the player model, skin, bodygroups and colors"
+})
+RARELOAD.Setting("keepInventory", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "player",
+    priv = "rareload_restore_inventory",
+    help = "Restore weapons and the active weapon"
+})
+RARELOAD.Setting("keepAmmo", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "player",
+    priv = "rareload_restore_ammo",
+    help = "Restore reserve ammo and clips"
+})
+RARELOAD.Setting("globalInventory", {
+    type = "bool",
+    default = false,
+    scope = "player",
+    category = "player",
+    priv = "rareload_global_inventory",
+    help = "Use one inventory across all maps"
+})
+RARELOAD.Setting("keepEntities", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "world",
+    priv = "rareload_restore_entities",
+    help = "Save and restore the props and entities you own"
+})
+RARELOAD.Setting("keepNPCs", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "world",
+    priv = "rareload_restore_npcs",
+    help = "Save and restore the NPCs you own"
+})
+RARELOAD.Setting("keepVehicles", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "world",
+    priv = "rareload_restore_vehicles",
+    help = "Save and restore your vehicles and put you back in your seat"
+})
+RARELOAD.Setting("overwriteModified", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "world",
+    help = "On save, overwrite objects that are already saved (off keeps their saved state)"
+})
+RARELOAD.Setting("overwriteDeleted", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "world",
+    help = "On save, drop saved objects that were deleted from the map (off keeps them saved)"
+})
+RARELOAD.Setting("autoSave", {
+    type = "bool",
+    default = false,
+    scope = "player",
+    category = "general",
+    priv = "rareload_save",
+    help = "Save automatically when something changes"
+})
+RARELOAD.Setting("autoSaveInterval", {
+    type = "int",
+    default = 30,
+    min = 1,
+    max = 600,
+    scope = "player",
+    category = "timing",
+    help = "Autosave: minimum seconds between two saves"
+})
+RARELOAD.Setting("autoSaveAngleThreshold", {
+    type = "float",
+    default = 45,
+    min = 1,
+    max = 180,
+    scope = "player",
+    category = "timing",
+    help = "Autosave: degrees of view change that count as a change"
+})
+RARELOAD.Setting("historySize", {
+    type = "int",
+    default = 50,
+    min = 1,
+    max = 1000,
+    scope = "player",
+    category = "timing",
+    capBy = "historySizeMax",
+    help = "How many saves each player keeps per map"
+})
+RARELOAD.Setting("historySizeMax", {
+    type = "int",
+    default = 100,
+    min = 1,
+    max = 1000,
+    scope = "server",
+    category = "timing",
+    help = "Upper limit for historySize, so players can't fill the disk"
+})
+RARELOAD.Setting("enableInAllGamemodes", {
+    type = "bool",
+    default = false,
+    scope = "server",
+    category = "server",
+    help = "Also run Rareload in gamemodes not derived from Sandbox (D19)"
+})
+RARELOAD.Setting("debug", {
+    type = "bool",
+    default = false,
+    scope = "server",
+    category = "server",
+    help = "Print Rareload debug logs, send report cards to admins and show the world display"
+})
+RARELOAD.Setting("deathCleanupMode", {
+    type = "enum",
+    values = { "off", "all", "owned", "saved" },
+    default = "off",
+    scope = "server",
+    category = "world",
+    help = "Before respawning a dead player: off, clean the whole map, "
+        .. "remove their own objects, or remove only their saved objects"
+})
+RARELOAD.Setting("disconnectCleanup", {
+    type = "bool",
+    default = false,
+    scope = "server",
+    category = "world",
+    help = "Remove a player's objects when they disconnect"
+})
+RARELOAD.Setting("maxVehicles", {
+    type = "int",
+    default = 0,
+    min = 0,
+    max = 100,
+    scope = "server",
+    category = "world",
+    help = "Most vehicles restored per player (0 = no limit)"
+})
+RARELOAD.Setting("respectSpawnLimits", {
+    type = "bool",
+    default = not game.SinglePlayer(),
+    scope = "server",
+    category = "world",
+    help = "Restored objects go through Sandbox spawn permissions and sbox_max limits (D10)"
+})
+RARELOAD.Setting("asMaxSearchTime", {
+    type = "float",
+    default = 0.3,
+    min = 0.05,
+    max = 5,
+    scope = "server",
+    category = "antistuck",
+    help = "Anti-stuck: seconds to spend looking for a free spot"
+})
+RARELOAD.Setting("asMaxDistance", {
+    type = "int",
+    default = 1200,
+    min = 64,
+    max = 8192,
+    scope = "server",
+    category = "antistuck",
+    help = "Anti-stuck: how far from the saved position to look"
+})
+RARELOAD.Setting("wdDrawDistance", {
+    type = "int",
+    default = 800,
+    min = 100,
+    max = 5000,
+    scope = "client",
+    category = "display",
+    help = "World display: how far away saved objects show an info panel"
+})
+RARELOAD.Setting("wdMaxDrawPerFrame", {
+    type = "int",
+    default = 16,
+    min = 1,
+    max = 100,
+    scope = "client",
+    category = "display",
+    help = "World display: most info panels drawn at once"
+})
+RARELOAD.Setting("wdInteractDistance", {
+    type = "int",
+    default = 400,
+    min = 100,
+    max = 5000,
+    scope = "client",
+    category = "display",
+    help = "World display: how far away you can focus an info panel"
+})
+RARELOAD.Setting("toastHold", {
+    type = "float",
+    default = 6,
+    min = 1,
+    max = 30,
+    scope = "client",
+    category = "display",
+    help = "Seconds a debug report card stays on screen (cards with more steps stay a little longer)"
+})
 
--- Admins change server values and locks from the client over the network; values are parsed like
--- a convar.
 if SERVER then
-    -- Puts every server setting and every player default back to its default, removes all locks and
-    -- restores the default anti-stuck methods and order. Players' own values (rareload_pref_*) are
-    -- theirs; each resets them in the tool panel. Returns how many settings changed.
     function RARELOAD.ResetSettings(who)
         local changed = 0
         for _, def in pairs(Settings) do

@@ -69,7 +69,10 @@ function Util.CheckJSON(text)
         i = i + 1
         while i <= n do
             local c = string.sub(text, i, i)
-            if c == '"' then i = i + 1 return end
+            if c == '"' then
+                i = i + 1
+                return
+            end
             if c == "\\" then
                 local e = string.sub(text, i + 1, i + 1)
                 if e == "u" then
@@ -91,12 +94,18 @@ function Util.CheckJSON(text)
     local function list(close, item)
         i = i + 1
         skip()
-        if string.sub(text, i, i) == close then i = i + 1 return end
+        if string.sub(text, i, i) == close then
+            i = i + 1
+            return
+        end
         while true do
             item()
             skip()
             local c = string.sub(text, i, i)
-            if c == close then i = i + 1 return end
+            if c == close then
+                i = i + 1
+                return
+            end
             if c ~= "," then fail("expected , or " .. close) end
             i = i + 1
         end

@@ -1,5 +1,5 @@
 -- The Rareload tool: left click saves at the aimed spot, right click saves where you stand, reload
--- runs the chosen reload-key mode (REWRITE_PLAN.md F1, F28). The screen and panel live in client/.
+-- runs the chosen reload-key mode.
 
 TOOL.Category = "Rareload"
 TOOL.Name = "#tool.rareload_tool.name"
@@ -23,7 +23,6 @@ local function save(tool, at)
 end
 
 function TOOL:LeftClick(trace)
-    -- Aiming at the sky or at nothing would put the respawn point in the void.
     if not trace.Hit or trace.HitSky then
         if SERVER then RARELOAD.Toast(self:GetOwner(), "toast.aim_ground", nil, "error") end
         return false
@@ -31,7 +30,6 @@ function TOOL:LeftClick(trace)
     return save(self, trace.HitPos)
 end
 
--- Saving where you stand aims at nothing, so no tool beam: returning false skips the shoot effect.
 function TOOL:RightClick()
     save(self, nil)
     return false

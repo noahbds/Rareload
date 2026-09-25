@@ -2,15 +2,15 @@
 -- listens to RareloadStateChanged(what, key) instead of listening to the network.
 
 RARELOAD.State = RARELOAD.State or {
-    history = { rows = {}, reload = {} },   -- own timeline
-    objects = {},                           -- entry id -> saved objects of that entry
-    saves = {},                             -- SteamID64 -> { nick, data, objects }: world display feed
-    savesRev = 0,                           -- bumped on every feed change, for dirty checks (L28)
-    details = {},                           -- DetailKey -> full saved object, asked for by the world display
-    antistuck = {},                         -- anti-stuck methods in order, for the server page
+    history = { rows = {}, reload = {} }, -- own timeline
+    objects = {},                         -- entry id -> saved objects of that entry
+    saves = {},                           -- SteamID64 -> { nick, data, objects }: world display feed
+    savesRev = 0,                         -- bumped on every feed change, for dirty checks (L28)
+    details = {},                         -- DetailKey -> full saved object, asked for by the world display
+    antistuck = {},                       -- anti-stuck methods in order, for the server page
 }
 local State = RARELOAD.State
-State.details, State.antistuck = State.details or {}, State.antistuck or {}   -- after a dev reload
+State.details, State.antistuck = State.details or {}, State.antistuck or {} -- after a dev reload
 
 local function changed(what, key)
     hook.Run("RareloadStateChanged", what, key)
@@ -45,7 +45,7 @@ end)
 
 RARELOAD.Net.On("history.objects", function(p)
     State.objects[p.id] = p.objects or {}
-    forgetDetails(State.DetailKey(nil, p.id, ""))   -- the save's objects may have been edited
+    forgetDetails(State.DetailKey(nil, p.id, "")) -- the save's objects may have been edited
     changed("objects", p.id)
 end)
 
@@ -57,7 +57,7 @@ RARELOAD.Net.On("saves", function(p)
     if p.save then p.save.nick = asText(p.save.nick) end
     State.saves[p.sid] = p.save
     State.savesRev = State.savesRev + 1
-    forgetDetails(State.DetailKey(p.sid, nil, ""))   -- that player's respawn point changed
+    forgetDetails(State.DetailKey(p.sid, nil, "")) -- that player's respawn point changed
     changed("saves", p.sid)
 end)
 

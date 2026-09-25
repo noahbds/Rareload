@@ -14,6 +14,7 @@ function RARELOAD.L(key, ...)
     local ok, text = pcall(string.format, phrase, ...)
     return ok and text or phrase
 end
+
 local L = RARELOAD.L
 
 -- GMod reloads the .properties files itself; panels built with the old language rebuild on this hook.
@@ -24,12 +25,26 @@ end, "Rareload.UI")
 -- Palette -----------------------------------------------------------------------------------------
 
 UI.C = {
-    bg = Color(24, 26, 32, 250), bgDark = Color(18, 20, 25, 255), surface = Color(34, 37, 45), surfaceHi = Color(45, 49, 59),
-    line = Color(58, 62, 74), text = Color(240, 242, 247), text2 = Color(170, 176, 190), text3 = Color(125, 131, 145),
-    textOff = Color(92, 97, 110), accent = Color(65, 145, 255), accentHi = Color(120, 175, 255),
-    ok = Color(70, 200, 120), warn = Color(255, 190, 80), bad = Color(240, 80, 80), info = Color(0, 190, 230),
+    bg = Color(24, 26, 32, 250),
+    bgDark = Color(18, 20, 25, 255),
+    surface = Color(34, 37, 45),
+    surfaceHi = Color(45, 49, 59),
+    line = Color(58, 62, 74),
+    text = Color(240, 242, 247),
+    text2 = Color(170, 176, 190),
+    text3 = Color(125, 131, 145),
+    textOff = Color(92, 97, 110),
+    accent = Color(65, 145, 255),
+    accentHi = Color(120, 175, 255),
+    ok = Color(70, 200, 120),
+    warn = Color(255, 190, 80),
+    bad = Color(240, 80, 80),
+    info = Color(0, 190, 230),
     -- One colour per kind of thing, used in every screen.
-    prop = Color(255, 150, 70), npc = Color(120, 215, 120), vehicle = Color(90, 170, 255), player = Color(180, 140, 255),
+    prop = Color(255, 150, 70),
+    npc = Color(120, 215, 120),
+    vehicle = Color(90, 170, 255),
+    player = Color(180, 140, 255),
 }
 local C = UI.C
 
@@ -37,7 +52,8 @@ UI.KIND_COLORS = { entities = C.prop, npcs = C.npc, vehicles = C.vehicle, player
 
 function UI.Mix(a, b, t)
     t = math.Clamp(t, 0, 1)
-    return Color(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, (a.a or 255) + ((b.a or 255) - (a.a or 255)) * t)
+    return Color(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t,
+        (a.a or 255) + ((b.a or 255) - (a.a or 255)) * t)
 end
 
 function UI.HealthColor(hp, max)
@@ -48,14 +64,16 @@ end
 -- Scale and fonts: a fixed set, recreated only when the screen size changes (G37) --------------------
 
 function UI.sc(v) return math.floor(v * UI.S + 0.5) end
+
 local sc = UI.sc
 
-local clipCache, clipCount = {}, 0   -- UI.Clip results, below
+local clipCache, clipCount = {}, 0 -- UI.Clip results, below
 
 local function createFonts()
     UI.S = math.Clamp(ScrH() / 1080, 0.85, 2)
     local function font(name, size, weight)
-        surface.CreateFont(name, { font = "Roboto", size = math.floor(size * UI.S + 0.5), weight = weight, extended = true })
+        surface.CreateFont(name,
+            { font = "Roboto", size = math.floor(size * UI.S + 0.5), weight = weight, extended = true })
     end
     font("Rareload.Title", 25, 800)
     font("Rareload.Sub", 14, 500)
@@ -239,10 +257,16 @@ function SKIN:PaintTextEntry(panel, w, h)
 end
 
 function SKIN:PaintVScrollBar() end
-function SKIN:PaintScrollBarGrip(panel, w, h) draw.RoundedBox(sc(4), sc(1), 0, w - sc(2), h, panel.Hovered and C.text3 or C.line) end
+
+function SKIN:PaintScrollBarGrip(panel, w, h) draw.RoundedBox(sc(4), sc(1), 0, w - sc(2), h,
+        panel.Hovered and C.text3 or C.line) end
+
 function SKIN:PaintButtonUp() end
+
 function SKIN:PaintButtonDown() end
+
 function SKIN:PaintMenu(_, w, h) box(sc(4), w, h, C.surfaceHi) end
+
 function SKIN:PaintMenuSpacer(_, w, h) box(0, w, h, C.line) end
 
 function SKIN:PaintMenuOption(panel, w, h)
@@ -259,10 +283,12 @@ SKIN.Colours = setmetatable({
     Label = { Default = C.text, Bright = C.text, Dark = C.text, Highlight = C.accent },
     Button = { Normal = C.text, Hover = C.text, Down = C.text2, Disabled = C.textOff },
     TooltipText = C.text,
-}, { __index = function(_, k)
-    local default = derma.GetNamedSkin("Default")
-    return default and default.Colours[k]
-end })
+}, {
+    __index = function(_, k)
+        local default = derma.GetNamedSkin("Default")
+        return default and default.Colours[k]
+    end
+})
 SKIN.colTextEntryText, SKIN.colTextEntryTextHighlight = C.text, C.accent
 SKIN.colTextEntryTextCursor, SKIN.colTextEntryTextPlaceholder = C.text, C.text3
 
@@ -286,8 +312,10 @@ function UI.Button(parent, text, onClick, opts)
     b:SetTall(sc(opts.tall or 32))
     b.label, b.icon = text, opts.icon
     function b:SetLabel(t) self.label = t end
+
     -- An active toggle button is drawn solid with a pulsing dot.
     function b:SetActive(on) self.active = on end
+
     b.Paint = function(self, w, h)
         local a = self:IsEnabled() and hoverAnim(self, self:IsHovered()) or 0
         local fill, textCol
@@ -303,10 +331,12 @@ function UI.Button(parent, text, onClick, opts)
         surface.SetFont("Rareload.BodyB")
         local tw = surface.GetTextSize(self.label)
         local is = UI.IconSize(sc(16))
-        local iw = self.icon and is + (self.label ~= "" and sc(7) or 0) or 0   -- no gap on an icon-only button
+        local iw = self.icon and is + (self.label ~= "" and sc(7) or 0) or 0 -- no gap on an icon-only button
         local x = math.floor((w - tw - iw) / 2)
-        if self.icon then UI.DrawIcon(self.icon, x, math.floor((h - is) / 2), is, self:IsEnabled() and color_white or C.textOff) end
-        draw.SimpleText(self.label, "Rareload.BodyB", x + iw, math.floor(h / 2), textCol, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        if self.icon then UI.DrawIcon(self.icon, x, math.floor((h - is) / 2), is,
+                self:IsEnabled() and color_white or C.textOff) end
+        draw.SimpleText(self.label, "Rareload.BodyB", x + iw, math.floor(h / 2), textCol, TEXT_ALIGN_LEFT,
+            TEXT_ALIGN_CENTER)
         if self.active then
             local r = sc(3) + sc(1.5) * math.abs(math.sin(RealTime() * 4))
             draw.RoundedBox(r, sc(12) - r, h / 2 - r, r * 2, r * 2, textCol)
@@ -318,8 +348,10 @@ function UI.Button(parent, text, onClick, opts)
     end
     function b:SizeToLabel(pad)
         surface.SetFont("Rareload.BodyB")
-        self:SetWide(surface.GetTextSize(self.label) + (self.icon and UI.IconSize(sc(16)) + (self.label ~= "" and sc(7) or 0) or 0) + sc(pad or 28))
+        self:SetWide(surface.GetTextSize(self.label) +
+        (self.icon and UI.IconSize(sc(16)) + (self.label ~= "" and sc(7) or 0) or 0) + sc(pad or 28))
     end
+
     return b
 end
 
@@ -410,6 +442,7 @@ function UI.Chips(parent, items, selected, onSelect)
         end
     end
     function p:SetSelected(id) self.selected = id end
+
     return p
 end
 
@@ -462,13 +495,15 @@ function UI.Check(parent, label, value, onChange)
             surface.DrawLine(sc(4), y + s / 2, sc(7), y + s - sc(4))
             surface.DrawLine(sc(7), y + s - sc(4), s - sc(3), y + sc(4))
         end
-        draw.SimpleText(label, "Rareload.Small", s + sc(8), h / 2, self:IsEnabled() and C.text2 or C.textOff, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(label, "Rareload.Small", s + sc(8), h / 2, self:IsEnabled() and C.text2 or C.textOff,
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
     b.DoClick = function(self)
         self.value = not self.value
         onChange(self.value)
     end
     function b:SetValue(v) self.value = v end
+
     return b
 end
 
@@ -498,7 +533,8 @@ function UI.Switch(parent, label, value, onChange, opts)
             right = right - surface.GetTextSize(opts.note) - sc(6)
             draw.SimpleText(opts.note, "Rareload.Tiny", sx - sc(8), h / 2, C.text3, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
         end
-        draw.SimpleText(UI.Clip(label, "Rareload.Body", right - sc(8)), "Rareload.Body", sc(8), h / 2, textCol, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(UI.Clip(label, "Rareload.Body", right - sc(8)), "Rareload.Body", sc(8), h / 2, textCol,
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
     b.DoClick = function(self)
         self.value = not self.value
@@ -521,7 +557,8 @@ function UI.Slider(parent, label, value, min, max, decimals, suffix, onChange, o
     local function track(w) return sc(8), w - sc(16) end
     p.Paint = function(self, w, h)
         local textCol = self:IsEnabled() and C.text or C.textOff
-        draw.SimpleText(UI.Clip(label, "Rareload.Body", w - sc(90)), "Rareload.Body", sc(8), sc(12), textCol, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(UI.Clip(label, "Rareload.Body", w - sc(90)), "Rareload.Body", sc(8), sc(12), textCol,
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         draw.SimpleText(fmt(self.value) .. (opts.note and "  " .. opts.note or ""), "Rareload.Small", w - sc(8), sc(12),
             self.dragging and C.accentHi or C.text2, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
         local x, tw = track(w)
@@ -594,11 +631,14 @@ function UI.Stats(parent, cards)
             local x = (i - 1) * (cw + gap)
             draw.RoundedBox(sc(8), x, 0, cw, h, C.surface)
             if c[2] ~= nil then
-                draw.SimpleText(tostring(c[2]), "Rareload.Stat", x + cw / 2, h * 0.42, c[3] or C.text, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                draw.SimpleText(tostring(c[2]), "Rareload.Stat", x + cw / 2, h * 0.42, c[3] or C.text, TEXT_ALIGN_CENTER,
+                    TEXT_ALIGN_CENTER)
             else
-                draw.SimpleText(L("ui.not_saved"), "Rareload.Small", x + cw / 2, h * 0.42, C.textOff, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                draw.SimpleText(L("ui.not_saved"), "Rareload.Small", x + cw / 2, h * 0.42, C.textOff, TEXT_ALIGN_CENTER,
+                    TEXT_ALIGN_CENTER)
             end
-            draw.SimpleText(string.upper(c[1]), "Rareload.Tiny", x + cw / 2, h * 0.8, C.text3, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            draw.SimpleText(string.upper(c[1]), "Rareload.Tiny", x + cw / 2, h * 0.8, C.text3, TEXT_ALIGN_CENTER,
+                TEXT_ALIGN_CENTER)
         end
     end
     return p
@@ -611,7 +651,8 @@ function UI.Empty(parent, icon, title, hint)
     p.Paint = function(_, w, h)
         UI.DrawIcon(icon, w / 2 - sc(16), h / 2 - sc(46), sc(32), ColorAlpha(color_white, 90))
         draw.SimpleText(title, "Rareload.H2", w / 2, h / 2 + sc(4), C.text2, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-        if hint then draw.SimpleText(hint, "Rareload.Small", w / 2, h / 2 + sc(28), C.text3, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER) end
+        if hint then draw.SimpleText(hint, "Rareload.Small", w / 2, h / 2 + sc(28), C.text3, TEXT_ALIGN_CENTER,
+                TEXT_ALIGN_CENTER) end
     end
     return p
 end
@@ -634,6 +675,7 @@ function UI.Model(parent, model, speed)
         self:SetCamPos(center + Vector(dist * 0.65, dist * 0.5, dist * 0.35))
         self:SetFOV(42)
     end
+
     mp.LayoutEntity = function(_, ent) ent:SetAngles(Angle(0, RealTime() * (speed or 22) % 360, 0)) end
     mp:ShowModel(model)
     return mp
@@ -681,7 +723,8 @@ function UI.Window(opts)
     frame.Paint = function(self, w, h)
         box(sc(14), w, h, C.bg)
         draw.SimpleText(self.title, "Rareload.Title", sc(18), sc(12), C.accentHi, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-        if self.subtitle then draw.SimpleText(self.subtitle, "Rareload.Sub", sc(20), sc(40), C.text3, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP) end
+        if self.subtitle then draw.SimpleText(self.subtitle, "Rareload.Sub", sc(20), sc(40), C.text3, TEXT_ALIGN_LEFT,
+                TEXT_ALIGN_TOP) end
         surface.SetDrawColor(C.line)
         surface.DrawLine(0, headH, w, headH)
     end
@@ -706,6 +749,7 @@ function UI.Window(opts)
         self:InvalidateLayout()
         return b
     end
+
     frame:HeaderButton("", function() frame:Close() end, { style = "danger", icon = "cross", pad = 4 })
 
     local baseLayout = frame.PerformLayout
@@ -756,7 +800,7 @@ function UI.Confirm(title, body, onYes, yesLabel)
 end
 
 function UI.Notify(text, kind)
-    notification.AddLegacy(text, kind == "error" and NOTIFY_ERROR or NOTIFY_GENERIC, 3)   -- G79
+    notification.AddLegacy(text, kind == "error" and NOTIFY_ERROR or NOTIFY_GENERIC, 3) -- G79
 end
 
 -- Toasts ------------------------------------------------------------------------------------------
@@ -774,7 +818,7 @@ RARELOAD.Net.On("dev.reload", function()
 end)
 
 -- Client subcommands of `rareload` (timeline, menu…): the server owns the command and sends them here.
-UI.commands = UI.commands or {}   -- name -> fn(args)
+UI.commands = UI.commands or {} -- name -> fn(args)
 
 function UI.Command(name, fn)
     UI.commands[name] = fn

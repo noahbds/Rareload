@@ -91,6 +91,9 @@ RARELOAD.Module({
             noclip = ply:GetMoveType() == MOVETYPE_NOCLIP,
             flashlight = ply:FlashlightIsOn(),
             vel = Util.Vec(ply:GetVelocity()),
+            -- Add more states here if they can be set or cleared by the player (G58, B25).
+            -- Possible savable states: crouched, sprinting, ducking, zoomed,
+            -- on fire, in water, on ladder, in vehicle, driving.
         }
     end,
 
@@ -100,14 +103,12 @@ RARELOAD.Module({
         ply:SetNoTarget(d.notarget == true and privileged)
         ply:Freeze(d.frozen == true)
 
-        -- The gamemode decides (sandbox checks sbox_noclip); nil counts as "no" (E35).
         if d.noclip and hook.Run("PlayerNoClip", ply, true) == true then
             ply:SetMoveType(MOVETYPE_NOCLIP)
         elseif ply:GetMoveType() == MOVETYPE_NOCLIP then
             ply:SetMoveType(MOVETYPE_WALK)
         end
 
-        -- Flashlight() runs PlayerSwitchFlashlight itself, so the gamemode can still refuse.
         if d.flashlight ~= ply:FlashlightIsOn() and ply:CanUseFlashlight() then ply:Flashlight(d.flashlight) end
 
         local vel = Util.ToVector(d.vel)
@@ -123,8 +124,10 @@ RARELOAD.Module({
     end,
 })
 
--- The model is set inside the gamemode's PlayerSetModel call, so the gamemode doesn't replace it
--- (G16). Never ConCommand: the player's own cl_playermodel stays untouched (L8, B17).
+-- The most popular playermodel addons (e.g : Enhanced PlayerModel Selector)
+-- have a playermodel enforcement that might prevent the model restoration.
+-- The option is called "Enforce your playermodel".
+-- We might need to add a addon detection and warn the user about it. (G16, B17)
 local function setModel(ply, d)
     if isstring(d.model) and util.IsValidModel(d.model) then
         ply:SetModel(d.model)

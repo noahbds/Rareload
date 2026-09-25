@@ -1,21 +1,23 @@
--- World snapshots through the duplicator (REWRITE_PLAN.md §14.3, §20.1). A snapshot is
--- { Entities = { [index] = def }, Constraints = { ... } }, the duplicator's own format, so every
--- base's dupe support (tuning, Wiremod data, entity modifiers, PostEntityPaste) keeps working.
--- Each saved entity carries its Rareload ID, health and gravity in the "rareload" entity modifier (G28).
-
 RARELOAD.Snapshot = RARELOAD.Snapshot or {}
 local Snapshot = RARELOAD.Snapshot
 
-local EDICT_LIMIT = 8192 - 256   -- ents.Create fails from ~8064, so always leave room (G62)
+local EDICT_LIMIT = 8192 - 256
 
--- Engine and player-attached helpers that are never saved (L23).
 Snapshot.EXCLUDED = {
-    gmod_hands = true, viewmodel = true, predicted_viewmodel = true, physgun_beam = true,
-    player_ragdoll = true, gmod_gamerules = true, env_projectedtexture = true, env_texturetoggle = true,
-    env_sprite = true, env_sun = true, env_tonemap_controller = true, env_fog_controller = true,
+    gmod_hands = true,
+    viewmodel = true,
+    predicted_viewmodel = true,
+    physgun_beam = true,
+    player_ragdoll = true,
+    gmod_gamerules = true,
+    env_projectedtexture = true,
+    env_texturetoggle = true,
+    env_sprite = true,
+    env_sun = true,
+    env_tonemap_controller = true,
+    env_fog_controller = true,
 }
 
--- Entities that can run commands are never created from a save, even a hand-edited one (S7).
 local DENIED = {
     lua_run = true, point_servercommand = true, point_clientcommand = true, point_broadcastclientcommand = true,
 }
@@ -23,10 +25,20 @@ local DENIED = {
 -- Vehicle classification (from v4) ---------------------------------------------------------------
 
 local ROOT_BASES = {
-    lvs_base = true, lvs_base_fakephysics = true, lvs_base_wheeldrive = true, lvs_base_starfighter = true,
-    lvs_base_helicopter = true, lunasflightschool_basescript = true, lfs_base = true,
-    gmod_sent_vehicle_fphysics_base = true, simfphys_base = true, wac_hc_base = true, wac_pl_base = true,
-    wac_hover_base = true, base_glide = true, sent_sakarias_car = true,
+    lvs_base = true,
+    lvs_base_fakephysics = true,
+    lvs_base_wheeldrive = true,
+    lvs_base_starfighter = true,
+    lvs_base_helicopter = true,
+    lunasflightschool_basescript = true,
+    lfs_base = true,
+    gmod_sent_vehicle_fphysics_base = true,
+    simfphys_base = true,
+    wac_hc_base = true,
+    wac_pl_base = true,
+    wac_hover_base = true,
+    base_glide = true,
+    sent_sakarias_car = true,
 }
 local SOURCE_VEHICLES = { prop_vehicle_jeep = true, prop_vehicle_airboat = true, prop_vehicle_driveable = true }
 local FLAGS = { "LVS", "LFS", "IsSimfphyscar", "IsGlideVehicle", "IsWAC", "IsSCar" }
@@ -38,7 +50,7 @@ local function isRootClass(class)
     if rootClassCache[class] ~= nil then return rootClassCache[class] end
     local result = SOURCE_VEHICLES[class] or ROOT_BASES[class] or false
     local current = class
-    for _ = 1, 10 do   -- walk the scripted entity bases
+    for _ = 1, 10 do -- walk the scripted entity bases
         if result then break end
         local stored = scripted_ents.GetStored(current)
         local base = stored and stored.t and stored.t.Base
@@ -90,7 +102,7 @@ end
 function Snapshot.ID(ent)
     local id = ent.RareloadID
     if not id then
-        id = util.SHA256(ent:GetCreationID() .. ":" .. SysTime() .. ":" .. math.random()):sub(1, 12)   -- G30
+        id = util.SHA256(ent:GetCreationID() .. ":" .. SysTime() .. ":" .. math.random()):sub(1, 12) -- G30
         ent.RareloadID = id
         ent:SetNWString("rl_id", id)
     end
@@ -119,10 +131,6 @@ duplicator.RegisterEntityModifier("rareload", function(_, ent, data)
     end
 end)
 
--- What a saved value may be: what JSON keeps. CopyEntTable copies the entity's whole Lua table, which
--- can hold live references (a WAC aircraft keeps its rotors, seats and engine sounds there). The saved
--- copy stays in memory, and the generic paste merges the saved table into the new entity, so stale
--- references would overwrite the new entity's own and point at removed entities (NULL).
 local KEEP = { string = true, number = true, boolean = true, table = true, Vector = true, Angle = true }
 
 -- A copy with only plain data, and colors tagged since they lose their type in JSON (L18). Tables
@@ -150,7 +158,6 @@ end
 
 -- Capture -----------------------------------------------------------------------------------------
 
--- Pure: drops constraints that point at an entity missing from the snapshot.
 function Snapshot.PruneConstraints(snap)
     for key, c in pairs(snap.Constraints) do
         for _, e in pairs(istable(c) and c.Entity or {}) do
@@ -162,9 +169,6 @@ function Snapshot.PruneConstraints(snap)
     end
 end
 
--- Copies exactly `targets` (nothing constrained to them that isn't a target) with their shared constraints.
--- Each target is copied once: duplicator.Copy would copy a target's whole contraption again for every
--- target in it. CopyEntTable also ignores DoNotDuplicate, which some vehicle bases set on their roots.
 function Snapshot.Capture(targets)
     duplicator.SetLocalPos(vector_origin)
     duplicator.SetLocalAng(angle_zero)
@@ -172,9 +176,9 @@ function Snapshot.Capture(targets)
 
     for _, ent in ipairs(targets) do
         if duplicator.IsAllowed(ent.ClassOverride or ent:GetClass()) then
-            duplicator.StoreEntityModifier(ent, "rareload", { id = Snapshot.ID(ent), hp = ent:Health(), maxHp = ent:GetMaxHealth() })
+            duplicator.StoreEntityModifier(ent, "rareload",
+                { id = Snapshot.ID(ent), hp = ent:Health(), maxHp = ent:GetMaxHealth() })
             ProtectedCall(function() snap.Entities[ent:EntIndex()] = plainData(duplicator.CopyEntTable(ent), 0) end)
-            -- Keyed like duplicator.Copy does, so a constraint between two targets is kept once.
             for _, c in pairs(constraint.GetTable(ent)) do
                 if IsValid(c.Constraint) then snap.Constraints[c.Constraint:GetCreationID()] = c end
             end
@@ -185,7 +189,6 @@ function Snapshot.Capture(targets)
     return next(snap.Entities) and snap or nil
 end
 
--- Pure: when `overwriteModified` is off, objects already in the old snapshot keep their old state.
 function Snapshot.Merge(old, fresh)
     local oldById = {}
     for _, def in pairs(old.Entities or {}) do
@@ -199,11 +202,6 @@ function Snapshot.Merge(old, fresh)
     return fresh
 end
 
--- Pure: when `overwriteDeleted` is off, objects of the old snapshot that are missing from the fresh one
--- (deleted from the map since) stay saved, with their constraints, their NPC AI state and their
--- vehicle runtime. Both snapshots are keyed by live entity indexes, so the kept objects are
--- renumbered after the fresh ones, in a fixed order so saving twice gives the same snapshot (and the
--- second save counts as unchanged). The old snapshot is cached save data and is never modified.
 local function sortedKeys(t)
     local keys = {}
     for k in pairs(t or {}) do keys[#keys + 1] = k end
@@ -216,14 +214,13 @@ local function sortedKeys(t)
 end
 
 function Snapshot.KeepDeleted(old, fresh)
-    local have, top = {}, 0   -- have: ID -> index in the fresh snapshot
+    local have, top = {}, 0
     for index, def in pairs(fresh.Entities) do
         local id = Snapshot.DefID(def)
         if id then have[id] = index end
         top = math.max(top, tonumber(index) or 0)
     end
 
-    -- Old index (as text; JSON may turn it into a number) -> index in the result, for every old object.
     local moved, kept = {}, {}
     for _, index in ipairs(sortedKeys(old.Entities)) do
         local def = old.Entities[index]
@@ -235,7 +232,8 @@ function Snapshot.KeepDeleted(old, fresh)
             moved[tostring(index)], kept[tostring(index)] = top, true
             fresh.Entities[top] = def
             for _, field in ipairs({ "ai", "runtime" }) do
-                local value = istable(old[field]) and (old[field][id] or old[field][tonumber(id)])   -- all-digit IDs come back as numbers
+                local value = istable(old[field]) and
+                (old[field][id] or old[field][tonumber(id)])                                       -- all-digit IDs come back as numbers
                 if value then
                     fresh[field] = fresh[field] or {}
                     fresh[field][id] = value
@@ -244,16 +242,18 @@ function Snapshot.KeepDeleted(old, fresh)
         end
     end
 
-    -- Constraints touching a kept object; ones between objects still on the map are in the fresh snapshot.
     local n = 0
     for _, key in ipairs(sortedKeys(old.Constraints)) do
         local c = old.Constraints[key]
         local ends, keep, touches = {}, istable(c) and istable(c.Entity), false
         for i, e in pairs(keep and c.Entity or {}) do
             local to = moved[tostring(e.Index)]
-            if not e.World and not to then keep = false break end
+            if not e.World and not to then
+                keep = false
+                break
+            end
             touches = touches or kept[tostring(e.Index)] == true
-            local copy = table.Merge({}, e)   -- shallow: only Index changes
+            local copy = table.Merge({}, e) -- shallow: only Index changes
             copy.Index = to or e.Index
             ends[i] = copy
         end
@@ -329,7 +329,7 @@ function Snapshot.Restore(snap, ply, opts)
         local id, model, class = Snapshot.DefID(def), def.Model, def.Class
         local why, what = nil, class
         if id and IsValid(live[id]) then
-            report.existing[#report.existing + 1] = live[id]   -- already on the map (F15, L13)
+            report.existing[#report.existing + 1] = live[id] -- already on the map (F15, L13)
         elseif not isstring(class) or not duplicator.IsAllowed(class) and not scripted_ents.GetStored(class) then
             why = "addon"
         elseif DENIED[class] or not duplicator.IsAllowed(class) or (opts.filter and not opts.filter(def)) then
@@ -464,4 +464,4 @@ function Snapshot.Summary(snap, noun)
     return total .. " " .. noun .. (#parts > 0 and ": " .. table.concat(parts, ", ") or "")
 end
 
-cleanup.Register("rareload")   -- a "Rareload restores" category in the Q menu cleanup tab (G66)
+cleanup.Register("rareload") -- a "Rareload restores" category in the Q menu cleanup tab (G66)

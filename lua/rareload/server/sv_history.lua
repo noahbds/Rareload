@@ -27,7 +27,7 @@ function History.Doc(ply)
     return d, rel
 end
 
-local refresh   -- pushes the new timeline and world display data, defined below
+local refresh -- pushes the new timeline and world display data, defined below
 
 local function save(ply, d)
     local _, rel = History.Doc(ply)
@@ -75,6 +75,9 @@ function History.Append(ply, entry)
     return save(ply, d)
 end
 
+-- The name of this option is a bit confusing, what it does is to prevent the pinned save to be deleted after to many saves,
+-- but it doesn't prevent the save to be deleted if the player deletes it manually.
+-- TODO: rename this option to "keepPinnedSaves" or something like that. Or at least add a tooltip to explain what it does.
 function History.SetPinned(ply, id, pinned)
     local d = History.Doc(ply)
     local entry = find(d, id)
@@ -83,6 +86,8 @@ function History.SetPinned(ply, id, pinned)
     return save(ply, d)
 end
 
+-- Give the ability to set a note to a save, so the player can remember what was saved in that save.
+-- Not really useful in a sense but it's there.
 function History.SetNote(ply, id, note)
     local d = History.Doc(ply)
     local entry = find(d, id)
@@ -123,7 +128,7 @@ end
 
 -- Restore and undo -------------------------------------------------------------------------------
 
-local undos = setmetatable({}, { __mode = "k" })   -- ply -> { entry, only, ctx }; one level, like v4
+local undos = setmetatable({}, { __mode = "k" }) -- ply -> { entry, only, ctx }; one level, like v4
 
 -- comps: a set of component names (§15.4), or nil for everything. Returns the module set or nil.
 function History.ModulesFor(comps)
@@ -139,7 +144,7 @@ end
 -- undone by removing what the restore created) is captured first, for undo (F26).
 function History.Restore(ply, id, comps)
     local entry = History.Get(ply, id)
-    if not entry or not ply:Alive() then return false end   -- a dead player respawns at their respawn point
+    if not entry or not ply:Alive() then return false end
     local only = History.ModulesFor(comps)
 
     local undoOnly = {}
@@ -152,7 +157,7 @@ function History.Restore(ply, id, comps)
 
     local ctx = RARELOAD.Pipeline.Restore(ply, entry, { only = only, reason = "timeline" })
     undos[ply] = { entry = snapshot, only = undoOnly, ctx = ctx }
-    refresh(ply)   -- the timeline shows Undo now
+    refresh(ply) -- the timeline should now show Undo button being active
     return true
 end
 
@@ -193,7 +198,7 @@ function History.ReloadKey(ply)
     end
     if not previous then return "toast.reload.no_previous" end
     if cfg.mode == "restore_previous" then History.Restore(ply, previous.id, comps) end
-    History.Activate(ply, previous.id)   -- walking back one save at a time
+    History.Activate(ply, previous.id) -- walking back one save at a time
     return cfg.mode == "restore_previous" and "toast.reload.restored" or "toast.reload.previous", previous.id
 end
 
@@ -206,20 +211,28 @@ local function objectInfo(def, kind, snap)
     local phys = istable(def.PhysicsObjects) and (def.PhysicsObjects[0] or def.PhysicsObjects["0"]) or {}
     local rl = istable(mods.rareload) and mods.rareload or {}
     local id = RARELOAD.Snapshot.DefID(def)
-    -- An all-digit ID comes back from JSON as a number key.
     local runtime = id and istable(snap.runtime) and (snap.runtime[id] or snap.runtime[tonumber(id)]) or nil
     local ai = id and istable(snap.ai) and (snap.ai[id] or snap.ai[tonumber(id)]) or nil
     return {
-        id = id, kind = kind, class = def.Class, model = def.Model, skin = def.Skin,
+        id = id,
+        kind = kind,
+        class = def.Class,
+        model = def.Model,
+        skin = def.Skin,
         pos = isvector(def.Pos) and RARELOAD.Util.Vec(def.Pos) or nil,
         ang = isangle(def.Angle) and RARELOAD.Util.Ang(def.Angle) or nil,
-        frozen = phys.Frozen or nil, nograv = phys.NoGrav or nil,
-        -- Unbreakable props report 0 health out of 1: that isn't health worth showing.
-        hp = rl.hp, maxHp = (tonumber(rl.hp) or 0) > 0 and rl.maxHp or nil, scale = def.ModelScale, bodygroups = def.BodyG,
+        frozen = phys.Frozen or nil,
+        nograv = phys.NoGrav or nil,
+        hp = rl.hp,
+        maxHp = (tonumber(rl.hp) or 0) > 0 and rl.maxHp or nil,
+        scale = def.ModelScale,
+        bodygroups = def.BodyG,
         material = istable(mods.material) and mods.material.MaterialOverride or nil,
-        color = istable(mods.colour) and mods.colour.Color or nil,   -- tagged { __color = { r, g, b, a } }
-        base = runtime and runtime.adapter, parts = runtime and runtime.parts,
-        squad = ai and ai.squad, npcState = ai and ai.state,
+        color = istable(mods.colour) and mods.colour.Color or nil, -- tagged { __color = { r, g, b, a } }
+        base = runtime and runtime.adapter,
+        parts = runtime and runtime.parts,
+        squad = ai and ai.squad,
+        npcState = ai and ai.state,
     }
 end
 
@@ -240,6 +253,7 @@ function History.Objects(ply, id)
     eachObject(History.Get(ply, id), function(def, kind, snap) out[#out + 1] = objectInfo(def, kind, snap) end)
     return out
 end
+
 History.ObjectsOf = function(entry)
     local out = {}
     eachObject(entry, function(def, kind, snap) out[#out + 1] = objectInfo(def, kind, snap) end)
@@ -250,8 +264,11 @@ end
 function History.ObjectDetail(entry, objectId)
     return eachObject(entry, function(def, _, snap)
         if RARELOAD.Snapshot.DefID(def) == objectId then
-            return { def = def, ai = istable(snap.ai) and (snap.ai[objectId] or snap.ai[tonumber(objectId)]) or nil,
-                runtime = istable(snap.runtime) and (snap.runtime[objectId] or snap.runtime[tonumber(objectId)]) or nil }
+            return {
+                def = def,
+                ai = istable(snap.ai) and (snap.ai[objectId] or snap.ai[tonumber(objectId)]) or nil,
+                runtime = istable(snap.runtime) and (snap.runtime[objectId] or snap.runtime[tonumber(objectId)]) or nil
+            }
         end
     end)
 end
@@ -313,7 +330,10 @@ function History.DeleteObjects(ply, entryId, ids)
         local snap = RARELOAD.Pipeline.Payload(entry.data[kind])
         local hit = false
         for _, def in pairs(snap and snap.Entities or {}) do
-            if ids[RARELOAD.Snapshot.DefID(def)] then hit = true break end
+            if ids[RARELOAD.Snapshot.DefID(def)] then
+                hit = true
+                break
+            end
         end
         if hit then
             local copy = util.JSONToTable(util.TableToJSON(snap), true)
@@ -377,8 +397,14 @@ end
 function History.Info(data)
     local t, h = data.transform or {}, data.health or {}
     local info = {
-        pos = t.pos, ang = t.ang, crouched = t.crouched, model = data.appearance and data.appearance.model,
-        hp = h.hp, armor = h.armor, active = data.activeWeapon, states = data.states,
+        pos = t.pos,
+        ang = t.ang,
+        crouched = t.crouched,
+        model = data.appearance and data.appearance.model,
+        hp = h.hp,
+        armor = h.armor,
+        active = data.activeWeapon,
+        states = data.states,
         weapons = data.weapons and #data.weapons,
     }
     for _, kind in ipairs(WORLD_KINDS) do
@@ -387,8 +413,13 @@ function History.Info(data)
     if data.vehicles ~= nil then info.vehicle = factsOf(data.vehicles).seatClass end
     local look = data.appearance
     if istable(look) then
-        info.look = { skin = look.skin, bodygroups = look.bodygroups, material = look.material,
-            playerColor = look.playerColor, color = look.color }
+        info.look = {
+            skin = look.skin,
+            bodygroups = look.bodygroups,
+            material = look.material,
+            playerColor = look.playerColor,
+            color = look.color
+        }
     end
     return info
 end
@@ -408,15 +439,26 @@ function History.Rows(ply)
         local modules = {}
         for id in pairs(e.data) do modules[#modules + 1] = id end
         table.sort(modules)
-        rows[#rows + 1] = { id = e.id, time = e.time, reason = e.reason, pinned = e.pinned, note = e.note,
-            active = e.id == d.activeId, modules = modules, info = History.Info(e.data) }
+        rows[#rows + 1] = {
+            id = e.id,
+            time = e.time,
+            reason = e.reason,
+            pinned = e.pinned,
+            note = e.note,
+            active = e.id == d.activeId,
+            modules = modules,
+            info = History.Info(e.data)
+        }
     end
     return rows
 end
 
 local function pushRows(ply)
-    RARELOAD.Net.Push(ply, "history", { rows = History.Rows(ply), reload = History.ReloadConfig(ply),
-        undo = undos[ply] ~= nil })
+    RARELOAD.Net.Push(ply, "history", {
+        rows = History.Rows(ply),
+        reload = History.ReloadConfig(ply),
+        undo = undos[ply] ~= nil
+    })
 end
 
 local function parseComps(text)
@@ -429,17 +471,26 @@ local function parseComps(text)
 end
 History.ParseComps = parseComps
 
+-- Network handlers for timeline and object operations. The client pushes a request, the server
+-- checks the player's privilege, performs the operation, and pushes back the new timeline rows.
 local function handle(op, priv, args, fn)
-    RARELOAD.Net.Handle(op, { priv = priv, rate = 0.2, args = args, fn = function(ply, a)
-        local key, args = fn(ply, a)
-        if key then RARELOAD.Toast(ply, key, args) end
-        pushRows(ply)
-    end })
+    RARELOAD.Net.Handle(op, {
+        priv = priv,
+        rate = 0.2,
+        args = args,
+        fn = function(ply, a)
+            local key, args = fn(ply, a)
+            if key then RARELOAD.Toast(ply, key, args) end
+            pushRows(ply)
+        end
+    })
 end
 
 handle("history.get", "rareload_restore", {}, function() end)
-handle("history.pin", "rareload_restore", { id = "uint", pinned = "bool" }, function(ply, a) History.SetPinned(ply, a.id, a.pinned) end)
-handle("history.note", "rareload_restore", { id = "uint", note = "string:256" }, function(ply, a) History.SetNote(ply, a.id, a.note) end)
+handle("history.pin", "rareload_restore", { id = "uint", pinned = "bool" },
+    function(ply, a) History.SetPinned(ply, a.id, a.pinned) end)
+handle("history.note", "rareload_restore", { id = "uint", note = "string:256" },
+    function(ply, a) History.SetNote(ply, a.id, a.note) end)
 handle("history.delete", "rareload_restore", { id = "uint" }, function(ply, a) History.Delete(ply, a.id) end)
 handle("history.clear", "rareload_restore", {}, function(ply) History.Clear(ply) end)
 handle("history.activate", "rareload_restore", { id = "uint" }, function(ply, a)
@@ -458,11 +509,14 @@ handle("history.reloadMode", "rareload_use_tool", { mode = "string:32", comps = 
 end)
 
 RARELOAD.Net.Handle("object.get", {
-    priv = "rareload_manage_objects", rate = 0.3, args = { entryId = "uint", objectId = "string:32" },
+    priv = "rareload_manage_objects",
+    rate = 0.3,
+    args = { entryId = "uint", objectId = "string:32" },
     fn = function(ply, a)
         local def = History.ObjectDef(ply, a.entryId, a.objectId)
         if def then
-            RARELOAD.Net.Push(ply, "object.def", { entryId = a.entryId, objectId = a.objectId, json = util.TableToJSON(def, true) })
+            RARELOAD.Net.Push(ply, "object.def",
+                { entryId = a.entryId, objectId = a.objectId, json = util.TableToJSON(def, true) })
         end
     end,
 })
@@ -470,7 +524,8 @@ RARELOAD.Net.Handle("object.get", {
 -- Everything saved about one object, for the world display's focused panel: from one of the
 -- player's own saves, or (with rareload_debug while debug is on) another player's respawn point.
 RARELOAD.Net.Handle("object.detail", {
-    rate = 0.1, args = { sid = "string:20?", entryId = "uint?", objectId = "string:32" },
+    rate = 0.1,
+    args = { sid = "string:20?", entryId = "uint?", objectId = "string:32" },
     fn = function(ply, a)
         local entry
         if a.sid and a.sid ~= ply:SteamID64() then
@@ -482,23 +537,31 @@ RARELOAD.Net.Handle("object.detail", {
         end
         local detail = entry and History.ObjectDetail(entry, a.objectId)
         if detail then
-            RARELOAD.Net.Push(ply, "object.detail", { sid = a.sid, entryId = a.entryId, objectId = a.objectId, detail = detail },
+            RARELOAD.Net.Push(ply, "object.detail",
+                { sid = a.sid, entryId = a.entryId, objectId = a.objectId, detail = detail },
                 { key = "detail:" .. tostring(a.sid) .. ":" .. tostring(a.entryId) .. ":" .. a.objectId })
         end
     end,
 })
 
 RARELOAD.Net.Handle("history.objects", {
-    priv = "rareload_restore", rate = 0.3, args = { id = "uint" },
+    priv = "rareload_restore",
+    rate = 0.3,
+    args = { id = "uint" },
     fn = function(ply, a) RARELOAD.Net.Push(ply, "history.objects", { id = a.id, objects = History.Objects(ply, a.id) }) end,
 })
 
 local function objectOp(op, args, fn)
-    RARELOAD.Net.Handle(op, { priv = "rareload_manage_objects", rate = 0.2, args = args, fn = function(ply, a)
-        local ok, err = fn(ply, a)
-        if not ok then RARELOAD.Log("history"):warn("%s: %s failed: %s", ply:Nick(), op, tostring(err)) end
-        RARELOAD.Net.Push(ply, "history.objects", { id = a.entryId, objects = History.Objects(ply, a.entryId) })
-    end })
+    RARELOAD.Net.Handle(op, {
+        priv = "rareload_manage_objects",
+        rate = 0.2,
+        args = args,
+        fn = function(ply, a)
+            local ok, err = fn(ply, a)
+            if not ok then RARELOAD.Log("history"):warn("%s: %s failed: %s", ply:Nick(), op, tostring(err)) end
+            RARELOAD.Net.Push(ply, "history.objects", { id = a.entryId, objects = History.Objects(ply, a.entryId) })
+        end
+    })
 end
 
 objectOp("object.delete", { entryId = "uint", objectId = "string:32" }, function(ply, a)
@@ -510,9 +573,10 @@ objectOp("object.deleteMany", { entryId = "uint", ids = "string:60000" }, functi
     for id in string.gmatch(a.ids, "[%w]+") do ids[id] = true end
     return History.DeleteObjects(ply, a.entryId, ids)
 end)
-objectOp("object.flag", { entryId = "uint", objectId = "string:32", flag = "string:16", value = "bool" }, function(ply, a)
-    return History.FlagObject(ply, a.entryId, a.objectId, a.flag, a.value)
-end)
+objectOp("object.flag", { entryId = "uint", objectId = "string:32", flag = "string:16", value = "bool" },
+    function(ply, a)
+        return History.FlagObject(ply, a.entryId, a.objectId, a.flag, a.value)
+    end)
 -- The edit arrives as JSON and is decoded with the default size limits (S12).
 objectOp("object.edit", { entryId = "uint", objectId = "string:32", json = "string:60000" }, function(ply, a)
     return History.EditObject(ply, a.entryId, a.objectId, util.JSONToTable(a.json))
@@ -539,7 +603,8 @@ local function feedFor(ply)
         local def = RARELOAD.Pipeline._defs[id]
         if def and not def.heavy and def.phase ~= "world" then light[id] = value end
     end
-    return { nick = ply:Nick(), data = light, objects = History.ObjectsOf(active), seated = History.Info(active.data).vehicle ~= nil }
+    return { nick = ply:Nick(), data = light, objects = History.ObjectsOf(active), seated = History.Info(active.data)
+    .vehicle ~= nil }
 end
 
 local function pushFeed(ply, targets)
