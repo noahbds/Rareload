@@ -31,6 +31,8 @@ hook.Add("PlayerSpawnedVehicle", "Rareload.Autosave", function(ply) mark(ply, "v
 hook.Add("OnPhysgunFreeze", "Rareload.Autosave", function(_, _, _, ply) mark(ply, "entities", "vehicles") end)
 hook.Add("OnUndo", "Rareload.Autosave", function(ply) mark(ply, "entities", "npcs", "vehicles", "constraints") end)
 hook.Add("OnCleanup", "Rareload.Autosave", function(ply) mark(ply, "entities", "npcs", "vehicles", "constraints") end)
+-- Where the vehicle was parked, even if it moved less than the movement check notices since the last save.
+hook.Add("PlayerLeaveVehicle", "Rareload.Autosave", function(ply) mark(ply, "transform", "vehicles") end)
 hook.Add("PlayerSpawn", "Rareload.Autosave", function(ply) remember(ply) end)
 hook.Add("RareloadSaved", "Rareload.Autosave", function(ply) remember(ply) end)
 
@@ -41,6 +43,9 @@ local function checkMovement(ply)
     local turned = math.abs(math.AngleDifference(ply:EyeAngles().y, b.yaw))
     if ply:GetPos():DistToSqr(b.pos) > MOVE or turned > RARELOAD.Get(ply, "autoSaveAngleThreshold") then
         mark(ply, "transform", "states")
+        -- Driving moves the vehicle too; without it the save would reseat the player in the vehicle
+        -- where it was last saved.
+        if ply:InVehicle() then mark(ply, "vehicles") end
     end
 end
 

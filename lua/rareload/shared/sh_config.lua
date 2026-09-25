@@ -199,6 +199,22 @@ RARELOAD.Setting("autoSave", {
     priv = "rareload_save",
     help = "Save automatically when something changes"
 })
+RARELOAD.Setting("saveOnDisconnect", {
+    type = "bool",
+    default = false,
+    scope = "player",
+    category = "general",
+    priv = "rareload_save",
+    help = "Save everything when you disconnect or the server shuts down"
+})
+RARELOAD.Setting("saveOnCleanup", {
+    type = "bool",
+    default = false,
+    scope = "player",
+    category = "general",
+    priv = "rareload_save",
+    help = "Save everything when the map is cleaned up"
+})
 RARELOAD.Setting("autoSaveInterval", {
     type = "int",
     default = 30,

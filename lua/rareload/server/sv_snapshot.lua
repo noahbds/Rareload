@@ -366,6 +366,27 @@ function Snapshot.Restore(snap, ply, opts)
         local constraints = revive(snap.Constraints or {}, 0)
         -- With spawn limits on, the player is the paste owner, so constraint limits apply too.
         report.created = duplicator.Paste(limits and ply or nil, paste, constraints)
+        -- Some duplicator factories create nothing without a player (Glide's VehicleFactory returns
+        -- early), so what failed without one is pasted again with the player as owner. The retry
+        -- has no constraints: the ones between objects that already exist must not be made twice.
+        if not limits and IsValid(ply) then
+            local retry = {}
+            for index, def in pairs(paste) do
+                if not IsValid(report.created[index]) then retry[index] = def end
+            end
+            if next(retry) then
+                for index, ent in pairs(duplicator.Paste(ply, retry, {})) do report.created[index] = ent end
+            end
+        end
+        -- Classes with their own duplicator factory (Glide, other vehicle bases) skip the generic
+        -- physics restore, so a frozen object would fall: its saved Frozen state is applied here.
+        for index, ent in pairs(report.created) do
+            local physics = IsValid(ent) and paste[index] and paste[index].PhysicsObjects
+            for bone, p in pairs(istable(physics) and physics or {}) do
+                local obj = istable(p) and p.Frozen and ent:GetPhysicsObjectNum(tonumber(bone) or 0)
+                if IsValid(obj) then obj:EnableMotion(false) end
+            end
+        end
         for index, def in pairs(paste) do
             if not IsValid(report.created[index]) then
                 report.skipped[#report.skipped + 1] = { reason = "failed", what = tostring(def.Class) }
@@ -439,7 +460,7 @@ function Snapshot.Report(ctx, label, report, keepMoving)
             parts[#parts + 1] = Snapshot.SKIP_REASONS[reason] .. " (" .. r.n .. "): " .. table.concat(r.names, ", ")
                 .. (r.unique > #r.names and ", …" or "")
         end
-        ctx:step("warn", label, table.concat(parts, " · "))
+        ctx:result("warn", label, table.concat(parts, " · "))
     end
     if keepMoving then return created end
     ctx:nextTick(function()

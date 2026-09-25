@@ -1,7 +1,6 @@
 -- Player lifecycle: restore on spawn, death and disconnect cleanup, save on disconnect, when the host
 -- quits, and before a map cleanup (REWRITE_PLAN.md §15.6).
 
-local WORLD = { entities = true, npcs = true, vehicles = true, constraints = true }
 local cleaningUp = false
 
 local function removeOwned(ply, savedOnly)
@@ -47,27 +46,32 @@ hook.Add("PlayerLoadout", "Rareload.Spawn.Loadout", function(ply)
     if RARELOAD.Pipeline.SpawnHook(ply, "PlayerLoadout") then return true end
 end)
 
-local function saveTransform(ply, reason)
-    RARELOAD.Pipeline.Save(ply, { only = { transform = true }, reason = reason, silent = true })
+-- A full save, like a manual one, for players who turned `setting` on (saveOnDisconnect,
+-- saveOnCleanup). keepMissing: a world module that finds nothing keeps what was saved.
+local function saveIfOn(setting, ply, reason, keepMissing)
+    if IsValid(ply) and RARELOAD.Get(ply, setting) then
+        RARELOAD.Pipeline.Save(ply, { reason = reason, silent = true, keepMissing = keepMissing })
+    end
 end
 
+-- Not called for the singleplayer or listen-server host (G21); see ShutDown.
 hook.Add("PlayerDisconnected", "Rareload.Spawn.Disconnect", function(ply)
-    saveTransform(ply, "disconnect")
+    saveIfOn("saveOnDisconnect", ply, "disconnect")
     if RARELOAD.Get(nil, "disconnectCleanup") then removeOwned(ply, false) end -- F19
 end)
 
 hook.Add("PreCleanupMap", "Rareload.Spawn.PreCleanup", function()
     if cleaningUp then return end
-    for _, ply in player.Iterator() do
-        if IsValid(ply) and ply:Alive() then
-            RARELOAD.Pipeline.Save(ply, { only = WORLD, reason = "cleanup", silent = true, keepMissing = true })
-        end
-    end
+    -- Sandbox's admin cleanup removes every player's objects before this hook runs, so the saved
+    -- objects are kept rather than replaced by an empty world.
+    for _, ply in player.Iterator() do saveIfOn("saveOnCleanup", ply, "cleanup", true) end
 end)
 
+-- The host is never "disconnected" (G21), and a server shutting down may drop players without it.
+-- Best effort only: players may already be invalid this late (G48).
 hook.Add("ShutDown", "Rareload.Spawn.ShutDown", function()
     for _, ply in player.Iterator() do
-        if IsValid(ply) and ply:IsListenServerHost() then saveTransform(ply, "quit") end
+        saveIfOn("saveOnDisconnect", ply, "quit")
     end
     RARELOAD.Store.Flush()
 end)

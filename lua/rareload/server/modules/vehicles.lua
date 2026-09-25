@@ -43,6 +43,9 @@ local function advance(item)
         if runtime and runtime.components and adapter.applyComponents then
             pcall(adapter.applyComponents, ent, runtime.components)
         end
+        -- Bases that stabilize themselves skip SETTLE, where a frozen vehicle is frozen again once
+        -- the base has built its physics.
+        if adapter.selfStabilizes and item.frozen then physics(ent, function(phys) phys:EnableMotion(false) end) end
         item.state, item.steps = (adapter.selfStabilizes or not item.pos) and "RESEAT" or "SETTLE", 0
         return false
     end

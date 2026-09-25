@@ -159,7 +159,7 @@ function Pipeline.Save(ply, opts)
 
     for _, def in ipairs(order()) do
         if not opts.only or opts.only[def.id] then
-            local kept = opts.keepMissing and data[def.id] or nil
+            local kept = opts.keepMissing and prev and prev.data[def.id] or nil
             data[def.id] = nil
             if allowed(def, ply, true) then
                 local out
@@ -238,6 +238,17 @@ function Ctx:step(status, title, detail, ms)
     self.session:step(status, title, detail, ms)
 end
 
+-- A module's own outcome for its step on the report card, instead of the summary of what was saved
+-- (e.g. "0 of 2 restored · addon not installed: …"). Called after an async module's step was
+-- written, it adds a step of its own.
+function Ctx:result(status, title, detail)
+    if self._current then
+        self._result = { status = status, detail = detail }
+    else
+        self:step(status, title, detail)
+    end
+end
+
 -- Remembers entities this restore created, including ones created later (E14), for undo.
 function Ctx:spawnedAdd(ent)
     self.spawned[#self.spawned + 1] = ent
@@ -281,8 +292,12 @@ runFrom = function(ctx, i)
                 ctx:step("fail", def.id, "saved data is missing")
             else
                 ctx._waiting, ctx._resumeAt = false, i
+                ctx._current, ctx._result = def.id, nil
                 local ok, err, ms = run(def.restore, ctx.ply, data, ctx)
-                ctx:step(ok and "ok" or "fail", def.id, not ok and err or def.summary and def.summary(data) or "", ms)
+                ctx._current = nil
+                local r = ctx._result
+                local detail = not ok and err or r and r.detail or def.summary and def.summary(data) or ""
+                ctx:step(not ok and "fail" or r and r.status or "ok", def.id, detail, ms)
                 if ok and ctx._waiting then return end
             end
         end
