@@ -88,7 +88,8 @@ RARELOAD.Module({
             god = ply:HasGodMode(),
             notarget = ply:IsFlagSet(FL_NOTARGET),
             frozen = ply:IsFrozen(),
-            noclip = ply:GetMoveType() == MOVETYPE_NOCLIP,
+            -- Seated players have the noclip move type too; that isn't noclip.
+            noclip = ply:GetMoveType() == MOVETYPE_NOCLIP and not ply:InVehicle(),
             flashlight = ply:FlashlightIsOn(),
             vel = Util.Vec(ply:GetVelocity()),
             -- Add more states here if they can be set or cleared by the player (G58, B25).

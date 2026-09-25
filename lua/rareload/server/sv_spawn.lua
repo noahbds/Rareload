@@ -1,7 +1,7 @@
 -- Player lifecycle: restore on spawn, death and disconnect cleanup, save on disconnect, when the host
 -- quits, and before a map cleanup (REWRITE_PLAN.md §15.6).
 
-local cleaningUp = false
+local cleaningUp = nil   -- the player whose death is cleaning the whole map (deathCleanupMode "all")
 
 local function removeOwned(ply, savedOnly)
     for _, ent in ipairs(RARELOAD.Ownership.Owned(ply)) do
@@ -24,9 +24,9 @@ hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
 
     local mode = died and RARELOAD.Get(nil, "deathCleanupMode") or "off"
     if mode == "all" and not cleaningUp then
-        cleaningUp = true
+        cleaningUp = ply
         game.CleanUpMap(false, nil, function()
-            cleaningUp = false
+            cleaningUp = nil
             timer.Simple(0, function() if IsValid(ply) then ply:Spawn() end end)
         end)
         return
@@ -60,8 +60,12 @@ hook.Add("PlayerDisconnected", "Rareload.Spawn.Disconnect", function(ply)
     if RARELOAD.Get(nil, "disconnectCleanup") then removeOwned(ply, false) end -- F19
 end)
 
-local function saveBeforeCleanup()
-    for _, ply in player.Iterator() do saveIfOn("saveOnCleanup", ply, "cleanup", true) end
+-- `except`: the player respawning after a death cleanup; saving them now would replace their save
+-- with the state they respawned in.
+local function saveBeforeCleanup(except)
+    for _, ply in player.Iterator() do
+        if ply ~= except then saveIfOn("saveOnCleanup", ply, "cleanup", true) end
+    end
 end
 
 -- Sandbox's admin cleanup (Q menu › Clean up everything) removes every player's objects and only then
@@ -85,8 +89,8 @@ end
 -- Any other game.CleanUpMap (other addons, commands). A world module that finds nothing keeps what
 -- was saved (keepMissing), in case the objects were removed before the cleanup.
 hook.Add("PreCleanupMap", "Rareload.Spawn.PreCleanup", function()
-    if cleaningUp or savedForCleanup then return end
-    saveBeforeCleanup()
+    if savedForCleanup then return end
+    saveBeforeCleanup(cleaningUp)
 end)
 
 -- The host is never "disconnected" (G21), and a server shutting down may drop players without it.

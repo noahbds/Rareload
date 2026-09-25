@@ -74,7 +74,9 @@ function RARELOAD.Get(ply, key)
     local value = RARELOAD.ServerValue(key)
 
     if def.scope == "player" and IsValid(ply) and (SERVER or ply == LocalPlayer()) and not RARELOAD.IsLocked(key) then
-        local pref = SERVER and ply:GetInfoNum(def.pref, -1) or GetConVar(def.pref):GetFloat()
+        -- A player without the value (bots have no userinfo; GetInfoNum then returns 0, not the
+        -- default) uses the server value.
+        local pref = tonumber(SERVER and ply:GetInfo(def.pref) or GetConVar(def.pref):GetString()) or -1
         if pref ~= -1 then value = coerce(def, pref) end
     end
     if def.capBy then

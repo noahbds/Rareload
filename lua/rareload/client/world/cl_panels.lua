@@ -592,16 +592,22 @@ local function candidates(eye, aim)
     return out
 end
 
--- Single-linkage piles of models that touch (with a vertical gate so floors don't merge).
+-- Whether two models touch or are less than CLUSTER units apart, by their rotated boxes: bounding
+-- circles would join a car parked beside a bus.
+local PAD = Vector(CLUSTER / 2, CLUSTER / 2, CLUSTER / 2)
+local function close(a, b)
+    return util.IsOBBIntersectingOBB(a.ent:GetPos(), a.ent:GetAngles(), a.ent:OBBMins() - PAD, a.ent:OBBMaxs() + PAD,
+        b.ent:GetPos(), b.ent:GetAngles(), b.ent:OBBMins() - PAD, b.ent:OBBMaxs() + PAD, 0)
+end
+
+-- Single-linkage piles of models that touch or almost touch.
 local function piles(list)
     local groups = {}
     for _, c in ipairs(list) do
         local home
         for _, g in ipairs(groups) do
             for _, m in ipairs(g.members) do
-                local dx, dy = c.center.x - m.center.x, c.center.y - m.center.y
-                if math.sqrt(dx * dx + dy * dy) < CLUSTER + c.radius + m.radius
-                    and math.abs(c.center.z - m.center.z) < CLUSTER + c.half + m.half then
+                if close(c, m) then
                     home = g
                     break
                 end
@@ -687,6 +693,16 @@ local function shouldDraw(depth, sky)
     return not depth and not sky and render.GetRenderTarget() == nil -- L25
 end
 
+-- In a pile, the object the card shows is outlined, so it's clear which one it is: its phantom when the
+-- object has left its saved spot or is missing, else the object itself.
+hook.Add("PreDrawHalos", "Rareload.Panels.Pile", function()
+    local list = {}
+    for _, g in pairs(Panels.groups or {}) do
+        if #g.members > 1 and IsValid(g.activeEnt) then list[#list + 1] = g.activeEnt end
+    end
+    if #list > 0 then halo.Add(list, C.accent, 2, 2, 1, true, true) end
+end)
+
 hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sky)
     if not shouldDraw(depth, sky) then return end
     local World = RARELOAD.World
@@ -714,6 +730,7 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
         end
         st.active = math.Clamp(st.active, 1, #g.members)
         g.active = g.members[st.active].rec
+        g.activeEnt = g.members[st.active].ent -- its phantom when it has left its saved spot
         g.w, g.h = sizeOf(g.active)
         g.pos, g.ang, g.scale, g.inside = placement(g.base.ent, eye, g.w, g.h)
         g.dist = eye:Distance(g.pos)

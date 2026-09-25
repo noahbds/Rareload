@@ -1,9 +1,14 @@
 -- Who owns an entity, as a SteamID64 (REWRITE_PLAN.md §14.3, G65). Sandbox's spawn hooks record the
--- owner on the entity, so ownership survives a reconnect. Other sources are checked as fallbacks:
--- GetCreator, CPPI, fields vehicle bases use, and the player cleanup and undo lists.
+-- owner for the entity's lifetime, so ownership survives a reconnect. Other sources are checked as
+-- fallbacks: GetCreator, CPPI, fields vehicle bases use, and the player cleanup and undo lists.
 
 RARELOAD.Ownership = RARELOAD.Ownership or {}
 local Ownership = RARELOAD.Ownership
+
+-- Entity -> SteamID64. Kept off the entity: the duplicator tools copy an entity's Lua table, so a dupe
+-- would inherit its original's owner.
+Ownership.recorded = Ownership.recorded or setmetatable({}, { __mode = "k" })
+local recorded = Ownership.recorded
 
 -- Fields some vehicle bases and prop protections use to store the spawning player.
 local FIELDS = { "dOwnerEntLFS", "LFSOwner", "SpawnerPlayer", "OwnerEnt", "SPPOwner", "Founder" }
@@ -19,13 +24,18 @@ local function toSid64(v)
 end
 
 function Ownership.Set(ent, ply)
-    ent.RareloadOwner = ply:SteamID64()
+    recorded[ent] = ply:SteamID64()
     if ent.SetCreator then ent:SetCreator(ply) end
     if ent.CPPISetOwner then pcall(ent.CPPISetOwner, ent, ply) end   -- prop protection addons
 end
 
 local function record(ply, ent)
-    if IsValid(ply) and IsValid(ent) then ent.RareloadOwner = ply:SteamID64() end
+    if IsValid(ply) and IsValid(ent) then recorded[ent] = ply:SteamID64() end
+end
+
+-- The owner Rareload recorded (a spawn hook or a restore), without the fallbacks.
+function Ownership.Recorded(ent)
+    return recorded[ent]
 end
 
 hook.Add("PlayerSpawnedProp", "Rareload.Ownership", function(ply, _, ent) record(ply, ent) end)
@@ -58,20 +68,23 @@ local function buildLists()
     return owners
 end
 
+-- Sources that live on the entity table (GetCreator, vehicle base fields) come last: the duplicator
+-- tools copy that table, so a player's dupe of someone else's entity still names the original's owner.
 local function ownerOf(ent, lists)
-    if ent.RareloadOwner then return ent.RareloadOwner end
-    local sid = ent.GetCreator and toSid64(ent:GetCreator())
-    if sid then return sid end
+    if recorded[ent] then return recorded[ent] end
+    local sid
     if ent.CPPIGetOwner then
         local ok, owner = pcall(ent.CPPIGetOwner, ent)
         sid = ok and toSid64(owner)
         if sid then return sid end
     end
+    if lists[ent] then return lists[ent] end
+    sid = ent.GetCreator and toSid64(ent:GetCreator())
+    if sid then return sid end
     for _, field in ipairs(FIELDS) do
         sid = toSid64(ent[field])
         if sid then return sid end
     end
-    return lists[ent]
 end
 
 function Ownership.OwnerOf(ent)

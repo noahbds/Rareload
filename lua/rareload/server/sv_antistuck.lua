@@ -119,9 +119,9 @@ local function navmeshPoints(pos, maxDist)
     if not navmesh.IsLoaded() then return {} end
     local out = {}
     for _, area in ipairs(navmesh.Find(pos, maxDist, 64, 256)) do
-        if not area:IsUnderwater() and not area:IsDamaging() and not area:IsBlocked() then
-            out[#out + 1] = area:GetClosestPointOnArea(pos)
-        end
+        -- An area found within the radius can still have its closest point farther away.
+        local point = not area:IsUnderwater() and not area:IsDamaging() and not area:IsBlocked() and area:GetClosestPointOnArea(pos)
+        if point and point:DistToSqr(pos) <= maxDist * maxDist then out[#out + 1] = point end
     end
     return byDistance(pos, out)
 end

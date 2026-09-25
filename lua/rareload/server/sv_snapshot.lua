@@ -89,7 +89,7 @@ end
 function Snapshot.IsVehiclePart(ent)
     if Snapshot.IsRootVehicle(ent) then return false end
     if ent.DoNotDuplicate == true then return true end
-    if ent.RareloadOwner then return false end
+    if RARELOAD.Ownership.Recorded(ent) then return false end
     return Snapshot.RootVehicleOf(ent) ~= nil
 end
 
@@ -99,6 +99,11 @@ end
 
 -- IDs ---------------------------------------------------------------------------------------------
 
+-- Rareload ID -> the live entity that has it. An ID belongs to one entity: the duplicator tools copy
+-- entity modifiers, so a dupe of a saved object arrives with its ID.
+Snapshot._byId = Snapshot._byId or setmetatable({}, { __mode = "v" })
+local byId = Snapshot._byId
+
 function Snapshot.ID(ent)
     local id = ent.RareloadID
     if not id then
@@ -106,6 +111,7 @@ function Snapshot.ID(ent)
         ent.RareloadID = id
         ent:SetNWString("rl_id", id)
     end
+    byId[id] = ent
     return id
 end
 
@@ -116,8 +122,16 @@ end
 
 -- Runs on paste inside duplicator.Paste, after the entity exists (G26, G28).
 duplicator.RegisterEntityModifier("rareload", function(_, ent, data)
-    ent.RareloadID = data.id
-    ent:SetNWString("rl_id", data.id or "")
+    -- A copy of an object still on the map (Duplicator, AdvDupe2) doesn't take its ID: it gets its own
+    -- when it is saved. Rareload's restores skip objects still on the map, so they always take theirs.
+    local owner = data.id and byId[data.id]
+    if IsValid(owner) and owner ~= ent then
+        ent.RareloadID = nil   -- the generic duplicator merged the copied entity's table into this one
+    elseif data.id then
+        ent.RareloadID = data.id
+        ent:SetNWString("rl_id", data.id)
+        byId[data.id] = ent
+    end
     if (data.maxHp or 0) > 0 then
         ent:SetMaxHealth(data.maxHp)
         ent:SetHealth(data.hp or data.maxHp)
@@ -178,7 +192,13 @@ function Snapshot.Capture(targets)
         if duplicator.IsAllowed(ent.ClassOverride or ent:GetClass()) then
             duplicator.StoreEntityModifier(ent, "rareload",
                 { id = Snapshot.ID(ent), hp = ent:Health(), maxHp = ent:GetMaxHealth() })
-            ProtectedCall(function() snap.Entities[ent:EntIndex()] = plainData(duplicator.CopyEntTable(ent), 0) end)
+            ProtectedCall(function()
+                local def = plainData(duplicator.CopyEntTable(ent), 0)
+                -- The ID lives in the "rareload" modifier; a merged copy of these fields would give a
+                -- pasted object someone else's ID or owner.
+                def.RareloadID, def.RareloadOwner = nil, nil
+                snap.Entities[ent:EntIndex()] = def
+            end)
             for _, c in pairs(constraint.GetTable(ent)) do
                 if IsValid(c.Constraint) then snap.Constraints[c.Constraint:GetCreationID()] = c end
             end
@@ -298,6 +318,13 @@ local function spawnKind(ply, def, kind)
     return "sents", hook.Run("PlayerSpawnSENT", ply, def.Class)
 end
 
+-- Sandbox's own factories (props, ragdolls, vehicles, NPCs) already count what they create when the
+-- paste has a player; counting it again would reach the spawn limit twice as fast.
+local function counted(ply, kind, ent)
+    local objects = g_SBoxObjects and g_SBoxObjects[ply:UniqueID()]
+    return objects ~= nil and objects[kind] ~= nil and table.HasValue(objects[kind], ent)
+end
+
 -- Why a saved object was not restored, as shown on the report card.
 Snapshot.SKIP_REASONS = {
     addon = "addon not installed",          -- the class is gone: only classes the duplicator allowed were saved
@@ -401,7 +428,7 @@ function Snapshot.Restore(snap, ply, opts)
                 RARELOAD.Ownership.Set(ent, ply)
                 cleanup.Add(ply, "rareload", ent)
                 undo.AddEntity(ent)
-                if kinds[index] then ply:AddCount(kinds[index], ent) end
+                if kinds[index] and not counted(ply, kinds[index], ent) then ply:AddCount(kinds[index], ent) end
             end
         end
         undo.SetPlayer(ply)
