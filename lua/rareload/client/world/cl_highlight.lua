@@ -12,7 +12,7 @@ local L, UI = RARELOAD.L, RARELOAD.UI
 
 local COLORS = { saved = Color(255, 210, 60), link = Color(90, 200, 255), player = Color(120, 255, 140) }
 local BEAM, GLOW = Material("trails/laser"), Material("sprites/light_glow02_add")
-local MAX_HALOS, MAX_LABELS = 24, 16   -- G39
+local MAX_HALOS, MAX_LABELS = 24, 16 -- G39
 
 local function key(kind, id) return kind .. "\1" .. tostring(id) end
 
@@ -176,12 +176,12 @@ hook.Add("HUDPaint", "Rareload.Highlight", function()
             surface.SetDrawColor(r.color)
             draw.NoTexture()
             surface.DrawPoly({
-                { x = mx + math.cos(a) * s, y = my + math.sin(a) * s },
+                { x = mx + math.cos(a) * s,       y = my + math.sin(a) * s },
                 { x = mx + math.cos(a + 2.5) * s, y = my + math.sin(a + 2.5) * s },
                 { x = mx + math.cos(a - 2.5) * s, y = my + math.sin(a - 2.5) * s },
             })
             label(r.label, mx, my - 20, r.color)
         end
     end
-    label(L("highlight.count", #list), cx, UI.sc(RARELOAD.World.preview and 66 or 26), COLORS.saved)   -- below the preview banner
+    label(L("highlight.count", #list), cx, UI.sc(RARELOAD.World.preview and 66 or 26), COLORS.saved) -- below the preview banner
 end)

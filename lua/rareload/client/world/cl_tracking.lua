@@ -1,24 +1,20 @@
--- World display data (REWRITE_PLAN.md §21.7, F30–F32): turns the saves feed (players with
--- rareload_debug while debug is on) or the timeline preview into records, links saved objects to
--- live entities by their Rareload ID, and decides which phantoms show:
---   a player's phantom when they are offline or away from their respawn point;
---   an object's phantom when it is missing from the map or has moved.
--- Preview phantoms are tinted: green = the spot is free, red = blocked, blue = still on the map.
-
 RARELOAD.World = RARELOAD.World or {}
 local World = RARELOAD.World
 local Util, L, UI = RARELOAD.Util, RARELOAD.L, RARELOAD.UI
 
-World.live = World.live or {}   -- Rareload ID -> live entity
+World.live = World.live or {} -- Rareload ID -> live entity
 World.records = World.records or {}
 
-local MOVED = 8              -- an object further than this from its saved spot has moved
-local AWAY = 32              -- a player further than this from their respawn point is away from it
-local CULL = 10000           -- phantoms further away are not created
+local MOVED = 8    -- an object further than this from its saved spot has moved
+local AWAY = 32    -- a player further than this from their respawn point is away from it
+local CULL = 10000 -- phantoms further away are not created
 
 local TINT = {
-    player = Color(255, 255, 255, 150), object = Color(150, 200, 255, 120),
-    free = Color(140, 255, 170, 190), blocked = Color(255, 140, 130, 190), onMap = Color(120, 200, 255, 170),
+    player = Color(255, 255, 255, 150),
+    object = Color(150, 200, 255, 120),
+    free = Color(140, 255, 170, 190),
+    blocked = Color(255, 140, 130, 190),
+    onMap = Color(120, 200, 255, 170),
 }
 
 -- Asked several times a frame, so the permission check is refreshed twice a second.
@@ -57,10 +53,19 @@ local function playerRecord(key, save, extra)
     if not pos then return end
     local ang = Util.ToAngle(t.ang) or Angle()
     local rec = {
-        key = key, kind = "player", pos = pos, ang = Angle(0, ang.y, 0), title = save.nick, data = save.data,
-        model = UI.IsModel(look.model) and look.model or "models/player/kleiner.mdl", skin = look.skin,
-        bodygroups = bodygroups(look.bodygroups, true), material = look.material, playerColor = Util.ToVector(look.playerColor),
-        seated = save.seated, objects = save.objects or {},
+        key = key,
+        kind = "player",
+        pos = pos,
+        ang = Angle(0, ang.y, 0),
+        title = save.nick,
+        data = save.data,
+        model = UI.IsModel(look.model) and look.model or "models/player/kleiner.mdl",
+        skin = look.skin,
+        bodygroups = bodygroups(look.bodygroups, true),
+        material = look.material,
+        playerColor = Util.ToVector(look.playerColor),
+        seated = save.seated,
+        objects = save.objects or {},
     }
     for k, v in pairs(extra) do rec[k] = v end
     return rec
@@ -70,9 +75,19 @@ local function objectRecord(key, o, save, extra)
     local pos = Util.ToVector(o.pos)
     if not pos or not o.id then return end
     local rec = {
-        key = key, kind = "object", pos = pos, ang = Util.ToAngle(o.ang) or Angle(), model = o.model, skin = o.skin,
-        bodygroups = bodygroups(o.bodygroups, false), material = o.material, scale = o.scale, parts = o.parts,
-        title = UI.ObjectName(o.class, o.model), obj = o, ownerNick = save.nick,
+        key = key,
+        kind = "object",
+        pos = pos,
+        ang = Util.ToAngle(o.ang) or Angle(),
+        model = o.model,
+        skin = o.skin,
+        bodygroups = bodygroups(o.bodygroups, false),
+        material = o.material,
+        scale = o.scale,
+        parts = o.parts,
+        title = UI.ObjectName(o.class, o.model),
+        obj = o,
+        ownerNick = save.nick,
     }
     for k, v in pairs(extra) do rec[k] = v end
     return rec
@@ -127,8 +142,14 @@ end
 function World.SpotFree(pos, ignore)
     local filter = { LocalPlayer() }
     if IsValid(ignore) then filter[2] = ignore end
-    local tr = util.TraceHull({ start = pos, endpos = pos, mins = Vector(-16, -16, 4), maxs = Vector(16, 16, 72),
-        mask = MASK_PLAYERSOLID, filter = filter })
+    local tr = util.TraceHull({
+        start = pos,
+        endpos = pos,
+        mins = Vector(-16, -16, 4),
+        maxs = Vector(16, 16, 72),
+        mask = MASK_PLAYERSOLID,
+        filter = filter
+    })
     return not (tr.StartSolid or tr.AllSolid)
 end
 
@@ -161,7 +182,8 @@ timer.Create("Rareload.World.Update", 0.2, 0, function()
         RARELOAD.Phantoms.Sync({})
         return
     end
-    local rev = World.preview and ("preview" .. tostring(World.preview.id) .. #(World.preview.objects or {})) or RARELOAD.State.savesRev
+    local rev = World.preview and ("preview" .. tostring(World.preview.id) .. #(World.preview.objects or {})) or
+    RARELOAD.State.savesRev
     if World.rev ~= rev then
         World.rev = rev
         rebuild()
@@ -175,10 +197,22 @@ timer.Create("Rareload.World.Update", 0.2, 0, function()
         local show, tint = phantomState(rec, origin)
         rec.phantomShown = show
         if show then
-            local w = { model = rec.model, pos = rec.pos, ang = rec.ang, skin = rec.skin, bodygroups = rec.bodygroups,
-                material = rec.material, scale = rec.scale, parts = rec.parts, color = tint, player = rec.kind == "player",
-                seated = rec.seated, playerColor = rec.playerColor }
-            rec.phantomSig = rec.phantomSig or RARELOAD.Phantoms.Signature(w)   -- records are rebuilt when their data changes
+            local w = {
+                model = rec.model,
+                pos = rec.pos,
+                ang = rec.ang,
+                skin = rec.skin,
+                bodygroups = rec.bodygroups,
+                material = rec.material,
+                scale = rec.scale,
+                parts = rec.parts,
+                color = tint,
+                player = rec.kind == "player",
+                seated = rec.seated,
+                playerColor = rec.playerColor
+            }
+            rec.phantomSig = rec.phantomSig or
+            RARELOAD.Phantoms.Signature(w)                                    -- records are rebuilt when their data changes
             w.sig = rec.phantomSig
             wanted[rec.key] = w
         end

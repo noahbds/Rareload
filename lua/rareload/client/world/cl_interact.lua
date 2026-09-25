@@ -75,7 +75,7 @@ hook.Add("Think", "Rareload.Interact", function()
     local rec = lockedRec()
     local tooFar = rec and EyePos():Distance(rec.pos) > RARELOAD.Get(nil, "wdDrawDistance") + 100
     if not rec or tooFar or not RARELOAD.World.Active() or not Panels.focus then return unlock() end
-    if gui.IsGameUIVisible() or IsValid(vgui.GetKeyboardFocus()) then return end   -- typing in chat or a menu
+    if gui.IsGameUIVisible() or IsValid(vgui.GetKeyboardFocus()) then return end -- typing in chat or a menu
 
     if pressed(KEY_UP) then switchTab(rec, -1) end
     if pressed(KEY_DOWN) then switchTab(rec, 1) end

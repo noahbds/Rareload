@@ -50,7 +50,7 @@ local function build(w)
     if w.scale and w.scale ~= 1 then ent:SetModelScale(w.scale, 0) end
     if w.playerColor then
         local color = w.playerColor
-        ent.GetPlayerColor = function() return color end   -- read by the player colour material proxy
+        ent.GetPlayerColor = function() return color end -- read by the player colour material proxy
     end
     if w.player then
         if w.seated then

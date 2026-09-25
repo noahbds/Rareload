@@ -1,28 +1,16 @@
--- Info panels over saved players and objects (REWRITE_PLAN.md §21.7, F30, F33, F34).
--- Each panel has category tabs. A panel stands on the side of its model (the phantom when one shows)
--- facing the viewer, at eye height as far as the model's height allows, sized to the model. The nearest
--- panels are drawn up to `wdMaxDrawPerFrame` and fade out towards `wdDrawDistance`; panels of models
--- that touch form a pile showing one card at a time. The panel under the crosshair is the focus. Each
--- object's full saved data is asked from the server once, for every panel in view, and fills its tabs.
--- Other addons' modules show in the "other" tab, through Panels.Format(id, fn) or a generic list (§24).
-
 RARELOAD.Panels = RARELOAD.Panels or { formatters = {}, view = {}, piles = {} }
 local Panels = RARELOAD.Panels
 local L, UI, Util, State = RARELOAD.L, RARELOAD.UI, RARELOAD.Util, RARELOAD.State
 local C = UI.C
-
--- A card is sized to its own content: as wide as its longest title and values, as tall as its largest
--- tab (at most VISIBLE rows; longer tabs scroll), within MIN_W..MAX_W. The size is the same on every tab and only grows, so
--- the card doesn't jump when tabs are switched or live values change. Text keeps one size on every
--- card: the scale comes from REF_W, not from the card's width.
 local REF_W, MIN_W, MAX_W = 560, 380, 860
 local HEAD, SIDE, ROW, TAB, VISIBLE = 76, 158, 30, 30, 9
-local CLUSTER = 8            -- models closer than this (edge to edge) form a pile
+local CLUSTER = 8
 local ANIM = 0.28
-local FADE = 0.2             -- the last 20% of the draw distance fades panels out
+local FADE = 0.2
 
 -- Colours drawn every frame, made once.
-local BG, HEAD_BG, SIDE_BG, ALT_ROW = Color(15, 18, 24, 245), Color(26, 31, 41, 255), Color(20, 24, 30, 255), Color(40, 47, 60, 120)
+local BG, HEAD_BG, SIDE_BG, ALT_ROW = Color(15, 18, 24, 245), Color(26, 31, 41, 255), Color(20, 24, 30, 255),
+    Color(40, 47, 60, 120)
 local BAR_BG, TRACK, HINT_BG = Color(20, 24, 30), Color(25, 30, 40), Color(18, 22, 30, 225)
 local ACCENT_DIM, BADGE_BG = ColorAlpha(C.accent, 120), ColorAlpha(C.accent, 200)
 
@@ -31,15 +19,44 @@ local CATS = {
     object = { "basic", "position", "state", "visual", "physics", "vehicle", "ai", "network", "data", "mods" },
 }
 local CAT_COLORS = {
-    basic = C.accent, position = C.ok, equipment = C.warn, appearance = Color(255, 110, 180), stats = Color(160, 120, 230),
-    world = C.prop, other = C.text3, state = C.warn, visual = Color(160, 120, 230), physics = Color(255, 120, 90),
-    vehicle = C.vehicle, ai = C.npc, network = C.info, data = C.text2, mods = Color(200, 150, 255),
+    basic = C.accent,
+    position = C.ok,
+    equipment = C.warn,
+    appearance = Color(255, 110, 180),
+    stats = Color(160, 120, 230),
+    world = C.prop,
+    other = C.text3,
+    state = C.warn,
+    visual = Color(160, 120, 230),
+    physics = Color(255, 120, 90),
+    vehicle = C.vehicle,
+    ai = C.npc,
+    network = C.info,
+    data = C.text2,
+    mods = Color(200, 150, 255),
 }
 -- Keys of a saved object shown in their own tabs, or not at all.
 local KNOWN_KEYS = {
-    Class = true, Model = true, Pos = true, Angle = true, Skin = true, PhysicsObjects = true, EntityMods = true,
-    BoneMods = true, BodyG = true, ModelScale = true, Mins = true, Maxs = true, Flex = true, FlexScale = true,
-    MapCreationID = true, WorkshopID = true, DT = true, ColGroup = true, BoneManip = true, Constraints = true,
+    Class = true,
+    Model = true,
+    Pos = true,
+    Angle = true,
+    Skin = true,
+    PhysicsObjects = true,
+    EntityMods = true,
+    BoneMods = true,
+    BodyG = true,
+    ModelScale = true,
+    Mins = true,
+    Maxs = true,
+    Flex = true,
+    FlexScale = true,
+    MapCreationID = true,
+    WorkshopID = true,
+    DT = true,
+    ColGroup = true,
+    BoneManip = true,
+    Constraints = true,
 }
 
 -- Other addons: fn(data, add) with add(label, value, color) fills the "other" tab for module `id`.
@@ -86,7 +103,8 @@ end
 local function colorOf(v)
     if istable(v) and istable(v.__color) then return Color(v.__color[1], v.__color[2], v.__color[3]) end
     local vec = istable(v) and Util.ToVector(v)
-    if vec then return Color(math.Clamp(vec.x * 255, 0, 255), math.Clamp(vec.y * 255, 0, 255), math.Clamp(vec.z * 255, 0, 255)) end
+    if vec then return Color(math.Clamp(vec.x * 255, 0, 255), math.Clamp(vec.y * 255, 0, 255),
+            math.Clamp(vec.z * 255, 0, 255)) end
 end
 
 -- Tab contents ----------------------------------------------------------------------------------------
@@ -130,12 +148,15 @@ local function playerCats(rec)
         add("equipment", L("field.weapons"), tostring(#weapons))
         for _, class in ipairs(weapons) do
             local clip = istable(ammo.clips) and ammo.clips[class]
-            local text = clip and ((clip[1] or -1) >= 0 and L("world.clip", clip[1]) or "") .. ((clip[2] or -1) >= 0 and "  " .. L("world.clip2", clip[2]) or "") or ""
-            add("equipment", (class == d.activeWeapon and "» " or "  ") .. UI.WeaponName(class), text, class == d.activeWeapon and C.warn or nil)
+            local text = clip and
+            ((clip[1] or -1) >= 0 and L("world.clip", clip[1]) or "") ..
+            ((clip[2] or -1) >= 0 and "  " .. L("world.clip2", clip[2]) or "") or ""
+            add("equipment", (class == d.activeWeapon and "» " or "  ") .. UI.WeaponName(class), text,
+                class == d.activeWeapon and C.warn or nil)
         end
     end
     local names = {}
-    for name in pairs(ammo.reserve or {}) do names[#names + 1] = tostring(name) end   -- "357" comes back as a number
+    for name in pairs(ammo.reserve or {}) do names[#names + 1] = tostring(name) end -- "357" comes back as a number
     table.sort(names)
     for _, name in ipairs(names) do
         add("equipment", L("world.ammo", name), tostring(ammo.reserve[name] or ammo.reserve[tonumber(name)]), C.info)
@@ -149,10 +170,13 @@ local function playerCats(rec)
         for i, v in ipairs(look.bodygroups or {}) do if v ~= 0 then bg[#bg + 1] = (i - 1) .. ":" .. v end end
         add("appearance", L("field.bodygroups"), #bg > 0 and table.concat(bg, "  ") or nil)
         if look.material and look.material ~= "" then add("appearance", L("field.material"), look.material) end
-        add("appearance", L("field.player_color"), look.playerColor and summarize(Util.ToVector(look.playerColor)), nil, colorOf(look.playerColor))
-        add("appearance", L("field.weapon_color"), look.weaponColor and summarize(Util.ToVector(look.weaponColor)), nil, colorOf(look.weaponColor))
+        add("appearance", L("field.player_color"), look.playerColor and summarize(Util.ToVector(look.playerColor)), nil,
+            colorOf(look.playerColor))
+        add("appearance", L("field.weapon_color"), look.weaponColor and summarize(Util.ToVector(look.weaponColor)), nil,
+            colorOf(look.weaponColor))
         if istable(look.color) then
-            add("appearance", L("field.color"), table.concat(look.color, " "), nil, Color(look.color[1], look.color[2], look.color[3]))
+            add("appearance", L("field.color"), table.concat(look.color, " "), nil,
+                Color(look.color[1], look.color[2], look.color[3]))
         end
     end
 
@@ -221,10 +245,14 @@ local function objectCats(rec)
 
     add("state", L("field.frozen"), yesNo(o.frozen))
     add("state", L("field.gravity"), yesNo(not o.nograv))
-    if o.maxHp and o.maxHp > 0 then add("state", L("field.saved_health"), (o.hp or 0) .. " / " .. o.maxHp, UI.HealthColor(o.hp, o.maxHp)) end
-    if live and live:Health() > 0 and live:GetMaxHealth() > 0 then add("state", L("field.live_health"), live:Health() .. " / " .. live:GetMaxHealth()) end
-    if o.npcState then add("state", L("field.npc_state"), L("world.npc_state." .. (STATE_NAMES[o.npcState] or "none")), C.npc) end
-    if live and live.GetDriver and IsValid(live:GetDriver()) then add("state", L("field.driver"), live:GetDriver():Nick(), C.vehicle) end
+    if o.maxHp and o.maxHp > 0 then add("state", L("field.saved_health"), (o.hp or 0) .. " / " .. o.maxHp,
+            UI.HealthColor(o.hp, o.maxHp)) end
+    if live and live:Health() > 0 and live:GetMaxHealth() > 0 then add("state", L("field.live_health"),
+            live:Health() .. " / " .. live:GetMaxHealth()) end
+    if o.npcState then add("state", L("field.npc_state"), L("world.npc_state." .. (STATE_NAMES[o.npcState] or "none")),
+            C.npc) end
+    if live and live.GetDriver and IsValid(live:GetDriver()) then add("state", L("field.driver"), live:GetDriver():Nick(),
+            C.vehicle) end
 
     add("visual", L("field.skin"), o.skin)
     if o.scale then add("visual", L("field.scale"), o.scale) end
@@ -246,8 +274,10 @@ local function objectCats(rec)
             if n > 8 then break end
             add("physics", L("world.bone", bone), (p.Frozen and L("field.frozen") .. "  " or "") .. summarize(p.Pos))
         end
-        for k, v in ordered(istable(detail.runtime) and detail.runtime.root or {}) do add("vehicle", humanize(k), summarize(v)) end
-        for k, v in ordered(istable(detail.runtime) and detail.runtime.components or {}) do add("vehicle", humanize(k), summarize(v)) end
+        for k, v in ordered(istable(detail.runtime) and detail.runtime.root or {}) do add("vehicle", humanize(k),
+                summarize(v)) end
+        for k, v in ordered(istable(detail.runtime) and detail.runtime.components or {}) do add("vehicle", humanize(k),
+                summarize(v)) end
         if istable(detail.ai) then
             add("ai", L("field.npc_state"), L("world.npc_state." .. (STATE_NAMES[detail.ai.state] or "none")))
             add("ai", L("field.schedule"), detail.ai.schedule)
@@ -378,7 +408,8 @@ end
 local function bar(x, y, w, h, frac, col, text)
     draw.RoundedBox(4, x, y, w, h, BAR_BG)
     if frac > 0 then draw.RoundedBox(4, x, y, math.max(8, w * math.Clamp(frac, 0, 1)), h, col) end
-    if text then draw.SimpleText(text, "Rareload.PanelSmall", x + w / 2, y + h / 2, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER) end
+    if text then draw.SimpleText(text, "Rareload.PanelSmall", x + w / 2, y + h / 2, color_white, TEXT_ALIGN_CENTER,
+            TEXT_ALIGN_CENTER) end
 end
 
 -- One card, centred on (0, 0) of the current 3D2D plane.
@@ -400,7 +431,8 @@ local function drawCard(rec, focused, locked)
     -- Title, status and badges.
     local kindCol = rec.kind == "player" and C.player or UI.KIND_COLORS[rec.obj.kind] or C.text
     draw.RoundedBox(4, x + 12, y + 14, 6, 44, kindCol)
-    draw.SimpleText(UI.Clip(rec.title or "?", "Rareload.PanelTitle", W - (hasBar(rec) and 266 or 50)), "Rareload.PanelTitle", x + 26, y + 6, color_white)
+    draw.SimpleText(UI.Clip(rec.title or "?", "Rareload.PanelTitle", W - (hasBar(rec) and 266 or 50)),
+        "Rareload.PanelTitle", x + 26, y + 6, color_white)
     local text, col = status(rec)
     surface.SetFont("Rareload.PanelSmall")
     local sw = surface.GetTextSize(text)
@@ -441,9 +473,11 @@ local function drawCard(rec, focused, locked)
             surface.SetDrawColor(tcol)
             surface.DrawRect(x, ty, 3, TAB)
         end
-        draw.SimpleText(UI.Clip(L("world.cat." .. id), "Rareload.PanelSmall", SIDE - 46), "Rareload.PanelSmall", x + 12, ty + TAB / 2,
+        draw.SimpleText(UI.Clip(L("world.cat." .. id), "Rareload.PanelSmall", SIDE - 46), "Rareload.PanelSmall", x + 12,
+            ty + TAB / 2,
             active and color_white or ColorAlpha(tcol, 200), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText(tostring(#cats[id]), "Rareload.PanelSmall", x + SIDE - 10, ty + TAB / 2, C.text3, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(tostring(#cats[id]), "Rareload.PanelSmall", x + SIDE - 10, ty + TAB / 2, C.text3,
+            TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
         ty = ty + TAB
     end
 
@@ -463,7 +497,8 @@ local function drawCard(rec, focused, locked)
         local room = cw - (line.swatch and 28 or 0) - 16
         local labelMax = math.max(room - surface.GetTextSize(line.value), room * 0.4)
         local lw = math.min(surface.GetTextSize(line.label), labelMax)
-        draw.SimpleText(UI.Clip(line.label, "Rareload.Panel", labelMax), "Rareload.Panel", cx, ry + ROW / 2, C.text2, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(UI.Clip(line.label, "Rareload.Panel", labelMax), "Rareload.Panel", cx, ry + ROW / 2, C.text2,
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         local vx = cx + cw
         if line.swatch then
             draw.RoundedBox(4, vx - 20, ry + 6, 20, ROW - 12, line.swatch)
@@ -497,10 +532,6 @@ local function anchorEnt(rec)
     return RARELOAD.Phantoms.Get(rec.key) or RARELOAD.World.LiveOf(rec)
 end
 
--- Draw position, angle and scale of a panel `h` pixels tall for `ent`. The panel stands just outside
--- the model's box on the viewer's side, turned to face the viewer, at eye height: never lower than the
--- model's bottom nor higher than just above its top, so it stays attached to the model. As wide as the
--- model, and never wider than 60% of the distance to it.
 local function placement(ent, eye, w, h)
     local mn, mx = ent:WorldSpaceAABB()
     local hx, hy = (mx.x - mn.x) / 2, (mx.y - mn.y) / 2
@@ -508,9 +539,9 @@ local function placement(ent, eye, w, h)
     local dx, dy = cx - eye.x, cy - eye.y
     local d = math.sqrt(dx * dx + dy * dy)
     local ux, uy = d > 1 and dx / d or 1, d > 1 and dy / d or 0
-    local near = d - (math.abs(ux) * hx + math.abs(uy) * hy) - 6   -- from the viewer to the box's near side
+    local near = d - (math.abs(ux) * hx + math.abs(uy) * hy) - 6 -- from the viewer to the box's near side
     local inside = near < 32
-    if inside then near = math.min(32, d) end                     -- standing at the model: just in front
+    if inside then near = math.min(32, d) end                    -- standing at the model: just in front
 
     local size = math.max(hx * 2, hy * 2, mx.z - mn.z)
     local scale = math.min(math.Clamp(size * 1.15, 42, 130) / REF_W, math.max(near, 1) * 0.6 / w)
@@ -538,7 +569,8 @@ end
 local function candidates(eye, aim)
     local maxDist = RARELOAD.Get(nil, "wdDrawDistance")
     local out = {}
-    local reach = (maxDist + 1500) ^ 2   -- the model is near its saved spot, or its phantom shows there (big models reach far)
+    local reach = (maxDist + 1500) ^
+    2                                  -- the model is near its saved spot, or its phantom shows there (big models reach far)
     for _, rec in ipairs(RARELOAD.World.records) do
         local ent = rec.pos:DistToSqr(eye) < reach and (rec.kind == "object" or rec.phantomShown) and anchorEnt(rec)
         if ent then
@@ -547,11 +579,10 @@ local function candidates(eye, aim)
             local dist = delta:Length()
             local mn, mx = ent:OBBMins(), ent:OBBMaxs()
             local radius, half = math.max(mx.x - mn.x, mx.y - mn.y) / 2, (mx.z - mn.z) / 2
-            -- Measured to the model's edge, not its centre: next to a big model the centre can be far
-            -- off to the side. All around when close, else in a ~50° cone widened by the model's size.
             local edge = math.max(dist - math.max(radius, half), 0)
             if edge < maxDist and (edge < 150 or delta:Dot(aim) > dist * 0.64 - math.max(radius, half)) then
-                out[#out + 1] = { rec = rec, ent = ent, center = center, dist = dist, edge = edge, radius = radius, half = half }
+                out[#out + 1] = { rec = rec, ent = ent, center = center, dist = dist, edge = edge, radius = radius, half =
+                half }
             end
         end
     end
@@ -638,7 +669,7 @@ local function easeOutBack(t)
     return 1 + 2.70158 * u * u * u + 1.70158 * u * u
 end
 
-local fade = 1   -- alpha of the pile being drawn
+local fade = 1 -- alpha of the pile being drawn
 
 -- Draws `rec`'s card moved by (dx, dy), scaled by s, at alpha a (the plane is already open).
 local function drawMoved(rec, dx, dy, s, a, focused, locked)
@@ -653,7 +684,7 @@ local function drawMoved(rec, dx, dy, s, a, focused, locked)
 end
 
 local function shouldDraw(depth, sky)
-    return not depth and not sky and render.GetRenderTarget() == nil   -- L25
+    return not depth and not sky and render.GetRenderTarget() == nil -- L25
 end
 
 hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sky)
@@ -700,7 +731,7 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
     Panels.focus = focus
     prefetch(focus, groups)
 
-    table.sort(groups, function(a, b) return a.dist > b.dist end)   -- farthest first
+    table.sort(groups, function(a, b) return a.dist > b.dist end) -- farthest first
     local maxDist = RARELOAD.Get(nil, "wdDrawDistance")
     for _, g in ipairs(groups) do
         local st = Panels.piles[g.key]
@@ -710,37 +741,40 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
         -- Standing at a big model, the panel can end up inside it; draw it over the model then.
         if g.inside then cam.IgnoreZ(true) end
         cam.Start3D2D(g.pos, g.ang, g.scale)
-            for k = math.min(#g.members - 1, 2), 1, -1 do   -- the next cards peek out behind
-                local ph, pw = g.h * 0.94 ^ k, g.w * 0.94 ^ k
-                draw.RoundedBox(10, -pw / 2 + 26 * k, -ph / 2 - 22 * k, pw, ph, Color(18, 22, 30, 200 - k * 50))
-                draw.RoundedBoxEx(10, -pw / 2 + 26 * k, -ph / 2 - 22 * k, pw, 46, Color(28, 34, 46, 220 - k * 50), true, true, false, false)
-            end
-            local anim = st.anim
-            local t = anim and (RealTime() - anim.t0) / ANIM or 1
-            if t >= 1 then st.anim, anim = nil, nil end
-            if anim then
-                local e = easeOutBack(t)
-                if anim.from then drawMoved(anim.from, anim.dir * t * g.w * 0.55, -t * g.h * 0.14, Lerp(t, 1, 0.82), 1 - t * t, false, false) end
-                drawMoved(g.active, -anim.dir * (1 - e) * g.w * 0.1, (1 - e) * g.h * 0.05, Lerp(e, 0.9, 1), Lerp(t, 0.6, 1), focused, locked)
-            else
-                drawCard(g.active, focused, locked)
-            end
-            if #g.members > 1 then
-                local label = st.active .. " / " .. #g.members
-                surface.SetFont("Rareload.Label")
-                local bw = surface.GetTextSize(label) + 20
-                draw.RoundedBox(6, -bw / 2, -g.h / 2 - 32, bw, 26, BADGE_BG)
-                draw.SimpleText(label, "Rareload.Label", 0, -g.h / 2 - 19, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-            end
-            local hy = g.h / 2 + 8
-            if locked then
-                hint(L("world.hint_locked"), hy, C.warn)
-                hint(#g.members > 1 and L("world.hint_controls_pile") or L("world.hint_controls"), hy + 30)
-                hint(g.active.kind == "player" and L("world.hint_highlight_player") or L("world.hint_highlight"), hy + 60)
-            elseif focused then
-                hint(L("world.hint_inspect"), hy)
-                if #g.members > 1 then hint(L("world.hint_pile", #g.members), hy + 30) end
-            end
+        for k = math.min(#g.members - 1, 2), 1, -1 do     -- the next cards peek out behind
+            local ph, pw = g.h * 0.94 ^ k, g.w * 0.94 ^ k
+            draw.RoundedBox(10, -pw / 2 + 26 * k, -ph / 2 - 22 * k, pw, ph, Color(18, 22, 30, 200 - k * 50))
+            draw.RoundedBoxEx(10, -pw / 2 + 26 * k, -ph / 2 - 22 * k, pw, 46, Color(28, 34, 46, 220 - k * 50), true, true,
+                false, false)
+        end
+        local anim = st.anim
+        local t = anim and (RealTime() - anim.t0) / ANIM or 1
+        if t >= 1 then st.anim, anim = nil, nil end
+        if anim then
+            local e = easeOutBack(t)
+            if anim.from then drawMoved(anim.from, anim.dir * t * g.w * 0.55, -t * g.h * 0.14, Lerp(t, 1, 0.82),
+                    1 - t * t, false, false) end
+            drawMoved(g.active, -anim.dir * (1 - e) * g.w * 0.1, (1 - e) * g.h * 0.05, Lerp(e, 0.9, 1), Lerp(t, 0.6, 1),
+                focused, locked)
+        else
+            drawCard(g.active, focused, locked)
+        end
+        if #g.members > 1 then
+            local label = st.active .. " / " .. #g.members
+            surface.SetFont("Rareload.Label")
+            local bw = surface.GetTextSize(label) + 20
+            draw.RoundedBox(6, -bw / 2, -g.h / 2 - 32, bw, 26, BADGE_BG)
+            draw.SimpleText(label, "Rareload.Label", 0, -g.h / 2 - 19, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        end
+        local hy = g.h / 2 + 8
+        if locked then
+            hint(L("world.hint_locked"), hy, C.warn)
+            hint(#g.members > 1 and L("world.hint_controls_pile") or L("world.hint_controls"), hy + 30)
+            hint(g.active.kind == "player" and L("world.hint_highlight_player") or L("world.hint_highlight"), hy + 60)
+        elseif focused then
+            hint(L("world.hint_inspect"), hy)
+            if #g.members > 1 then hint(L("world.hint_pile", #g.members), hy + 30) end
+        end
         cam.End3D2D()
         if g.inside then cam.IgnoreZ(false) end
     end
