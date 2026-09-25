@@ -1,10 +1,11 @@
--- Privileges: declared once, registered with CAMI, with a usergroup-tier fallback (REWRITE_PLAN.md §13.3).
+-- Privileges: declared once, registered with CAMI
 
 RARELOAD.Privs = RARELOAD.Privs or {}
 local Privs = RARELOAD.Privs
 
 local UMBRELLA = "rareload_admin"
 
+-- Priv for privilege or perm or whatever you want
 function RARELOAD.Priv(name, tier, desc)
     Privs[name] = { tier = tier, desc = desc }
 end
