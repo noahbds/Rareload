@@ -1,5 +1,5 @@
 RARELOAD         = RARELOAD or {}
-RARELOAD.version = "4.0"
+RARELOAD.version = "4.0-Legacy"
 
 if SERVER then
     AddCSLuaFile("rareload/shared/sh_lang.lua")
