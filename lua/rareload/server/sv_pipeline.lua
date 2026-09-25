@@ -181,7 +181,8 @@ function Pipeline.Save(ply, opts)
     local entry = { time = os.time(), reason = opts.reason or "command", data = data }
     if opts.captureOnly then return true, "captured", entry end
 
-    local info = { reason = opts.reason or "command", auto = opts.silent == true }
+    -- Only autosaves get the one-line card; other silent saves (cleanup, disconnect) show every step.
+    local info = { reason = opts.reason or "command", auto = opts.reason == "auto" }
     if prev and RARELOAD.Util.Equal(prev.data, data) then
         if not opts.silent then
             RARELOAD.Toast(ply, "toast.unchanged", { prev.id })

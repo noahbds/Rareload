@@ -60,11 +60,33 @@ hook.Add("PlayerDisconnected", "Rareload.Spawn.Disconnect", function(ply)
     if RARELOAD.Get(nil, "disconnectCleanup") then removeOwned(ply, false) end -- F19
 end)
 
-hook.Add("PreCleanupMap", "Rareload.Spawn.PreCleanup", function()
-    if cleaningUp then return end
-    -- Sandbox's admin cleanup removes every player's objects before this hook runs, so the saved
-    -- objects are kept rather than replaced by an empty world.
+local function saveBeforeCleanup()
     for _, ply in player.Iterator() do saveIfOn("saveOnCleanup", ply, "cleanup", true) end
+end
+
+-- Sandbox's admin cleanup (Q menu › Clean up everything) removes every player's objects and only then
+-- calls game.CleanUpMap, so PreCleanupMap would see them gone: the command is wrapped to save first.
+-- The original is kept on RARELOAD so a Lua reload doesn't wrap the wrapper.
+local savedForCleanup = false
+local adminCleanup = RARELOAD.AdminCleanupOriginal or concommand.GetTable()["gmod_admin_cleanup"]
+if adminCleanup then
+    RARELOAD.AdminCleanupOriginal = adminCleanup
+    concommand.Add("gmod_admin_cleanup", function(pl, cmd, args, argStr)
+        if not IsValid(pl) or pl:IsAdmin() then   -- the same check as the original
+            saveBeforeCleanup()
+            savedForCleanup = true
+        end
+        local ok, err = pcall(adminCleanup, pl, cmd, args, argStr)
+        savedForCleanup = false
+        if not ok then ErrorNoHaltWithStack(err) end
+    end, nil, "", { FCVAR_DONTRECORD })
+end
+
+-- Any other game.CleanUpMap (other addons, commands). A world module that finds nothing keeps what
+-- was saved (keepMissing), in case the objects were removed before the cleanup.
+hook.Add("PreCleanupMap", "Rareload.Spawn.PreCleanup", function()
+    if cleaningUp or savedForCleanup then return end
+    saveBeforeCleanup()
 end)
 
 -- The host is never "disconnected" (G21), and a server shutting down may drop players without it.
