@@ -6,6 +6,7 @@ local REF_W, MIN_W, MAX_W = 560, 380, 860
 local HEAD, SIDE, ROW, TAB, VISIBLE = 76, 158, 30, 30, 9
 local CLUSTER = 8
 local ANIM = 0.28
+local OPEN = 0.15 -- the open card growing in
 local FADE = 0.2
 
 -- Colours drawn every frame, made once.
@@ -422,6 +423,10 @@ end
 
 -- Drawing ---------------------------------------------------------------------------------------------
 
+local function kindColor(rec)
+    return rec.kind == "player" and C.player or UI.KIND_COLORS[rec.obj.kind] or C.text
+end
+
 
 local function bar(x, y, w, h, frac, col, text)
     draw.RoundedBox(4, x, y, w, h, BAR_BG)
@@ -431,14 +436,14 @@ local function bar(x, y, w, h, frac, col, text)
 end
 
 -- One card, centred on (0, 0) of the current 3D2D plane.
-local function drawCard(rec, focused, locked, ox, oy)
+local function drawCard(rec, focused, locked)
     local cats, tabs = catsOf(rec)
     local view = Panels.View(rec)
     view.tab = math.Clamp(view.tab, 1, math.max(#tabs, 1))
     local tab = tabs[view.tab]
     local lines = tab and cats[tab] or {}
     local W, h = sizeOf(rec)
-    local x, y = ox or -W / 2, oy or -h / 2
+    local x, y = -W / 2, -h / 2
 
     draw.RoundedBox(10, x, y, W, h, BG)
     draw.RoundedBoxEx(10, x, y, W, HEAD, HEAD_BG, true, true, false, false)
@@ -447,8 +452,7 @@ local function drawCard(rec, focused, locked, ox, oy)
     surface.DrawOutlinedRect(x, y, W, h, focused and 2 or 1)
 
     -- Title, status and badges.
-    local kindCol = rec.kind == "player" and C.player or UI.KIND_COLORS[rec.obj.kind] or C.text
-    draw.RoundedBox(4, x + 12, y + 14, 6, 44, kindCol)
+    draw.RoundedBox(4, x + 12, y + 14, 6, 44, kindColor(rec))
     draw.SimpleText(UI.Clip(rec.title or "?", "Rareload.PanelTitle", W - (hasBar(rec) and 266 or 50)),
         "Rareload.PanelTitle", x + 26, y + 6, color_white)
     local text, col = status(rec)
@@ -534,117 +538,6 @@ local function drawCard(rec, focused, locked, ox, oy)
     end
     return h
 end
-
--- Card cache -----------------------------------------------------------------------------------------
-
--- A card is a few hundred draw calls, too many to redo every frame for every panel in view. Cards that
--- aren't focused are drawn once into a render target and shown as one textured quad until something
--- on them changes. The focused card is still drawn directly, so it stays sharp up close.
-local RT_W, RT_H = 1024, 512
-local POOL = 24       -- cached cards (2 MB of video memory each)
-local BAKES = 3       -- most cards re-drawn into the cache per frame
-local RT_FLAGS = bit.bor(4, 8, 256, 512) -- clamp S/T, no mipmaps, no LOD
-local slots, slotOf, frame, baked = {}, {}, 0, 0
-
-local function slotAt(i)
-    local sl = slots[i]
-    if sl then return sl end
-    local name = "Rareload_PanelRT_" .. i
-    local rt = GetRenderTargetEx(name, RT_W, RT_H, RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_SEPARATE, RT_FLAGS, 0,
-        IMAGE_FORMAT_RGBA8888)
-    sl = {
-        rt = rt,
-        mat = CreateMaterial(name .. "_mat", "UnlitGeneric", {
-            ["$basetexture"] = rt:GetName(),
-            ["$translucent"] = "1",
-            ["$vertexcolor"] = "1",
-            ["$vertexalpha"] = "1",
-        }),
-        used = 0,
-    }
-    slots[i] = sl
-    return sl
-end
-
--- Everything a cached card's look depends on, besides its tabs (rebuilt with a new catsAt).
-local function signature(rec)
-    local view = Panels.View(rec)
-    local text = status(rec)
-    local hp = rec.kind == "player" and rec.data.health
-    local owner = not rec.preview and RARELOAD.World.OwnerOf(rec) == LocalPlayer()
-    return table.concat({ rec.catsAt, tostring(rec.title), view.tab, view.scroll, rec.cardW, rec.cardH, text,
-        tostring(owner), tostring(hp and hp.hp or rec.obj and rec.obj.hp), tostring(hp and hp.armor),
-        tostring(rec.obj and rec.obj.maxHp) }, "|")
-end
-
--- The cached texture of `rec`'s card, re-drawn when it changed and the frame's bake budget allows.
--- Returns nil when the card has to be drawn directly.
-local function cached(rec)
-    catsOf(rec)
-    local W, h = rec.cardW, rec.cardH
-    if W > RT_W or h > RT_H then return nil end
-    local sig = signature(rec)
-    local sl = slotOf[rec.key]
-    if sl and sl.key ~= rec.key then sl, slotOf[rec.key] = nil, nil end
-    if sl and sl.sig == sig then
-        sl.used = frame
-        return sl
-    end
-    if baked >= BAKES then
-        if sl then sl.used = frame end
-        return sl -- slightly out of date for a frame or two
-    end
-    if not sl then
-        local oldest
-        for i = 1, POOL do
-            local s = slots[i]
-            if not s then
-                oldest = i
-                break
-            end
-            if s.used < frame and (not oldest or s.used < slots[oldest].used) then oldest = i end
-        end
-        if not oldest then return nil end -- every slot is shown this frame
-        sl = slotAt(oldest)
-        if sl.key then slotOf[sl.key] = nil end
-        sl.key, slotOf[rec.key] = rec.key, sl
-    end
-
-    baked = baked + 1
-    sl.sig, sl.used, sl.u, sl.v = sig, frame, W / RT_W, h / RT_H
-    render.PushRenderTarget(sl.rt, 0, 0, RT_W, RT_H)
-    render.Clear(0, 0, 0, 0, true, true)
-    cam.Start2D()
-    -- Alpha accumulates like colour does, so text and rows don't punch holes into the card.
-    render.OverrideBlend(true, BLEND_SRC_ALPHA, BLEND_ONE_MINUS_SRC_ALPHA, BLENDFUNC_ADD, BLEND_ONE,
-        BLEND_ONE_MINUS_SRC_ALPHA, BLENDFUNC_ADD)
-    local alpha = surface.GetAlphaMultiplier()
-    surface.SetAlphaMultiplier(1)
-    local ok, err = pcall(drawCard, rec, false, false, 0, 0)
-    surface.SetAlphaMultiplier(alpha)
-    render.OverrideBlend(false)
-    cam.End2D()
-    render.PopRenderTarget()
-    if not ok then
-        sl.sig = nil
-        ErrorNoHalt("[Rareload] panel cache: " .. tostring(err) .. "\n")
-        return nil
-    end
-    return sl
-end
-
-local function drawCached(sl, W, h)
-    surface.SetMaterial(sl.mat)
-    surface.SetDrawColor(255, 255, 255, 255)
-    surface.DrawTexturedRectUV(-W / 2, -h / 2, W, h, 0, 0, sl.u, sl.v)
-end
-
--- Render targets lose what they hold when the video device resets.
-local function invalidate()
-    for _, sl in pairs(slots) do sl.sig = nil end
-end
-hook.Add("OnScreenSizeChanged", "Rareload.Panels.Cache", invalidate)
-hook.Add("RareloadLanguageChanged", "Rareload.Panels.Cache", invalidate)
 
 -- A pill of text centred at (0, y).
 local function hint(text, y, col)
@@ -835,15 +728,146 @@ local function shouldDraw(depth, sky)
     return not depth and not sky and render.GetRenderTarget() == nil -- L25
 end
 
--- In a pile, the object the card shows is outlined, so it's clear which one it is: its phantom when the
--- object has left its saved spot or is missing, else the object itself.
-hook.Add("PreDrawHalos", "Rareload.Panels.Pile", function()
-    local list = {}
-    for _, g in pairs(Panels.groups or {}) do
-        if #g.members > 1 and IsValid(g.activeEnt) then list[#list + 1] = g.activeEnt end
+-- Tags -------------------------------------------------------------------------------------------------
+
+-- Every pile in view gets a one-line tag over its model; only the one being looked at opens into the
+-- full card, so a crowd of saved objects stays readable. Tags are sized to stay about the same on
+-- screen, shrinking a little with distance.
+local TAG_H, TAG_TITLE = 40, 340
+
+local function tagLayout(g)
+    local rec = g.active
+    local title = UI.Clip(rec.title or "?", "Rareload.PanelB", TAG_TITLE)
+    local text, col = status(rec)
+    surface.SetFont("Rareload.PanelB")
+    local tw = surface.GetTextSize(title)
+    surface.SetFont("Rareload.PanelSmall")
+    local sw = surface.GetTextSize(text)
+    local count = #g.members > 1 and (Panels.piles[g.key].active .. "/" .. #g.members) or nil
+    local cw = count and surface.GetTextSize(count) + 16 or 0
+    local w = 20 + tw + 12 + sw + (hasBar(rec) and 72 or 0) + cw + 14
+    return { title = title, tw = tw, text = text, col = col, sw = sw, count = count, w = w }
+end
+
+local function tagPlacement(g, eye)
+    local mn, mx = g.base.ent:WorldSpaceAABB()
+    local top = Vector((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, mx.z)
+    local scale = 0.0018 * math.max(top:Distance(eye), 1) ^ 0.85
+    local pos = top + Vector(0, 0, 4 + TAG_H * scale / 2)
+    local dir = pos - eye
+    return pos, Angle(0, math.deg(math.atan2(dir.y, dir.x)) - 90, 90), scale
+end
+
+local function drawTag(g)
+    local t, rec = g.tag, g.active
+    local x, y = -t.w / 2, -TAG_H / 2
+    draw.RoundedBox(8, x, y, t.w, TAG_H, BG)
+    draw.RoundedBox(2, x + 7, y + 8, 4, TAG_H - 16, kindColor(rec))
+    draw.SimpleText(t.title, "Rareload.PanelB", x + 20, 0, color_white, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    local cx = x + 20 + t.tw + 12
+    draw.SimpleText(t.text, "Rareload.PanelSmall", cx, 0, t.col, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    cx = cx + t.sw + 12
+    if hasBar(rec) then
+        local hp, max
+        if rec.kind == "player" then hp, max = rec.data.health.hp or 0, 100 else hp, max = rec.obj.hp or 0, rec.obj.maxHp end
+        draw.RoundedBox(3, cx, -5, 60, 10, BAR_BG)
+        local frac = math.Clamp(hp / max, 0, 1)
+        if frac > 0 then draw.RoundedBox(3, cx, -5, math.max(6, 60 * frac), 10, UI.HealthColor(hp, max)) end
+        cx = cx + 72
     end
-    if #list > 0 then halo.Add(list, C.accent, 2, 2, 1, true, true) end
+    if t.count then
+        draw.SimpleText(t.count, "Rareload.PanelSmall", x + t.w - 12, 0, C.accent, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+    end
+end
+
+-- Where a 3D2D rectangle centred on `pos` lands on screen, or nil when part of it is behind the view.
+local function screenRect(pos, ang, scale, w, h)
+    local f, r = ang:Forward() * (w * scale / 2), ang:Right() * (h * scale / 2)
+    local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+    for _, p in ipairs({ pos + f + r, pos + f - r, pos - f + r, pos - f - r }) do
+        local sc = p:ToScreen()
+        if not sc.visible then return nil end
+        x0, y0, x1, y1 = math.min(x0, sc.x), math.min(y0, sc.y), math.max(x1, sc.x), math.max(y1, sc.y)
+    end
+    return { x0 - 3, y0 - 3, x1 + 3, y1 + 3 }
+end
+
+local function overlaps(r, taken)
+    for _, o in ipairs(taken) do
+        if r[1] < o[3] and o[1] < r[3] and r[2] < o[4] and o[2] < r[4] then return true end
+    end
+    return false
+end
+
+-- How far along the aim ray it meets one of the pile's models (a box-ish test: the model's height and
+-- footprint radius around its centre).
+local function aimedModel(g, eye, aim)
+    local best
+    for _, m in ipairs(g.members) do
+        local oc = m.center - eye
+        local t = oc:Dot(aim)
+        if t > 0 then
+            local p = aim * t - oc
+            if math.abs(p.z) < m.half and p.x * p.x + p.y * p.y < m.radius * m.radius and (not best or t < best) then
+                best = t
+            end
+        end
+    end
+    return best
+end
+
+-- The open card's outline marks which model of a pile it shows: its phantom when the object has left
+-- its saved spot or is missing, else the object itself.
+hook.Add("PreDrawHalos", "Rareload.Panels.Pile", function()
+    local g = Panels.focus
+    if g and #g.members > 1 and IsValid(g.activeEnt) then halo.Add({ g.activeEnt }, C.accent, 2, 2, 1, true, true) end
 end)
+
+local function drawOpenCard(g, focused, locked)
+    local st = Panels.piles[g.key]
+    if g.inside then cam.IgnoreZ(true) end -- standing at a big model, the card can end up inside it
+    cam.Start3D2D(g.pos, g.ang, g.scale)
+    for k = math.min(#g.members - 1, 2), 1, -1 do -- the next cards peek out behind
+        local ph, pw = g.h * 0.94 ^ k, g.w * 0.94 ^ k
+        draw.RoundedBox(10, -pw / 2 + 26 * k, -ph / 2 - 22 * k, pw, ph, Color(18, 22, 30, 200 - k * 50))
+        draw.RoundedBoxEx(10, -pw / 2 + 26 * k, -ph / 2 - 22 * k, pw, 46, Color(28, 34, 46, 220 - k * 50), true, true,
+            false, false)
+    end
+    local anim = st.anim
+    local t = anim and (RealTime() - anim.t0) / ANIM or 1
+    if t >= 1 then st.anim, anim = nil, nil end
+    local open = math.min((RealTime() - (Panels.openAt or 0)) / OPEN, 1)
+    if anim then
+        local e = easeOutBack(t)
+        if anim.from then
+            drawMoved(anim.from, anim.dir * t * g.w * 0.55, -t * g.h * 0.14, Lerp(t, 1, 0.82), 1 - t * t, false, false)
+        end
+        drawMoved(g.active, -anim.dir * (1 - e) * g.w * 0.1, (1 - e) * g.h * 0.05, Lerp(e, 0.9, 1), Lerp(t, 0.6, 1),
+            focused, locked)
+    elseif open < 1 then
+        drawMoved(g.active, 0, g.h * 0.04 * (1 - open), Lerp(easeOutBack(open), 0.92, 1), open, focused, locked)
+    else
+        drawCard(g.active, focused, locked)
+    end
+    if #g.members > 1 then
+        local label = st.active .. " / " .. #g.members
+        surface.SetFont("Rareload.Label")
+        local bw = surface.GetTextSize(label) + 20
+        draw.RoundedBox(6, -bw / 2, -g.h / 2 - 32, bw, 26, BADGE_BG)
+        draw.SimpleText(label, "Rareload.Label", 0, -g.h / 2 - 19, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+    local hy = g.h / 2 + 8
+    if locked then
+        hint(L("world.hint_locked"), hy, C.warn)
+        hint(#g.members > 1 and L("world.hint_controls_pile") or L("world.hint_controls"), hy + 30)
+        hint(g.active.kind == "player" and L("world.hint_highlight_player") or L("world.hint_highlight"), hy + 60)
+    else
+        hint(L("world.hint_inspect"), hy)
+        if #g.members > 1 then hint(L("world.hint_pile", #g.members), hy + 30) end
+    end
+    cam.End3D2D()
+    if g.inside then cam.IgnoreZ(false) end
+end
 
 hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sky)
     if not shouldDraw(depth, sky) then return end
@@ -859,7 +883,8 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
     Panels.groups = {}
     local interact = RARELOAD.Get(nil, "wdInteractDistance")
     local lock = Panels.lock
-    local focus, focusDist
+    local openKey = Panels.focus and Panels.focus.key
+    local focus, focusT
 
     for _, g in ipairs(groups) do
         Panels.groups[g.key] = g
@@ -874,11 +899,20 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
         st.active = math.Clamp(st.active, 1, #g.members)
         g.active = g.members[st.active].rec
         g.activeEnt = g.members[st.active].ent -- its phantom when it has left its saved spot
-        g.w, g.h = sizeOf(g.active)
-        g.pos, g.ang, g.scale, g.inside = placement(g.base.ent, eye, g.w, g.h)
-        g.dist = eye:Distance(g.pos)
-        local hit = hitTest(g.pos, g.ang, g.scale, g.w, g.h, eye, aim)
-        if hit and g.dist < interact and (not focusDist or g.dist < focusDist) then focus, focusDist = g, g.dist end
+        g.dist = eye:Distance(g.base.center)
+        g.tag = tagLayout(g)
+        g.tagPos, g.tagAng, g.tagScale = tagPlacement(g, eye)
+        if g.dist < interact then
+            -- The open card keeps the focus while it is looked at; otherwise the nearest tag or model aimed at.
+            local t
+            if g.key == openKey then
+                local w, h = sizeOf(g.active)
+                local pos, ang, scale = placement(g.base.ent, eye, w, h)
+                t = hitTest(pos, ang, scale, w, h, eye, aim) and 0
+            end
+            t = t or hitTest(g.tagPos, g.tagAng, g.tagScale, g.tag.w, TAG_H, eye, aim) or aimedModel(g, eye, aim)
+            if t and (not focusT or t < focusT) then focus, focusT = g, t end
+        end
     end
 
     -- The lock follows its pile when the piles are re-formed as models move.
@@ -888,61 +922,47 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
         end
     end
     if lock then focus = Panels.groups[lock.pile] end
+    if focus and focus.key ~= openKey then Panels.openAt = RealTime() end
     Panels.focus = focus
     prefetch(focus, groups)
 
-    table.sort(groups, function(a, b) return a.dist > b.dist end) -- farthest first
-    frame, baked = frame + 1, 0
+    -- The open card takes its spot first, then tags nearest first; a tag that would cover one already
+    -- placed fades out instead of piling on top of it.
+    local taken = {}
+    if focus then
+        focus.w, focus.h = sizeOf(focus.active)
+        focus.pos, focus.ang, focus.scale, focus.inside = placement(focus.base.ent, eye, focus.w, focus.h)
+        taken[1] = screenRect(focus.pos, focus.ang, focus.scale, focus.w, focus.h)
+    end
+    table.sort(groups, function(a, b) return a.dist < b.dist end)
+    local step = FrameTime() * 8
     for _, g in ipairs(groups) do
         local st = Panels.piles[g.key]
+        local show = false
+        if g ~= focus then
+            local r = screenRect(g.tagPos, g.tagAng, g.tagScale, g.tag.w, TAG_H)
+            show = r ~= nil and not overlaps(r, taken)
+            if show then taken[#taken + 1] = r end
+        end
+        st.tagA = math.Approach(st.tagA or 0, show and 1 or 0, step)
+    end
+
+    for i = #groups, 1, -1 do -- farthest first
+        local g = groups[i]
         local focused, locked = g == focus, lock and lock.pile == g.key
-        local sl = not (focused or locked or st.anim) and cached(g.active)
-        fade = (focused or locked) and 1 or math.Clamp((reach - g.base.edge) / (reach * FADE), 0, 1)
-        surface.SetAlphaMultiplier(fade)
-        -- Standing at a big model, the panel can end up inside it; draw it over the model then.
-        if g.inside then cam.IgnoreZ(true) end
-        cam.Start3D2D(g.pos, g.ang, g.scale)
-        for k = math.min(#g.members - 1, 2), 1, -1 do     -- the next cards peek out behind
-            local ph, pw = g.h * 0.94 ^ k, g.w * 0.94 ^ k
-            draw.RoundedBox(10, -pw / 2 + 26 * k, -ph / 2 - 22 * k, pw, ph, Color(18, 22, 30, 200 - k * 50))
-            draw.RoundedBoxEx(10, -pw / 2 + 26 * k, -ph / 2 - 22 * k, pw, 46, Color(28, 34, 46, 220 - k * 50), true, true,
-                false, false)
+        fade = 1
+        if focused then
+            surface.SetAlphaMultiplier(1)
+            drawOpenCard(g, true, locked)
+        elseif Panels.piles[g.key].tagA > 0 then
+            surface.SetAlphaMultiplier(Panels.piles[g.key].tagA *
+                math.Clamp((reach - g.base.edge) / (reach * FADE), 0, 1))
+            cam.Start3D2D(g.tagPos, g.tagAng, g.tagScale)
+            drawTag(g)
+            cam.End3D2D()
         end
-        local anim = st.anim
-        local t = anim and (RealTime() - anim.t0) / ANIM or 1
-        if t >= 1 then st.anim, anim = nil, nil end
-        if anim then
-            local e = easeOutBack(t)
-            if anim.from then drawMoved(anim.from, anim.dir * t * g.w * 0.55, -t * g.h * 0.14, Lerp(t, 1, 0.82),
-                    1 - t * t, false, false) end
-            drawMoved(g.active, -anim.dir * (1 - e) * g.w * 0.1, (1 - e) * g.h * 0.05, Lerp(e, 0.9, 1), Lerp(t, 0.6, 1),
-                focused, locked)
-        elseif sl then
-            drawCached(sl, g.w, g.h)
-        else
-            drawCard(g.active, focused, locked)
-        end
-        if #g.members > 1 then
-            local label = st.active .. " / " .. #g.members
-            surface.SetFont("Rareload.Label")
-            local bw = surface.GetTextSize(label) + 20
-            draw.RoundedBox(6, -bw / 2, -g.h / 2 - 32, bw, 26, BADGE_BG)
-            draw.SimpleText(label, "Rareload.Label", 0, -g.h / 2 - 19, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-        end
-        local hy = g.h / 2 + 8
-        if locked then
-            hint(L("world.hint_locked"), hy, C.warn)
-            hint(#g.members > 1 and L("world.hint_controls_pile") or L("world.hint_controls"), hy + 30)
-            hint(g.active.kind == "player" and L("world.hint_highlight_player") or L("world.hint_highlight"), hy + 60)
-        elseif focused then
-            hint(L("world.hint_inspect"), hy)
-            if #g.members > 1 then hint(L("world.hint_pile", #g.members), hy + 30) end
-        end
-        cam.End3D2D()
-        if g.inside then cam.IgnoreZ(false) end
     end
     surface.SetAlphaMultiplier(1)
-    fade = 1
 
     -- Forget piles not seen for a while.
     for key, st in pairs(Panels.piles) do
