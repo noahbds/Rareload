@@ -533,13 +533,16 @@ function Menu.BuildToolPanel(panel)
         for _, def in ipairs(group.defs) do
             local pref = GetConVar(def.pref)
             local noPriv = def.priv and not RARELOAD.Can(lp, def.priv)
+            -- Godmode and notarget need a privilege of their own.
+            local limited = def.key == "keepStates" and not RARELOAD.Can(lp, "rareload_restore_privileged_states")
+                and L("setting.keepStates.help") .. "\n" .. L("menu.states_limited")
             control(content, def, function() return RARELOAD.Get(lp, def.key) end,
                 function(v) RunConsoleCommand(def.pref, v) end, {
                 refresh = function(o)
                     o.locked = RARELOAD.IsLocked(def.key)
                     o.disabled = o.locked or noPriv
                     o.changed = not o.locked and pref ~= nil and pref:GetFloat() ~= -1
-                    o.tooltip = o.locked and L("menu.locked") or noPriv and L("menu.no_priv") or nil
+                    o.tooltip = o.locked and L("menu.locked") or noPriv and L("menu.no_priv") or limited or nil
                 end,
                 reset = function() RunConsoleCommand(def.pref, "-1") end,
             })

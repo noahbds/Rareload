@@ -102,14 +102,55 @@ Cmd.Register("settings reset", {
 })
 
 Cmd.Register("perms", {
-    help = "Show which Rareload privileges you have",
+    help = "Show which Rareload privileges you have, and the tier each one is for",
     fn = function(ply, _, reply)
         local names = table.GetKeys(RARELOAD.Privs)
         table.sort(names)
         for _, name in ipairs(names) do
-            reply(string.format("  %-3s %-36s %s", RARELOAD.Can(ply, name) and "yes" or "no", name,
-                RARELOAD.Privs[name].desc))
+            reply(string.format("  %-3s %-36s %-10s %s", RARELOAD.Can(ply, name) and "yes" or "no", name,
+                RARELOAD.Tier(name), RARELOAD.Privs[name].desc))
         end
+        if CAMI then reply("An admin mod is installed: what it grants comes before these tiers.") end
+        if RARELOAD.Can(ply, "rareload_settings") then
+            for sid64, list in SortedPairs(RARELOAD.Grants()) do
+                local who = player.GetBySteamID64(sid64)
+                reply("  " .. sid64 .. (who and " (" .. who:Nick() .. ")" or "") .. " also has: " .. list)
+            end
+        end
+    end,
+})
+
+local TIER_WORDS = { user = true, admin = true, superadmin = true, default = true }
+
+Cmd.Register("perms set", {
+    priv = "rareload_settings",
+    usage = "<privilege> <user|admin|superadmin|default> or <privilege> <player> [off]",
+    help = "Choose who has a privilege when no admin mod manages it: a tier, or one player",
+    fn = function(ply, args, reply)
+        local name = args[1] or ""
+        if not RARELOAD.Privs[name] then name = "rareload_" .. name end
+        if not RARELOAD.Privs[name] then return reply("No such privilege. Type 'rareload perms' for the list.") end
+        local by = IsValid(ply) and ply:Nick() or "Console"
+        local note = CAMI and " (an admin mod is installed: what it grants comes first)" or ""
+
+        local who = args[2] or ""
+        if TIER_WORDS[string.lower(who)] then
+            local ok, why = RARELOAD.SetTier(name, string.lower(who))
+            if not ok then return reply(why) end
+            RARELOAD.Log("perms"):info("%s set %s to %s", by, name, RARELOAD.Tier(name))
+            return reply(name .. " is now for: " .. RARELOAD.Tier(name) .. note)
+        end
+
+        -- One player: by name or SteamID when online, by SteamID64 when not.
+        local target = Cmd.FindPlayer(who)
+        local sid64 = target and target:SteamID64() or string.match(who, "^7656119%d+$")
+        if not sid64 then return reply("Give a tier (user, admin, superadmin, default), a player's name or a SteamID64.") end
+        local on = string.lower(args[3] or "") ~= "off"
+        local ok, why = RARELOAD.Grant(sid64, name, on)
+        if not ok then return reply(why) end
+        local label = target and target:Nick() or sid64
+        RARELOAD.Log("perms"):info("%s %s %s %s %s", by, on and "gave" or "took", name, on and "to" or "from", label)
+        reply(label .. (on and " now has " or " no longer has ") .. name .. (on and "" or " of their own") .. note)
     end,
 })
 

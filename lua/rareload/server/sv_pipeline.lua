@@ -94,11 +94,20 @@ hook.Add("InitPostEntity", "Rareload.Pipeline.ExternalWorld", function()
     if how == "loadgame" or how == "transition" then externalWorld.active = true end
 end)
 
-local function allowed(def, ply, saving)
-    local priv = saving and def.privSave or def.privRestore
-    if priv and not RARELOAD.Can(ply, priv) then return false end
-    if def.setting and not RARELOAD.Get(ply, def.setting) then return false end
+-- Whether `ply` may save or restore `what` (a module id, or a state such as "godmode"): the Rareload
+-- privilege first, then other addons through the RareloadCanSave / RareloadCanRestore hooks, which
+-- get (ply, reason, what) and may return false and their own explanation. Returns false and why.
+function Pipeline.Allowed(ply, saving, what, priv, reason)
+    if priv and not RARELOAD.Can(ply, priv) then return false, "no permission" end
+    local ok, why = hook.Run(saving and "RareloadCanSave" or "RareloadCanRestore", ply, reason, what)
+    if ok == false then return false, isstring(why) and why or "refused by the server" end
     return true
+end
+
+-- A module the player turned off is skipped without a reason; one they may not use comes with one.
+local function allowed(def, ply, saving, reason)
+    if def.setting and not RARELOAD.Get(ply, def.setting) then return false end
+    return Pipeline.Allowed(ply, saving, def.id, saving and def.privSave or def.privRestore, reason)
 end
 
 -- Heavy data is stored as { ["$blob"] = hash } (§16.2); this returns the real data either way.
@@ -148,7 +157,7 @@ function Pipeline.Save(ply, opts)
     end
 
     local prev = RARELOAD.History.Active(ply)
-    local ctx = { ply = ply, opts = opts, prev = prev, shared = {} }
+    local ctx = { ply = ply, opts = opts, prev = prev, shared = {}, denied = {} } -- denied: saved, but can't be given back
     local session = RARELOAD.Log.Session("Save (" .. (opts.reason or "command") .. ")", ply, "save")
 
     -- A partial save keeps the other modules' data from the current save.
@@ -161,7 +170,9 @@ function Pipeline.Save(ply, opts)
         if not opts.only or opts.only[def.id] then
             local kept = opts.keepMissing and prev and prev.data[def.id] or nil
             data[def.id] = nil
-            if allowed(def, ply, true) then
+            local may, why = allowed(def, ply, true, opts.reason)
+            if why then session:step("warn", def.id, "not saved: " .. why) end
+            if may then
                 local out
                 local ok, err, ms = run(function() out = def.save(ply, ctx) end)
                 if not ok then
@@ -180,6 +191,12 @@ function Pipeline.Save(ply, opts)
 
     local entry = { time = os.time(), reason = opts.reason or "command", data = data }
     if opts.captureOnly then return true, "captured", entry end
+    if #ctx.denied > 0 then
+        session:step("warn", "permissions", "saved, but can't be given back: " .. table.concat(ctx.denied, ", "))
+        if not opts.silent then
+            RARELOAD.Toast(ply, "toast.save_wont_restore", { table.concat(ctx.denied, ", ") }, "error")
+        end
+    end
 
     -- Only autosaves get the one-line card; other silent saves (cleanup, disconnect) show every step.
     local info = { reason = opts.reason or "command", auto = opts.reason == "auto" }
@@ -250,6 +267,13 @@ function Ctx:result(status, title, detail)
     end
 end
 
+-- Something in the save that the player may not get back: a line on the report card, and one toast
+-- naming everything once the restore is done.
+function Ctx:deny(what, why)
+    self:step("warn", what, "not restored: " .. why)
+    self.denied[#self.denied + 1] = what
+end
+
 -- Remembers entities this restore created, including ones created later (E14), for undo.
 function Ctx:spawnedAdd(ent)
     self.spawned[#self.spawned + 1] = ent
@@ -275,9 +299,11 @@ function Ctx:async(label)
     return resume
 end
 
+-- Returns false, plus why when the module is in the save but the player may not get it back.
 local function wants(ctx, def)
     if ctx.skipWorld and def.phase == "world" then return false end
-    return (not ctx.only or ctx.only[def.id]) and ctx.entry.data[def.id] ~= nil and allowed(def, ctx.ply, false)
+    if (ctx.only and not ctx.only[def.id]) or ctx.entry.data[def.id] == nil then return false end
+    return allowed(def, ctx.ply, false, ctx.reason)
 end
 
 runFrom = function(ctx, i)
@@ -287,7 +313,9 @@ runFrom = function(ctx, i)
         if not ctx:isCurrent() then return end
         local def = list[i]
         i = i + 1
-        if wants(ctx, def) then
+        local may, why = wants(ctx, def)
+        if why then ctx:deny(def.id, why) end
+        if may then
             local data = Pipeline.Payload(ctx.entry.data[def.id])
             if data == nil then
                 ctx:step("fail", def.id, "saved data is missing")
@@ -303,6 +331,9 @@ runFrom = function(ctx, i)
             end
         end
     end
+    if #ctx.denied > 0 then
+        RARELOAD.Toast(ctx.ply, "toast.restore_denied", { table.concat(ctx.denied, ", ") }, "error")
+    end
     ctx.session:finish({ reason = ctx.reason, entry = ctx.entry.id })
     hook.Run("RareloadRestored", ctx.ply, ctx.entry)
 end
@@ -315,7 +346,7 @@ function Pipeline.Restore(ply, entry, opts)
     local reason = opts.reason or "timeline"
     local ctx = setmetatable({
         ply = ply, entry = entry, reason = reason, only = opts.only, token = token,
-        spawnDone = {}, shared = {}, spawned = {},
+        spawnDone = {}, shared = {}, spawned = {}, denied = {},
         session = RARELOAD.Log.Session("Restore (" .. reason .. ")", ply, "restore"),
     }, Ctx)
     if reason == "spawn" then
@@ -339,7 +370,7 @@ function Pipeline.SpawnHook(ply, hookName)
 
     local handled = false
     for _, def in ipairs(order()) do
-        if def.spawn and def.spawn.hook == hookName and wants(ctx, def) then
+        if def.spawn and def.spawn.hook == hookName and (wants(ctx, def)) then
             local result
             ProtectedCall(function() result = def.spawn.fn(ply, Pipeline.Payload(ctx.entry.data[def.id]), ctx) end)
             if result then

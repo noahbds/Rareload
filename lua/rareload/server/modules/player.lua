@@ -76,6 +76,9 @@ RARELOAD.Module({
 
 -- Symmetric: every state is set or cleared (B4). Each grant is checked against what the player may
 -- have right now, so an old save can't give back something an admin took away (S14, G58, B25).
+-- A state the player may not be given is left as it is: Rareload never takes away one they have.
+local PRIVILEGED = "rareload_restore_privileged_states"
+
 RARELOAD.Module({
     id = "states",
     phase = "player",
@@ -83,10 +86,15 @@ RARELOAD.Module({
     privSave = "rareload_save_states",
     privRestore = "rareload_restore_states",
 
-    save = function(ply)
+    save = function(ply, ctx)
+        local god, notarget = ply:HasGodMode(), ply:IsFlagSet(FL_NOTARGET)
+        if (god or notarget) and not RARELOAD.Can(ply, PRIVILEGED) then
+            if god then ctx.denied[#ctx.denied + 1] = "godmode" end
+            if notarget then ctx.denied[#ctx.denied + 1] = "notarget" end
+        end
         return {
-            god = ply:HasGodMode(),
-            notarget = ply:IsFlagSet(FL_NOTARGET),
+            god = god,
+            notarget = notarget,
             frozen = ply:IsFrozen(),
             -- Seated players have the noclip move type too; that isn't noclip.
             noclip = ply:GetMoveType() == MOVETYPE_NOCLIP and not ply:InVehicle(),
@@ -98,16 +106,33 @@ RARELOAD.Module({
         }
     end,
 
-    restore = function(ply, d)
-        local privileged = RARELOAD.Can(ply, "rareload_restore_privileged_states")
-        if d.god and privileged then ply:GodEnable() else ply:GodDisable() end
-        ply:SetNoTarget(d.notarget == true and privileged)
+    restore = function(ply, d, ctx)
+        local function mayGet(what)
+            local ok, why = RARELOAD.Pipeline.Allowed(ply, false, what, PRIVILEGED, ctx.reason)
+            if not ok then ctx:deny(what, why) end
+            return ok
+        end
+        if not d.god then
+            ply:GodDisable()
+        elseif not ply:HasGodMode() and mayGet("godmode") then
+            ply:GodEnable()
+        end
+        if not d.notarget then
+            ply:SetNoTarget(false)
+        elseif not ply:IsFlagSet(FL_NOTARGET) and mayGet("notarget") then
+            ply:SetNoTarget(true)
+        end
         ply:Freeze(d.frozen == true)
 
-        if d.noclip and hook.Run("PlayerNoClip", ply, true) == true then
-            ply:SetMoveType(MOVETYPE_NOCLIP)
-        elseif ply:GetMoveType() == MOVETYPE_NOCLIP then
-            ply:SetMoveType(MOVETYPE_WALK)
+        local flying = ply:GetMoveType() == MOVETYPE_NOCLIP
+        if not d.noclip then
+            if flying then ply:SetMoveType(MOVETYPE_WALK) end
+        elseif not flying then
+            if hook.Run("PlayerNoClip", ply, true) == true then
+                ply:SetMoveType(MOVETYPE_NOCLIP)
+            else
+                ctx:deny("noclip", "not allowed by the gamemode")
+            end
         end
 
         if d.flashlight ~= ply:FlashlightIsOn() and ply:CanUseFlashlight() then ply:Flashlight(d.flashlight) end
