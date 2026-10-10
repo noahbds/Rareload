@@ -759,34 +759,65 @@ end
 -- screen: drawn pixel for pixel at every distance.
 local TAG_H, TAG_TITLE = 40, 340
 
+local TAG_NAMES, TAG_NAME_W = 3, 200 -- a stack's tag names its first few models
+
 local function tagLayout(g)
     local rec = g.active
+    if #g.members > 1 then
+        -- A stack: how many, then each model's name by a dot of its kind's colour.
+        local t = { stack = L("world.tag_stack", #g.members), names = {} }
+        surface.SetFont("Rareload.PanelSmall")
+        t.sw = surface.GetTextSize(t.stack) + 20
+        local w = 10 + t.sw + 12
+        surface.SetFont("Rareload.PanelB")
+        for i = 1, math.min(#g.members, TAG_NAMES) do
+            local r = g.members[i].rec
+            local name = UI.Clip(r.title or "?", "Rareload.PanelB", TAG_NAME_W)
+            local nw = surface.GetTextSize(name)
+            t.names[i] = { text = name, w = nw, col = kindColor(r) }
+            w = w + 14 + nw + 16
+        end
+        if #g.members > TAG_NAMES then
+            t.more = "+" .. (#g.members - TAG_NAMES)
+            surface.SetFont("Rareload.PanelSmall")
+            w = w + surface.GetTextSize(t.more) + 4
+        end
+        t.w = w
+        return t
+    end
     local title = UI.Clip(rec.title or "?", "Rareload.PanelB", TAG_TITLE)
     local text, col = status(rec)
     surface.SetFont("Rareload.PanelB")
     local tw = surface.GetTextSize(title)
     surface.SetFont("Rareload.PanelSmall")
     local sw = surface.GetTextSize(text)
-    local count = #g.members > 1 and (Panels.piles[g.key].active .. "/" .. #g.members) or nil
-    local cw = count and surface.GetTextSize(count) + 16 or 0
-    local w = 20 + tw + 12 + sw + (hasBar(rec) and 72 or 0) + cw + 14
-    return { title = title, tw = tw, text = text, col = col, sw = sw, count = count, w = w }
+    local w = 20 + tw + 12 + sw + (hasBar(rec) and 72 or 0) + 14
+    return { title = title, tw = tw, text = text, col = col, sw = sw, w = w }
 end
 
-local function tagPlacement(g, eye)
-    local mn, mx = g.mn, g.mx
-    local hx, hy = (mx.x - mn.x) / 2, (mx.y - mn.y) / 2
-    local dx, dy = mn.x + hx - eye.x, mn.y + hy - eye.y
-    local d = math.sqrt(dx * dx + dy * dy)
-    local ux, uy = d > 1 and dx / d or 1, d > 1 and dy / d or 0
-    -- Like the card: on the near side of the models, at eye level, so it is never inside a tall one.
-    local near = math.max(d - (math.abs(ux) * hx + math.abs(uy) * hy) - 4, 16)
-    local pos, ang = Vector(eye.x + ux * near, eye.y + uy * near, eye.z), Angle(0, math.deg(math.atan2(uy, ux)) - 90, 90)
-    return pos, ang, math.min(unitsPerPixel(pos, ang), 1)
+local TAG_BACK = Color(28, 34, 46, 200)
+
+local function drawStackTag(t, n)
+    local x, y = -t.w / 2, -TAG_H / 2
+    for k = math.min(n - 1, 2), 1, -1 do -- the tags of the models below peek out, like a pile of cards
+        draw.RoundedBox(8, x + 8 * k, y - 6 * k, t.w, TAG_H, ColorAlpha(TAG_BACK, 200 - k * 60))
+    end
+    draw.RoundedBox(8, x, y, t.w, TAG_H, BG)
+    draw.RoundedBox(6, x + 8, y + 7, t.sw, TAG_H - 14, BADGE_BG)
+    draw.SimpleText(t.stack, "Rareload.PanelSmall", x + 8 + t.sw / 2, 0, color_white, TEXT_ALIGN_CENTER,
+        TEXT_ALIGN_CENTER)
+    local cx = x + 10 + t.sw + 12
+    for _, nm in ipairs(t.names) do
+        draw.RoundedBox(4, cx, -4, 8, 8, nm.col)
+        draw.SimpleText(nm.text, "Rareload.PanelB", cx + 14, 0, color_white, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        cx = cx + 14 + nm.w + 16
+    end
+    if t.more then draw.SimpleText(t.more, "Rareload.PanelSmall", cx, 0, C.text2, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
 end
 
 local function drawTag(g)
     local t, rec = g.tag, g.active
+    if t.stack then return drawStackTag(t, #g.members) end
     local x, y = -t.w / 2, -TAG_H / 2
     draw.RoundedBox(8, x, y, t.w, TAG_H, BG)
     draw.RoundedBox(2, x + 7, y + 8, 4, TAG_H - 16, kindColor(rec))
@@ -800,10 +831,6 @@ local function drawTag(g)
         draw.RoundedBox(3, cx, -5, 60, 10, BAR_BG)
         local frac = math.Clamp(hp / max, 0, 1)
         if frac > 0 then draw.RoundedBox(3, cx, -5, math.max(6, 60 * frac), 10, UI.HealthColor(hp, max)) end
-        cx = cx + 72
-    end
-    if t.count then
-        draw.SimpleText(t.count, "Rareload.PanelSmall", x + t.w - 12, 0, C.accent, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
     end
 end
 
