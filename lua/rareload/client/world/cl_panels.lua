@@ -694,7 +694,8 @@ end
 
 -- Frame -----------------------------------------------------------------------------------------------
 
--- Candidates in range and in view, nearest edge first, up to the draw budget.
+-- Candidates in range and in view, nearest edge first, up to the draw budget. Also returns how far
+-- panels reach: the draw distance, or nearer when the budget cuts the list, so both edges fade.
 local function candidates(eye, aim)
     local maxDist = RARELOAD.Get(nil, "wdDrawDistance")
     local out = {}
@@ -717,8 +718,9 @@ local function candidates(eye, aim)
     end
     table.sort(out, function(a, b) return a.edge < b.edge end)
     local budget = RARELOAD.Get(nil, "wdMaxDrawPerFrame")
+    local limit = out[budget + 1] and out[budget + 1].edge or maxDist
     for i = #out, budget + 1, -1 do out[i] = nil end
-    return out
+    return out, math.max(limit, 1)
 end
 
 -- Whether two models touch or are less than CLUSTER units apart, by their rotated boxes: bounding
@@ -852,7 +854,8 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
     end
 
     local eye, aim = EyePos(), EyeVector()
-    local groups = piles(candidates(eye, aim))
+    local list, reach = candidates(eye, aim)
+    local groups = piles(list)
     Panels.groups = {}
     local interact = RARELOAD.Get(nil, "wdInteractDistance")
     local lock = Panels.lock
@@ -889,13 +892,12 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
     prefetch(focus, groups)
 
     table.sort(groups, function(a, b) return a.dist > b.dist end) -- farthest first
-    local maxDist = RARELOAD.Get(nil, "wdDrawDistance")
     frame, baked = frame + 1, 0
     for _, g in ipairs(groups) do
         local st = Panels.piles[g.key]
         local focused, locked = g == focus, lock and lock.pile == g.key
         local sl = not (focused or locked or st.anim) and cached(g.active)
-        fade = (focused or locked) and 1 or math.Clamp((maxDist - g.base.edge) / (maxDist * FADE), 0, 1)
+        fade = (focused or locked) and 1 or math.Clamp((reach - g.base.edge) / (reach * FADE), 0, 1)
         surface.SetAlphaMultiplier(fade)
         -- Standing at a big model, the panel can end up inside it; draw it over the model then.
         if g.inside then cam.IgnoreZ(true) end
