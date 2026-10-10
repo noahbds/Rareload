@@ -342,7 +342,8 @@ end
 -- The record's tabs, rebuilt at most once a second (live values change) or when details arrive.
 local function catsOf(rec)
     if not rec.cats or RealTime() - rec.catsAt > 1 then
-        rec.cats, rec.catsAt = (rec.kind == "player" and playerCats or objectCats)(rec), RealTime()
+        -- A random offset spreads the rebuilds (and card re-bakes) of many cards over the second.
+        rec.cats, rec.catsAt = (rec.kind == "player" and playerCats or objectCats)(rec), RealTime() - math.random() * 0.3
         rec.tabs = {}
         for _, id in ipairs(CATS[rec.kind]) do
             if rec.cats[id] then rec.tabs[#rec.tabs + 1] = id end
@@ -430,14 +431,14 @@ local function bar(x, y, w, h, frac, col, text)
 end
 
 -- One card, centred on (0, 0) of the current 3D2D plane.
-local function drawCard(rec, focused, locked)
+local function drawCard(rec, focused, locked, ox, oy)
     local cats, tabs = catsOf(rec)
     local view = Panels.View(rec)
     view.tab = math.Clamp(view.tab, 1, math.max(#tabs, 1))
     local tab = tabs[view.tab]
     local lines = tab and cats[tab] or {}
     local W, h = sizeOf(rec)
-    local x, y = -W / 2, -h / 2
+    local x, y = ox or -W / 2, oy or -h / 2
 
     draw.RoundedBox(10, x, y, W, h, BG)
     draw.RoundedBoxEx(10, x, y, W, HEAD, HEAD_BG, true, true, false, false)
@@ -534,6 +535,117 @@ local function drawCard(rec, focused, locked)
     return h
 end
 
+-- Card cache -----------------------------------------------------------------------------------------
+
+-- A card is a few hundred draw calls, too many to redo every frame for every panel in view. Cards that
+-- aren't focused are drawn once into a render target and shown as one textured quad until something
+-- on them changes. The focused card is still drawn directly, so it stays sharp up close.
+local RT_W, RT_H = 1024, 512
+local POOL = 24       -- cached cards (2 MB of video memory each)
+local BAKES = 3       -- most cards re-drawn into the cache per frame
+local RT_FLAGS = bit.bor(4, 8, 256, 512) -- clamp S/T, no mipmaps, no LOD
+local slots, slotOf, frame, baked = {}, {}, 0, 0
+
+local function slotAt(i)
+    local sl = slots[i]
+    if sl then return sl end
+    local name = "Rareload_PanelRT_" .. i
+    local rt = GetRenderTargetEx(name, RT_W, RT_H, RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_SEPARATE, RT_FLAGS, 0,
+        IMAGE_FORMAT_RGBA8888)
+    sl = {
+        rt = rt,
+        mat = CreateMaterial(name .. "_mat", "UnlitGeneric", {
+            ["$basetexture"] = rt:GetName(),
+            ["$translucent"] = "1",
+            ["$vertexcolor"] = "1",
+            ["$vertexalpha"] = "1",
+        }),
+        used = 0,
+    }
+    slots[i] = sl
+    return sl
+end
+
+-- Everything a cached card's look depends on, besides its tabs (rebuilt with a new catsAt).
+local function signature(rec)
+    local view = Panels.View(rec)
+    local text = status(rec)
+    local hp = rec.kind == "player" and rec.data.health
+    local owner = not rec.preview and RARELOAD.World.OwnerOf(rec) == LocalPlayer()
+    return table.concat({ rec.catsAt, tostring(rec.title), view.tab, view.scroll, rec.cardW, rec.cardH, text,
+        tostring(owner), tostring(hp and hp.hp or rec.obj and rec.obj.hp), tostring(hp and hp.armor),
+        tostring(rec.obj and rec.obj.maxHp) }, "|")
+end
+
+-- The cached texture of `rec`'s card, re-drawn when it changed and the frame's bake budget allows.
+-- Returns nil when the card has to be drawn directly.
+local function cached(rec)
+    catsOf(rec)
+    local W, h = rec.cardW, rec.cardH
+    if W > RT_W or h > RT_H then return nil end
+    local sig = signature(rec)
+    local sl = slotOf[rec.key]
+    if sl and sl.key ~= rec.key then sl, slotOf[rec.key] = nil, nil end
+    if sl and sl.sig == sig then
+        sl.used = frame
+        return sl
+    end
+    if baked >= BAKES then
+        if sl then sl.used = frame end
+        return sl -- slightly out of date for a frame or two
+    end
+    if not sl then
+        local oldest
+        for i = 1, POOL do
+            local s = slots[i]
+            if not s then
+                oldest = i
+                break
+            end
+            if s.used < frame and (not oldest or s.used < slots[oldest].used) then oldest = i end
+        end
+        if not oldest then return nil end -- every slot is shown this frame
+        sl = slotAt(oldest)
+        if sl.key then slotOf[sl.key] = nil end
+        sl.key, slotOf[rec.key] = rec.key, sl
+    end
+
+    baked = baked + 1
+    sl.sig, sl.used, sl.u, sl.v = sig, frame, W / RT_W, h / RT_H
+    render.PushRenderTarget(sl.rt, 0, 0, RT_W, RT_H)
+    render.Clear(0, 0, 0, 0, true, true)
+    cam.Start2D()
+    -- Alpha accumulates like colour does, so text and rows don't punch holes into the card.
+    render.OverrideBlend(true, BLEND_SRC_ALPHA, BLEND_ONE_MINUS_SRC_ALPHA, BLENDFUNC_ADD, BLEND_ONE,
+        BLEND_ONE_MINUS_SRC_ALPHA, BLENDFUNC_ADD)
+    local alpha = surface.GetAlphaMultiplier()
+    surface.SetAlphaMultiplier(1)
+    local ok, err = pcall(drawCard, rec, false, false, 0, 0)
+    surface.SetAlphaMultiplier(alpha)
+    render.OverrideBlend(false)
+    cam.End2D()
+    render.PopRenderTarget()
+    if not ok then
+        sl.sig = nil
+        ErrorNoHalt("[Rareload] panel cache: " .. tostring(err) .. "\n")
+        return nil
+    end
+    return sl
+end
+
+local function drawCached(sl, W, h)
+    surface.SetMaterial(sl.mat)
+    surface.SetDrawColor(255, 255, 255, 255)
+    surface.DrawTexturedRectUV(-W / 2, -h / 2, W, h, 0, 0, sl.u, sl.v)
+end
+
+-- Render targets lose what they hold when the video device resets.
+local function invalidate()
+    for _, sl in pairs(slots) do sl.sig = nil end
+end
+hook.Add("OnScreenSizeChanged", "Rareload.Panels.Cache", invalidate)
+hook.Add("RareloadLanguageChanged", "Rareload.Panels.Cache", invalidate)
+
 -- A pill of text centred at (0, y).
 local function hint(text, y, col)
     surface.SetFont("Rareload.PanelSmall")
@@ -599,7 +711,7 @@ local function candidates(eye, aim)
             local edge = math.max(dist - math.max(radius, half), 0)
             if edge < maxDist and (edge < 150 or delta:Dot(aim) > dist * 0.64 - math.max(radius, half)) then
                 out[#out + 1] = { rec = rec, ent = ent, center = center, dist = dist, edge = edge, radius = radius, half =
-                half }
+                half, sphere = (mx - mn):Length() / 2 + CLUSTER }
             end
         end
     end
@@ -611,10 +723,21 @@ end
 
 -- Whether two models touch or are less than CLUSTER units apart, by their rotated boxes: bounding
 -- circles would join a car parked beside a bus.
+-- Spheres around the boxes rule out most pairs first; each box is read once per frame.
 local PAD = Vector(CLUSTER / 2, CLUSTER / 2, CLUSTER / 2)
+local function box(c)
+    if not c.pos then
+        c.pos, c.ang, c.mins, c.maxs = c.ent:GetPos(), c.ent:GetAngles(), c.ent:OBBMins() - PAD, c.ent:OBBMaxs() + PAD
+    end
+    return c.pos, c.ang, c.mins, c.maxs
+end
+
 local function close(a, b)
-    return util.IsOBBIntersectingOBB(a.ent:GetPos(), a.ent:GetAngles(), a.ent:OBBMins() - PAD, a.ent:OBBMaxs() + PAD,
-        b.ent:GetPos(), b.ent:GetAngles(), b.ent:OBBMins() - PAD, b.ent:OBBMaxs() + PAD, 0)
+    local reach = a.sphere + b.sphere
+    if a.center:DistToSqr(b.center) > reach * reach then return false end
+    local ap, aa, amn, amx = box(a)
+    local bp, ba, bmn, bmx = box(b)
+    return util.IsOBBIntersectingOBB(ap, aa, amn, amx, bp, ba, bmn, bmx, 0)
 end
 
 -- Single-linkage piles of models that touch or almost touch.
@@ -767,9 +890,11 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
 
     table.sort(groups, function(a, b) return a.dist > b.dist end) -- farthest first
     local maxDist = RARELOAD.Get(nil, "wdDrawDistance")
+    frame, baked = frame + 1, 0
     for _, g in ipairs(groups) do
         local st = Panels.piles[g.key]
         local focused, locked = g == focus, lock and lock.pile == g.key
+        local sl = not (focused or locked or st.anim) and cached(g.active)
         fade = (focused or locked) and 1 or math.Clamp((maxDist - g.base.edge) / (maxDist * FADE), 0, 1)
         surface.SetAlphaMultiplier(fade)
         -- Standing at a big model, the panel can end up inside it; draw it over the model then.
@@ -790,6 +915,8 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
                     1 - t * t, false, false) end
             drawMoved(g.active, -anim.dir * (1 - e) * g.w * 0.1, (1 - e) * g.h * 0.05, Lerp(e, 0.9, 1), Lerp(t, 0.6, 1),
                 focused, locked)
+        elseif sl then
+            drawCached(sl, g.w, g.h)
         else
             drawCard(g.active, focused, locked)
         end
