@@ -744,7 +744,7 @@ end
 
 -- Tags -------------------------------------------------------------------------------------------------
 
--- Every pile in view gets a one-line tag over its model; only the one being looked at opens into the
+-- Every pile in view gets a one-line tag by its models, at eye level; only the one being looked at opens into the
 -- full card, so a crowd of saved objects stays readable. Tags are sized to stay about the same on
 -- screen, shrinking a little with distance.
 local TAG_H, TAG_TITLE = 40, 340
@@ -765,11 +765,14 @@ end
 
 local function tagPlacement(g, eye)
     local mn, mx = g.mn, g.mx
-    local top = Vector((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, mx.z)
-    local scale = 0.0018 * math.max(top:Distance(eye), 1) ^ 0.85
-    local pos = top + Vector(0, 0, 4 + TAG_H * scale / 2)
-    local dir = pos - eye
-    return pos, Angle(0, math.deg(math.atan2(dir.y, dir.x)) - 90, 90), scale
+    local hx, hy = (mx.x - mn.x) / 2, (mx.y - mn.y) / 2
+    local dx, dy = mn.x + hx - eye.x, mn.y + hy - eye.y
+    local d = math.sqrt(dx * dx + dy * dy)
+    local ux, uy = d > 1 and dx / d or 1, d > 1 and dy / d or 0
+    -- Like the card: on the near side of the models, at eye level, so it is never inside a tall one.
+    local near = math.max(d - (math.abs(ux) * hx + math.abs(uy) * hy) - 4, 16)
+    local scale = 0.0018 * near ^ 0.85
+    return Vector(eye.x + ux * near, eye.y + uy * near, eye.z), Angle(0, math.deg(math.atan2(uy, ux)) - 90, 90), scale
 end
 
 local function drawTag(g)
