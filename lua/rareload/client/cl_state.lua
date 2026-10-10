@@ -4,6 +4,7 @@
 RARELOAD.State = RARELOAD.State or {
     history = { rows = {}, reload = {} }, -- own timeline
     objects = {},                         -- entry id -> saved objects of that entry
+    entryData = {},                       -- entry id -> its light player modules (timeline preview)
     saves = {},                           -- SteamID64 -> { nick, data, objects }: world display feed
     savesRev = 0,                         -- bumped on every feed change, for dirty checks (L28)
     details = {},                         -- DetailKey -> full saved object, asked for by the world display
@@ -11,6 +12,7 @@ RARELOAD.State = RARELOAD.State or {
 }
 local State = RARELOAD.State
 State.details, State.antistuck = State.details or {}, State.antistuck or {} -- after a dev reload
+State.entryData = State.entryData or {}
 
 local function changed(what, key)
     hook.Run("RareloadStateChanged", what, key)
@@ -45,6 +47,7 @@ end)
 
 RARELOAD.Net.On("history.objects", function(p)
     State.objects[p.id] = p.objects or {}
+    State.entryData[p.id] = p.data
     RARELOAD.UI.LabelObjects(State.objects[p.id])
     forgetDetails(State.DetailKey(nil, p.id, "")) -- the save's objects may have been edited
     changed("objects", p.id)

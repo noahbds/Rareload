@@ -71,7 +71,9 @@ function Timeline.Preview(row)
             id = row.id,
             nick = L("save_no", row.id),
             seated = info.vehicle ~= nil,
-            data = {
+            -- The save's own player data once the server sent it (the same the respawn point panel
+            -- shows); until then, what the timeline row already knows.
+            data = State.entryData[row.id] or {
                 transform = { pos = info.pos, ang = info.ang },
                 health = info.hp and { hp = info.hp, armor = info.armor } or nil,
                 appearance = {
