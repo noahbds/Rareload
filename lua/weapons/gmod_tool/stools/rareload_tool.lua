@@ -9,6 +9,9 @@ TOOL.Information = {
     { name = "reload" },
 }
 
+-- Rareload stays disabled while the legacy version is installed (see autorun/rareload.lua).
+if RARELOAD and RARELOAD.legacyConflict then return end
+
 local function denied(ply)
     RARELOAD.Toast(ply, "toast.tool_denied", nil, "error")
     return false
