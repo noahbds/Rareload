@@ -6,6 +6,55 @@ RARELOAD.version = "5.1"
 RARELOAD.API = 1
 RARELOAD.loadGen = (RARELOAD.loadGen or 0) + 1
 
+-- Legacy (v4) Rareload shares the RARELOAD global and the tool file, so running both breaks
+-- each other. If it is installed, stay disabled and tell the player to remove it.
+local LEGACY_WSID = "3807939033"
+local LEGACY_FILES = {
+    "autorun/rareload_init.lua",
+    "rareload/core/rareload_core.lua"
+}
+
+local function legacyInstalled()
+    for _, path in ipairs(LEGACY_FILES) do
+        if file.Exists(path, "LUA") then return true end
+    end
+
+    for _, addon in ipairs(engine.GetAddons()) do
+        if tostring(addon.wsid) == LEGACY_WSID and addon.mounted then return true end
+    end
+
+    return false
+end
+
+RARELOAD.legacyConflict = legacyInstalled()
+
+if RARELOAD.legacyConflict then
+    local function phrase(key, fallback)
+        if not CLIENT then return fallback end
+        local text = language.GetPhrase(key)
+        return text ~= key and text or fallback
+    end
+
+    local title = phrase("rareload.legacy.title", "Rareload is disabled")
+    local body = phrase("rareload.legacy.body",
+        "The legacy version of Rareload is installed. It conflicts with this version, so Rareload "
+            .. "has been disabled. Unsubscribe from the legacy Rareload addon (Workshop ID "
+            .. LEGACY_WSID .. ") and restart the game.")
+
+    MsgC(Color(255, 90, 90), "[Rareload] ", color_white, title .. ": " .. body .. "\n")
+
+    if CLIENT then
+        hook.Add("InitPostEntity", "RareloadLegacyConflict", function()
+            timer.Simple(2, function()
+                chat.AddText(Color(255, 90, 90), "[Rareload] ", color_white, body)
+                Derma_Message(body, title, "OK")
+            end)
+        end)
+    end
+
+    return
+end
+
 local SHARED = {
     "sh_util",
     "sh_perms",
