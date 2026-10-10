@@ -554,8 +554,10 @@ local function anchorEnt(rec)
     return RARELOAD.Phantoms.Get(rec.key) or RARELOAD.World.LiveOf(rec)
 end
 
-local function placement(ent, eye, w, h)
-    local mn, mx = ent:WorldSpaceAABB()
+-- The card stands on the near side of the box mn..mx (a whole pile, so a stack's card sits between its
+-- models rather than on one of them), facing the viewer and always at eye level. `size` is the length
+-- of the model the card is scaled for.
+local function placement(mn, mx, size, eye, w, h)
     local hx, hy = (mx.x - mn.x) / 2, (mx.y - mn.y) / 2
     local cx, cy = mn.x + hx, mn.y + hy
     local dx, dy = cx - eye.x, cy - eye.y
@@ -565,11 +567,8 @@ local function placement(ent, eye, w, h)
     local inside = near < 32
     if inside then near = math.min(32, d) end                    -- standing at the model: just in front
 
-    local size = math.max(hx * 2, hy * 2, mx.z - mn.z)
     local scale = math.min(math.Clamp(size * 1.15, 42, 130) / REF_W, math.max(near, 1) * 0.6 / w)
-    local half = h * scale / 2
-    local z = math.Clamp(eye.z, mn.z + half, mx.z + half + 8)
-    local pos = Vector(eye.x + ux * near, eye.y + uy * near, z)
+    local pos = Vector(eye.x + ux * near, eye.y + uy * near, eye.z)
     return pos, Angle(0, math.deg(math.atan2(uy, ux)) - 90, 90), scale, inside
 end
 
@@ -671,6 +670,21 @@ local function baseOf(g)
     return best
 end
 
+-- The box around every model of a pile.
+local function boundsOf(g)
+    local mn, mx
+    for _, m in ipairs(g.members) do
+        local a, b = m.ent:WorldSpaceAABB()
+        if mn then
+            mn = Vector(math.min(mn.x, a.x), math.min(mn.y, a.y), math.min(mn.z, a.z))
+            mx = Vector(math.max(mx.x, b.x), math.max(mx.y, b.y), math.max(mx.z, b.z))
+        else
+            mn, mx = a, b
+        end
+    end
+    return mn, mx
+end
+
 local function anchorOf(g, eye, aim)
     local st = Panels.piles[g.key]
     local best, score = g.members[1], -2
@@ -750,7 +764,7 @@ local function tagLayout(g)
 end
 
 local function tagPlacement(g, eye)
-    local mn, mx = g.base.ent:WorldSpaceAABB()
+    local mn, mx = g.mn, g.mx
     local top = Vector((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, mx.z)
     local scale = 0.0018 * math.max(top:Distance(eye), 1) ^ 0.85
     local pos = top + Vector(0, 0, 4 + TAG_H * scale / 2)
@@ -891,6 +905,8 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
         local st = pileState(g)
         local anchor = anchorOf(g, eye, aim)
         g.base = baseOf(g)
+        g.mn, g.mx = boundsOf(g)
+        g.size = math.max(g.base.radius, g.base.half) * 2
         st.anchor = anchor.rec.key
         local lockedHere = lock and lock.pile == g.key
         if not lockedHere then
@@ -907,7 +923,7 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
             local t
             if g.key == openKey then
                 local w, h = sizeOf(g.active)
-                local pos, ang, scale = placement(g.base.ent, eye, w, h)
+                local pos, ang, scale = placement(g.mn, g.mx, g.size, eye, w, h)
                 t = hitTest(pos, ang, scale, w, h, eye, aim) and 0
             end
             t = t or hitTest(g.tagPos, g.tagAng, g.tagScale, g.tag.w, TAG_H, eye, aim) or aimedModel(g, eye, aim)
@@ -931,7 +947,7 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
     local taken = {}
     if focus then
         focus.w, focus.h = sizeOf(focus.active)
-        focus.pos, focus.ang, focus.scale, focus.inside = placement(focus.base.ent, eye, focus.w, focus.h)
+        focus.pos, focus.ang, focus.scale, focus.inside = placement(focus.mn, focus.mx, focus.size, eye, focus.w, focus.h)
         taken[1] = screenRect(focus.pos, focus.ang, focus.scale, focus.w, focus.h)
     end
     table.sort(groups, function(a, b) return a.dist < b.dist end)
