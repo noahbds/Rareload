@@ -1,0 +1,120 @@
+[h1]Rareload: positie, inventaris en wereld opslaan voor Garry's Mod (v5.0)[/h1]
+
+[h2]Overzicht[/h2]
+Rareload slaat op waar je bent en brengt je daar terug wanneer je respawnt: je positie, wapens, munitie, gezondheid, uiterlijk en status, plus de props, NPC's en voertuigen die je hebt gespawnd. Elke opslag blijft bewaard in de Opslagtijdlijn, zodat je naar elk eerder moment op de map terug kunt.
+
+[b]Rareload 5.0 is volledig herschreven.[/b] Opslagen en instellingen uit v4 worden niet overgenomen.
+
+[h2]Belangrijkste functies[/h2]
+
+[b]Positie & spelerstatus[/b]
+[list]
+[*] Sla je positie, kijkhoek en bukken op en herstel ze.
+[*] Behoud je gezondheid, pantser, wapens, munitie, spelermodel, skin, bodygroups en kleuren.
+[*] Behoud statussen zoals noclip, bevroren en zaklamp. Godmode en notarget komen terug voor spelers die ze mogen hebben (standaard admins), en een herstel neemt er nooit een af die je al hebt.
+[*] Optioneel: dezelfde wapens op elke map.
+[*] Kies of je na je dood op je opslag respawnt.
+[/list]
+
+[b]Opslaan[/b]
+[list]
+[*] Sla op met de tool: op de plek waar je naar richt, of waar je staat.
+[*] Automatisch opslaan wanneer er iets verandert, met instelbaar interval en drempel voor kijkverandering.
+[*] Optioneel: automatisch opslaan wanneer je de server verlaat (verbinding verbroken, mapwissel of afsluiten).
+[*] Optioneel: automatisch opslaan vóór een mapopruiming, zodat een admin-cleanup je bouwwerk niet wist.
+[/list]
+
+[b]Opslagtijdlijn[/b]
+[list]
+[*] Elke opslag die je op de map hebt gemaakt, bewaard na mapwissels en serverherstarts.
+[*] Zoek, sorteer en filter je opslagen; zet ze vast en voeg notities toe.
+[*] Herstel elke opslag direct, helemaal of alleen bepaalde delen (positie, gezondheid, wapens, munitie, uiterlijk, statussen, wereld).
+[*] Maak een herstel ongedaan.
+[*] Kies welke opslag je respawnpunt is.
+[*] Kies wat de herlaadtoets van de tool doet: één opslag teruggaan, je respawnpunt herstellen of de vorige opslag herstellen.
+[/list]
+
+[b]Props, NPC's & voertuigen[/b]
+[list]
+[*] Sla de props, entiteiten, NPC's en voertuigen die je hebt gespawnd op en herstel ze.
+[*] NPC's behouden hun AI-status, squad en vijanden; objecten behouden hun gezondheid, bevriezing en zwaartekracht.
+[*] Constraints tussen props en voertuigen worden hersteld.
+[*] Objecten die nog op de map staan worden nooit gedupliceerd.
+[*] Blader door de objecten in elke opslag en bekijk een opslag in de wereld voordat je hem herstelt (groen = vrij, rood = geblokkeerd, blauw = nog op de map).
+[/list]
+
+[b]Voertuigen[/b]
+[list]
+[*] Ondersteunt Source-, Simfphys-, LVS-, LFS-, Glide- en WAC-voertuigen.
+[*] De voertuigstatus wordt opgeslagen en je wordt terug op je stoel gezet.
+[*] Bevroren voertuigen blijven bevroren.
+[/list]
+
+[b]Anti-vastzitten[/b]
+[list]
+[*] Als je opgeslagen plek geblokkeerd is, word je naar de dichtstbijzijnde vrije plek verplaatst.
+[*] Vijf methoden: bekende veilige plekken, rond de plek, navigatiemesh, spawnpunten van de map, elk spawnpunt.
+[*] Admins kiezen welke methoden draaien en in welke volgorde, hoe ver en hoe lang er gezocht wordt.
+[/list]
+
+[b]Voor servereigenaren[/b]
+[list]
+[*] Elke spelerinstelling heeft een serverstandaard, en admins kunnen ze allemaal vergrendelen.
+[*] Opruimen bij overlijden (niets, de hele map, de objecten van de speler of zijn opgeslagen objecten) en opruimen bij het verlaten.
+[*] Herstellen kan Sandbox-spawnrechten en sbox-limieten respecteren.
+[*] Limieten voor voertuigen per speler en opslagen per speler.
+[*] Rechten via CAMI (ULX en andere); in ULX staan ze in een eigen Rareload-categorie.
+[*] Geen admin-mod? Bepaal zelf wie welk recht heeft: [b]rareload perms set <recht> <user|admin|superadmin>[/b], of geef het aan één speler met [b]rareload perms set <recht> <speler>[/b].
+[*] Als iets uit een opslag niet teruggegeven kan worden (geen recht, of geweigerd door de server), krijgt de speler te horen wat, en staat het op de rapportkaart.
+[*] Werkt met prop-protection-addons (CPPI).
+[/list]
+
+[b]Debugtools (admins)[/b]
+[list]
+[*] Rapportkaarten voor elke opslag en elk herstel: elke stap, hoe lang die duurde en waarom een object is overgeslagen (addon ontbreekt, model ontbreekt, spawnlimiet…).
+[*] Wereldweergave: infopanelen bij opgeslagen spelers en objecten, fantomen waar dingen zijn opgeslagen, markeringen en verbindingslijnen.
+[*] Bewerk opgeslagen objecten: bevriezen, zwaartekracht, verwijderen, of hun gegevens bewerken in een JSON-editor.
+[*] Teleporteer naar opslagen en opgeslagen objecten.
+[/list]
+
+[b]Voor ontwikkelaars[/b]
+[list]
+[*] Hooks [b]RareloadCanSave[/b] en [b]RareloadCanRestore[/b] (speler, reden, onderdeel): geef false terug, en eventueel een bericht, om een opslag of herstel te weigeren, of alleen één onderdeel ervan.
+[*] [b]RareloadSaved[/b] en [b]RareloadRestored[/b] worden aangeroepen na een opslag of herstel.
+[/list]
+
+[h2]Gebruik[/h2]
+
+[b]De Rareload-tool[/b] ([b]Tools > Rareload > Rareload[/b]):
+[list]
+[*] [b]Linkermuisknop:[/b] opslaan op de plek waar je naar richt.
+[*] [b]Rechtermuisknop:[/b] opslaan waar je staat.
+[*] [b]Herladen:[/b] de actie die je in de Opslagtijdlijn hebt gekozen (standaard: terug naar je vorige opslag).
+[/list]
+Het paneel van de tool bevat je eigen instellingen, plus knoppen om op te slaan en de Opslagtijdlijn te openen.
+
+[b]Server- en weergave-instellingen:[/b]
+[list]
+[*] [b]Utilities > Rareload > Server:[/b] serverinstellingen, spelerstandaarden en vergrendelingen, anti-vastzitten-methoden (vereist het recht rareload_settings).
+[*] [b]Utilities > Rareload > Client:[/b] hoe de wereldweergave er op jouw scherm uitziet.
+[/list]
+
+[b]Console:[/b] typ [b]rareload help[/b] voor alle commando's (opslagen, tijdlijn, instellingen, rechten, anti-vastzitten, debug) en [b]rareload perms[/b] om elk recht te zien en wie het heeft.
+
+[h2]Talen[/h2]
+Engels, Frans, Duits, Spaans, Nederlands, Pools, Braziliaans-Portugees, Russisch, Turks en Vereenvoudigd Chinees. Rareload volgt de taal van je Garry's Mod.
+
+[h2]Opmerkingen[/h2]
+[list]
+[*] Alleen objecten die jij hebt gespawnd worden opgeslagen, nooit die van andere spelers of de props van de map zelf.
+[*] Objecten van addons die niet geïnstalleerd zijn kunnen niet worden hersteld; de rapportkaart vertelt welke.
+[*] Rareload werkt in Sandbox en op Sandbox gebaseerde gamemodes (andere gamemodes kunnen in de serverinstellingen worden ingeschakeld).
+[*] Opslagen uit Rareload v4 worden niet overgenomen.
+[/list]
+
+[h2]Installatie[/h2]
+[olist]
+[*] Abonneer je op Rareload in de Steam Workshop.
+[*] Herstart Garry's Mod of je server.
+[*] Open de Rareload-tool in [b]Tools > Rareload[/b], en de serverinstellingen in [b]Utilities > Rareload > Server[/b].
+[/olist]

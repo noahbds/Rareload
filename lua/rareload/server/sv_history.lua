@@ -215,6 +215,8 @@ local function objectInfo(def, kind, snap)
     local ai = id and istable(snap.ai) and (snap.ai[id] or snap.ai[tonumber(id)]) or nil
     return {
         id = id,
+        num = rl.num,   -- kept for life, shown after the name when another object shares it
+        name = rl.name, -- the player's own name for it
         kind = kind,
         class = def.Class,
         model = def.Model,
@@ -260,12 +262,82 @@ History.ObjectsOf = function(entry)
     return out
 end
 
+-- Constraint settings worth showing: plain values, without the ends (shown as names) and the type.
+local function constraintSettings(c)
+    local out = {}
+    for k, v in pairs(c) do
+        if isstring(k) and (isnumber(v) or isbool(v) or isstring(v)) and k ~= "Type"
+            and not string.match(k, "^Bone%d?$") and not string.match(k, "^Ent%d$") then
+            out[k] = v
+        end
+    end
+    return out
+end
+
+-- What a saved object is attached to: { { type, to = { { world = true } | { id, class, model } },
+-- set = { setting = value } } }. Read from the constraints module (every constraint between saved
+-- objects) and, for saves made before it held them all, from the snapshots.
+local function objectConstraints(entry, objectId)
+    local DefID = RARELOAD.Snapshot.DefID
+    local self, objects = tostring(objectId), {}
+    eachObject(entry, function(def)
+        local id = DefID(def)
+        if id then
+            local rl = def.EntityMods.rareload
+            objects[tostring(id)] = { id = id, class = def.Class, model = def.Model, num = rl.num, name = rl.name }
+        end
+    end)
+
+    local out, seen = {}, {}
+    local function add(c, ids)
+        local to, own, list = {}, false, {}
+        for _, id in pairs(ids) do
+            id = tostring(id)
+            list[#list + 1] = id
+            if id == self and not own then
+                own = true
+            else
+                to[#to + 1] = id == "world" and { world = true } or objects[id] or { id = id }
+            end
+        end
+        if not own then return end
+        table.sort(list)
+        local key = tostring(c.Type) .. "|" .. table.concat(list, "|")
+        if (seen[key] or 0) > 0 then
+            seen[key] = seen[key] - 1 -- the same constraint, already listed from the other source
+            return
+        end
+        out[#out + 1] = { type = c.Type, to = to, set = constraintSettings(c), key = key }
+    end
+
+    local list = RARELOAD.Pipeline.Payload(entry.data.constraints)
+    for _, saved in ipairs(istable(list) and list or {}) do add(saved.def, saved.ids) end
+    for _, o in ipairs(out) do seen[o.key] = (seen[o.key] or 0) + 1 end
+    for _, kind in ipairs(WORLD_KINDS) do
+        local snap = RARELOAD.Pipeline.Payload(entry.data[kind])
+        for _, c in pairs(snap and snap.Constraints or {}) do
+            if istable(c) and c.Type and istable(c.Entity) then
+                local ids, known = {}, true
+                for i, e in pairs(c.Entity) do
+                    local def = snap.Entities[e.Index] or snap.Entities[tostring(e.Index)]
+                    ids[i] = e.World and "world" or def and DefID(def)
+                    known = known and ids[i] ~= nil
+                end
+                if known then add(c, ids) end
+            end
+        end
+    end
+    for _, o in ipairs(out) do o.key = nil end
+    return #out > 0 and out or nil
+end
+
 -- The full saved definition of one object, with its NPC AI state and vehicle runtime, or nil.
 function History.ObjectDetail(entry, objectId)
     return eachObject(entry, function(def, _, snap)
         if RARELOAD.Snapshot.DefID(def) == objectId then
             return {
                 def = def,
+                constraints = objectConstraints(entry, objectId),
                 ai = istable(snap.ai) and (snap.ai[objectId] or snap.ai[tonumber(objectId)]) or nil,
                 runtime = istable(snap.runtime) and (snap.runtime[objectId] or snap.runtime[tonumber(objectId)]) or nil
             }
@@ -360,6 +432,22 @@ function History.FlagObject(ply, entryId, objectId, flag, value)
         for _, phys in pairs(def.PhysicsObjects or {}) do phys[field] = value or nil end
         return true
     end)
+end
+
+-- The player's own name for a saved object ("" removes it). An object still on the map takes it
+-- too, so later saves keep it.
+function History.RenameObject(ply, entryId, objectId, name)
+    name = string.Trim(name)
+    name = name ~= "" and name or nil
+    local ok, err = changeObject(ply, entryId, objectId, function(def)
+        def.EntityMods.rareload.name = name
+        return true
+    end)
+    if not ok then return false, err end
+    for _, ent in ents.Iterator() do
+        if ent.RareloadID == objectId then ent.RareloadName = name end
+    end
+    return true
 end
 
 function History.EditObject(ply, entryId, objectId, edit)
@@ -551,9 +639,9 @@ RARELOAD.Net.Handle("history.objects", {
     fn = function(ply, a) RARELOAD.Net.Push(ply, "history.objects", { id = a.id, objects = History.Objects(ply, a.id) }) end,
 })
 
-local function objectOp(op, args, fn)
+local function objectOp(op, args, fn, priv)
     RARELOAD.Net.Handle(op, {
-        priv = "rareload_manage_objects",
+        priv = priv or "rareload_manage_objects",
         rate = 0.2,
         args = args,
         fn = function(ply, a)
@@ -577,6 +665,10 @@ objectOp("object.flag", { entryId = "uint", objectId = "string:32", flag = "stri
     function(ply, a)
         return History.FlagObject(ply, a.entryId, a.objectId, a.flag, a.value)
     end)
+-- Naming your own saved objects needs no more than seeing them.
+objectOp("object.rename", { entryId = "uint", objectId = "string:32", name = "string:48" }, function(ply, a)
+    return History.RenameObject(ply, a.entryId, a.objectId, a.name)
+end, "rareload_restore")
 -- The edit arrives as JSON and is decoded with the default size limits (S12).
 objectOp("object.edit", { entryId = "uint", objectId = "string:32", json = "string:60000" }, function(ply, a)
     return History.EditObject(ply, a.entryId, a.objectId, util.JSONToTable(a.json))

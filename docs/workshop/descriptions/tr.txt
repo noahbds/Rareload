@@ -1,0 +1,120 @@
+[h1]Rareload: Garry's Mod için konum, envanter ve dünya kaydı (v5.0)[/h1]
+
+[h2]Genel bakış[/h2]
+Rareload bulunduğun yeri kaydeder ve yeniden doğduğunda seni oraya geri getirir: konumun, silahların, cephanen, canın, görünümün ve durumun, ayrıca oluşturduğun prop'lar, NPC'ler ve araçlar. Her kayıt Kayıt Zaman Çizelgesi'nde saklanır; böylece haritadaki önceki herhangi bir ana dönebilirsin.
+
+[b]Rareload 5.0 baştan yazıldı.[/b] v4'teki kayıtlar ve ayarlar aktarılmaz.
+
+[h2]Öne çıkan özellikler[/h2]
+
+[b]Konum ve oyuncu durumu[/b]
+[list]
+[*] Konumunu, bakış açını ve eğilme durumunu kaydet ve geri yükle.
+[*] Canını, zırhını, silahlarını, cephaneni, oyuncu modelini, skin'ini, bodygroup'larını ve renklerini koru.
+[*] Noclip, donma ve fener gibi durumları koru. Godmode ve notarget, bunlara izni olan oyunculara (varsayılan olarak adminlere) geri verilir ve geri yükleme zaten sahip olduğun bir durumu asla elinden almaz.
+[*] İsteğe bağlı: her haritada aynı silahlar.
+[*] Öldükten sonra kaydında yeniden doğup doğmayacağını seç.
+[/list]
+
+[b]Kaydetme[/b]
+[list]
+[*] Araçla kaydet: nişan aldığın noktaya ya da durduğun yere.
+[*] Bir şey değiştiğinde otomatik kayıt; aralık ve bakış değişimi eşiği ayarlanabilir.
+[*] İsteğe bağlı: sunucudan ayrılırken otomatik kaydet (bağlantı kesilmesi, harita değişimi veya kapanma).
+[*] İsteğe bağlı: harita temizliğinden önce otomatik kaydet; böylece admin temizliği yapını yok etmez.
+[/list]
+
+[b]Kayıt Zaman Çizelgesi[/b]
+[list]
+[*] Haritada yaptığın her kayıt; harita değişimlerinden ve sunucu yeniden başlatmalarından sonra da durur.
+[*] Kayıtlarını ara, sırala ve filtrele; sabitle ve not ekle.
+[*] Herhangi bir kaydı hemen geri yükle: tamamını ya da yalnızca bazı kısımlarını (konum, can, silahlar, cephane, görünüm, durumlar, dünya).
+[*] Bir geri yüklemeyi geri al.
+[*] Hangi kaydın yeniden doğma noktan olacağını seç.
+[*] Aracın yeniden doldurma tuşunun ne yapacağını seç: bir kayıt geri git, yeniden doğma noktanı geri yükle ya da önceki kaydı geri yükle.
+[/list]
+
+[b]Prop'lar, NPC'ler ve araçlar[/b]
+[list]
+[*] Oluşturduğun prop'ları, varlıkları, NPC'leri ve araçları kaydet ve geri yükle.
+[*] NPC'ler yapay zekâ durumunu, takımını ve düşmanlarını korur; nesneler canını, donma durumunu ve yerçekimini korur.
+[*] Prop'lar ve araçlar arasındaki bağlantılar (constraint) geri yüklenir.
+[*] Haritada hâlâ duran nesneler asla çoğaltılmaz.
+[*] Herhangi bir kaydın içindeki nesnelere göz at ve geri yüklemeden önce kaydı dünyada önizle (yeşil = boş, kırmızı = engelli, mavi = hâlâ haritada).
+[/list]
+
+[b]Araçlar[/b]
+[list]
+[*] Source, Simfphys, LVS, LFS, Glide ve WAC araçlarını destekler.
+[*] Araç durumu kaydedilir ve koltuğuna geri oturtulursun.
+[*] Dondurulmuş araçlar donmuş kalır.
+[/list]
+
+[b]Sıkışma önleme[/b]
+[list]
+[*] Kayıtlı noktan engellenmişse en yakın boş noktaya taşınırsın.
+[*] Beş yöntem: bilinen güvenli noktalar, noktanın çevresi, navigasyon ağı, haritanın doğma noktaları, herhangi bir doğma noktası.
+[*] Adminler hangi yöntemlerin hangi sırayla çalışacağını, ne kadar uzağa ve ne kadar süre aranacağını seçer.
+[/list]
+
+[b]Sunucu sahipleri için[/b]
+[list]
+[*] Her oyuncu ayarının bir sunucu varsayılanı vardır ve adminler istediklerini kilitleyebilir.
+[*] Ölümde temizlik (hiçbir şey, tüm harita, oyuncunun nesneleri ya da kayıtlı nesneleri) ve bağlantı kesildiğinde temizlik.
+[*] Geri yüklemeler Sandbox oluşturma izinlerine ve sbox limitlerine uyabilir.
+[*] Oyuncu başına araç ve kayıt limitleri.
+[*] CAMI üzerinden izinler (ULX ve diğerleri); ULX'te kendi Rareload kategorisinde görünür.
+[*] Admin modu yok mu? Her izne kimin sahip olacağını kendin belirle: [b]rareload perms set <izin> <user|admin|superadmin>[/b], ya da tek bir oyuncuya ver: [b]rareload perms set <izin> <oyuncu>[/b].
+[*] Bir kayıttaki bir şey geri verilemediğinde (izin yok ya da sunucu reddetti), oyuncuya neyin verilemediği söylenir ve rapor kartında görünür.
+[*] Prop koruma eklentileriyle (CPPI) çalışır.
+[/list]
+
+[b]Hata ayıklama araçları (adminler)[/b]
+[list]
+[*] Her kayıt ve geri yükleme için rapor kartları: her adım, ne kadar sürdüğü ve bir nesnenin neden atlandığı (eklenti eksik, model eksik, oluşturma limiti…).
+[*] Dünya görünümü: kayıtlı oyuncular ve nesneler üzerinde bilgi panelleri, kaydedildikleri yerde hayaletler, vurgular ve bağlantı çizgileri.
+[*] Kayıtlı nesneleri düzenle: dondurma, yerçekimi, silme ya da verilerini bir JSON düzenleyicide değiştirme.
+[*] Kayıtlara ve kayıtlı nesnelere ışınlan.
+[/list]
+
+[b]Geliştiriciler için[/b]
+[list]
+[*] [b]RareloadCanSave[/b] ve [b]RareloadCanRestore[/b] hook'ları (oyuncu, neden, kısım): bir kaydı ya da geri yüklemeyi, tamamen veya yalnızca bir kısmını reddetmek için false ve isteğe bağlı bir mesaj döndür.
+[*] [b]RareloadSaved[/b] ve [b]RareloadRestored[/b] bir kayıttan ya da geri yüklemeden sonra çağrılır.
+[/list]
+
+[h2]Nasıl kullanılır[/h2]
+
+[b]Rareload aracı[/b] ([b]Tools > Rareload > Rareload[/b]):
+[list]
+[*] [b]Sol tık:[/b] nişan aldığın noktaya kaydet.
+[*] [b]Sağ tık:[/b] durduğun yere kaydet.
+[*] [b]Yeniden doldur:[/b] Kayıt Zaman Çizelgesi'nde seçilen eylem (varsayılan: önceki kaydına dön).
+[/list]
+Aracın panelinde kendi ayarların, ayrıca kaydetme ve Kayıt Zaman Çizelgesi'ni açma düğmeleri bulunur.
+
+[b]Sunucu ve görüntü ayarları:[/b]
+[list]
+[*] [b]Utilities > Rareload > Sunucu:[/b] sunucu ayarları, oyuncu varsayılanları ve kilitler, sıkışma önleme yöntemleri (rareload_settings izni gerekir).
+[*] [b]Utilities > Rareload > İstemci:[/b] dünya görünümünün senin ekranında nasıl göründüğü.
+[/list]
+
+[b]Konsol:[/b] tüm komutlar için [b]rareload help[/b] yaz (kayıtlar, zaman çizelgesi, ayarlar, izinler, sıkışma önleme, hata ayıklama); her izni ve kimde olduğunu görmek için [b]rareload perms[/b] yaz.
+
+[h2]Diller[/h2]
+İngilizce, Fransızca, Almanca, İspanyolca, Felemenkçe, Lehçe, Brezilya Portekizcesi, Rusça, Türkçe ve Basitleştirilmiş Çince. Rareload, Garry's Mod'unun dilini kullanır.
+
+[h2]Notlar[/h2]
+[list]
+[*] Yalnızca senin oluşturduğun nesneler kaydedilir; diğer oyuncuların nesneleri ya da haritanın kendi prop'ları asla kaydedilmez.
+[*] Yüklü olmayan eklentilere ait nesneler geri yüklenemez; rapor kartı hangileri olduğunu söyler.
+[*] Rareload, Sandbox'ta ve Sandbox tabanlı oyun modlarında çalışır (diğer oyun modları sunucu ayarlarından etkinleştirilebilir).
+[*] Rareload v4 kayıtları aktarılmaz.
+[/list]
+
+[h2]Kurulum[/h2]
+[olist]
+[*] Steam Atölyesi'nde Rareload'a abone ol.
+[*] Garry's Mod'u ya da sunucunu yeniden başlat.
+[*] Rareload aracını [b]Tools > Rareload[/b] altında, sunucu ayarlarını [b]Utilities > Rareload > Sunucu[/b] altında aç.
+[/olist]

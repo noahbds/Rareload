@@ -45,6 +45,7 @@ end)
 
 RARELOAD.Net.On("history.objects", function(p)
     State.objects[p.id] = p.objects or {}
+    RARELOAD.UI.LabelObjects(State.objects[p.id])
     forgetDetails(State.DetailKey(nil, p.id, "")) -- the save's objects may have been edited
     changed("objects", p.id)
 end)
@@ -54,7 +55,10 @@ RARELOAD.Net.On("object.def", function(p)
 end)
 
 RARELOAD.Net.On("saves", function(p)
-    if p.save then p.save.nick = asText(p.save.nick) end
+    if p.save then
+        p.save.nick = asText(p.save.nick)
+        RARELOAD.UI.LabelObjects(p.save.objects or {})
+    end
     State.saves[p.sid] = p.save
     State.savesRev = State.savesRev + 1
     forgetDetails(State.DetailKey(p.sid, nil, "")) -- that player's respawn point changed

@@ -226,6 +226,23 @@ function UI.ObjectName(class, model)
 end
 
 -- util.IsValidModel is false for models the client hasn't loaded yet, so a mounted file counts too.
+-- What a saved object is called on screen: the player's own name for it, or its automatic one. Its
+-- number follows only when another object of the same save has that name (see UI.LabelObjects).
+function UI.ObjectLabel(o)
+    local name = o.name or UI.ObjectName(o.class, o.model)
+    return o.shared and o.num and name .. " #" .. o.num or name
+end
+
+-- Marks the objects of one save whose name another of them shares.
+function UI.LabelObjects(objects)
+    local count = {}
+    for _, o in ipairs(objects) do
+        local name = o.name or UI.ObjectName(o.class, o.model)
+        count[name] = (count[name] or 0) + 1
+    end
+    for _, o in ipairs(objects) do o.shared = count[o.name or UI.ObjectName(o.class, o.model)] > 1 end
+end
+
 function UI.IsModel(model)
     return isstring(model) and model ~= "" and (util.IsValidModel(model) or file.Exists(model, "GAME"))
 end
@@ -402,8 +419,9 @@ function UI.TextEntry(parent, placeholder, multiline)
     e.Paint = function(self, w, h)
         box(sc(8), w, h, self:HasFocus() and C.surfaceHi or C.surface)
         self:DrawTextEntryText(C.text, C.accent, C.text)
-        if placeholder and self:GetValue() == "" and not self:HasFocus() then
-            draw.SimpleText(placeholder, "Rareload.Body", sc(8), multiline and sc(10) or h / 2, C.text3, TEXT_ALIGN_LEFT,
+        local hint = self.placeholder or placeholder -- .placeholder: one that changes, set by the caller
+        if hint and self:GetValue() == "" and not self:HasFocus() then
+            draw.SimpleText(hint, "Rareload.Body", sc(8), multiline and sc(10) or h / 2, C.text3, TEXT_ALIGN_LEFT,
                 multiline and TEXT_ALIGN_TOP or TEXT_ALIGN_CENTER)
         end
     end

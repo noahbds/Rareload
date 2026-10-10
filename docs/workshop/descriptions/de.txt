@@ -1,0 +1,120 @@
+[h1]Rareload: Position, Inventar und Welt speichern für Garry's Mod (v5.0)[/h1]
+
+[h2]Überblick[/h2]
+Rareload speichert, wo du bist, und bringt dich beim Respawn dorthin zurück: deine Position, Waffen, Munition, Gesundheit, dein Aussehen und deinen Zustand, dazu die Props, NPCs und Fahrzeuge, die du gespawnt hast. Jeder Speicherstand bleibt in der Speicher-Zeitleiste, sodass du zu jedem früheren Moment auf der Karte zurückkehren kannst.
+
+[b]Rareload 5.0 wurde komplett neu geschrieben.[/b] Speicherstände und Einstellungen aus v4 werden nicht übernommen.
+
+[h2]Hauptfunktionen[/h2]
+
+[b]Position & Spielerzustand[/b]
+[list]
+[*] Speichere und stelle deine Position, Blickrichtung und das Ducken wieder her.
+[*] Behalte Gesundheit, Rüstung, Waffen, Munition, Spielermodell, Skin, Bodygroups und Farben.
+[*] Behalte Zustände wie Noclip, Einfrieren und Taschenlampe. Godmode und Notarget bekommen Spieler zurück, die sie haben dürfen (standardmäßig Admins), und eine Wiederherstellung nimmt dir nie einen Zustand weg, den du bereits hast.
+[*] Optional: dieselben Waffen auf jeder Karte.
+[*] Wähle, ob du nach dem Tod an deinem Speicherstand respawnst.
+[/list]
+
+[b]Speichern[/b]
+[list]
+[*] Speichere mit dem Tool: an der Stelle, auf die du zielst, oder dort, wo du stehst.
+[*] Automatisches Speichern, wenn sich etwas ändert, mit einstellbarem Intervall und Schwellenwert für Blickänderungen.
+[*] Optional: automatisch speichern, wenn du den Server verlässt (Trennung, Kartenwechsel oder Herunterfahren).
+[*] Optional: automatisch vor einer Kartenbereinigung speichern, damit ein Admin-Cleanup deine Bauten nicht vernichtet.
+[/list]
+
+[b]Speicher-Zeitleiste[/b]
+[list]
+[*] Alle deine Speicherstände auf der Karte, auch nach Kartenwechseln und Serverneustarts.
+[*] Suche, sortiere und filtere deine Speicherstände; hefte sie an und füge Notizen hinzu.
+[*] Stelle jeden Speicherstand sofort wieder her, komplett oder nur einzelne Teile (Position, Gesundheit, Waffen, Munition, Aussehen, Zustände, Welt).
+[*] Mache eine Wiederherstellung rückgängig.
+[*] Lege fest, welcher Speicherstand dein Respawnpunkt ist.
+[*] Lege fest, was die Nachladen-Taste des Tools tut: einen Speicherstand zurückgehen, deinen Respawnpunkt wiederherstellen oder den vorherigen Speicherstand wiederherstellen.
+[/list]
+
+[b]Props, NPCs & Fahrzeuge[/b]
+[list]
+[*] Speichere und stelle die Props, Entities, NPCs und Fahrzeuge wieder her, die du gespawnt hast.
+[*] NPCs behalten KI-Zustand, Trupp und Feinde; Objekte behalten Gesundheit, Einfrierzustand und Schwerkraft.
+[*] Verbindungen (Constraints) zwischen Props und Fahrzeugen werden wiederhergestellt.
+[*] Objekte, die noch auf der Karte sind, werden nie dupliziert.
+[*] Durchsuche die Objekte in jedem Speicherstand und sieh dir einen Speicherstand in der Welt an, bevor du ihn wiederherstellst (grün = frei, rot = blockiert, blau = noch auf der Karte).
+[/list]
+
+[b]Fahrzeuge[/b]
+[list]
+[*] Unterstützt Source-, Simfphys-, LVS-, LFS-, Glide- und WAC-Fahrzeuge.
+[*] Der Fahrzeugzustand wird gespeichert, und du wirst wieder auf deinen Sitz gesetzt.
+[*] Eingefrorene Fahrzeuge bleiben eingefroren.
+[/list]
+
+[b]Anti-Stuck[/b]
+[list]
+[*] Ist deine gespeicherte Stelle blockiert, wirst du an die nächste freie Stelle gesetzt.
+[*] Fünf Methoden: bekannte sichere Stellen, rund um die Stelle, Navigationsmesh, Spawnpunkte der Karte, beliebiger Spawnpunkt.
+[*] Admins legen fest, welche Methoden in welcher Reihenfolge laufen, wie weit und wie lange gesucht wird.
+[/list]
+
+[b]Für Serverbetreiber[/b]
+[list]
+[*] Jede Spielereinstellung hat einen Serverstandard, und Admins können jede davon sperren.
+[*] Bereinigung beim Tod (nichts, die ganze Karte, die Objekte des Spielers oder seine gespeicherten Objekte) und Bereinigung beim Verlassen.
+[*] Wiederherstellungen können Sandbox-Spawnrechte und sbox-Limits respektieren.
+[*] Limits für Fahrzeuge pro Spieler und Speicherstände pro Spieler.
+[*] Berechtigungen über CAMI (ULX und andere); in ULX erscheinen sie in einer eigenen Rareload-Kategorie.
+[*] Kein Admin-Mod? Lege selbst fest, wer welche Berechtigung hat: [b]rareload perms set <Berechtigung> <user|admin|superadmin>[/b], oder gib sie einem einzelnen Spieler mit [b]rareload perms set <Berechtigung> <Spieler>[/b].
+[*] Wenn etwas aus einem Speicherstand nicht zurückgegeben werden kann (keine Berechtigung oder vom Server abgelehnt), erfährt der Spieler, was es ist, und es steht auf der Berichtskarte.
+[*] Funktioniert mit Prop-Protection-Addons (CPPI).
+[/list]
+
+[b]Debug-Werkzeuge (Admins)[/b]
+[list]
+[*] Berichtskarten für jedes Speichern und Wiederherstellen: jeder Schritt, seine Dauer und warum ein Objekt übersprungen wurde (Addon fehlt, Modell fehlt, Spawnlimit…).
+[*] Weltanzeige: Infotafeln an gespeicherten Spielern und Objekten, Phantome an den gespeicherten Stellen, Hervorhebungen und Verbindungslinien.
+[*] Gespeicherte Objekte bearbeiten: Einfrieren, Schwerkraft, Löschen oder ihre Daten in einem JSON-Editor ändern.
+[*] Teleportiere dich zu Speicherständen und gespeicherten Objekten.
+[/list]
+
+[b]Für Entwickler[/b]
+[list]
+[*] Hooks [b]RareloadCanSave[/b] und [b]RareloadCanRestore[/b] (Spieler, Grund, Teil): gib false und optional eine Meldung zurück, um ein Speichern oder Wiederherstellen ganz oder nur für einen Teil abzulehnen.
+[*] [b]RareloadSaved[/b] und [b]RareloadRestored[/b] werden nach einem Speichern oder Wiederherstellen aufgerufen.
+[/list]
+
+[h2]Verwendung[/h2]
+
+[b]Das Rareload-Tool[/b] ([b]Tools > Rareload > Rareload[/b]):
+[list]
+[*] [b]Linksklick:[/b] an der Stelle speichern, auf die du zielst.
+[*] [b]Rechtsklick:[/b] dort speichern, wo du stehst.
+[*] [b]Nachladen:[/b] die in der Speicher-Zeitleiste gewählte Aktion (standardmäßig: zum vorherigen Speicherstand zurück).
+[/list]
+Das Panel des Tools enthält deine eigenen Einstellungen sowie Schaltflächen zum Speichern und zum Öffnen der Speicher-Zeitleiste.
+
+[b]Server- und Anzeigeeinstellungen:[/b]
+[list]
+[*] [b]Utilities > Rareload > Server:[/b] Servereinstellungen, Spielerstandards und Sperren, Anti-Stuck-Methoden (benötigt die Berechtigung rareload_settings).
+[*] [b]Utilities > Rareload > Client:[/b] wie die Weltanzeige auf deinem Bildschirm aussieht.
+[/list]
+
+[b]Konsole:[/b] gib [b]rareload help[/b] für alle Befehle ein (Speicherstände, Zeitleiste, Einstellungen, Berechtigungen, Anti-Stuck, Debug) und [b]rareload perms[/b], um jede Berechtigung zu sehen und wer sie hat.
+
+[h2]Sprachen[/h2]
+Englisch, Französisch, Deutsch, Spanisch, Niederländisch, Polnisch, brasilianisches Portugiesisch, Russisch, Türkisch und vereinfachtes Chinesisch. Rareload folgt der Sprache deines Garry's Mod.
+
+[h2]Hinweise[/h2]
+[list]
+[*] Es werden nur Objekte gespeichert, die du gespawnt hast, niemals die anderer Spieler oder die Props der Karte.
+[*] Objekte aus nicht installierten Addons können nicht wiederhergestellt werden; die Berichtskarte zeigt, welche.
+[*] Rareload läuft in Sandbox und auf Sandbox basierenden Spielmodi (andere Spielmodi lassen sich in den Servereinstellungen aktivieren).
+[*] Speicherstände aus Rareload v4 werden nicht übernommen.
+[/list]
+
+[h2]Installation[/h2]
+[olist]
+[*] Abonniere Rareload im Steam Workshop.
+[*] Starte Garry's Mod oder deinen Server neu.
+[*] Öffne das Rareload-Tool unter [b]Tools > Rareload[/b] und die Servereinstellungen unter [b]Utilities > Rareload > Server[/b].
+[/olist]

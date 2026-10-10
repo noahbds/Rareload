@@ -106,53 +106,111 @@ RARELOAD.Module({
     summary = function(snap) return Snapshot.Summary(snap, "NPCs") end,
 })
 
--- Constraints between a saved prop and a saved vehicle live in neither snapshot, so they are kept
--- here and recreated after both exist (F13).
+-- Every constraint between two saved objects, or a saved object and the world, by the objects'
+-- Rareload IDs. A paste only restores the constraints inside its own snapshot; this module adds the
+-- others once everything exists: between a prop and an NPC or a vehicle, and to an object that was
+-- still on the map (F13).
+
+-- { [index] = Rareload ID or "world" } for the ends of a live constraint; nil when one end is not a
+-- saved object. The indexes are the game's (a pulley uses 1 and 4).
+local function endsOf(c)
+    local ids = {}
+    for i, e in pairs(c.Entity or {}) do
+        local id = e.World and "world" or IsValid(e.Entity) and e.Entity.RareloadID
+        if not id then return nil end
+        ids[i] = id
+    end
+    return next(ids) and ids
+end
+
+-- The same for two constraints of one type between the same objects.
+local function keyOf(kind, ids)
+    local list = {}
+    for _, id in pairs(ids) do list[#list + 1] = tostring(id) end -- an all-digit ID comes back from JSON as a number
+    table.sort(list)
+    return tostring(kind) .. "|" .. table.concat(list, "|")
+end
+
+-- Calls fn(c, ids) once for every live constraint between saved objects. Entries without a type are
+-- helpers a hydraulic or muscle creates itself.
+local function eachLive(entities, fn)
+    local seen = {}
+    for _, ent in ipairs(entities) do
+        for _, c in pairs(constraint.GetTable(ent)) do
+            if c.Type and IsValid(c.Constraint) and not seen[c.Constraint] then
+                seen[c.Constraint] = true
+                local ids = endsOf(c)
+                if ids then fn(c, ids) end
+            end
+        end
+    end
+end
+
 RARELOAD.Module({
     id = "constraints",
     phase = "world",
-    after = { "entities", "vehicles" },
+    after = { "entities", "npcs", "vehicles" },
+    heavy = true,
     setting = "keepEntities",
     privSave = "rareload_save_entities",
     privRestore = "rareload_restore_entities",
 
-    save = function(_, ctx)
-        local props, vehicles = ctx.shared.entityTargets, ctx.shared.vehicleTargets
-        -- A partial save (autosave) without both lists keeps the constraints already saved.
-        if not props or not vehicles then return ctx.prev and ctx.prev.data.constraints end
-        local isProp, isVehicle = {}, {}
-        for _, e in ipairs(props) do isProp[e] = true end
-        for _, e in ipairs(vehicles) do isVehicle[e] = true end
-
-        local out, seen = {}, {}
-        for _, ent in ipairs(props) do
-            for _, c in pairs(constraint.GetTable(ent)) do
-                local a, b = c.Entity[1] and c.Entity[1].Entity, c.Entity[2] and c.Entity[2].Entity
-                local cross = (isProp[a] and isVehicle[b]) or (isVehicle[a] and isProp[b])
-                if cross and IsValid(c.Constraint) and not seen[c.Constraint] then
-                    seen[c.Constraint] = true
-                    -- A JSON round-trip drops the entity references and keeps the constraint settings (G3).
-                    local copy = util.JSONToTable(util.TableToJSON(c))
-                    copy.Entity[1].Index, copy.Entity[2].Index = 1, 2
-                    out[#out + 1] = { def = copy, ids = { Snapshot.ID(a), Snapshot.ID(b) } }
-                end
-            end
+    save = function(ply, ctx)
+        local saved = {}
+        for _, ent in ipairs(Snapshot.Owned(ply, ctx)) do
+            if ent.RareloadID then saved[#saved + 1] = ent end
         end
+        local out = {}
+        eachLive(saved, function(c, ids)
+            -- A JSON round-trip drops the entity references and keeps the constraint settings (G3).
+            local copy = util.JSONToTable(util.TableToJSON(c))
+            copy.OnDieFunctions = nil -- undo and cleanup callbacks
+            for i, e in pairs(copy.Entity) do e.Index = i end
+            out[#out + 1] = { def = copy, ids = ids, order = keyOf(c.Type, ids) .. "|" .. c.Constraint:GetCreationID() }
+        end)
+        -- A stable order, so an unchanged build compares equal to the previous save.
+        table.sort(out, function(a, b) return a.order < b.order end)
+        for _, o in ipairs(out) do o.order = nil end
         return #out > 0 and out or nil
     end,
 
-    restore = function(_, list)
-        local byId = {}
+    restore = function(ply, list, ctx)
+        local byId, entities = {}, {}
         for _, ent in ents.Iterator() do
-            if ent.RareloadID then byId[ent.RareloadID] = ent end
-        end
-        for _, c in ipairs(list) do
-            local a, b = byId[c.ids[1]], byId[c.ids[2]]
-            if IsValid(a) and IsValid(b) and not constraint.Find(a, b, c.def.Type, 0, 0) then
-                ProtectedCall(duplicator.CreateConstraintFromTable, c.def, { a, b })
+            if ent.RareloadID then
+                byId[tostring(ent.RareloadID)] = ent
+                entities[#entities + 1] = ent
             end
         end
+        local have = {}
+        eachLive(entities, function(c, ids)
+            local key = keyOf(c.Type, ids)
+            have[key] = (have[key] or 0) + 1
+        end)
+
+        duplicator.SetLocalPos(vector_origin)
+        duplicator.SetLocalAng(angle_zero)
+        local made = 0
+        for _, saved in ipairs(list) do
+            local key = keyOf(saved.def.Type, saved.ids)
+            if (have[key] or 0) > 0 then
+                have[key] = have[key] - 1 -- already there: pasted with its snapshot, or never removed
+            else
+                local ends, complete = {}, true
+                for i, id in pairs(saved.ids) do
+                    ends[i] = id == "world" and game.GetWorld() or byId[tostring(id)]
+                    complete = complete and (id == "world" or IsValid(ends[i]))
+                end
+                if complete then
+                    -- The player is passed on so numpad keys (motor, winch, hydraulic…) are theirs.
+                    ProtectedCall(function()
+                        if duplicator.CreateConstraintFromTable(saved.def, ends, ply) then made = made + 1 end
+                    end)
+                end
+            end
+        end
+        if made > 0 then ctx:result("ok", "constraints", made .. " of " .. #list .. " recreated") end
     end,
 
-    summary = function(list) return #list .. " prop-vehicle constraints" end,
+    summary = function(list) return #list .. " constraints" end,
 })

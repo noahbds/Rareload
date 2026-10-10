@@ -16,6 +16,9 @@ Snapshot.EXCLUDED = {
     env_sun = true,
     env_tonemap_controller = true,
     env_fog_controller = true,
+    -- The helper of a winch, hydraulic or muscle. The tools put it on the player's cleanup list, so it
+    -- looks owned, but the constraint creates its own when it is restored.
+    gmod_winch_controller = true,
 }
 
 local DENIED = {
@@ -115,6 +118,32 @@ function Snapshot.ID(ent)
     return id
 end
 
+-- What objects are counted by: a prop by its model's file name, anything else by its class, like the
+-- names shown for them.
+local function nameKey(ent)
+    local class = ent.ClassOverride or ent:GetClass()
+    if string.StartsWith(class, "prop_") and not string.StartsWith(class, "prop_vehicle") then
+        return string.lower(string.StripExtension(string.GetFileFromFilename(ent:GetModel() or class)))
+    end
+    return class
+end
+
+-- A number an object keeps for life, counted per kind of object ("Emitter #1", "Emitter #2"). It is
+-- shown after the name when two objects of a save share that name. The counters are kept per map,
+-- so a number is not reused after a restart.
+function Snapshot.Num(ent)
+    if not ent.RareloadNum then
+        local rel = RARELOAD.Store.MapDir() .. "/_objects"
+        local doc = RARELOAD.Store.Load(rel) or { v = RARELOAD.Store.SCHEMA }
+        doc.names = doc.names or {}
+        local key = "k_" .. nameKey(ent) -- never all digits: JSON would read such a key back as a number
+        doc.names[key] = (doc.names[key] or 0) + 1
+        ent.RareloadNum = doc.names[key]
+        RARELOAD.Store.Save(rel, doc)
+    end
+    return ent.RareloadNum
+end
+
 function Snapshot.DefID(def)
     local mods = def.EntityMods
     return istable(mods) and istable(mods.rareload) and mods.rareload.id or nil
@@ -126,9 +155,10 @@ duplicator.RegisterEntityModifier("rareload", function(_, ent, data)
     -- when it is saved. Rareload's restores skip objects still on the map, so they always take theirs.
     local owner = data.id and byId[data.id]
     if IsValid(owner) and owner ~= ent then
-        ent.RareloadID = nil   -- the generic duplicator merged the copied entity's table into this one
+        -- The generic duplicator merged the copied entity's table into this one.
+        ent.RareloadID, ent.RareloadNum, ent.RareloadName = nil, nil, nil
     elseif data.id then
-        ent.RareloadID = data.id
+        ent.RareloadID, ent.RareloadNum, ent.RareloadName = data.id, data.num, data.name
         ent:SetNWString("rl_id", data.id)
         byId[data.id] = ent
     end
@@ -187,16 +217,21 @@ function Snapshot.Capture(targets)
     duplicator.SetLocalPos(vector_origin)
     duplicator.SetLocalAng(angle_zero)
     local snap = { Entities = {}, Constraints = {} }
+    -- Oldest first, so objects saved together are numbered in the order they were made.
+    table.sort(targets, function(a, b) return a:GetCreationID() < b:GetCreationID() end)
 
     for _, ent in ipairs(targets) do
         if duplicator.IsAllowed(ent.ClassOverride or ent:GetClass()) then
             duplicator.StoreEntityModifier(ent, "rareload",
-                { id = Snapshot.ID(ent), hp = ent:Health(), maxHp = ent:GetMaxHealth() })
+                { id = Snapshot.ID(ent), hp = ent:Health(), maxHp = ent:GetMaxHealth(), num = Snapshot.Num(ent),
+                    name = ent.RareloadName,
+                    -- Not every game version keeps a thruster's running state in what the duplicator copies.
+                    on = ent:GetClass() == "gmod_thruster" and ent.IsOn and ent:IsOn() or nil })
             ProtectedCall(function()
                 local def = plainData(duplicator.CopyEntTable(ent), 0)
-                -- The ID lives in the "rareload" modifier; a merged copy of these fields would give a
-                -- pasted object someone else's ID or owner.
-                def.RareloadID, def.RareloadOwner = nil, nil
+                -- The ID, number and name live in the "rareload" modifier; a merged copy of these
+                -- fields would give a pasted object someone else's.
+                def.RareloadID, def.RareloadOwner, def.RareloadNum, def.RareloadName = nil, nil, nil, nil
                 snap.Entities[ent:EntIndex()] = def
             end)
             for _, c in pairs(constraint.GetTable(ent)) do
@@ -412,6 +447,13 @@ function Snapshot.Restore(snap, ply, opts)
             for bone, p in pairs(istable(physics) and physics or {}) do
                 local obj = istable(p) and p.Frozen and ent:GetPhysicsObjectNum(tonumber(bone) or 0)
                 if IsValid(obj) then obj:EnableMotion(false) end
+            end
+            -- A thruster that was running: the duplicator brings back its "on" flag at most, so it is
+            -- switched on again the way its key does it, which also starts its sound.
+            local def = paste[index]
+            if IsValid(ent) and def and def.Class == "gmod_thruster" and ent.Switch then
+                local rl = istable(def.EntityMods) and def.EntityMods.rareload
+                if (istable(rl) and rl.on) or (istable(def.DT) and def.DT.On) then ProtectedCall(function() ent:Switch(true) end) end
             end
         end
         for index, def in pairs(paste) do

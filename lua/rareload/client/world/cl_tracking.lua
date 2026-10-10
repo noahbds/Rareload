@@ -85,7 +85,7 @@ local function objectRecord(key, o, save, extra)
         material = o.material,
         scale = o.scale,
         parts = o.parts,
-        title = UI.ObjectName(o.class, o.model),
+        title = UI.ObjectLabel(o),
         obj = o,
         ownerNick = save.nick,
     }

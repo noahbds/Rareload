@@ -16,7 +16,7 @@ local ACCENT_DIM, BADGE_BG = ColorAlpha(C.accent, 120), ColorAlpha(C.accent, 200
 
 local CATS = {
     player = { "basic", "position", "equipment", "appearance", "stats", "world", "other" },
-    object = { "basic", "position", "state", "visual", "physics", "vehicle", "ai", "network", "data", "mods" },
+    object = { "basic", "position", "state", "visual", "physics", "constraints", "vehicle", "ai", "network", "data", "mods" },
 }
 local CAT_COLORS = {
     basic = C.accent,
@@ -29,6 +29,7 @@ local CAT_COLORS = {
     state = C.warn,
     visual = Color(160, 120, 230),
     physics = Color(255, 120, 90),
+    constraints = Color(120, 200, 255),
     vehicle = C.vehicle,
     ai = C.npc,
     network = C.info,
@@ -218,6 +219,13 @@ local function playerCats(rec)
     return cats
 end
 
+-- The saved object with this ID among those on display, which knows whether its name is shared.
+local function savedObject(id)
+    for _, r in ipairs(RARELOAD.World.records) do
+        if r.obj and r.obj.id == id then return r.obj end
+    end
+end
+
 local function objectCats(rec)
     local cats, add = builder()
     local o, live = rec.obj, RARELOAD.World.LiveOf(rec)
@@ -273,6 +281,15 @@ local function objectCats(rec)
             n = n + 1
             if n > 8 then break end
             add("physics", L("world.bone", bone), (p.Frozen and L("field.frozen") .. "  " or "") .. summarize(p.Pos))
+        end
+        -- What the object is attached to, then that constraint's settings.
+        for _, c in ipairs(istable(detail.constraints) and detail.constraints or {}) do
+            local names = {}
+            for _, e in ipairs(c.to or {}) do
+                names[#names + 1] = e.world and L("world.constraint_world") or e.class and UI.ObjectLabel(savedObject(e.id) or e) or tostring(e.id)
+            end
+            add("constraints", c.type, #names > 0 and table.concat(names, ", ") or L("world.constraint_self"), CAT_COLORS.constraints)
+            for k, v in ordered(istable(c.set) and c.set or {}) do add("constraints", "   " .. humanize(k), summarize(v)) end
         end
         for k, v in ordered(istable(detail.runtime) and detail.runtime.root or {}) do add("vehicle", humanize(k),
                 summarize(v)) end

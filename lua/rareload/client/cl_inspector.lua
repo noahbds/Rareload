@@ -332,7 +332,7 @@ local function toggleHighlight(obj)
     local pos = Util.ToVector(obj.pos)
     if not pos then return end
     return RARELOAD.Highlight.Toggle("saved", highlightId(obj), {
-        pos = pos, label = UI.ObjectName(obj.class, obj.model), live = function() return RARELOAD.World.FindLive(obj.id) end,
+        pos = pos, label = UI.ObjectLabel(obj), live = function() return RARELOAD.World.FindLive(obj.id) end,
     })
 end
 
@@ -355,7 +355,7 @@ local function buildCard(parent, obj, isSelected, onClick)
         draw.RoundedBox(sc(8), sc(8), sc(8), w - sc(16), sc(108), C.bgDark)
     end
     card.PaintOver = function(_, w)
-        draw.SimpleText(UI.Clip(UI.ObjectName(obj.class, obj.model), "Rareload.Small", w - sc(16)), "Rareload.Small",
+        draw.SimpleText(UI.Clip(UI.ObjectLabel(obj), "Rareload.Small", w - sc(16)), "Rareload.Small",
             w / 2, sc(124), C.text, TEXT_ALIGN_CENTER)
         local y = sc(144)
         if obj.maxHp and obj.maxHp > 0 then
@@ -394,6 +394,31 @@ local function buildDetail(host, entryId, sel)
     D.model:Dock(TOP)
     D.model:SetTall(sc(170))
     gap(D.model)
+
+    D.name = UI.TextEntry(host, L("inspector.name_placeholder"))
+    D.name:Dock(TOP)
+    D.name:SetUpdateOnType(false)
+    D.name:SetTooltip(L("inspector.name_placeholder"))
+    gap(D.name)
+    -- The field stays empty and shows the current name as its placeholder, so a new name is typed
+    -- straight in. Enter on an empty field goes back to the automatic name; leaving it changes nothing.
+    local target -- the object being renamed: another one may be selected by the click that ends the typing
+    D.name.OnGetFocus = function(self)
+        target = sel()
+        hook.Run("OnTextEntryGetFocus", self) -- what the stock text entry does here
+    end
+    local function rename(entered)
+        local o = target or sel()
+        target = nil
+        if not o then return end
+        local v = string.sub(string.Trim(D.name:GetValue()), 1, 48)
+        if v ~= (o.name or "") and (v ~= "" or entered) then
+            request("object.rename", { entryId = entryId, objectId = o.id, name = v })
+        end
+        D.name:SetValue("")
+    end
+    D.name.OnEnter = function() rename(true) end
+    D.name.OnLoseFocus = function() rename(false) end
 
     D.rows = UI.Rows(host, function()
         local o = sel()
@@ -517,11 +542,12 @@ end
 
 local function updateDetail(D, o)
     local manage = canManage()
-    for _, k in ipairs({ "model", "rows", "row1", "row2" }) do D[k]:SetVisible(o ~= nil) end
+    for _, k in ipairs({ "model", "name", "rows", "row1", "row2" }) do D[k]:SetVisible(o ~= nil) end
     for _, k in ipairs({ "frozen", "nograv", "edit", "delete" }) do D[k]:SetVisible(o ~= nil and manage) end
     D.empty:SetVisible(o == nil)
     if not o then return end
     D.model:ShowModel(o.model)
+    D.name.placeholder = UI.ObjectLabel(o)
     D.frozen.value, D.nograv.value = o.frozen == true, o.nograv == true
     D.teleport:SetEnabled(RARELOAD.Can(LocalPlayer(), "rareload_teleport") and o.pos ~= nil)
     D.lookAt:SetEnabled(RARELOAD.Can(LocalPlayer(), "rareload_teleport") and o.pos ~= nil)
@@ -640,7 +666,7 @@ function Inspector.Open(entryId)
         for _, o in ipairs(all) do
             local k = isWeapon(o) and "weapons" or o.kind
             counts[k] = (counts[k] or 0) + 1
-            local text = string.lower(UI.ObjectName(o.class, o.model) ..
+            local text = string.lower(UI.ObjectLabel(o) ..
             " " .. (o.class or "") .. " " .. (o.model or "") .. " " .. (o.id or ""))
             if (kind == "all" or kind == k or kind == o.kind) and (search == "" or string.find(text, search, 1, true)) then
                 shown[#shown + 1] = o
@@ -649,7 +675,9 @@ function Inspector.Open(entryId)
         table.sort(shown, function(a, b)
             if sort == "distance" then return distanceTo(a) < distanceTo(b) end
             if sort == "health" then return (a.hp or 0) > (b.hp or 0) end
-            return UI.ObjectName(a.class, a.model) < UI.ObjectName(b.class, b.model)
+            local x, y = a.name or UI.ObjectName(a.class, a.model), b.name or UI.ObjectName(b.class, b.model)
+            if x ~= y then return x < y end
+            return (a.num or 0) < (b.num or 0) -- #9 before #10
         end)
         grid:Clear()
         local isSelected = function(id) return id == selectedId end
