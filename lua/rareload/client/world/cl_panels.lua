@@ -795,6 +795,18 @@ local function tagLayout(g)
     return { title = title, tw = tw, text = text, col = col, sw = sw, w = w }
 end
 
+local function tagPlacement(g, eye)
+    local mn, mx = g.mn, g.mx
+    local hx, hy = (mx.x - mn.x) / 2, (mx.y - mn.y) / 2
+    local dx, dy = mn.x + hx - eye.x, mn.y + hy - eye.y
+    local d = math.sqrt(dx * dx + dy * dy)
+    local ux, uy = d > 1 and dx / d or 1, d > 1 and dy / d or 0
+    -- Like the card: on the near side of the models, at eye level, so it is never inside a tall one.
+    local near = math.max(d - (math.abs(ux) * hx + math.abs(uy) * hy) - 4, 16)
+    local pos, ang = Vector(eye.x + ux * near, eye.y + uy * near, eye.z), Angle(0, math.deg(math.atan2(uy, ux)) - 90, 90)
+    return pos, ang, math.min(unitsPerPixel(pos, ang), 1)
+end
+
 local TAG_BACK = Color(28, 34, 46, 200)
 
 local function drawStackTag(t, n)
