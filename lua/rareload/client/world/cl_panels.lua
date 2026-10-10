@@ -554,10 +554,19 @@ local function anchorEnt(rec)
     return RARELOAD.Phantoms.Get(rec.key) or RARELOAD.World.LiveOf(rec)
 end
 
+-- World units per screen pixel at `pos` on a plane facing the viewer, measured with the real projection.
+-- A 3D2D scale of this draws one panel unit per pixel: text at its font's own size, never blown up.
+local function unitsPerPixel(pos, ang)
+    local a, b = pos:ToScreen(), (pos + ang:Forward() * 16):ToScreen()
+    local px = math.sqrt((b.x - a.x) ^ 2 + (b.y - a.y) ^ 2) / 16
+    return px > 0.01 and 1 / px or math.huge
+end
+
 -- The card stands on the near side of the box mn..mx (a whole pile, so a stack's card sits between its
 -- models rather than on one of them), facing the viewer and always at eye level. `size` is the length
--- of the model the card is scaled for.
-local function placement(mn, mx, size, eye, w, h)
+-- of the model the card is scaled for; close up the card is drawn pixel for pixel, so every card's text
+-- is the same size and sharp whatever its width.
+local function placement(mn, mx, size, eye)
     local hx, hy = (mx.x - mn.x) / 2, (mx.y - mn.y) / 2
     local cx, cy = mn.x + hx, mn.y + hy
     local dx, dy = cx - eye.x, cy - eye.y
@@ -567,9 +576,10 @@ local function placement(mn, mx, size, eye, w, h)
     local inside = near < 32
     if inside then near = math.min(32, d) end                    -- standing at the model: just in front
 
-    local scale = math.min(math.Clamp(size * 1.15, 42, 130) / REF_W, math.max(near, 1) * 0.6 / w)
     local pos = Vector(eye.x + ux * near, eye.y + uy * near, eye.z)
-    return pos, Angle(0, math.deg(math.atan2(uy, ux)) - 90, 90), scale, inside
+    local ang = Angle(0, math.deg(math.atan2(uy, ux)) - 90, 90)
+    local scale = math.min(math.Clamp(size * 1.15, 42, 130) / REF_W, unitsPerPixel(pos, ang))
+    return pos, ang, scale, inside
 end
 
 -- Does the aim ray hit the panel's rectangle? Returns the distance to the panel.
@@ -746,7 +756,7 @@ end
 
 -- Every pile in view gets a one-line tag by its models, at eye level; only the one being looked at opens into the
 -- full card, so a crowd of saved objects stays readable. Tags are sized to stay about the same on
--- screen, shrinking a little with distance.
+-- screen: drawn pixel for pixel at every distance.
 local TAG_H, TAG_TITLE = 40, 340
 
 local function tagLayout(g)
@@ -771,8 +781,8 @@ local function tagPlacement(g, eye)
     local ux, uy = d > 1 and dx / d or 1, d > 1 and dy / d or 0
     -- Like the card: on the near side of the models, at eye level, so it is never inside a tall one.
     local near = math.max(d - (math.abs(ux) * hx + math.abs(uy) * hy) - 4, 16)
-    local scale = 0.0018 * near ^ 0.85
-    return Vector(eye.x + ux * near, eye.y + uy * near, eye.z), Angle(0, math.deg(math.atan2(uy, ux)) - 90, 90), scale
+    local pos, ang = Vector(eye.x + ux * near, eye.y + uy * near, eye.z), Angle(0, math.deg(math.atan2(uy, ux)) - 90, 90)
+    return pos, ang, math.min(unitsPerPixel(pos, ang), 1)
 end
 
 local function drawTag(g)
@@ -926,7 +936,7 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
             local t
             if g.key == openKey then
                 local w, h = sizeOf(g.active)
-                local pos, ang, scale = placement(g.mn, g.mx, g.size, eye, w, h)
+                local pos, ang, scale = placement(g.mn, g.mx, g.size, eye)
                 t = hitTest(pos, ang, scale, w, h, eye, aim) and 0
             end
             t = t or hitTest(g.tagPos, g.tagAng, g.tagScale, g.tag.w, TAG_H, eye, aim) or aimedModel(g, eye, aim)
@@ -950,7 +960,7 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
     local taken = {}
     if focus then
         focus.w, focus.h = sizeOf(focus.active)
-        focus.pos, focus.ang, focus.scale, focus.inside = placement(focus.mn, focus.mx, focus.size, eye, focus.w, focus.h)
+        focus.pos, focus.ang, focus.scale, focus.inside = placement(focus.mn, focus.mx, focus.size, eye)
         taken[1] = screenRect(focus.pos, focus.ang, focus.scale, focus.w, focus.h)
     end
     table.sort(groups, function(a, b) return a.dist < b.dist end)
