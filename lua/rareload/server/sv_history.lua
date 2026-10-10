@@ -512,6 +512,17 @@ function History.Info(data)
     return info
 end
 
+-- An entry's player modules light enough to send with every update (not the world, nothing heavy):
+-- what the world display's player panel shows, for the respawn point and for a previewed save alike.
+function History.LightData(entry)
+    local light = {}
+    for id, value in pairs(entry and entry.data or {}) do
+        local def = RARELOAD.Pipeline._defs[id]
+        if def and not def.heavy and def.phase ~= "world" then light[id] = value end
+    end
+    return light
+end
+
 -- A note read back from disk: GMod's JSON turns a note like "[1 2 3]" into a Vector.
 local function noteText(note)
     if isvector(note) then return string.format("[%g %g %g]", note.x, note.y, note.z) end
@@ -632,11 +643,17 @@ RARELOAD.Net.Handle("object.detail", {
     end,
 })
 
+-- A save's objects, with its light player data for the timeline preview.
+local function pushObjects(ply, id)
+    RARELOAD.Net.Push(ply, "history.objects",
+        { id = id, objects = History.Objects(ply, id), data = History.LightData(History.Get(ply, id)) })
+end
+
 RARELOAD.Net.Handle("history.objects", {
     priv = "rareload_restore",
     rate = 0.3,
     args = { id = "uint" },
-    fn = function(ply, a) RARELOAD.Net.Push(ply, "history.objects", { id = a.id, objects = History.Objects(ply, a.id) }) end,
+    fn = function(ply, a) pushObjects(ply, a.id) end,
 })
 
 local function objectOp(op, args, fn, priv)
@@ -647,7 +664,7 @@ local function objectOp(op, args, fn, priv)
         fn = function(ply, a)
             local ok, err = fn(ply, a)
             if not ok then RARELOAD.Log("history"):warn("%s: %s failed: %s", ply:Nick(), op, tostring(err)) end
-            RARELOAD.Net.Push(ply, "history.objects", { id = a.entryId, objects = History.Objects(ply, a.entryId) })
+            pushObjects(ply, a.entryId)
         end
     })
 end
@@ -690,12 +707,7 @@ end
 local function feedFor(ply)
     local active = History.Active(ply)
     if not active then return nil end
-    local light = {}
-    for id, value in pairs(active.data) do
-        local def = RARELOAD.Pipeline._defs[id]
-        if def and not def.heavy and def.phase ~= "world" then light[id] = value end
-    end
-    return { nick = ply:Nick(), data = light, objects = History.ObjectsOf(active), seated = History.Info(active.data)
+    return { nick = ply:Nick(), data = History.LightData(active), objects = History.ObjectsOf(active), seated = History.Info(active.data)
     .vehicle ~= nil }
 end
 
