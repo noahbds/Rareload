@@ -559,6 +559,7 @@ local function pushRows(ply)
         undo = undos[ply] ~= nil
     })
 end
+History.PushRows = pushRows
 
 local function parseComps(text)
     if text == nil or text == "" or text == "all" then return nil end

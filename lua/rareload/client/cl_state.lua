@@ -9,10 +9,12 @@ RARELOAD.State = RARELOAD.State or {
     savesRev = 0,                         -- bumped on every feed change, for dirty checks (L28)
     details = {},                         -- DetailKey -> full saved object, asked for by the world display
     antistuck = {},                       -- anti-stuck methods in order, for the server page
+    inventory = {},                         -- selected save inventory editor state
 }
 local State = RARELOAD.State
 State.details, State.antistuck = State.details or {}, State.antistuck or {} -- after a dev reload
 State.entryData = State.entryData or {}
+State.inventory = State.inventory or {}
 
 local function changed(what, key)
     hook.Run("RareloadStateChanged", what, key)
@@ -77,6 +79,18 @@ end)
 RARELOAD.Net.On("antistuck", function(p)
     State.antistuck = p.methods or {}
     changed("antistuck")
+end)
+
+RARELOAD.Net.On("inventory", function(p)
+    State.inventory[p.id] = { current = p.current, versions = p.versions or {} }
+    changed("inventory", p.id)
+end)
+
+RARELOAD.Net.On("inventory.export", function(p)
+    if isstring(p.json) then
+        SetClipboardText(p.json)
+        RARELOAD.UI.Notify(RARELOAD.L("inventory.exported"))
+    end
 end)
 
 RARELOAD.Net.On("autosave", function()

@@ -227,6 +227,39 @@ local function plainEditor(parent, json, original, onStatus)
     }
 end
 
+RARELOAD.UI.JSONEditor = function(parent, json, onStatus)
+    local original = util.JSONToTable(json) or {}
+    local current
+    local queuedSet, queuedGet
+    local editor = {}
+    local function forward(method, ...)
+        if current then return current[method](...) end
+    end
+
+    function editor.get(fn)
+        if current then return current.get(fn) end
+        queuedGet = fn
+    end
+    function editor.set(value)
+        if current then return current.set(value) end
+        queuedSet = value
+    end
+    function editor.format() return forward("format") end
+
+    aceEditor(parent, json, onStatus, function() end, function(api)
+        current = api
+        if queuedSet then current.set(queuedSet) end
+        if queuedGet then current.get(queuedGet) end
+        queuedSet, queuedGet = nil, nil
+    end, function()
+        current = plainEditor(parent, json, original, onStatus)
+        if queuedSet then current.set(queuedSet) end
+        if queuedGet then current.get(queuedGet) end
+        queuedSet, queuedGet = nil, nil
+    end)
+    return editor
+end
+
 -- Only keys whose value changed are sent; the server checks each against the saved object (S6).
 local function openEditor(entryId, objectId, json)
     local original = util.JSONToTable(json) or {}
