@@ -175,133 +175,6 @@ local function buildRow(parent, row, isSelected, onClick)
     return b
 end
 
-function Timeline.OpenInventory(row, global)
-    if not row and not global or not RARELOAD.Can(LocalPlayer(), "rareload_manage_inventory") then return end
-    local rowId = row and row.id
-    if IsValid(Timeline.inventoryFrame) then Timeline.inventoryFrame:Remove() end
-
-    local frame = UI.Window({
-        title = global and L("module.globalInventory") or L("timeline.inventory"),
-        subtitle = global and L("module.globalInventory") or L("save_no", row.id),
-        w = 900,
-        h = 700,
-        overlay = true,
-    })
-    Timeline.inventoryFrame = frame
-    local body = vgui.Create("DPanel", frame)
-    body:Dock(FILL)
-    body.Paint = function() end
-
-    local function section(title, height)
-        local card = UI.Card(body)
-        card:Dock(TOP)
-        card:SetTall(sc(height))
-        card:DockMargin(0, 0, 0, sc(8))
-        card:DockPadding(sc(16), sc(14), sc(16), sc(14))
-        local label = UI.Label(card, string.upper(title), "Rareload.Tiny", C.text3)
-        label:Dock(TOP)
-        label:DockMargin(0, 0, 0, sc(10))
-        return card
-    end
-
-    local sourceId, versionId
-    local sourceCard = section(global and L("module.globalInventory") or L("timeline.inventory_source"), 92)
-    sourceCard:SetVisible(not global)
-    local sourceOptions = {}
-    for _, candidate in ipairs(State.history.rows) do
-        if not global and candidate.id ~= rowId then
-            sourceOptions[#sourceOptions + 1] = { id = candidate.id, label = L("save_no", candidate.id) }
-        end
-    end
-    sourceId = sourceOptions[1] and sourceOptions[1].id
-
-    local source = UI.Dropdown(sourceCard, "", sourceOptions, function() return sourceId end, function(id)
-        sourceId = id
-    end)
-    source:Dock(LEFT)
-    source:SetWide(sc(330))
-    local copy = UI.Button(sourceCard, L("timeline.inventory_copy"), function()
-        if rowId and sourceId then request("inventory.copy", { id = rowId, source = sourceId }) end
-    end, { style = "info", icon = "arrow_switch" })
-    copy:Dock(LEFT)
-    copy:DockMargin(sc(10), 0, 0, 0)
-    copy:SetWide(sc(230))
-
-    local versionCard = section(L("timeline.inventory_version"), 92)
-    versionCard:SetVisible(false)
-    local versionOptions = {}
-    local versions = UI.Dropdown(versionCard, "", versionOptions, function() return versionId end, function(id)
-        versionId = id
-    end)
-    versions:Dock(LEFT)
-    versions:SetWide(sc(470))
-    local restoreVersion = UI.Button(versionCard, L("timeline.inventory_restore_version"), function()
-        if rowId and versionId then request("inventory.restoreVersion", { id = rowId, version = versionId }) end
-    end, { style = "warn", icon = "arrow_rotate_clockwise" })
-    restoreVersion:Dock(LEFT)
-    restoreVersion:DockMargin(sc(10), 0, 0, 0)
-    restoreVersion:SetWide(sc(250))
-
-    local jsonCard = UI.Card(body)
-    jsonCard:Dock(FILL)
-    jsonCard:DockMargin(0, 0, 0, sc(8))
-    jsonCard:DockPadding(sc(16), sc(14), sc(16), sc(14))
-    local jsonTitle = UI.Label(jsonCard, string.upper(L("timeline.inventory_json")), "Rareload.Tiny", C.text3)
-    jsonTitle:Dock(TOP)
-    jsonTitle:DockMargin(0, 0, 0, sc(10))
-    local json = UI.JSONEditor(jsonCard, "", function() end)
-
-    local actionsCard = UI.Card(body)
-    actionsCard:Dock(BOTTOM)
-    actionsCard:SetTall(sc(54))
-    actionsCard:DockMargin(0, 0, 0, 0)
-    actionsCard:DockPadding(sc(16), sc(9), sc(16), sc(9))
-    local export = UI.Button(actionsCard, L("timeline.inventory_export"), function()
-        request(global and "inventory.global.export" or "inventory.export", global and {} or { id = rowId })
-    end, { style = "info", icon = "page_save" })
-    export:Dock(LEFT)
-    export:SetWide(sc(190))
-    local import = UI.Button(actionsCard, L("timeline.inventory_save"), function()
-        json.get(function(text)
-            request(global and "inventory.global.apply" or "inventory.apply",
-                global and { json = text } or { id = rowId, json = text })
-        end)
-    end, { style = "success", icon = "arrow_up" })
-    import:Dock(LEFT)
-    import:DockMargin(sc(10), 0, 0, 0)
-    import:SetWide(sc(190))
-    local give = UI.Button(actionsCard, L("timeline.inventory_give"), function()
-        json.get(function(text) request("inventory.give", { json = text }) end)
-    end, { style = "warn", icon = "user" })
-    give:Dock(LEFT)
-    give:DockMargin(sc(10), 0, 0, 0)
-    give:SetWide(sc(190))
-
-    local function refresh(data)
-        data = data or State.inventory[global and 0 or rowId]
-        if not data then return end
-        json.set(util.TableToJSON(data.current, true) or "")
-        versionId = nil
-        table.Empty(versionOptions)
-        for i, version in ipairs(data.versions or {}) do
-            versionOptions[#versionOptions + 1] = {
-                id = i,
-                label = L("timeline.inventory_version_item", i, UI.Date(version.time, "long"))
-            }
-        end
-        local hasVersions = #versionOptions > 0
-        versionCard:SetVisible(hasVersions)
-        restoreVersion:SetEnabled(hasVersions)
-        body:InvalidateLayout(true)
-    end
-
-    hook.Add("RareloadStateChanged", frame, function(what, id)
-        if what == "inventory" and id == (global and 0 or rowId) then refresh() end
-    end)
-    refresh()
-    request(global and "inventory.global.get" or "inventory.get", global and {} or { id = rowId })
-end
-
 -- Detail pane (built once, updated in place) ------------------------------------------------------
 
 local function buildDetail(host, sel)
@@ -393,20 +266,22 @@ local function buildDetail(host, sel)
             self.free and C.ok or C.bad, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
 
-    local function pair(a, b)
+    -- Buttons side by side in equal widths (the hidden ones leave no gap).
+    local function split(list)
         local p = vgui.Create("DPanel", host)
         p:Dock(TOP)
         p:SetTall(sc(34))
         p.Paint = function() end
         gap(p, 8)
-        a:SetParent(p)
-        b:SetParent(p)
+        for _, b in ipairs(list) do b:SetParent(p) end
         p.PerformLayout = function(_, w, h)
-            local half = (w - sc(6)) / 2
-            a:SetPos(0, 0)
-            a:SetSize(half, h)
-            b:SetPos(half + sc(6), 0)
-            b:SetSize(half, h)
+            local shown = {}
+            for _, b in ipairs(list) do if b:IsVisible() then shown[#shown + 1] = b end end
+            local bw = (w - sc(6) * (#shown - 1)) / math.max(#shown, 1)
+            for i, b in ipairs(shown) do
+                b:SetPos(math.floor((i - 1) * (bw + sc(6))), 0)
+                b:SetSize(math.floor(bw), h)
+            end
         end
         return p
     end
@@ -429,7 +304,11 @@ local function buildDetail(host, sel)
         local r = row()
         if r then RARELOAD.Inspector.Open(r.id) end
     end, { style = "primary", icon = "bricks" })
-    pair(D.preview, D.objects)
+    D.inventory = UI.Button(host, L("inventory.open_save"), function()
+        local r = row()
+        if r then RARELOAD.InventoryManager.Open(r.id) end
+    end, { style = "info", icon = "gun" })
+    D.tools = split({ D.preview, D.objects, D.inventory })
 
     D.banner = UI.Card(host, function(_, w, h)
         draw.SimpleText(L("timeline.is_active"), "Rareload.BodyB", w / 2, h / 2, C.ok, TEXT_ALIGN_CENTER,
@@ -478,15 +357,9 @@ local function buildDetail(host, sel)
         { style = "danger", icon = "cross" })
     D.restore = UI.Button(D.actions, L("timeline.restore_all"), function() Timeline.Restore(row()) end,
         { style = "success", solid = true, icon = "arrow_rotate_clockwise" })
-    D.inventory = UI.Button(D.actions, L("timeline.inventory"), function()
-        Timeline.OpenInventory(row())
-    end, { style = "info", icon = "box" })
-    D.globalInventory = UI.Button(D.actions, L("module.globalInventory"), function()
-        Timeline.OpenInventory(nil, true)
-    end, { style = "info", icon = "world" })
     D.actions.PerformLayout = function(_, w, h)
         local x = 0
-        for _, b in ipairs({ D.teleport, D.pin, D.delete, D.inventory, D.globalInventory }) do
+        for _, b in ipairs({ D.teleport, D.pin, D.delete }) do
             if b:IsVisible() then
                 b:SizeToLabel(20)
                 b:SetPos(x, 0)
@@ -544,13 +417,16 @@ local function buildDetail(host, sel)
 end
 
 local DETAIL_PARTS = { "header", "stats", "rows", "status", "banner", "setActive", "note", "actions", "partTitle",
-    "parts", "applyParts", "reloadTitle", "mode", "reloadHelp" }
+    "parts",
+    "applyParts", "reloadTitle", "mode", "reloadHelp" }
 
 local function updateDetail(D, r)
     for _, k in ipairs(DETAIL_PARTS) do D[k]:SetVisible(r ~= nil) end
-    D.preview:GetParent():SetVisible(r ~= nil)
+    D.tools:SetVisible(r ~= nil)
     D.empty:SetVisible(r == nil)
     if not r then return end
+    D.inventory:SetVisible(RARELOAD.InventoryManager.CanUse())
+    D.tools:InvalidateLayout()
 
     D.model:ShowModel(r.info.model or LocalPlayer():GetModel())
     D.banner:SetVisible(r.active == true)
@@ -565,9 +441,6 @@ local function updateDetail(D, r)
     if not D.note:HasFocus() then D.note:SetValue(r.note or "") end
     local comps = State.history.reload.comps or {}
     for comp, check in pairs(D.checks) do check:SetValue(comps[comp] == true) end
-    D.inventory:SetVisible(RARELOAD.Can(LocalPlayer(), "rareload_manage_inventory"))
-    D.globalInventory:SetVisible(RARELOAD.Can(LocalPlayer(), "rareload_manage_inventory")
-        and RARELOAD.Can(LocalPlayer(), "rareload_global_inventory"))
     D.actions:InvalidateLayout()
 
     -- A preview of another save doesn't linger when the selection moves on.
@@ -623,6 +496,10 @@ function Timeline.Open()
     end, { style = "danger", icon = "bin" })
     frame:HeaderButton(L("timeline.refresh"), function() request("history.get") end,
         { style = "info", icon = "arrow_refresh" })
+    if RARELOAD.InventoryManager.CanUse() then
+        frame:HeaderButton(L("inventory.title"), function() RARELOAD.InventoryManager.Open() end,
+            { style = "primary", icon = "gun" })
+    end
 
     local side = vgui.Create("DPanel", frame)
     side:Dock(LEFT)
@@ -665,9 +542,6 @@ function Timeline.Open()
     local function select(id)
         selected = id
         updateDetail(D, id and State.Row(id))
-        if id and RARELOAD.Can(LocalPlayer(), "rareload_manage_inventory") then
-            request("inventory.get", { id = id })
-        end
     end
 
     refresh = function()
@@ -740,8 +614,7 @@ function Timeline.Open()
     end
 
     hook.Add("RareloadStateChanged", frame, function(_, what)
-        if what == "history" then refresh()
-        elseif what == "inventory" then updateDetail(D, selected and State.Row(selected)) end
+        if what == "history" then refresh() end
     end)
     hook.Add("RareloadLanguageChanged", frame, function() Timeline.Open() end)
 

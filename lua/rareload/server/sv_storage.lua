@@ -60,7 +60,9 @@ end
 
 -- Returns the document stored at `rel` (e.g. "mp/gm_construct/7656…"), or nil.
 -- A corrupt file is moved aside and the .bak copy is used instead (E8).
-function Store.Load(rel)
+-- `fresh`: read the file again, for files people edit by hand (exported inventories).
+function Store.Load(rel, fresh)
+    if fresh and not dirty[rel] then cache[rel] = nil end
     if cache[rel] ~= nil then return cache[rel] or nil end
 
     local base = ROOT .. rel

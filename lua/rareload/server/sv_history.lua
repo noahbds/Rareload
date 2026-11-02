@@ -10,7 +10,7 @@ local WORLD_KINDS = { "entities", "npcs", "vehicles" }
 History.COMPONENTS = {
     position = { "transform" },
     health = { "health" },
-    inventory = { "weapons", "activeWeapon" },
+    inventory = { "weapons", "activeWeapon", "globalInventory" },
     ammo = { "ammo" },
     appearance = { "appearance" },
     states = { "states" },
@@ -94,6 +94,17 @@ function History.SetNote(ply, id, note)
     if not entry then return false end
     entry.note = note ~= "" and note or nil
     return save(ply, d)
+end
+
+-- Changes one entry: fn(entry) edits it in place, or returns false and why to leave it as it was.
+function History.Update(ply, id, fn)
+    local d = History.Doc(ply)
+    local entry = find(d, id)
+    if not entry then return false, "no such save" end
+    local ok, err = fn(entry)
+    if ok == false then return false, err end
+    save(ply, d)
+    return true
 end
 
 -- Deleting the active entry makes the newest remaining one active.
@@ -559,7 +570,6 @@ local function pushRows(ply)
         undo = undos[ply] ~= nil
     })
 end
-History.PushRows = pushRows
 
 local function parseComps(text)
     if text == nil or text == "" or text == "all" then return nil end

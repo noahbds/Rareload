@@ -34,7 +34,9 @@ hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
         removeOwned(ply, mode == "saved")
     end
 
+    -- With no save on this map, modules kept outside the saves (the global inventory) still restore.
     local entry = RARELOAD.History.Active(ply)
+    if not entry and RARELOAD.Pipeline.Loads(ply, "spawn") then entry = { data = {} } end
     if entry then RARELOAD.Pipeline.Restore(ply, entry, { reason = "spawn" }) end
 end)
 
