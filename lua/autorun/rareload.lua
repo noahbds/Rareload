@@ -2,7 +2,7 @@
 
 RARELOAD = RARELOAD or {}
 
-RARELOAD.version = "5.2"
+RARELOAD.version = "5.3"
 RARELOAD.API = 1
 RARELOAD.loadGen = (RARELOAD.loadGen or 0) + 1
 
