@@ -227,43 +227,13 @@ local function plainEditor(parent, json, original, onStatus)
     }
 end
 
-RARELOAD.UI.JSONEditor = function(parent, json, onStatus)
+-- The JSON editor window, shared by the object inspector and the inventory manager.
+-- opts = { title, subtitle?, json, saveLabel?, onSave(edited, original) }: onSave gets the edited
+-- table once the text is valid JSON with something changed; the window closes after it.
+function UI.JSONWindow(opts)
+    local json = opts.json
     local original = util.JSONToTable(json) or {}
-    local current
-    local queuedSet, queuedGet
-    local editor = {}
-    local function forward(method, ...)
-        if current then return current[method](...) end
-    end
-
-    function editor.get(fn)
-        if current then return current.get(fn) end
-        queuedGet = fn
-    end
-    function editor.set(value)
-        if current then return current.set(value) end
-        queuedSet = value
-    end
-    function editor.format() return forward("format") end
-
-    aceEditor(parent, json, onStatus, function() end, function(api)
-        current = api
-        if queuedSet then current.set(queuedSet) end
-        if queuedGet then current.get(queuedGet) end
-        queuedSet, queuedGet = nil, nil
-    end, function()
-        current = plainEditor(parent, json, original, onStatus)
-        if queuedSet then current.set(queuedSet) end
-        if queuedGet then current.get(queuedGet) end
-        queuedSet, queuedGet = nil, nil
-    end)
-    return editor
-end
-
--- Only keys whose value changed are sent; the server checks each against the saved object (S6).
-local function openEditor(entryId, objectId, json)
-    local original = util.JSONToTable(json) or {}
-    local frame = UI.Window({ title = L("inspector.edit_title"), subtitle = objectId, w = 860, h = 760, overlay = true })
+    local frame = UI.Window({ title = opts.title, subtitle = opts.subtitle, w = 860, h = 760, overlay = true })
     local status = { ok = true, changed = 0, loading = true }
     local editor
 
@@ -312,14 +282,7 @@ local function openEditor(entryId, objectId, json)
     local function send(text)
         local edited = util.JSONToTable(text or "")
         if not IsValid(frame) or not edited then return end
-        local changes = {}
-        for k, v in pairs(edited) do
-            if util.TableToJSON({ v }) ~= util.TableToJSON({ original[k] }) then changes[k] = v end
-        end
-        if next(changes) then
-            request("object.edit", { entryId = entryId, objectId = objectId, json = util.TableToJSON(changes) })
-            UI.Notify(L("inspector.edit_sent"))
-        end
+        opts.onSave(edited, original, text)
         frame:Close()
     end
 
@@ -339,12 +302,32 @@ local function openEditor(entryId, objectId, json)
     reset:Dock(LEFT)
     reset:DockMargin(sc(6), 0, 0, 0)
     reset:SizeToLabel()
-    save = UI.Button(bar, L("inspector.edit_save"), function()
+    save = UI.Button(bar, opts.saveLabel or L("inspector.edit_save"), function()
         if editor then editor.get(send) end
     end, { style = "success", solid = true, icon = "disk" })
     save:Dock(RIGHT)
     save:SizeToLabel()
     save:SetEnabled(false)
+    return frame
+end
+
+-- Only keys whose value changed are sent; the server checks each against the saved object (S6).
+local function openEditor(entryId, objectId, json)
+    UI.JSONWindow({
+        title = L("inspector.edit_title"),
+        subtitle = objectId,
+        json = json,
+        onSave = function(edited, original)
+            local changes = {}
+            for k, v in pairs(edited) do
+                if util.TableToJSON({ v }) ~= util.TableToJSON({ original[k] }) then changes[k] = v end
+            end
+            if next(changes) then
+                request("object.edit", { entryId = entryId, objectId = objectId, json = util.TableToJSON(changes) })
+                UI.Notify(L("inspector.edit_sent"))
+            end
+        end,
+    })
 end
 
 hook.Add("RareloadStateChanged", "Rareload.Inspector.Editor", function(what, p)

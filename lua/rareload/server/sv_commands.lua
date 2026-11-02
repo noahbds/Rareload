@@ -221,48 +221,6 @@ Cmd.Register("history restore", {
     end),
 })
 
-Cmd.Register("inventory export", {
-    priv = "rareload_manage_inventory",
-    usage = "<save_id> [name]",
-    help = "Export a saved inventory to data/rareload/inventories/",
-    fn = function(ply, args, reply)
-        local ok, result = RARELOAD.Inventory.ExportFile(ply, tonumber(args[1]), args[2])
-        reply(ok and ("Inventory exported to " .. result .. ".") or ("Failed: " .. tostring(result)))
-    end,
-})
-
-Cmd.Register("inventory import", {
-    priv = "rareload_manage_inventory",
-    usage = "<save_id> [name]",
-    help = "Import an inventory from data/rareload/inventories/",
-    fn = function(ply, args, reply)
-        local ok, result = RARELOAD.Inventory.ImportFile(ply, tonumber(args[1]), args[2])
-        if ok then
-            RARELOAD.History.PushRows(ply)
-            reply("Inventory imported.")
-        else
-            reply("Failed: " .. tostring(result))
-        end
-    end,
-})
-
-Cmd.Register("inventory give", {
-    priv = "rareload_manage_inventory",
-    usage = "[name]",
-    help = "Give yourself an exported inventory from data/rareload/inventories/",
-    fn = function(ply, args, reply)
-        local key = RARELOAD.Util.PlayerKey(ply)
-        local name = RARELOAD.Store.Clean(args[1] or "inventory")
-        if name == "" then name = "inventory" end
-        local raw = key and file.Read("rareload/inventories/" .. key .. "/" .. name .. ".json", "DATA")
-        local data = raw and util.JSONToTable(raw, true)
-        local clean, err = data and RARELOAD.Inventory.Validate(data)
-        if not clean then return reply("Failed: " .. tostring(err or "file not found")) end
-        RARELOAD.Inventory.Give(ply, clean)
-        reply("Inventory given.")
-    end,
-})
-
 Cmd.Register("history activate", {
     priv = "rareload_restore",
     usage = "<id>",
@@ -406,6 +364,7 @@ local CLIENT_COMMANDS = {
     menu = { usage = "[server|client]", help = "Open the Rareload settings" },
     highlight = { usage = "<all|link|players|clear>", help = "Highlight saved objects and players (world display)" },
     preview = { usage = "off", help = "Hide the Save Timeline preview" },
+    inventory = { priv = "rareload_manage_inventory", help = "Open the inventory manager" },
 }
 for name, def in pairs(CLIENT_COMMANDS) do
     def.fn = playerOnly(function(ply, args) RARELOAD.Net.Push(ply, "cmd", { name = name, args = args }) end)

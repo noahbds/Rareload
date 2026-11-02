@@ -11,7 +11,14 @@ local defs = Pipeline._defs
 local ordered
 
 -- def = { id, phase, after?, setting?, privSave?, privRestore?, heavy?, save(ply, ctx), restore(ply, data, ctx),
---         spawn? = { hook, fn(ply, data, ctx) -> true when handled }, summary?(data) -> string }
+--         spawn? = { hook, fn(ply, data, ctx) -> true when handled }, summary?(data) -> string,
+--         load?(ply) -> data, replaces? = { moduleId, … } }
+-- setting and the privileges may be one name or a list (all of them are needed).
+-- load: the module's data lives outside the saves (the global inventory, in PData). A restore runs it
+--   whenever the player may use it, even with no save on this map; data saved inline in the entry (an
+--   undo snapshot) wins over load.
+-- replaces: when this module restores, those modules are skipped (the global inventory takes the
+--   place of the map's own weapons, ammo and held weapon).
 function RARELOAD.Module(def)
     defs[def.id] = def
     ordered = nil
@@ -98,7 +105,9 @@ end)
 -- privilege first, then other addons through the RareloadCanSave / RareloadCanRestore hooks, which
 -- get (ply, reason, what) and may return false and their own explanation. Returns false and why.
 function Pipeline.Allowed(ply, saving, what, priv, reason)
-    if priv and not RARELOAD.Can(ply, priv) then return false, "no permission" end
+    for _, p in ipairs(istable(priv) and priv or { priv }) do
+        if not RARELOAD.Can(ply, p) then return false, "no permission" end
+    end
     local ok, why = hook.Run(saving and "RareloadCanSave" or "RareloadCanRestore", ply, reason, what)
     if ok == false then return false, isstring(why) and why or "refused by the server" end
     return true
@@ -106,7 +115,9 @@ end
 
 -- A module the player turned off is skipped without a reason; one they may not use comes with one.
 local function allowed(def, ply, saving, reason)
-    if def.setting and not RARELOAD.Get(ply, def.setting) then return false end
+    for _, s in ipairs(istable(def.setting) and def.setting or { def.setting }) do
+        if not RARELOAD.Get(ply, s) then return false end
+    end
     return Pipeline.Allowed(ply, saving, def.id, saving and def.privSave or def.privRestore, reason)
 end
 
@@ -299,11 +310,54 @@ function Ctx:async(label)
     return resume
 end
 
+-- What a `load` module restores from, read once per restore.
+local function loaded(ctx, def)
+    ctx.loaded = ctx.loaded or {}
+    if ctx.loaded[def.id] == nil then ctx.loaded[def.id] = def.load(ctx.ply) or false end
+    return ctx.loaded[def.id] or nil
+end
+
+local function external(ctx, def)
+    return def.load ~= nil and not istable(ctx.entry.data[def.id])
+end
+
+local function dataOf(ctx, def)
+    if external(ctx, def) then return loaded(ctx, def) end
+    return Pipeline.Payload(ctx.entry.data[def.id])
+end
+
 -- Returns false, plus why when the module is in the save but the player may not get it back.
 local function wants(ctx, def)
     if ctx.skipWorld and def.phase == "world" then return false end
-    if (ctx.only and not ctx.only[def.id]) or ctx.entry.data[def.id] == nil then return false end
+    if ctx.only and not ctx.only[def.id] then return false end
+    if external(ctx, def) then
+        -- Not part of this save: a player who may not use it simply doesn't get it, without a warning.
+        return (allowed(def, ctx.ply, false, ctx.reason)) and loaded(ctx, def) ~= nil
+    end
+    if ctx.entry.data[def.id] == nil then return false end
     return allowed(def, ctx.ply, false, ctx.reason)
+end
+
+-- The id of the module that takes the place of `def` in this restore, if any (def.replaces).
+local function replacedBy(ctx, def)
+    if not ctx.replaced then
+        ctx.replaced = {}
+        for _, other in ipairs(order()) do
+            if other.replaces and (wants(ctx, other)) then
+                for _, id in ipairs(other.replaces) do ctx.replaced[id] = other.id end
+            end
+        end
+    end
+    return ctx.replaced[def.id]
+end
+
+-- Whether a `load` module would restore something for this player (used when they have no save on
+-- this map, so a spawn still gets e.g. their global inventory).
+function Pipeline.Loads(ply, reason)
+    for _, def in ipairs(order()) do
+        if def.load and (allowed(def, ply, false, reason)) and def.load(ply) ~= nil then return true end
+    end
+    return false
 end
 
 runFrom = function(ctx, i)
@@ -313,10 +367,16 @@ runFrom = function(ctx, i)
         if not ctx:isCurrent() then return end
         local def = list[i]
         i = i + 1
-        local may, why = wants(ctx, def)
+        local may, why = false, nil
+        local by = replacedBy(ctx, def)
+        if by then
+            if ctx.entry.data[def.id] ~= nil then ctx:step("ok", def.id, "replaced by " .. by) end
+        else
+            may, why = wants(ctx, def)
+        end
         if why then ctx:deny(def.id, why) end
         if may then
-            local data = Pipeline.Payload(ctx.entry.data[def.id])
+            local data = dataOf(ctx, def)
             if data == nil then
                 ctx:step("fail", def.id, "saved data is missing")
             else
@@ -370,9 +430,9 @@ function Pipeline.SpawnHook(ply, hookName)
 
     local handled = false
     for _, def in ipairs(order()) do
-        if def.spawn and def.spawn.hook == hookName and (wants(ctx, def)) then
+        if def.spawn and def.spawn.hook == hookName and not replacedBy(ctx, def) and (wants(ctx, def)) then
             local result
-            ProtectedCall(function() result = def.spawn.fn(ply, Pipeline.Payload(ctx.entry.data[def.id]), ctx) end)
+            ProtectedCall(function() result = def.spawn.fn(ply, dataOf(ctx, def), ctx) end)
             if result then
                 ctx.spawnDone[def.id] = true
                 handled = true
