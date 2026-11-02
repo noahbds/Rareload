@@ -121,12 +121,13 @@ RARELOAD.Module({
     id = "globalInventory",
     phase = "inventory",
     after = { "weapons", "ammo" },
-    setting = "globalInventory",
     privSave = "rareload_global_inventory",
     privRestore = "rareload_global_inventory",
 
     save = function(ply)
-        if not RARELOAD.Get(ply, "keepInventory") or not RARELOAD.Can(ply, "rareload_save_inventory") then return end
+        if not RARELOAD.Get(ply, "globalInventory")
+            or not RARELOAD.Get(ply, "keepInventory")
+            or not RARELOAD.Can(ply, "rareload_save_inventory") then return {} end
         local data = inventoryData(ply)
         RARELOAD.Store.PData(ply, "global_inventory", data)
         return data
@@ -136,22 +137,30 @@ RARELOAD.Module({
         hook = "PlayerLoadout",
         fn = function(ply, _, ctx)
             local data = RARELOAD.Store.PData(ply, "global_inventory")
-            if not data or not RARELOAD.Get(ply, "keepInventory")
+            if not data or not RARELOAD.Get(ply, "globalInventory")
+                or not RARELOAD.Get(ply, "keepInventory")
                 or not RARELOAD.Can(ply, "rareload_restore_inventory") then return false end
             ply:StripWeapons()
             give(ply, data.weapons or {}, ctx)
-                restoreAmmo(ply, data.ammo or {})
-                return true
+            restoreAmmo(ply, data.ammo or {})
+            if isstring(data.activeWeapon) then
+                ctx:nextTick(function() pendingSelect[ply] = data.activeWeapon end)
+            end
+            return true
         end,
     },
 
     restore = function(ply, _, ctx)
+        if not RARELOAD.Get(ply, "globalInventory") then return end
         local data = RARELOAD.Store.PData(ply, "global_inventory")
         if not data or not RARELOAD.Get(ply, "keepInventory")
             or not RARELOAD.Can(ply, "rareload_restore_inventory") then return end
         ply:StripWeapons()
         give(ply, data.weapons or {}, ctx)
         restoreAmmo(ply, data.ammo or {})
+        if isstring(data.activeWeapon) then
+            ctx:nextTick(function() pendingSelect[ply] = data.activeWeapon end)
+        end
     end,
 
     summary = function(d) return "global inventory" end,
@@ -195,21 +204,4 @@ RARELOAD.Module({
     end,
 
     summary = function(class) return class end,
-})
-
-RARELOAD.Module({
-    id = "globalActiveWeapon",
-    phase = "finalize",
-    after = { "activeWeapon" },
-    setting = "globalInventory",
-    privRestore = "rareload_global_inventory",
-
-    restore = function(ply)
-        if not RARELOAD.Get(ply, "keepInventory")
-            or not RARELOAD.Can(ply, "rareload_restore_inventory") then return end
-        local data = RARELOAD.Store.PData(ply, "global_inventory")
-        if data and isstring(data.activeWeapon) then pendingSelect[ply] = data.activeWeapon end
-    end,
-
-    summary = function(d) return d and d.activeWeapon end,
 })
