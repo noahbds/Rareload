@@ -80,8 +80,8 @@ end)
 
 local function classesFor(saved, held)
     local out = {}
-    if isstring(held) and table.HasValue(classes, held) then out[1] = held end
-    for _, class in ipairs(classes) do
+    if isstring(held) and table.HasValue(saved, held) then out[1] = held end
+    for _, class in ipairs(saved) do
         if class ~= held then out[#out + 1] = class end
     end
     return out
@@ -120,6 +120,7 @@ RARELOAD.Module({
 RARELOAD.Module({
     id = "globalInventory",
     phase = "inventory",
+    after = { "weapons", "ammo" },
     setting = "globalInventory",
     privSave = "rareload_global_inventory",
     privRestore = "rareload_global_inventory",
@@ -139,7 +140,8 @@ RARELOAD.Module({
                 or not RARELOAD.Can(ply, "rareload_restore_inventory") then return false end
             ply:StripWeapons()
             give(ply, data.weapons or {}, ctx)
-            return true
+                restoreAmmo(ply, data.ammo or {})
+                return true
         end,
     },
 
