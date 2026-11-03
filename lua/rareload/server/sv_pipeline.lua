@@ -19,6 +19,8 @@ local ordered
 --   undo snapshot) wins over load.
 -- replaces: when this module restores, those modules are skipped (the global inventory takes the
 --   place of the map's own weapons, ammo and held weapon).
+-- empty: what an exact restore uses when the save has no data for this module (a world module whose
+--   objects must all be removed).
 function RARELOAD.Module(def)
     defs[def.id] = def
     ordered = nil
@@ -324,8 +326,14 @@ local function external(ctx, def)
     return def.load ~= nil and not istable(ctx.entry.data[def.id])
 end
 
+-- An exact restore runs a world module that the save has nothing for, so it removes those objects.
+local function emptied(ctx, def)
+    return ctx.exact and def.empty ~= nil and ctx.entry.data[def.id] == nil
+end
+
 local function dataOf(ctx, def)
     if external(ctx, def) then return loaded(ctx, def) end
+    if emptied(ctx, def) then return def.empty() end
     return Pipeline.Payload(ctx.entry.data[def.id])
 end
 
@@ -337,7 +345,7 @@ local function wants(ctx, def)
         -- Not part of this save: a player who may not use it simply doesn't get it, without a warning.
         return (allowed(def, ctx.ply, false, ctx.reason)) and loaded(ctx, def) ~= nil
     end
-    if ctx.entry.data[def.id] == nil then return false end
+    if ctx.entry.data[def.id] == nil and not emptied(ctx, def) then return false end
     return allowed(def, ctx.ply, false, ctx.reason)
 end
 
@@ -401,6 +409,8 @@ runFrom = function(ctx, i)
     hook.Run("RareloadRestored", ctx.ply, ctx.entry)
 end
 
+-- opts = { reason?, only?: { [moduleId] = true }, reset?: put saved objects still on the map back the
+--          way they were saved, exact?: also remove the player's objects the save doesn't hold }
 function Pipeline.Restore(ply, entry, opts)
     opts = opts or {}
     local token = (tokens[ply] or 0) + 1
@@ -409,6 +419,7 @@ function Pipeline.Restore(ply, entry, opts)
     local reason = opts.reason or "timeline"
     local ctx = setmetatable({
         ply = ply, entry = entry, reason = reason, only = opts.only, token = token,
+        reset = opts.reset or opts.exact or false, exact = opts.exact or false,
         spawnDone = {}, shared = {}, spawned = {}, denied = {},
         session = RARELOAD.Log.Session("Restore (" .. reason .. ")", ply, "restore"),
     }, Ctx)

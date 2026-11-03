@@ -385,11 +385,16 @@ local function buildDetail(host, sel)
     for _, comp in ipairs(COMPONENTS) do
         D.checks[comp] = UI.Check(D.parts, L("comp." .. comp), false, function() Timeline.SendReloadConfig() end)
     end
+    -- Exact restore (A1): both restore buttons also remove the player's objects the save doesn't hold.
+    D.exact = UI.Check(host, L("timeline.exact"), false, function() end)
+    D.exact:SetTooltip(L("timeline.exact_help"))
+    D.exact:Dock(TOP)
+    gap(D.exact, 6)
     D.applyParts = UI.Button(host, L("timeline.restore_selected"), function()
         local r, comps = row(), Timeline.Comps()
         if not r then return end
         if comps == "" then return UI.Notify(L("timeline.nothing_selected"), "error") end
-        request("history.restore", { id = r.id, comps = comps })
+        Timeline.Restore(r, comps)
     end, { icon = "arrow_rotate_clockwise" })
     D.applyParts:Dock(TOP)
     gap(D.applyParts, 12)
@@ -419,8 +424,7 @@ local function buildDetail(host, sel)
 end
 
 local DETAIL_PARTS = { "header", "stats", "rows", "status", "banner", "setActive", "note", "actions", "partTitle",
-    "parts",
-    "applyParts", "reloadTitle", "mode", "reloadHelp" }
+    "parts", "exact", "applyParts", "reloadTitle", "mode", "reloadHelp" }
 
 local function updateDetail(D, r)
     for _, k in ipairs(DETAIL_PARTS) do D[k]:SetVisible(r ~= nil) end
@@ -468,9 +472,20 @@ function Timeline.SendReloadConfig()
     request("history.reloadMode", { mode = State.history.reload.mode or "set_previous", comps = comps })
 end
 
-function Timeline.Restore(r)
+-- comps: the ticked parts ("position,world"), or nil for everything. An exact restore that includes
+-- the world removes objects, so it asks first (undo still brings them back).
+function Timeline.Restore(r, comps)
     if not r then return end
-    request("history.restore", { id = r.id }) -- the server's toast says when it's done
+    local exact = Timeline.D and Timeline.D.exact.value == true
+    local send = function()
+        -- the server's toast says when it's done
+        request("history.restore", { id = r.id, comps = comps, exact = exact or nil })
+    end
+    if exact and (comps == nil or string.find("," .. comps .. ",", ",world,", 1, true)) then
+        UI.Confirm(L("timeline.exact"), L("timeline.exact_confirm"), send)
+    else
+        send()
+    end
 end
 
 function Timeline.Delete(r)

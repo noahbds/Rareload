@@ -322,6 +322,29 @@ function Snapshot.KeepDeleted(old, fresh)
     return fresh
 end
 
+-- Exact restore: removes the player's objects that `pick(ent)` selects and that `snap` doesn't hold,
+-- so only what was saved stays. Returns how many were removed.
+function Snapshot.RemoveMissing(ply, ctx, snap, pick)
+    local keep = {}
+    for _, def in pairs(snap.Entities or {}) do
+        local id = Snapshot.DefID(def)
+        if id then keep[tostring(id)] = true end -- an all-digit ID comes back from JSON as a number
+    end
+    local removed = 0
+    for _, ent in ipairs(Snapshot.Owned(ply, ctx)) do
+        if IsValid(ent) and pick(ent) and not (ent.RareloadID and keep[tostring(ent.RareloadID)]) then
+            ent:Remove()
+            removed = removed + 1
+        end
+    end
+    return removed
+end
+
+-- What an exact restore uses for a world module the save has nothing for: an empty snapshot.
+function Snapshot.Empty()
+    return { Entities = {}, Constraints = {} }
+end
+
 -- One ownership scan per save, shared by the world and vehicle modules.
 function Snapshot.Owned(ply, ctx)
     ctx.shared.owned = ctx.shared.owned or RARELOAD.Ownership.Owned(ply)
@@ -331,6 +354,8 @@ end
 -- Captures a module's targets and applies the merge rules against that module's previous save.
 function Snapshot.CaptureFor(ply, ctx, moduleId, targets)
     local snap = Snapshot.Capture(targets)
+    -- An undo snapshot is the world exactly as it is now, without the rules for the next save.
+    if ctx.opts.captureOnly then return snap end
     local old = ctx.prev and RARELOAD.Pipeline.Payload(ctx.prev.data[moduleId])
     if snap and old and not RARELOAD.Get(ply, "overwriteModified") then
         snap = Snapshot.Merge(old, snap)
@@ -371,8 +396,162 @@ Snapshot.SKIP_REASONS = {
     failed = "could not be created",        -- the duplicator returned nothing for it
 }
 
--- opts = { kind = "props"|"npcs"|"vehicles", limit? = max defs to paste, filter?(def) -> bool }
--- Returns { created = { [index] = ent }, existing = { ent }, total = n,
+-- Putting objects still on the map back the way they were saved (A1) ----------------------------
+
+local function bonesOf(def)
+    return istable(def.PhysicsObjects) and def.PhysicsObjects or {}
+end
+
+local function boneOf(def, i)
+    local bones = bonesOf(def)
+    return bones[i] or bones[tostring(i)]
+end
+
+local function sameAngle(a, b)
+    return math.abs(math.AngleDifference(a.p, b.p)) < 1 and math.abs(math.AngleDifference(a.y, b.y)) < 1
+        and math.abs(math.AngleDifference(a.r, b.r)) < 1
+end
+
+-- Objects moved and frozen through their physics objects. NPCs only have a physics shadow that
+-- follows them, so they are moved as entities and their physics is left alone.
+local function physical(ent, def)
+    return not ent:IsNPC() and ent:GetPhysicsObjectCount() > 0 and next(bonesOf(def)) ~= nil
+end
+
+-- Whether the object is somewhere else, or frozen differently, than in its saved definition.
+local function moved(ent, def)
+    if IsValid(ent:GetParent()) then return false end
+    if not physical(ent, def) then
+        return isvector(def.Pos) and (ent:GetPos():DistToSqr(def.Pos) > 1
+            or isangle(def.Angle) and not sameAngle(ent:GetAngles(), def.Angle))
+    end
+    for i = 0, ent:GetPhysicsObjectCount() - 1 do
+        local phys, saved = ent:GetPhysicsObjectNum(i), boneOf(def, i)
+        if IsValid(phys) and istable(saved) then
+            if isvector(saved.Pos) and phys:GetPos():DistToSqr(saved.Pos) > 1 then return true end
+            if isangle(saved.Angle) and not sameAngle(phys:GetAngles(), saved.Angle) then return true end
+            if (saved.Frozen == true) == phys:IsMotionEnabled() then return true end
+        end
+    end
+    return false
+end
+
+-- The helpers a vehicle base keeps next to its root (wheels, seats…), which must move with it.
+local function partsOf(ent)
+    local parts = {}
+    if not Snapshot.IsRootVehicle(ent) then return parts end
+    for _, other in pairs(constraint.GetAllConstrainedEntities(ent)) do
+        if other ~= ent and IsValid(other) and not IsValid(other:GetParent()) and Snapshot.IsVehiclePart(other) then
+            parts[#parts + 1] = other
+        end
+    end
+    return parts
+end
+
+local function eachPhys(ent, fn)
+    for i = 0, ent:GetPhysicsObjectCount() - 1 do
+        local phys = ent:GetPhysicsObjectNum(i)
+        if IsValid(phys) then fn(phys, i) end
+    end
+end
+
+-- Default colour and material for an object saved without them, so a recolor made since is undone.
+local PLAIN = {
+    colour = { Color = Color(255, 255, 255, 255), RenderMode = RENDERMODE_NORMAL, RenderFX = kRenderFxNone },
+    material = { MaterialOverride = "" },
+}
+
+local function cosmetics(ply, ent, def)
+    if isnumber(def.Skin) then ent:SetSkin(def.Skin) end
+    for group, value in pairs(istable(def.BodyG) and def.BodyG or {}) do
+        if tonumber(group) and isnumber(value) then ent:SetBodygroup(tonumber(group), value) end
+    end
+    local mods = istable(def.EntityMods) and def.EntityMods or {}
+    for name, plain in pairs(PLAIN) do
+        local fn = duplicator.EntityModifiers[name]
+        local data = mods[name] or (istable(ent.EntityMods) and ent.EntityMods[name] and plain)
+        if fn and data then ProtectedCall(fn, ply, ent, data) end
+    end
+    local rl = istable(mods.rareload) and mods.rareload or {}
+    if (tonumber(rl.maxHp) or 0) > 0 then
+        ent:SetMaxHealth(rl.maxHp)
+        ent:SetHealth(rl.hp or rl.maxHp)
+    end
+    ent.RareloadName = rl.name
+end
+
+-- Puts objects still on the map back where and how they were saved: position and angles (bone by
+-- bone for ragdolls), frozen state, gravity, skin, bodygroups, colour, material and health. Every
+-- object is held still first, so welded objects don't pull on each other while they move. A vehicle
+-- base's wheels and seats move with their root. `targets` = { { ent, def } } with revived defs.
+-- Returns how many objects had moved.
+function Snapshot.Reset(targets, ply)
+    local count, held = 0, {}
+    for _, p in ipairs(targets) do
+        p.moved = moved(p.ent, p.def)
+        if p.moved then count = count + 1 end
+        p.parts = {}
+        for _, part in ipairs(partsOf(p.ent)) do
+            local lp, la = WorldToLocal(part:GetPos(), part:GetAngles(), p.ent:GetPos(), p.ent:GetAngles())
+            p.parts[#p.parts + 1] = { ent = part, lp = lp, la = la }
+        end
+        local hold = function(phys)
+            if held[phys] == nil then held[phys] = phys:IsMotionEnabled() end
+            phys:EnableMotion(false)
+        end
+        p.physical = physical(p.ent, p.def)
+        if p.physical then eachPhys(p.ent, hold) end
+        for _, part in ipairs(p.parts) do eachPhys(part.ent, hold) end
+    end
+
+    for _, p in ipairs(targets) do
+        local ent, def = p.ent, p.def
+        if p.moved and p.physical and ent:GetPhysicsObjectCount() > 1 then
+            eachPhys(ent, function(phys, i)
+                local saved = boneOf(def, i)
+                if istable(saved) and isvector(saved.Pos) then phys:SetPos(saved.Pos) end
+                if istable(saved) and isangle(saved.Angle) then phys:SetAngles(saved.Angle) end
+            end)
+        elseif p.moved and isvector(def.Pos) then
+            ent:SetPos(def.Pos)
+            if isangle(def.Angle) then ent:SetAngles(def.Angle) end
+            for _, part in ipairs(p.parts) do
+                local pos, ang = LocalToWorld(part.lp, part.la, ent:GetPos(), ent:GetAngles())
+                part.ent:SetPos(pos)
+                part.ent:SetAngles(ang)
+            end
+        end
+        cosmetics(ply, ent, def)
+    end
+
+    local function settle(phys, saved)
+        local frozen = istable(saved) and saved.Frozen == true
+        held[phys] = nil
+        phys:SetVelocity(vector_origin)
+        phys:SetAngleVelocity(vector_origin)
+        phys:EnableGravity(not (istable(saved) and saved.NoGrav))
+        phys:EnableMotion(not frozen)
+        if not frozen then phys:Wake() end
+    end
+    for _, p in ipairs(targets) do
+        if p.physical then
+            eachPhys(p.ent, function(phys, i) settle(phys, boneOf(p.def, i)) end)
+        end
+    end
+    -- Vehicle parts get back the motion they had.
+    for phys, enabled in pairs(held) do
+        if IsValid(phys) then
+            phys:EnableMotion(enabled)
+            if enabled then phys:Wake() end
+        end
+    end
+    return count
+end
+
+-- opts = { kind = "props"|"npcs"|"vehicles", limit? = max defs to paste, filter?(def) -> bool,
+--          reset? = put objects still on the map back the way they were saved }
+-- Returns { created = { [index] = ent }, existing = { ent }, defs = { [existing ent] = saved def }, total = n,
+--           reset = n (objects that had moved),
 --           skipped = { { reason = key of SKIP_REASONS, what = class or model } } }.
 function Snapshot.Restore(snap, ply, opts)
     local live = {}
@@ -383,8 +562,8 @@ function Snapshot.Restore(snap, ply, opts)
     local limits = RARELOAD.Get(nil, "respectSpawnLimits") and IsValid(ply)
     local counts, kinds = {}, {}
     local room = EDICT_LIMIT - ents.GetEdictCount()
-    local report = { created = {}, existing = {}, total = 0, skipped = {} }
-    local paste = {}
+    local report = { created = {}, existing = {}, defs = {}, total = 0, skipped = {}, reset = 0 }
+    local paste, resets = {}, {}
 
     for index, def in pairs(snap.Entities) do
         report.total = report.total + 1
@@ -392,6 +571,8 @@ function Snapshot.Restore(snap, ply, opts)
         local why, what = nil, class
         if id and IsValid(live[id]) then
             report.existing[#report.existing + 1] = live[id] -- already on the map (F15, L13)
+            report.defs[live[id]] = def
+            if opts.reset then resets[#resets + 1] = { ent = live[id], def = revive(def, 0) } end
         elseif not isstring(class) or not duplicator.IsAllowed(class) and not scripted_ents.GetStored(class) then
             why = "addon"
         elseif DENIED[class] or not duplicator.IsAllowed(class) or (opts.filter and not opts.filter(def)) then
@@ -421,6 +602,9 @@ function Snapshot.Restore(snap, ply, opts)
         end
         if why then report.skipped[#report.skipped + 1] = { reason = why, what = tostring(what) } end
     end
+
+    -- Before the paste, so constraints pasted between new and existing objects join them where saved.
+    if #resets > 0 then report.reset = Snapshot.Reset(resets, ply) end
 
     if next(paste) then
         duplicator.SetLocalPos(vector_origin)
@@ -509,7 +693,12 @@ function Snapshot.Report(ctx, label, report, keepMoving)
             ctx:spawnedAdd(ent)
         end
     end
-    -- What was skipped and why, e.g. "0 of 2 restored · addon not installed: timedoor, lvs_item_gear".
+    -- What happened, e.g. "1 of 3 restored, 2 already on the map, 1 put back · addon not installed:
+    -- timedoor". A restore that only created everything keeps the module's own summary.
+    local head = created .. " of " .. report.total .. " restored"
+    if #report.existing > 0 then head = head .. ", " .. #report.existing .. " already on the map" end
+    if (report.reset or 0) > 0 then head = head .. ", " .. report.reset .. " put back" end
+    if (report.removed or 0) > 0 then head = head .. ", " .. report.removed .. " removed (exact restore)" end
     if #report.skipped > 0 then
         local byReason, order = {}, {}
         for _, s in ipairs(report.skipped) do
@@ -524,14 +713,15 @@ function Snapshot.Report(ctx, label, report, keepMoving)
                 if #r.names < 3 then r.names[#r.names + 1] = string.GetFileFromFilename(s.what) end
             end
         end
-        local parts = { created .. " of " .. report.total .. " restored" }
-        if #report.existing > 0 then parts[1] = parts[1] .. ", " .. #report.existing .. " already on the map" end
+        local parts = { head }
         for _, reason in ipairs(order) do
             local r = byReason[reason]
             parts[#parts + 1] = Snapshot.SKIP_REASONS[reason] .. " (" .. r.n .. "): " .. table.concat(r.names, ", ")
                 .. (r.unique > #r.names and ", …" or "")
         end
         ctx:result("warn", label, table.concat(parts, " · "))
+    elseif (report.reset or 0) > 0 or (report.removed or 0) > 0 then
+        ctx:result("ok", label, head)
     end
     if keepMoving then return created end
     ctx:nextTick(function()

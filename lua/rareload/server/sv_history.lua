@@ -137,7 +137,7 @@ end
 
 -- Restore and undo -------------------------------------------------------------------------------
 
-local undos = setmetatable({}, { __mode = "k" }) -- ply -> { entry, only, ctx }; one level, like v4
+local undos = setmetatable({}, { __mode = "k" }) -- ply -> { entry, only, world, ctx }; one level, like v4
 
 -- comps: a set of component names (§15.4), or nil for everything. Returns the module set or nil.
 function History.ModulesFor(comps)
@@ -149,29 +149,36 @@ function History.ModulesFor(comps)
     return only
 end
 
--- Restores an entry now (F25). The current state of the same modules (except the world, which is
--- undone by removing what the restore created) is captured first, for undo (F26).
-function History.Restore(ply, id, comps)
+-- Restores an entry now (F25). The current state of the same modules is captured first, for undo
+-- (F26), the player's objects included when the world is restored. opts = { exact? = also remove
+-- the player's objects the save doesn't hold }. Saved objects still on the map are put back the way
+-- they were saved when the player's resetObjects setting is on, or for an exact restore.
+function History.Restore(ply, id, comps, opts)
     local entry = History.Get(ply, id)
     if not entry or not ply:Alive() then return false end
+    opts = opts or {}
     local only = History.ModulesFor(comps)
 
-    local undoOnly = {}
+    local undoOnly, world = {}, not comps or comps.world == true
     for _, name in ipairs(table.GetKeys(History.COMPONENTS)) do
-        if name ~= "world" and (not comps or comps[name]) then
+        if not comps or comps[name] then
             for _, m in ipairs(History.COMPONENTS[name]) do undoOnly[m] = true end
         end
     end
     local _, _, snapshot = RARELOAD.Pipeline.Save(ply, { only = undoOnly, captureOnly = true, silent = true })
 
-    local ctx = RARELOAD.Pipeline.Restore(ply, entry, { only = only, reason = "timeline" })
-    undos[ply] = { entry = snapshot, only = undoOnly, ctx = ctx }
+    local ctx = RARELOAD.Pipeline.Restore(ply, entry, {
+        only = only, reason = "timeline", exact = opts.exact and world,
+        reset = RARELOAD.Get(ply, "resetObjects"),
+    })
+    undos[ply] = { entry = snapshot, only = undoOnly, world = world, ctx = ctx }
     refresh(ply) -- the timeline should now show Undo button being active
     return true
 end
 
--- Removes what the last restore created (even vehicles that finished spawning later, E14) and puts
--- the player back the way they were before it.
+-- Puts the player back the way they were before the last restore: what it created is removed (even
+-- vehicles that finished spawning later, E14), and their objects are restored exactly as captured
+-- (moved ones put back, removed ones pasted again, new ones removed).
 function History.Undo(ply)
     local u = undos[ply]
     if not u then return false end
@@ -180,7 +187,9 @@ function History.Undo(ply)
     for _, ent in ipairs(u.ctx.spawned) do
         if IsValid(ent) then ent:Remove() end
     end
-    if u.entry then RARELOAD.Pipeline.Restore(ply, u.entry, { only = u.only, reason = "undo" }) end
+    if u.entry then
+        RARELOAD.Pipeline.Restore(ply, u.entry, { only = u.only, reason = "undo", reset = true, exact = u.world })
+    end
     return true
 end
 
@@ -604,10 +613,13 @@ handle("history.clear", "rareload_restore", {}, function(ply) History.Clear(ply)
 handle("history.activate", "rareload_restore", { id = "uint" }, function(ply, a)
     if History.Activate(ply, a.id) then return "toast.activated", { a.id } end
 end)
-handle("history.restore", "rareload_restore", { id = "uint", comps = "string:128?" }, function(ply, a)
-    if not ply:Alive() then return "toast.restore_dead" end
-    if History.Restore(ply, a.id, parseComps(a.comps)) then return "toast.restored", { a.id } end
-end)
+handle("history.restore", "rareload_restore", { id = "uint", comps = "string:128?", exact = "bool?" },
+    function(ply, a)
+        if not ply:Alive() then return "toast.restore_dead" end
+        if History.Restore(ply, a.id, parseComps(a.comps), { exact = a.exact }) then
+            return "toast.restored", { a.id }
+        end
+    end)
 handle("history.undo", "rareload_restore", {}, function(ply)
     return History.Undo(ply) and "toast.undone" or "toast.nothing_to_undo"
 end)

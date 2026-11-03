@@ -193,6 +193,20 @@ RARELOAD.Setting("overwriteDeleted", {
     category = "world",
     help = "On save, drop saved objects that were deleted from the map (off keeps them saved)"
 })
+RARELOAD.Setting("resetObjects", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "world",
+    help = "Timeline restores put saved objects still on the map back the way they were saved"
+})
+RARELOAD.Setting("resetOnSpawn", {
+    type = "bool",
+    default = false,
+    scope = "player",
+    category = "world",
+    help = "Respawning at your save also puts your saved objects back the way they were saved"
+})
 RARELOAD.Setting("autoSave", {
     type = "bool",
     default = false,

@@ -3,6 +3,17 @@
 
 local Snapshot = RARELOAD.Snapshot
 
+-- The objects the entities module saves: everything the player owns but NPCs and vehicles.
+local function isEntityTarget(ent)
+    local parent = ent:GetParent()
+    return not ent:IsNPC() and not ent:IsVehicle() and not Snapshot.EXCLUDED[ent:GetClass()]
+        and not ent:GetPersistent() -- the engine saves those itself (G32)
+        and not (IsValid(parent) and parent:IsPlayer())
+        and not Snapshot.IsRootVehicle(ent) and not Snapshot.IsVehiclePart(ent)
+end
+
+local function isNPC(ent) return ent:IsNPC() end
+
 RARELOAD.Module({
     id = "entities",
     phase = "world",
@@ -10,24 +21,22 @@ RARELOAD.Module({
     setting = "keepEntities",
     privSave = "rareload_save_entities",
     privRestore = "rareload_restore_entities",
+    empty = Snapshot.Empty,
 
     save = function(ply, ctx)
         local targets = {}
         for _, ent in ipairs(Snapshot.Owned(ply, ctx)) do
-            local parent = ent:GetParent()
-            if not ent:IsNPC() and not ent:IsVehicle() and not Snapshot.EXCLUDED[ent:GetClass()]
-                and not ent:GetPersistent() -- the engine saves those itself (G32)
-                and not (IsValid(parent) and parent:IsPlayer())
-                and not Snapshot.IsRootVehicle(ent) and not Snapshot.IsVehiclePart(ent) then
-                targets[#targets + 1] = ent
-            end
+            if isEntityTarget(ent) then targets[#targets + 1] = ent end
         end
         ctx.shared.entityTargets = targets
         return Snapshot.CaptureFor(ply, ctx, "entities", targets)
     end,
 
     restore = function(ply, snap, ctx)
-        Snapshot.Report(ctx, "entities", Snapshot.Restore(snap, ply, { kind = "props" }))
+        local removed = ctx.exact and Snapshot.RemoveMissing(ply, ctx, snap, isEntityTarget) or 0
+        local report = Snapshot.Restore(snap, ply, { kind = "props", reset = ctx.reset })
+        report.removed = removed
+        Snapshot.Report(ctx, "entities", report)
     end,
 
     summary = function(snap) return Snapshot.Summary(snap, "entities") end,
@@ -69,6 +78,7 @@ RARELOAD.Module({
     setting = "keepNPCs",
     privSave = "rareload_save_npcs",
     privRestore = "rareload_restore_npcs",
+    empty = Snapshot.Empty,
 
     save = function(ply, ctx)
         local targets = {}
@@ -83,9 +93,11 @@ RARELOAD.Module({
     end,
 
     restore = function(ply, snap, ctx)
+        local removed = ctx.exact and Snapshot.RemoveMissing(ply, ctx, snap, isNPC) or 0
         local done = ctx:async("npcs")
         ctx:waitFor(function() return RARELOAD.Pipeline.mapReady end, 10, function()
-            local report = Snapshot.Restore(snap, ply, { kind = "npcs" })
+            local report = Snapshot.Restore(snap, ply, { kind = "npcs", reset = ctx.reset })
+            report.removed = removed
             Snapshot.Report(ctx, "npcs", report)
             local byId = {}
             for _, npc in pairs(report.created) do
@@ -146,6 +158,55 @@ local function eachLive(entities, fn)
     end
 end
 
+local WORLD_KINDS = { "entities", "npcs", "vehicles" }
+
+-- Exact restore: removes constraints between this save's objects that the save doesn't hold (a weld
+-- added since). Constraints are counted from this module's list and, for saves made before it held
+-- them all, from the snapshots, whichever has more of a kind. Returns how many were removed.
+local function removeExtra(entry, list, entities)
+    local DefID, Payload = Snapshot.DefID, RARELOAD.Pipeline.Payload
+    local mine, want, fromSnaps = {}, {}, {}
+    for _, saved in ipairs(list) do
+        local key = keyOf(saved.def.Type, saved.ids)
+        want[key] = (want[key] or 0) + 1
+    end
+    for _, kind in ipairs(WORLD_KINDS) do
+        local snap = Payload(entry.data[kind])
+        for _, def in pairs(istable(snap) and snap.Entities or {}) do
+            local id = DefID(def)
+            if id then mine[tostring(id)] = true end
+        end
+        for _, c in pairs(istable(snap) and snap.Constraints or {}) do
+            local ids, known = {}, istable(c) and c.Type and istable(c.Entity)
+            for i, e in pairs(known and c.Entity or {}) do
+                local def = snap.Entities[e.Index] or snap.Entities[tostring(e.Index)]
+                ids[i] = e.World and "world" or def and DefID(def)
+                known = known and ids[i] ~= nil
+            end
+            if known then
+                local key = keyOf(c.Type, ids)
+                fromSnaps[key] = (fromSnaps[key] or 0) + 1
+            end
+        end
+    end
+    for key, n in pairs(fromSnaps) do want[key] = math.max(want[key] or 0, n) end
+
+    local removed = 0
+    eachLive(entities, function(c, ids)
+        for _, id in pairs(ids) do
+            if id ~= "world" and not mine[tostring(id)] then return end -- not only this save's objects
+        end
+        local key = keyOf(c.Type, ids)
+        if (want[key] or 0) > 0 then
+            want[key] = want[key] - 1
+        else
+            c.Constraint:Remove()
+            removed = removed + 1
+        end
+    end)
+    return removed
+end
+
 RARELOAD.Module({
     id = "constraints",
     phase = "world",
@@ -154,6 +215,7 @@ RARELOAD.Module({
     setting = "keepEntities",
     privSave = "rareload_save_entities",
     privRestore = "rareload_restore_entities",
+    empty = function() return {} end,
 
     save = function(ply, ctx)
         local saved = {}
@@ -182,6 +244,7 @@ RARELOAD.Module({
                 entities[#entities + 1] = ent
             end
         end
+        local removed = ctx.exact and removeExtra(ctx.entry, list, entities) or 0
         local have = {}
         eachLive(entities, function(c, ids)
             local key = keyOf(c.Type, ids)
@@ -209,7 +272,10 @@ RARELOAD.Module({
                 end
             end
         end
-        if made > 0 then ctx:result("ok", "constraints", made .. " of " .. #list .. " recreated") end
+        if made > 0 or removed > 0 then
+            ctx:result("ok", "constraints", made .. " of " .. #list .. " recreated"
+                .. (removed > 0 and ", " .. removed .. " removed (exact restore)" or ""))
+        end
     end,
 
     summary = function(list) return #list .. " constraints" end,

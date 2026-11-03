@@ -145,6 +145,7 @@ RARELOAD.Module({
     setting = "keepVehicles",
     privSave = "rareload_save_vehicles",
     privRestore = "rareload_restore_vehicles",
+    empty = Snapshot.Empty,
 
     save = function(ply, ctx)
         local targets, seen = {}, {}
@@ -191,7 +192,10 @@ RARELOAD.Module({
 
     restore = function(ply, snap, ctx)
         local max = RARELOAD.Get(nil, "maxVehicles")
-        local report = Snapshot.Restore(snap, ply, { kind = "vehicles", limit = max > 0 and max or nil })
+        local removed = ctx.exact and Snapshot.RemoveMissing(ply, ctx, snap, isVehicleRoot) or 0
+        local report = Snapshot.Restore(snap, ply,
+            { kind = "vehicles", limit = max > 0 and max or nil, reset = ctx.reset })
+        report.removed = removed
         Snapshot.Report(ctx, "vehicles", report, true)
 
         -- Vehicles still on the map (a respawn on the same map) are reseated too (L13).
@@ -215,7 +219,8 @@ RARELOAD.Module({
         for index, ent in pairs(report.created) do
             if IsValid(ent) then add(ent, snap.Entities[index]) end
         end
-        for _, ent in ipairs(report.existing) do add(ent, nil) end
+        -- A vehicle put back where it was saved is held there while it settles, like a new one.
+        for _, ent in ipairs(report.existing) do add(ent, ctx.reset and report.defs[ent] or nil) end
 
         schedule(ctx, list, ctx:async("vehicles"))
     end,

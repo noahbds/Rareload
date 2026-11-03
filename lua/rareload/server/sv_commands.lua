@@ -215,11 +215,19 @@ Cmd.Register("history", {
 
 Cmd.Register("history restore", {
     priv = "rareload_restore",
-    usage = "<id> [position,health,inventory,ammo,appearance,states,world]",
-    help = "Restore a save now (all components by default)",
+    usage = "<id> [position,health,inventory,ammo,appearance,states,world] [exact]",
+    help = "Restore a save now (all components by default); exact also removes your objects not in it",
     fn = playerOnly(function(ply, args, reply)
         if not ply:Alive() then return reply("Respawn first, then restore the save.") end
-        result(reply, RARELOAD.History.Restore(ply, tonumber(args[1]), RARELOAD.History.ParseComps(args[2])), "restore")
+        local exact = false
+        for i = #args, 2, -1 do
+            if string.lower(args[i]) == "exact" then
+                exact = true
+                table.remove(args, i)
+            end
+        end
+        local comps = RARELOAD.History.ParseComps(args[2])
+        result(reply, RARELOAD.History.Restore(ply, tonumber(args[1]), comps, { exact = exact }), "restore")
     end),
 })
 
