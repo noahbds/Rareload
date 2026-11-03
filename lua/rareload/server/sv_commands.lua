@@ -153,7 +153,8 @@ Cmd.Register("perms set", {
         local target, findError = Cmd.FindPlayer(who)
         local sid64 = target and target:SteamID64() or (who:match("^7656119%d%d%d%d%d%d%d%d%d%d$") and who)
         if not sid64 then
-            return reply(findError or "Give a tier (user, admin, superadmin, default), a player's name or a 17-digit SteamID64.")
+            return reply(findError
+                or "Give a tier (user, admin, superadmin, default), a player's name or a 17-digit SteamID64.")
         end
         if args[3] and string.lower(args[3]) ~= "off" then return reply("The only optional value is 'off'.") end
         local on = string.lower(args[3] or "") ~= "off"
@@ -238,7 +239,7 @@ Cmd.Register("history", {
 
 Cmd.Register("history restore", {
     priv = "rareload_restore",
-    usage = "<id> [position,health,inventory,ammo,appearance,states,world] [exact]",
+    usage = "<id> [position,health,inventory,ammo,appearance,states,world,scene] [exact]",
     help = "Restore a save now (all components by default); exact also removes your objects not in it",
     fn = playerOnly(function(ply, args, reply)
         if not ply:Alive() then return reply("Respawn first, then restore the save.") end
@@ -279,7 +280,9 @@ Cmd.Register("history pin", {
     help = "Pin a save so it's never pruned (0 unpins)",
     fn = playerOnly(function(ply, args, reply)
         local id = saveID(args[1])
-        if not id or (args[2] and args[2] ~= "0") then return reply("Usage: rareload history pin <positive save ID> [0]") end
+        if not id or (args[2] and args[2] ~= "0") then
+            return reply("Usage: rareload history pin <positive save ID> [0]")
+        end
         result(reply, RARELOAD.History.SetPinned(ply, id, args[2] ~= "0"), "pin")
     end),
 })
