@@ -57,6 +57,7 @@ RARELOAD.Module({
 RARELOAD.Module({
     id = "health",
     phase = "player",
+    after = { "body" }, -- clamped to the restored max health
     setting = "keepHealth",
     privSave = "rareload_save_health_armor",
     privRestore = "rareload_restore_health_armor",
@@ -211,4 +212,200 @@ RARELOAD.Module({
     end,
 
     summary = function(d) return string.GetFileFromFilename(d.model or "?") end,
+})
+
+-- Movement and body (5.4 plan, B2): speeds, jump power, gravity, size, max health and armor, plus
+-- FOV, suit power and fire. Values that grant power need rareload_restore_privileged_body, but only
+-- when they differ from what the player has now, so a player who was never changed gets no warning.
+local BODY_PRIV = "rareload_restore_privileged_body"
+
+local function round(v) return isnumber(v) and math.Round(v, 2) or nil end
+
+local function get(ply, method)
+    if not isfunction(ply[method]) then return nil end
+    local ok, v = pcall(ply[method], ply)
+    return ok and v or nil
+end
+
+local function hullOf(mins, maxs)
+    return isvector(mins) and isvector(maxs) and { Util.Vec(mins), Util.Vec(maxs) } or nil
+end
+
+-- Privileged groups: what they hold and how each value is set.
+local BODY_GROUPS = {
+    { name = "movement", fields = {
+        { "walk", "GetWalkSpeed", "SetWalkSpeed" }, { "run", "GetRunSpeed", "SetRunSpeed" },
+        { "slowWalk", "GetSlowWalkSpeed", "SetSlowWalkSpeed" },
+        { "crouchWalk", "GetCrouchedWalkSpeed", "SetCrouchedWalkSpeed" },
+        { "jump", "GetJumpPower", "SetJumpPower" }, { "gravity", "GetGravity", "SetGravity" },
+    } },
+    { name = "size", fields = { { "scale", "GetModelScale" } } },
+    { name = "max health", fields = {
+        { "maxHp", "GetMaxHealth", "SetMaxHealth" }, { "maxArmor", "GetMaxArmor", "SetMaxArmor" },
+    } },
+}
+
+local function differs(saved, now)
+    return isnumber(saved) and isnumber(now) and math.abs(saved - now) > 0.01
+end
+
+local function setSize(ply, d)
+    ply:SetModelScale(d.scale, 0)
+    local view, ducked = Util.ToVector(d.view), Util.ToVector(d.viewDucked)
+    if view then ply:SetViewOffset(view) end
+    if ducked then ply:SetViewOffsetDucked(ducked) end
+    if istable(d.hull) and Util.ToVector(d.hull[1]) and Util.ToVector(d.hull[2]) then
+        ply:SetHull(Util.ToVector(d.hull[1]), Util.ToVector(d.hull[2]))
+    end
+    if istable(d.hullDuck) and Util.ToVector(d.hullDuck[1]) and Util.ToVector(d.hullDuck[2]) then
+        ply:SetHullDuck(Util.ToVector(d.hullDuck[1]), Util.ToVector(d.hullDuck[2]))
+    end
+end
+
+RARELOAD.Module({
+    id = "body",
+    phase = "player",
+    after = { "appearance" }, -- the model is set before its scale
+    setting = "keepBody",
+    privSave = "rareload_save_states",
+    privRestore = "rareload_restore_states",
+
+    save = function(ply)
+        local d = {}
+        for _, group in ipairs(BODY_GROUPS) do
+            for _, f in ipairs(group.fields) do d[f[1]] = round(get(ply, f[2])) end
+        end
+        d.view, d.viewDucked = Util.Vec(ply:GetViewOffset()), Util.Vec(ply:GetViewOffsetDucked())
+        d.hull, d.hullDuck = hullOf(ply:GetHull()), hullOf(ply:GetHullDuck())
+        -- Only a FOV an addon set, not the suit zoom or the player's own fov_desired.
+        local fov, wanted = ply:GetFOV(), ply:GetInfoNum("fov_desired", 75)
+        if isnumber(fov) and fov > 0 and math.abs(fov - wanted) > 0.5 and not ply:KeyDown(IN_ZOOM) then
+            d.fov = round(fov)
+        end
+        d.suit = round(get(ply, "GetSuitPower"))
+        d.fire = ply:IsOnFire() or nil
+        return d
+    end,
+
+    restore = function(ply, d, ctx)
+        for _, group in ipairs(BODY_GROUPS) do
+            local changed = false
+            for _, f in ipairs(group.fields) do
+                changed = changed or differs(d[f[1]], get(ply, f[2]))
+            end
+            if changed then
+                local ok, why = RARELOAD.Pipeline.Allowed(ply, false, group.name, BODY_PRIV, ctx.reason)
+                if not ok then
+                    ctx:deny(group.name, why)
+                elseif group.name == "size" then
+                    setSize(ply, d)
+                else
+                    for _, f in ipairs(group.fields) do
+                        if isnumber(d[f[1]]) and isfunction(ply[f[3]]) then ply[f[3]](ply, d[f[1]]) end
+                    end
+                end
+            end
+        end
+        if isnumber(d.fov) then ply:SetFOV(d.fov, 0) end
+        if isnumber(d.suit) and isfunction(ply.SetSuitPower) then ply:SetSuitPower(d.suit) end
+        if d.fire then
+            ply:Ignite(RARELOAD.Get(nil, "fireDuration"))
+        elseif ply:IsOnFire() then
+            ply:Extinguish()
+        end
+    end,
+
+    summary = function(d)
+        local parts = { "walk " .. tostring(d.walk), "run " .. tostring(d.run), "jump " .. tostring(d.jump) }
+        if d.scale and d.scale ~= 1 then parts[#parts + 1] = "scale " .. d.scale end
+        if d.fire then parts[#parts + 1] = "on fire" end
+        return table.concat(parts, ", ")
+    end,
+})
+
+-- PAC3 outfits (5.4 plan, B4). PAC3 keeps each player's worn outfits on the server; they are worn
+-- again through PAC3's own receive function, which applies its checks, as if the player had sent
+-- them. Only outfits on the player themselves are kept, not ones put on other entities.
+local function pacReady() return istable(pace) and istable(pace.Parts) and istable(pac) and isfunction(pac.Hash) end
+
+local function wornOutfits(ply)
+    local out = {}
+    for _, data in pairs(pace.Parts[pac.Hash(ply)] or {}) do
+        local part = istable(data) and data.part
+        if istable(part) and istable(part.self) and part.self.UniqueID and not tonumber(part.self.OwnerName) then
+            out[#out + 1] = part
+        end
+    end
+    table.sort(out, function(a, b) return tostring(a.self.UniqueID) < tostring(b.self.UniqueID) end)
+    return out
+end
+
+local function outfitIds(list)
+    local ids = {}
+    for _, part in ipairs(list) do ids[#ids + 1] = tostring(istable(part.self) and part.self.UniqueID) end
+    return table.concat(ids, ",")
+end
+
+RARELOAD.Module({
+    id = "pac",
+    phase = "player",
+    after = { "appearance" },
+    heavy = true, -- outfits can be large
+    setting = "keepAppearance",
+    privSave = "rareload_save_appearance",
+    privRestore = "rareload_restore_appearance",
+
+    save = function(ply)
+        if not pacReady() then return nil end
+        return { outfits = util.JSONToTable(util.TableToJSON(wornOutfits(ply))) or {} }
+    end,
+
+    restore = function(ply, d, ctx)
+        if not pacReady() then return ctx:result("warn", "pac", "PAC3 is not installed") end
+        local saved = istable(d.outfits) and d.outfits or {}
+        if outfitIds(saved) == outfitIds(wornOutfits(ply)) then return end -- already wearing them
+        pace.ClearOutfit(ply)
+        for _, part in ipairs(saved) do
+            if istable(part) and istable(part.self) then
+                pace.HandleReceivedData(ply, { part = util.JSONToTable(util.TableToJSON(part)) })
+            end
+        end
+        ctx:result("ok", "pac", #saved .. " outfits worn again")
+    end,
+
+    summary = function(d) return #(istable(d.outfits) and d.outfits or {}) .. " PAC3 outfits" end,
+})
+
+-- An object held with the use key (5.4 plan, B5). It is saved with the world like any other object;
+-- this only notes which one was held, and picks it up again once the world is back, when it is
+-- still in reach. Objects held with the physgun can't be grabbed again from code.
+local PICKUP_REACH = 150
+
+RARELOAD.Module({
+    id = "holding",
+    phase = "finalize",
+    setting = "keepStates",
+    privSave = "rareload_save_states",
+    privRestore = "rareload_restore_states",
+
+    save = function(ply)
+        local ent = ply:GetEntityInUse()
+        if IsValid(ent) and ent:IsPlayerHolding() and ent.RareloadID then return { id = ent.RareloadID } end
+        return nil
+    end,
+
+    restore = function(ply, d, ctx)
+        ctx:nextTick(function()
+            for _, ent in ents.Iterator() do
+                if ent.RareloadID and tostring(ent.RareloadID) == tostring(d.id) then
+                    if ent:GetPos():DistToSqr(ply:GetShootPos()) < PICKUP_REACH ^ 2 and not ent:IsPlayerHolding() then
+                        ply:PickupObject(ent)
+                    end
+                    return
+                end
+            end
+        end)
+    end,
+
+    summary = function(d) return "holding " .. tostring(d.id) end,
 })

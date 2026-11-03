@@ -139,7 +139,7 @@ RARELOAD.Module({
 RARELOAD.Module({
     id = "ammo",
     phase = "inventory",
-    after = { "weapons" },
+    after = { "weapons", "weaponState" }, -- attachments change magazine sizes
     setting = "keepAmmo",
     privSave = "rareload_save_ammo",
     privRestore = "rareload_restore_ammo",

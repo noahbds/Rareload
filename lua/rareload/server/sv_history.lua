@@ -10,10 +10,10 @@ local WORLD_KINDS = { "entities", "npcs", "vehicles" }
 History.COMPONENTS = {
     position = { "transform" },
     health = { "health" },
-    inventory = { "weapons", "activeWeapon", "globalInventory" },
+    inventory = { "weapons", "weaponState", "activeWeapon", "globalInventory", "toolState" },
     ammo = { "ammo" },
-    appearance = { "appearance" },
-    states = { "states" },
+    appearance = { "appearance", "pac" },
+    states = { "states", "body", "holding" },
     world = { "entities", "npcs", "vehicles", "constraints" },
 }
 

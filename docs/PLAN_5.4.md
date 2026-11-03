@@ -29,7 +29,7 @@ Sizes: **S** is up to a day, **M** is a few days, **L** is a week or more, or ne
 | **A** | **The three big ones** | | |
 | A1 | Restore puts changed objects back, plus an optional exact restore | M | M1 |
 | A2 | Export, import and share saves | L | M1 |
-| A3 | Admin save management and storage | M | M2 |
+| A3 | Admin save management and storage (moved to 5.5) | M | — |
 | **B** | **Player capture** | | |
 | B1 | Weapon attachments (ARC9, ArcCW, TFA, MW Base) | L | M3 |
 | B2 | Movement and body: speeds, jump, gravity, size, max HP and armor, FOV, suit power, fire | M | M3 |
@@ -233,7 +233,7 @@ singleplayer to your server, give it to a friend, or keep a backup.
 - An oversized file.
 - Share, then decline.
 
-### A3. Admin save management and storage — M (M2)
+### A3. Admin save management and storage — M (moved to 5.5)
 **Problem:** admins can only list another player's saves or clear them, from the console
 (`rareload history <player>`). Storage is never managed across maps:
 - `Store.GC` only scans the current map, and only at startup (`sv_storage.lua:136`).
@@ -670,7 +670,7 @@ Refusals use `RareloadCanSave` / `RareloadCanRestore` internally and show a toas
 |-----------|---------|-------|
 | M0 | 0.1–0.3 | Clean base, green CI |
 | M1 | A1, A2 | Restore really goes back; saves travel |
-| M2 | A3, D1, D2 | Server owners: management, control, performance |
+| M2 | D1, D2 | Server owners: control, performance |
 | M3 | B1–B5 | Player captured completely |
 | M4 | C1–C8 | Objects captured completely |
 | M5 | C9–C11 | The scene: map, weather, world settings |

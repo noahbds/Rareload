@@ -123,6 +123,22 @@ RARELOAD.Setting("keepStates", {
     priv = "rareload_restore_states",
     help = "Restore noclip, godmode, notarget, frozen and flashlight"
 })
+RARELOAD.Setting("keepBody", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "player",
+    priv = "rareload_restore_states",
+    help = "Restore speeds, jump power, gravity, size, max health and armor, FOV, suit power and fire"
+})
+RARELOAD.Setting("keepTool", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "player",
+    priv = "rareload_restore_inventory",
+    help = "Restore the selected tool and its settings"
+})
 RARELOAD.Setting("keepAppearance", {
     type = "bool",
     default = true,
@@ -146,6 +162,14 @@ RARELOAD.Setting("keepAmmo", {
     category = "player",
     priv = "rareload_restore_ammo",
     help = "Restore reserve ammo and clips"
+})
+RARELOAD.Setting("keepAttachments", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "player",
+    priv = "rareload_restore_inventory",
+    help = "Restore weapon attachments and fire modes (ARC9, ArcCW, TFA, MW Base)"
 })
 RARELOAD.Setting("globalInventory", {
     type = "bool",
@@ -276,6 +300,15 @@ RARELOAD.Setting("importMaxKB", {
     scope = "server",
     category = "timing",
     help = "Largest save file a player may import, in KB once compressed"
+})
+RARELOAD.Setting("fireDuration", {
+    type = "float",
+    default = 10,
+    min = 1,
+    max = 120,
+    scope = "server",
+    category = "server",
+    help = "Seconds a player or object saved while burning burns again after a restore"
 })
 RARELOAD.Setting("enableInAllGamemodes", {
     type = "bool",

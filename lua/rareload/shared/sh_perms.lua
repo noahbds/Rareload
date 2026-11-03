@@ -28,6 +28,8 @@ RARELOAD.Priv("rareload_restore_appearance", "user", "Get the saved player model
 RARELOAD.Priv("rareload_save_states", "user", "Include noclip, godmode, frozen and flashlight when saving")
 RARELOAD.Priv("rareload_restore_states", "user", "Get saved noclip, frozen and flashlight back on spawn")
 RARELOAD.Priv("rareload_restore_privileged_states", "admin", "Get saved godmode and notarget back on spawn (S14)")
+RARELOAD.Priv("rareload_restore_privileged_body", "admin",
+    "Get saved speeds, jump power, gravity, size and max health/armor back when they differ from now")
 RARELOAD.Priv("rareload_save_entities", "user", "Include your props and entities when saving")
 RARELOAD.Priv("rareload_restore_entities", "user", "Get your saved props and entities back on spawn")
 RARELOAD.Priv("rareload_save_npcs", "user", "Include your NPCs when saving")

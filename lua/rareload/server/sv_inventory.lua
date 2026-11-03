@@ -76,6 +76,16 @@ function Inventory.Clean(t)
         end
         out.ammo.clips[class] = { clip[1], clip[2] or -1 }
     end
+    -- Weapon attachments (modules/weapon_state.lua) are kept as they are; weapons no longer in the
+    -- list are dropped from them.
+    if t.extras ~= nil then
+        if not istable(t.extras) then return nil, "\"extras\" must be an object" end
+        local extras = { weapons = {}, owned = istable(t.extras.owned) and t.extras.owned or {} }
+        for class, w in pairs(istable(t.extras.weapons) and t.extras.weapons or {}) do
+            if seen[tostring(class)] and istable(w) then extras.weapons[tostring(class)] = w end
+        end
+        if next(extras.weapons) or next(extras.owned) then out.extras = extras end
+    end
     return out, warnings
 end
 
@@ -88,6 +98,7 @@ local function ofEntry(data)
         weapons = istable(data.weapons) and data.weapons or {},
         activeWeapon = data.activeWeapon,
         ammo = istable(data.ammo) and data.ammo or emptyAmmo(),
+        extras = istable(data.weaponState) and data.weaponState or nil,
     }
 end
 
@@ -123,6 +134,7 @@ function Inventory.Write(ply, save, inv, reason, versions)
     return RARELOAD.History.Update(ply, save, function(entry)
         entry.inventoryVersions = remember(versions or entry.inventoryVersions or {}, ofEntry(entry.data), reason)
         entry.data.weapons, entry.data.activeWeapon, entry.data.ammo = inv.weapons, inv.activeWeapon, inv.ammo
+        entry.data.weaponState = inv.extras
     end)
 end
 
@@ -183,6 +195,14 @@ function Inventory.GiveTarget(ply, save)
     if not inv then return "toast.inventory.empty", nil, false end
     local ammo = RARELOAD.Can(ply, "rareload_restore_ammo")
     local skipped = Inventory.Apply(ply, inv, ammo)
+    -- Attachments a tick later, once the weapon bases set up their slots; then the clips again.
+    if istable(inv.extras) then
+        timer.Simple(0, function()
+            if not IsValid(ply) then return end
+            RARELOAD.Weapons.Apply(ply, inv.extras)
+            if ammo then Inventory.SetAmmo(ply, inv.ammo) end
+        end)
+    end
     if skipped > 0 then return "toast.weapons_skipped", { skipped }, true end
     return "toast.inventory.given", { #inv.weapons }, true
 end
