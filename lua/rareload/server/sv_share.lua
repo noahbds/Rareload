@@ -96,9 +96,20 @@ local function isBlobRef(value)
     return istable(value) and value["$blob"] ~= nil
 end
 
+-- What each module's data is: a table, except the held weapon (a class name). A value of another
+-- type would break the timeline that shows it.
+local STRING_MODULES = { activeWeapon = true }
+
 -- Checks the shape of one module's imported data. Returns false and why.
 local function checkModule(id, value)
     if isBlobRef(value) then return false, "refers to stored data" end
+    if STRING_MODULES[id] and not isstring(value) then return false, "not a weapon class" end
+    if not STRING_MODULES[id] and not istable(value) then return false, "not the right kind of data" end
+    if id == "weapons" then
+        for _, class in pairs(value) do
+            if not isstring(class) then return false, "not a list of weapon classes" end
+        end
+    end
     if SNAPSHOT_KINDS[id] then
         if not istable(value) or not istable(value.Entities) then return false, "not a snapshot" end
         for _, def in pairs(value.Entities) do
@@ -149,8 +160,11 @@ function Share.Import(ply, doc, opts)
     if not next(data) then return false, "nothing in it can be used on this map" end
 
     -- Your own export, back on the same map: the objects are still yours, so they keep their IDs and
-    -- one that is still on the map is put back instead of copied. Anything else becomes a copy.
-    if not (sameMap and doc.sid64 == ply:SteamID64() and opts.reason ~= "shared") then Share.Rekey(data) end
+    -- one that is still on the map is put back instead of copied. Anything else becomes a copy, and
+    -- leaves out the attachment stock of whoever made it (it would give attachments for free).
+    local own = doc.sid64 == ply:SteamID64() and opts.reason ~= "shared"
+    if not (sameMap and own) then Share.Rekey(data) end
+    if not own and istable(data.weaponState) then data.weaponState.owned = nil end
     for id, value in pairs(data) do
         local def = RARELOAD.Pipeline._defs[id]
         if def.heavy then data[id] = { ["$blob"] = RARELOAD.Store.BlobPut(value) } end

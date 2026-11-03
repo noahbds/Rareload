@@ -121,7 +121,8 @@ function Store.BlobPut(data)
     local json = util.TableToJSON(data)
     local hash = util.SHA256(json):sub(1, 16)
     local rel = blobRel(hash)
-    if cache[rel] == nil and not file.Exists(ROOT .. rel .. ".json", "DATA") then
+    -- `false` in the cache means "looked for, not there" (a blob removed by GC): it is written again.
+    if not cache[rel] and not file.Exists(ROOT .. rel .. ".json", "DATA") then
         Store.Save(rel, data)
         encoded[rel] = json -- written as is, not encoded a second time
     end

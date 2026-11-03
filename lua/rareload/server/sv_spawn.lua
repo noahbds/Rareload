@@ -15,19 +15,25 @@ end)
 
 
 hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
-    local died = ply.rareloadDied
-    ply.rareloadDied = nil
+    local died, cleaned = ply.rareloadDied, ply.rareloadCleaned
+    ply.rareloadDied, ply.rareloadCleaned = nil, nil
 
     if transition or not RARELOAD.Pipeline.Enabled() then return end                                 -- E22
     if not RARELOAD.Get(ply, "enabled") or not RARELOAD.Can(ply, "rareload_restore") then return end -- E15
     if died and RARELOAD.Get(ply, "skipRestoreOnDeath") then return end
 
-    local mode = died and RARELOAD.Get(nil, "deathCleanupMode") or "off"
+    -- The respawn that follows a whole-map cleanup must not start another one.
+    local mode = died and not cleaned and RARELOAD.Get(nil, "deathCleanupMode") or "off"
     if mode == "all" and not cleaningUp then
         cleaningUp = ply
         game.CleanUpMap(false, nil, function()
             cleaningUp = nil
-            timer.Simple(0, function() if IsValid(ply) then ply:Spawn() end end)
+            timer.Simple(0, function()
+                if not IsValid(ply) then return end
+                ply.rareloadDied = true -- still a respawn after a death (the scene isn't restored)
+                ply.rareloadCleaned = true
+                ply:Spawn()
+            end)
         end)
         return
     elseif mode == "owned" or mode == "saved" then

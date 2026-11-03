@@ -144,13 +144,17 @@ function Snapshot.Num(ent)
     return ent.RareloadNum
 end
 
+-- IDs are 12 hex characters; about one in 300 is all digits, which JSON reads back as a number, so
+-- an ID is always handled as a string.
 function Snapshot.DefID(def)
     local mods = def.EntityMods
-    return istable(mods) and istable(mods.rareload) and mods.rareload.id or nil
+    local id = istable(mods) and istable(mods.rareload) and mods.rareload.id
+    return id ~= nil and id ~= false and tostring(id) or nil
 end
 
 -- Runs on paste inside duplicator.Paste, after the entity exists (G26, G28).
 duplicator.RegisterEntityModifier("rareload", function(_, ent, data)
+    if data.id ~= nil then data.id = tostring(data.id) end
     -- A copy of an object still on the map (Duplicator, AdvDupe2) doesn't take its ID: it gets its own
     -- when it is saved. Rareload's restores skip objects still on the map, so they always take theirs.
     local owner = data.id and byId[data.id]
@@ -281,9 +285,9 @@ function Snapshot.ApplyExtras(ent, rl, motion)
     local Adapters = RARELOAD.EntityState
     if istable(rl.state) and Adapters then
         local a = Adapters.adapters[rl.state.adapter]
-        if a and istable(rl.state.data) and select(2, pcall(a.matches, ent)) then
-            ProtectedCall(a.apply, ent, rl.state.data)
-        end
+        local ok, match = false, false
+        if a then ok, match = pcall(a.matches, ent) end
+        if ok and match and istable(rl.state.data) then ProtectedCall(a.apply, ent, rl.state.data) end
     end
 end
 
@@ -587,6 +591,9 @@ local function cosmetics(ply, ent, def)
         local data = mods[name] or (istable(ent.EntityMods) and ent.EntityMods[name] and plain)
         if fn and data then ProtectedCall(fn, ply, ent, data) end
     end
+    -- Colour and material set without the Sandbox tools (the duplicator keeps them as these fields).
+    if IsColor(def._DuplicatedColor) then ent:SetColor(def._DuplicatedColor) end
+    if isstring(def._DuplicatedMaterial) then ent:SetMaterial(def._DuplicatedMaterial) end
     local rl = istable(mods.rareload) and mods.rareload or {}
     if (tonumber(rl.maxHp) or 0) > 0 then
         ent:SetMaxHealth(rl.maxHp)
@@ -601,7 +608,7 @@ end
 -- base's wheels and seats move with their root. `targets` = { { ent, def } } with revived defs.
 -- Returns how many objects had moved.
 function Snapshot.Reset(targets, ply)
-    local count, held = 0, {}
+    local count, held = 0, {} -- held: { ent, bone, enabled } for vehicle parts
     for _, p in ipairs(targets) do
         p.moved = moved(p.ent, p.def)
         if p.moved then count = count + 1 end
@@ -610,13 +617,14 @@ function Snapshot.Reset(targets, ply)
             local lp, la = WorldToLocal(part:GetPos(), part:GetAngles(), p.ent:GetPos(), p.ent:GetAngles())
             p.parts[#p.parts + 1] = { ent = part, lp = lp, la = la }
         end
-        local hold = function(phys)
-            if held[phys] == nil then held[phys] = phys:IsMotionEnabled() end
-            phys:EnableMotion(false)
-        end
         p.physical = physical(p.ent, p.def)
-        if p.physical then eachPhys(p.ent, hold) end
-        for _, part in ipairs(p.parts) do eachPhys(part.ent, hold) end
+        if p.physical then eachPhys(p.ent, function(phys) phys:EnableMotion(false) end) end
+        for _, part in ipairs(p.parts) do
+            eachPhys(part.ent, function(phys, i)
+                held[#held + 1] = { ent = part.ent, bone = i, enabled = phys:IsMotionEnabled() }
+                phys:EnableMotion(false)
+            end)
+        end
     end
 
     for _, p in ipairs(targets) do
@@ -641,7 +649,6 @@ function Snapshot.Reset(targets, ply)
 
     local function settle(phys, saved)
         local frozen = istable(saved) and saved.Frozen == true
-        held[phys] = nil
         phys:SetVelocity(vector_origin)
         phys:SetAngleVelocity(vector_origin)
         phys:EnableGravity(not (istable(saved) and saved.NoGrav))
@@ -659,10 +666,11 @@ function Snapshot.Reset(targets, ply)
         Snapshot.ApplyExtras(p.ent, mods.rareload, motion)
     end
     -- Vehicle parts get back the motion they had.
-    for phys, enabled in pairs(held) do
+    for _, h in ipairs(held) do
+        local phys = IsValid(h.ent) and h.ent:GetPhysicsObjectNum(h.bone)
         if IsValid(phys) then
-            phys:EnableMotion(enabled)
-            if enabled then phys:Wake() end
+            phys:EnableMotion(h.enabled)
+            if h.enabled then phys:Wake() end
         end
     end
     return count
@@ -676,7 +684,7 @@ end
 function Snapshot.Restore(snap, ply, opts)
     local live = {}
     for _, ent in ents.Iterator() do
-        if ent.RareloadID then live[ent.RareloadID] = ent end
+        if ent.RareloadID then live[tostring(ent.RareloadID)] = ent end
     end
 
     local limits = RARELOAD.Get(nil, "respectSpawnLimits") and IsValid(ply)

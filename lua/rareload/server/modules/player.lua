@@ -364,6 +364,10 @@ RARELOAD.Module({
         if not pacReady() then return ctx:result("warn", "pac", "PAC3 is not installed") end
         local saved = istable(d.outfits) and d.outfits or {}
         if outfitIds(saved) == outfitIds(wornOutfits(ply)) then return end -- already wearing them
+        -- PAC3 asks this when an outfit arrives from the player; servers use it to restrict PAC3.
+        if isfunction(pac.CallHook) and pac.CallHook("CanWearParts", ply) == false then
+            return ctx:deny("pac", "PAC3 is not allowed for you here")
+        end
         pace.ClearOutfit(ply)
         for _, part in ipairs(saved) do
             if istable(part) and istable(part.self) then
