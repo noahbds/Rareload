@@ -120,7 +120,8 @@ local function phantomParts(veh)
         if seen[ent] or #parts >= MAX_PARTS or not IsValid(ent) then return end
         seen[ent] = true
         local model = ent:GetModel()
-        if not Snapshot.IsVehiclePart(ent) or ent:GetNoDraw() or not isstring(model) or not string.EndsWith(model, ".mdl") then return end
+        if not Snapshot.IsVehiclePart(ent) or ent:GetNoDraw() then return end
+        if not isstring(model) or not string.EndsWith(model, ".mdl") then return end
         local lp, la = WorldToLocal(ent:GetPos(), ent:GetAngles(), veh:GetPos(), veh:GetAngles())
         -- Rounded, so physics jitter doesn't make an unchanged vehicle look changed (L35).
         parts[#parts + 1] = {

@@ -144,7 +144,9 @@ Cmd.Register("perms set", {
         -- One player: by name or SteamID when online, by SteamID64 when not.
         local target = Cmd.FindPlayer(who)
         local sid64 = target and target:SteamID64() or string.match(who, "^7656119%d+$")
-        if not sid64 then return reply("Give a tier (user, admin, superadmin, default), a player's name or a SteamID64.") end
+        if not sid64 then
+            return reply("Give a tier (user, admin, superadmin, default), a player's name or a SteamID64.")
+        end
         local on = string.lower(args[3] or "") ~= "off"
         local ok, why = RARELOAD.Grant(sid64, name, on)
         if not ok then return reply(why) end
@@ -258,7 +260,9 @@ Cmd.Register("history delete", {
     priv = "rareload_restore",
     usage = "<id>",
     help = "Delete a save",
-    fn = playerOnly(function(ply, args, reply) result(reply, RARELOAD.History.Delete(ply, tonumber(args[1])), "delete") end),
+    fn = playerOnly(function(ply, args, reply)
+        result(reply, RARELOAD.History.Delete(ply, tonumber(args[1])), "delete")
+    end),
 })
 
 Cmd.Register("history clear", {
@@ -442,8 +446,8 @@ Cmd.Register("selftest", {
     fn = function(_, _, reply)
         local failed = 0
         for _, check in ipairs(SELFTEST) do
-            local ok, result = pcall(check[2])
-            local pass = ok and result == true
+            local ok, passed = pcall(check[2])
+            local pass = ok and passed == true
             if not pass then failed = failed + 1 end
             reply((pass and "PASS  " or "FAIL  ") .. check[1])
         end

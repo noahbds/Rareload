@@ -120,7 +120,8 @@ local function navmeshPoints(pos, maxDist)
     local out = {}
     for _, area in ipairs(navmesh.Find(pos, maxDist, 64, 256)) do
         -- An area found within the radius can still have its closest point farther away.
-        local point = not area:IsUnderwater() and not area:IsDamaging() and not area:IsBlocked() and area:GetClosestPointOnArea(pos)
+        local usable = not area:IsUnderwater() and not area:IsDamaging() and not area:IsBlocked()
+        local point = usable and area:GetClosestPointOnArea(pos)
         if point and point:DistToSqr(pos) <= maxDist * maxDist then out[#out + 1] = point end
     end
     return byDistance(pos, out)
@@ -188,8 +189,9 @@ function AntiStuck.Ordered(methods, cfg)
     local rank = {}
     for i, id in ipairs(cfg.order or {}) do rank[id] = i end
     local list = {}
-    for i, m in ipairs(methods) do list[#list + 1] = { id = m.id, fn = m.fn, enabled = not (cfg.disabled or {})[m.id], index =
-        i } end
+    for i, m in ipairs(methods) do
+        list[#list + 1] = { id = m.id, fn = m.fn, enabled = not (cfg.disabled or {})[m.id], index = i }
+    end
     table.sort(list, function(a, b)
         local ra, rb = rank[a.id] or 1000 + a.index, rank[b.id] or 1000 + b.index
         return ra < rb

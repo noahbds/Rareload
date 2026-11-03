@@ -75,9 +75,7 @@ function History.Append(ply, entry)
     return save(ply, d)
 end
 
--- The name of this option is a bit confusing, what it does is to prevent the pinned save to be deleted after to many saves,
--- but it doesn't prevent the save to be deleted if the player deletes it manually.
--- TODO: rename this option to "keepPinnedSaves" or something like that. Or at least add a tooltip to explain what it does.
+-- A pinned save is never dropped when the timeline is full (History.Append); it can still be deleted by hand.
 function History.SetPinned(ply, id, pinned)
     local d = History.Doc(ply)
     local entry = find(d, id)
@@ -290,7 +288,7 @@ end
 -- objects) and, for saves made before it held them all, from the snapshots.
 local function objectConstraints(entry, objectId)
     local DefID = RARELOAD.Snapshot.DefID
-    local self, objects = tostring(objectId), {}
+    local me, objects = tostring(objectId), {}
     eachObject(entry, function(def)
         local id = DefID(def)
         if id then
@@ -305,7 +303,7 @@ local function objectConstraints(entry, objectId)
         for _, id in pairs(ids) do
             id = tostring(id)
             list[#list + 1] = id
-            if id == self and not own then
+            if id == me and not own then
                 own = true
             else
                 to[#to + 1] = id == "world" and { world = true } or objects[id] or { id = id }
@@ -589,8 +587,8 @@ local function handle(op, priv, args, fn)
         rate = 0.2,
         args = args,
         fn = function(ply, a)
-            local key, args = fn(ply, a)
-            if key then RARELOAD.Toast(ply, key, args) end
+            local key, targs = fn(ply, a)
+            if key then RARELOAD.Toast(ply, key, targs) end
             pushRows(ply)
         end
     })
@@ -640,7 +638,8 @@ RARELOAD.Net.Handle("object.detail", {
         local entry
         if a.sid and a.sid ~= ply:SteamID64() then
             local owner = player.GetBySteamID64(a.sid)
-            if not IsValid(owner) or not RARELOAD.Get(nil, "debug") or not RARELOAD.Can(ply, "rareload_debug") then return end
+            if not IsValid(owner) then return end
+            if not RARELOAD.Get(nil, "debug") or not RARELOAD.Can(ply, "rareload_debug") then return end
             entry = History.Active(owner)
         elseif RARELOAD.Can(ply, "rareload_restore") then
             entry = a.entryId and History.Get(ply, a.entryId) or History.Active(ply)
@@ -718,8 +717,10 @@ end
 local function feedFor(ply)
     local active = History.Active(ply)
     if not active then return nil end
-    return { nick = ply:Nick(), data = History.LightData(active), objects = History.ObjectsOf(active), seated = History.Info(active.data)
-    .vehicle ~= nil }
+    return {
+        nick = ply:Nick(), data = History.LightData(active), objects = History.ObjectsOf(active),
+        seated = History.Info(active.data).vehicle ~= nil
+    }
 end
 
 local function pushFeed(ply, targets)

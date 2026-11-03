@@ -49,11 +49,11 @@ local function reasonName(reason)
     return name == "rareload.reason." .. tostring(reason) and tostring(reason) or name
 end
 
--- `text` in lines no wider than `w`, at most `max` lines (the last one clipped).
-local function wrap(text, fnt, w, max)
+-- `str` in lines no wider than `w`, at most `max` lines (the last one clipped).
+local function wrap(str, fnt, w, max)
     surface.SetFont(fnt)
     local lines, cur = {}, ""
-    for word in string.gmatch(text, "%S+") do
+    for word in string.gmatch(str, "%S+") do
         local try = cur == "" and word or cur .. " " .. word
         if cur ~= "" and surface.GetTextSize(try) > w then
             lines[#lines + 1] = cur
@@ -224,7 +224,8 @@ hook.Add("HUDPaint", "Rareload.Debug.Card", function()
 
     for _, card in ipairs(cards) do
         local age = now - card.t0
-        local slide = age < IN and 1 - ease(age / IN) or age > IN + card.hold and ease((age - IN - card.hold) / OUT) or 0
+        local slide = age < IN and 1 - ease(age / IN)
+            or age > IN + card.hold and ease((age - IN - card.hold) / OUT) or 0
         card.y = card.y and Lerp(math.min(FrameTime() * 12, 1), card.y, y) or y -- cards move down as new ones arrive
         local x = ScrW() - card.w - sc(16) + slide * (card.w + sc(30))
         surface.SetAlphaMultiplier(1 - slide * 0.8)

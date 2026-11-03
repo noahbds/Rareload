@@ -287,8 +287,8 @@ function Snapshot.KeepDeleted(old, fresh)
             moved[tostring(index)], kept[tostring(index)] = top, true
             fresh.Entities[top] = def
             for _, field in ipairs({ "ai", "runtime" }) do
-                local value = istable(old[field]) and
-                (old[field][id] or old[field][tonumber(id)])                                       -- all-digit IDs come back as numbers
+                -- all-digit IDs come back as numbers
+                local value = istable(old[field]) and (old[field][id] or old[field][tonumber(id)])
                 if value then
                     fresh[field] = fresh[field] or {}
                     fresh[field][id] = value
@@ -453,7 +453,9 @@ function Snapshot.Restore(snap, ply, opts)
             local def = paste[index]
             if IsValid(ent) and def and def.Class == "gmod_thruster" and ent.Switch then
                 local rl = istable(def.EntityMods) and def.EntityMods.rareload
-                if (istable(rl) and rl.on) or (istable(def.DT) and def.DT.On) then ProtectedCall(function() ent:Switch(true) end) end
+                if (istable(rl) and rl.on) or (istable(def.DT) and def.DT.On) then
+                    ProtectedCall(function() ent:Switch(true) end)
+                end
             end
         end
         for index, def in pairs(paste) do

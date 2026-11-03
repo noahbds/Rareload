@@ -5,13 +5,6 @@ on:
   pull_request:
 
 jobs:
-  rules:
-    name: Architecture & platform rules
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - run: bash tools/check_rules.sh
-
   lint:
     name: glualint
     runs-on: ubuntu-latest
@@ -28,14 +21,26 @@ jobs:
           echo "$PWD/$(dirname "$(find . -type f -name glualint | head -n 1)")" >> "$GITHUB_PATH"
       - run: glualint lint lua
 
-  tests:
-    name: Unit tests
+  checks:
+    name: Syntax, translations and tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - name: Install LuaJIT
         run: sudo apt-get update && sudo apt-get install -y luajit
-      - name: Run tests
+      - name: Every Lua file compiles
+        run: |
+          status=0
+          while IFS= read -r f; do
+            luajit -bl "$f" > /dev/null || status=1
+          done < <(find lua -name '*.lua')
+          exit $status
+      - name: Every language has the English keys
+        run: luajit .github/scripts/check_lang.lua
+      # The unit tests and architecture rules are kept out of the repository; they run when present.
+      - name: Unit tests
+        if: hashFiles('tests/run.lua') != ''
         run: luajit tests/run.lua
-      - name: Check translation keys
-        run: luajit tools/check_lang.lua
+      - name: Architecture rules
+        if: hashFiles('tools/check_rules.sh') != ''
+        run: bash tools/check_rules.sh

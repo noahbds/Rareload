@@ -183,5 +183,6 @@ hook.Add("HUDPaint", "Rareload.Highlight", function()
             label(r.label, mx, my - 20, r.color)
         end
     end
-    label(L("highlight.count", #list), cx, UI.sc(RARELOAD.World.preview and 66 or 26), COLORS.saved) -- below the preview banner
+    -- below the preview banner
+    label(L("highlight.count", #list), cx, UI.sc(RARELOAD.World.preview and 66 or 26), COLORS.saved)
 end)

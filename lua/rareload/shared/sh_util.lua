@@ -78,7 +78,7 @@ function Util.CheckJSON(text)
                 if e == "u" then
                     if not string.find(string.sub(text, i + 2, i + 5), "^%x%x%x%x$") then fail("bad \\u escape") end
                     i = i + 6
-                elseif string.find(e, '^["\\/bfnrt]$') then
+                elseif string.find(e, "^[\"\\/bfnrt]$") then
                     i = i + 2
                 else
                     fail("bad escape")

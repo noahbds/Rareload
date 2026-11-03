@@ -117,7 +117,8 @@ local function drawIcon(kind, x, y, size, alpha, p)
         local rr = bw * 0.35
         for i = 0, 9 do
             local a1, a2 = math.pi + i / 10 * math.pi, math.pi + (i + 1) / 10 * math.pi
-            thickLine(x + math.cos(a1) * rr, y + math.sin(a1) * rr, x + math.cos(a2) * rr, y + math.sin(a2) * rr, t * 0.7)
+            thickLine(x + math.cos(a1) * rr, y + math.sin(a1) * rr,
+                x + math.cos(a2) * rr, y + math.sin(a2) * rr, t * 0.7)
         end
         surface.DrawRect(x - rr - t * 0.35, y - 1, t * 0.7, 3)
         surface.DrawRect(x + rr - t * 0.35, y - 1, t * 0.7, 3)

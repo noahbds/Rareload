@@ -101,7 +101,8 @@ var check = function () {
   s.clearAnnotations();
   try {
     var t = JSON.parse(src), changed = 0, k;
-    if (t === null || typeof t !== "object" || Array.isArray(t)) throw new Error("the object must be a JSON object { }");
+    if (t === null || typeof t !== "object" || Array.isArray(t))
+      throw new Error("the object must be a JSON object { }");
     for (k in t) if (JSON.stringify(t[k]) !== JSON.stringify(original[k])) changed++;
     for (k in original) if (!(k in t)) changed++;
     rareload.status(true, 0, 0, "", changed);
@@ -143,7 +144,9 @@ local function aceEditor(parent, json, onStatus, onSave, onReady, onFail)
     local function fail(why)
         if failed then return end
         failed = true
-        if why then MsgC(UI.C.warn, "[Rareload] ", color_white, "JSON editor: " .. why .. "; using the plain text box\n") end
+        if why then
+            MsgC(UI.C.warn, "[Rareload] ", color_white, "JSON editor: " .. why .. "; using the plain text box\n")
+        end
         html:Remove()
         onFail()
     end
@@ -163,7 +166,8 @@ local function aceEditor(parent, json, onStatus, onSave, onReady, onFail)
             onReady(api)
         end)
         self:AddFunction("rareload", "rendered", function(lines, w, h, agent)
-            if failed or (tonumber(lines) or 0) > 0 and (tonumber(w) or 0) > 0 and (tonumber(h) or 0) > 0 then return end
+            local sized = (tonumber(lines) or 0) > 0 and (tonumber(w) or 0) > 0 and (tonumber(h) or 0) > 0
+            if failed or sized then return end
             fail(string.format("Ace drew nothing (%s lines, %sx%s px, %s)", tostring(lines), tostring(w), tostring(h),
                 tostring(agent)))
         end)
@@ -441,11 +445,13 @@ local function buildDetail(host, entryId, sel)
         if not o then return {} end
         local live = isLive(o.id)
         local list = {
-            { L("field.id"),       o.id or "?" }, { L("field.class"), o.class or "?" }, { L("field.model"), o.model or "-", C.text2 },
+            { L("field.id"),       o.id or "?" }, { L("field.class"), o.class or "?" },
+            { L("field.model"),    o.model or "-", C.text2 },
             { L("field.kind"),     L("kind." .. (isWeapon(o) and "weapons" or o.kind)), UI.KIND_COLORS[o.kind] },
             { L("field.position"), UI.Pos(o.pos) }, { L("field.angle"), UI.Pos(o.ang), C.text2 },
-            { L("field.distance"), distanceTo(o) < math.huge and L("inspector.units", math.Round(distanceTo(o))) or "-", C.text2 },
-            { L("field.status"),   live and L("world.live") or L("world.missing"),                                       live and C.ok or C.warn },
+            { L("field.distance"), distanceTo(o) < math.huge and L("inspector.units", math.Round(distanceTo(o))) or "-",
+                C.text2 },
+            { L("field.status"),   live and L("world.live") or L("world.missing"), live and C.ok or C.warn },
         }
         if o.maxHp and o.maxHp > 0 then list[#list + 1] = { L("field.health"), (o.hp or 0) .. " / " .. o.maxHp, UI
                 .HealthColor(o.hp, o.maxHp) } end
@@ -684,7 +690,8 @@ function Inspector.Open(entryId)
             counts[k] = (counts[k] or 0) + 1
             local text = string.lower(UI.ObjectLabel(o) ..
             " " .. (o.class or "") .. " " .. (o.model or "") .. " " .. (o.id or ""))
-            if (kind == "all" or kind == k or kind == o.kind) and (search == "" or string.find(text, search, 1, true)) then
+            local found = search == "" or string.find(text, search, 1, true)
+            if (kind == "all" or kind == k or kind == o.kind) and found then
                 shown[#shown + 1] = o
             end
         end

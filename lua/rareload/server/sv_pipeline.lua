@@ -32,7 +32,8 @@ function Pipeline.Order(list)
 
     local groups = {}
     for _, def in ipairs(list) do
-        local i = phaseIndex[def.phase] or error("[Rareload] module " .. def.id .. " has unknown phase " .. tostring(def.phase))
+        local i = phaseIndex[def.phase]
+            or error("[Rareload] module " .. def.id .. " has unknown phase " .. tostring(def.phase))
         groups[i] = groups[i] or {}
         table.insert(groups[i], def)
     end
@@ -168,7 +169,8 @@ function Pipeline.Save(ply, opts)
     end
 
     local prev = RARELOAD.History.Active(ply)
-    local ctx = { ply = ply, opts = opts, prev = prev, shared = {}, denied = {} } -- denied: saved, but can't be given back
+    -- denied: saved, but can't be given back
+    local ctx = { ply = ply, opts = opts, prev = prev, shared = {}, denied = {} }
     local session = RARELOAD.Log.Session("Save (" .. (opts.reason or "command") .. ")", ply, "save")
 
     -- A partial save keeps the other modules' data from the current save.
@@ -189,7 +191,8 @@ function Pipeline.Save(ply, opts)
                 if not ok then
                     out = prev and Pipeline.Payload(prev.data[def.id])   -- fail soft: keep the last good value
                 end
-                local detail = not ok and err or out == nil and "nothing to save" or def.summary and def.summary(out) or ""
+                local detail = not ok and err or out == nil and "nothing to save"
+                    or def.summary and def.summary(out) or ""
                 session:step(ok and "ok" or "fail", def.id, detail, ms)
                 if out ~= nil and def.heavy and not opts.captureOnly then
                     out = { ["$blob"] = RARELOAD.Store.BlobPut(out) }

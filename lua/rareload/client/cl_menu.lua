@@ -439,7 +439,9 @@ local function control(parent, def, get, set, opts)
         row.Sync = function(self) self.value = get() end
     elseif def.type == "enum" then
         local options = {}
-        for _, v in ipairs(def.values) do options[#options + 1] = { id = v, label = L("setting." .. def.key .. "." .. v) } end
+        for _, v in ipairs(def.values) do
+            options[#options + 1] = { id = v, label = L("setting." .. def.key .. "." .. v) }
+        end
         row = dropdown(parent, label, options, get(), set, opts)
         row.Sync = function(self)
             self:Select(get())
@@ -588,7 +590,9 @@ local function buildServer(panel)
         return finish(panel)
     end
     intro(panel, L("menu.server_help"))
-    local function setter(def) return function(v) RARELOAD.Net.Request("settings.set", { key = def.key, value = v }) end end
+    local function setter(def)
+        return function(v) RARELOAD.Net.Request("settings.set", { key = def.key, value = v }) end
+    end
 
     caption(panel, L("menu.server_caption"))
     for _, group in ipairs(grouped(function(def) return def.scope == "server" end)) do
@@ -630,7 +634,8 @@ local function buildServer(panel)
     button(reset, L("menu.defaults_reset"), "arrow_undo", BUTTONS.orange, function()
         UI.Confirm(L("menu.defaults_reset"), L("menu.defaults_reset_confirm"), function()
             RARELOAD.Net.Request("settings.reset")
-            if RARELOAD.Can(LocalPlayer(), "rareload_anti_stuck") then RARELOAD.Net.Request("antistuck.get") end -- the method list
+            -- the method list
+            if RARELOAD.Can(LocalPlayer(), "rareload_anti_stuck") then RARELOAD.Net.Request("antistuck.get") end
         end, L("menu.defaults_reset"))
     end)
 
@@ -689,7 +694,9 @@ end)
 -- Rebuilds every open panel after a language change (G75).
 function Menu.Rebuild()
     wrapCache = {}
-    local builders = { { Menu.toolPanel, Menu.BuildToolPanel }, { Menu.pages.server, buildServer }, { Menu.pages.client, buildClient } }
+    local builders = {
+        { Menu.toolPanel, Menu.BuildToolPanel }, { Menu.pages.server, buildServer }, { Menu.pages.client, buildClient }
+    }
     for _, b in ipairs(builders) do
         if IsValid(b[1]) then b[2](b[1]) end
     end

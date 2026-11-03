@@ -17,7 +17,9 @@ local ACCENT_DIM, BADGE_BG = ColorAlpha(C.accent, 120), ColorAlpha(C.accent, 200
 
 local CATS = {
     player = { "basic", "position", "equipment", "appearance", "stats", "world", "other" },
-    object = { "basic", "position", "state", "visual", "physics", "constraints", "vehicle", "ai", "network", "data", "mods" },
+    object = {
+        "basic", "position", "state", "visual", "physics", "constraints", "vehicle", "ai", "network", "data", "mods"
+    },
 }
 local CAT_COLORS = {
     basic = C.accent,
@@ -131,7 +133,9 @@ local function playerCats(rec)
     add("basic", L("field.player"), rec.title)
     add("basic", "SteamID64", rec.sid)
     add("basic", L("field.map"), game.GetMap())
-    if not rec.preview then add("basic", L("field.online"), yesNo(IsValid(owner)), IsValid(owner) and C.ok or C.text3) end
+    if not rec.preview then
+        add("basic", L("field.online"), yesNo(IsValid(owner)), IsValid(owner) and C.ok or C.text3)
+    end
     local saved = {}
     for id in ordered(d) do saved[#saved + 1] = L("module." .. id) end
     add("basic", L("field.saved"), table.concat(saved, ", "), C.ok)
@@ -201,7 +205,10 @@ local function playerCats(rec)
     table.sort(top, function(x, y) return classes[x] > classes[y] end)
     for i = 1, math.min(8, #top) do add("world", "  " .. top[i], "× " .. classes[top[i]]) end
 
-    local builtIn = { transform = true, health = true, states = true, appearance = true, weapons = true, activeWeapon = true, ammo = true }
+    local builtIn = {
+        transform = true, health = true, states = true, appearance = true, weapons = true, activeWeapon = true,
+        ammo = true
+    }
     for id, data in ordered(d) do
         if not builtIn[id] then
             local label = L("module." .. id)
@@ -260,8 +267,9 @@ local function objectCats(rec)
             live:Health() .. " / " .. live:GetMaxHealth()) end
     if o.npcState then add("state", L("field.npc_state"), L("world.npc_state." .. (STATE_NAMES[o.npcState] or "none")),
             C.npc) end
-    if live and live.GetDriver and IsValid(live:GetDriver()) then add("state", L("field.driver"), live:GetDriver():Nick(),
-            C.vehicle) end
+    if live and live.GetDriver and IsValid(live:GetDriver()) then
+        add("state", L("field.driver"), live:GetDriver():Nick(), C.vehicle)
+    end
 
     add("visual", L("field.skin"), o.skin)
     if o.scale then add("visual", L("field.scale"), o.scale) end
@@ -287,10 +295,14 @@ local function objectCats(rec)
         for _, c in ipairs(istable(detail.constraints) and detail.constraints or {}) do
             local names = {}
             for _, e in ipairs(c.to or {}) do
-                names[#names + 1] = e.world and L("world.constraint_world") or e.class and UI.ObjectLabel(savedObject(e.id) or e) or tostring(e.id)
+                names[#names + 1] = e.world and L("world.constraint_world")
+                    or e.class and UI.ObjectLabel(savedObject(e.id) or e) or tostring(e.id)
             end
-            add("constraints", c.type, #names > 0 and table.concat(names, ", ") or L("world.constraint_self"), CAT_COLORS.constraints)
-            for k, v in ordered(istable(c.set) and c.set or {}) do add("constraints", "   " .. humanize(k), summarize(v)) end
+            add("constraints", c.type, #names > 0 and table.concat(names, ", ") or L("world.constraint_self"),
+                CAT_COLORS.constraints)
+            for k, v in ordered(istable(c.set) and c.set or {}) do
+                add("constraints", "   " .. humanize(k), summarize(v))
+            end
         end
         for k, v in ordered(istable(detail.runtime) and detail.runtime.root or {}) do add("vehicle", humanize(k),
                 summarize(v)) end
@@ -310,7 +322,9 @@ local function objectCats(rec)
                 shown = shown + 1
             end
         end
-        for name, data in ordered(istable(def.EntityMods) and def.EntityMods or {}) do add("mods", name, summarize(data)) end
+        for name, data in ordered(istable(def.EntityMods) and def.EntityMods or {}) do
+            add("mods", name, summarize(data))
+        end
     elseif not rec.detailFailed then
         add("data", L("world.loading_details"), "", C.text3)
     end
@@ -344,7 +358,8 @@ end
 local function catsOf(rec)
     if not rec.cats or RealTime() - rec.catsAt > 1 then
         -- A random offset spreads the rebuilds (and card re-bakes) of many cards over the second.
-        rec.cats, rec.catsAt = (rec.kind == "player" and playerCats or objectCats)(rec), RealTime() - math.random() * 0.3
+        local build = rec.kind == "player" and playerCats or objectCats
+        rec.cats, rec.catsAt = build(rec), RealTime() - math.random() * 0.3
         rec.tabs = {}
         for _, id in ipairs(CATS[rec.kind]) do
             if rec.cats[id] then rec.tabs[#rec.tabs + 1] = id end
@@ -601,8 +616,8 @@ end
 local function candidates(eye, aim)
     local maxDist = RARELOAD.Get(nil, "wdDrawDistance")
     local out = {}
-    local reach = (maxDist + 1500) ^
-    2                                  -- the model is near its saved spot, or its phantom shows there (big models reach far)
+    -- the model is near its saved spot, or its phantom shows there (big models reach far)
+    local reach = (maxDist + 1500) ^ 2
     for _, rec in ipairs(RARELOAD.World.records) do
         local ent = rec.pos:DistToSqr(eye) < reach and (rec.kind == "object" or rec.phantomShown) and anchorEnt(rec)
         if ent then
@@ -613,8 +628,8 @@ local function candidates(eye, aim)
             local radius, half = math.max(mx.x - mn.x, mx.y - mn.y) / 2, (mx.z - mn.z) / 2
             local edge = math.max(dist - math.max(radius, half), 0)
             if edge < maxDist and (edge < 150 or delta:Dot(aim) > dist * 0.64 - math.max(radius, half)) then
-                out[#out + 1] = { rec = rec, ent = ent, center = center, dist = dist, edge = edge, radius = radius, half =
-                half, sphere = (mx - mn):Length() / 2 + CLUSTER }
+                out[#out + 1] = { rec = rec, ent = ent, center = center, dist = dist, edge = edge, radius = radius,
+                    half = half, sphere = (mx - mn):Length() / 2 + CLUSTER }
             end
         end
     end
@@ -803,7 +818,8 @@ local function tagPlacement(g, eye)
     local ux, uy = d > 1 and dx / d or 1, d > 1 and dy / d or 0
     -- Like the card: on the near side of the models, at eye level, so it is never inside a tall one.
     local near = math.max(d - (math.abs(ux) * hx + math.abs(uy) * hy) - 4, 16)
-    local pos, ang = Vector(eye.x + ux * near, eye.y + uy * near, eye.z), Angle(0, math.deg(math.atan2(uy, ux)) - 90, 90)
+    local pos = Vector(eye.x + ux * near, eye.y + uy * near, eye.z)
+    local ang = Angle(0, math.deg(math.atan2(uy, ux)) - 90, 90)
     return pos, ang, math.min(unitsPerPixel(pos, ang), 1)
 end
 
@@ -824,7 +840,9 @@ local function drawStackTag(t, n)
         draw.SimpleText(nm.text, "Rareload.PanelB", cx + 14, 0, color_white, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         cx = cx + 14 + nm.w + 16
     end
-    if t.more then draw.SimpleText(t.more, "Rareload.PanelSmall", cx, 0, C.text2, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER) end
+    if t.more then
+        draw.SimpleText(t.more, "Rareload.PanelSmall", cx, 0, C.text2, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    end
 end
 
 local function drawTag(g)
@@ -839,7 +857,11 @@ local function drawTag(g)
     cx = cx + t.sw + 12
     if hasBar(rec) then
         local hp, max
-        if rec.kind == "player" then hp, max = rec.data.health.hp or 0, 100 else hp, max = rec.obj.hp or 0, rec.obj.maxHp end
+        if rec.kind == "player" then
+            hp, max = rec.data.health.hp or 0, 100
+        else
+            hp, max = rec.obj.hp or 0, rec.obj.maxHp
+        end
         draw.RoundedBox(3, cx, -5, 60, 10, BAR_BG)
         local frac = math.Clamp(hp / max, 0, 1)
         if frac > 0 then draw.RoundedBox(3, cx, -5, math.max(6, 60 * frac), 10, UI.HealthColor(hp, max)) end

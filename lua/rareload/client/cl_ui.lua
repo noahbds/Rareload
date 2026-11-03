@@ -163,7 +163,8 @@ end
 local function fillDate(t, template)
     local d = os.date("*t", t)
     return (template:gsub("{(%w+)}", {
-        wday = L("date.weekday." .. d.wday), month = L("date.month." .. d.month), mon = L("date.month_short." .. d.month),
+        wday = L("date.weekday." .. d.wday), month = L("date.month." .. d.month),
+        mon = L("date.month_short." .. d.month),
         day = tostring(d.day), year = tostring(d.year), time = os.date("%H:%M:%S", t), hm = os.date("%H:%M", t),
     }))
 end
@@ -481,7 +482,9 @@ function UI.Dropdown(parent, prefix, options, get, onSelect)
         surface.SetDrawColor(C.text3)
         draw.NoTexture()
         local x, y = w - sc(14), h / 2
-        surface.DrawPoly({ { x = x - sc(4), y = y - sc(2) }, { x = x + sc(4), y = y - sc(2) }, { x = x, y = y + sc(3) } })
+        surface.DrawPoly({
+            { x = x - sc(4), y = y - sc(2) }, { x = x + sc(4), y = y - sc(2) }, { x = x, y = y + sc(3) }
+        })
     end
     b.DoClick = function()
         local m = DermaMenu()
@@ -617,9 +620,9 @@ function UI.Rows(parent, rows)
     local rh = sc(24)
     p.Paint = function(self, w, h)
         box(sc(10), w, h, C.surface)
-        local list = rows()
+        local items = rows()
         local y = sc(6)
-        for i, r in ipairs(list) do
+        for i, r in ipairs(items) do
             if i > 1 then
                 surface.SetDrawColor(ColorAlpha(C.line, 120))
                 surface.DrawLine(sc(12), y, w - sc(12), y)
@@ -631,7 +634,7 @@ function UI.Rows(parent, rows)
                 r[3] or C.text, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
             y = y + rh
         end
-        local want = #list * rh + sc(12)
+        local want = #items * rh + sc(12)
         if self:GetTall() ~= want then self:SetTall(want) end
     end
     return p
@@ -642,15 +645,15 @@ function UI.Stats(parent, cards)
     local p = vgui.Create("DPanel", parent)
     p:SetTall(sc(64))
     p.Paint = function(_, w, h)
-        local list = cards()
+        local items = cards()
         local gap = sc(7)
-        local cw = (w - gap * (#list - 1)) / #list
-        for i, c in ipairs(list) do
+        local cw = (w - gap * (#items - 1)) / #items
+        for i, c in ipairs(items) do
             local x = (i - 1) * (cw + gap)
             draw.RoundedBox(sc(8), x, 0, cw, h, C.surface)
             if c[2] ~= nil then
-                draw.SimpleText(tostring(c[2]), "Rareload.Stat", x + cw / 2, h * 0.42, c[3] or C.text, TEXT_ALIGN_CENTER,
-                    TEXT_ALIGN_CENTER)
+                draw.SimpleText(tostring(c[2]), "Rareload.Stat", x + cw / 2, h * 0.42, c[3] or C.text,
+                    TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
             else
                 draw.SimpleText(L("ui.not_saved"), "Rareload.Small", x + cw / 2, h * 0.42, C.textOff, TEXT_ALIGN_CENTER,
                     TEXT_ALIGN_CENTER)

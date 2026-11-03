@@ -34,8 +34,8 @@ end
 -- What a phantom is built from; a change rebuilds it. A saved object can have no model (it then
 -- gets no phantom).
 local function signature(w)
-    return table.concat({ w.model or "", w.skin or 0, w.material or "", w.scale or 1, #(w.parts or {}), tostring(w.seated),
-        util.TableToJSON(w.bodygroups or {}) }, "|")
+    return table.concat({ w.model or "", w.skin or 0, w.material or "", w.scale or 1, #(w.parts or {}),
+        tostring(w.seated), util.TableToJSON(w.bodygroups or {}) }, "|")
 end
 Phantoms.Signature = signature
 

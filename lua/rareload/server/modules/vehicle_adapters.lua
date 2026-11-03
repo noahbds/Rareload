@@ -395,7 +395,9 @@ Vehicles.Adapter({
 
 hook.Add("PlayerEnteredVehicle", "Rareload.WAC.Bind", function(ply, seat)
     local aircraft = aircraftOf(seat)
-    if aircraft and aircraft.RareloadID and isWAC(aircraft) then Vehicles.adapters.wac.onSeatEnter(aircraft, seat, ply) end
+    if aircraft and aircraft.RareloadID and isWAC(aircraft) then
+        Vehicles.adapters.wac.onSeatEnter(aircraft, seat, ply)
+    end
 end)
 
 hook.Add("PlayerLeaveVehicle", "Rareload.WAC.Leave", function(ply)

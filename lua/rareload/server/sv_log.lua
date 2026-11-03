@@ -64,7 +64,9 @@ local cardCount = 0
 
 -- `ms`: how long the step took, when it was timed.
 function Session:step(status, title, detail, ms)
-    self.steps[#self.steps + 1] = { status = status, title = title, detail = detail or "", ms = ms and math.Round(ms, 2) }
+    self.steps[#self.steps + 1] = {
+        status = status, title = title, detail = detail or "", ms = ms and math.Round(ms, 2)
+    }
 end
 
 -- info = { entry? (save number), result? ("saved" | "unchanged"), reason?, auto? } for the card.

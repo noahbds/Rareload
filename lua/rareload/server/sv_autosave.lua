@@ -52,7 +52,8 @@ end
 -- Saving mid-air or mid-noclip would put the player there on respawn.
 local function safeToSave(ply)
     return ply:Alive() and ply:GetObserverMode() == OBS_MODE_NONE
-        and (ply:IsOnGround() or ply:InVehicle() or ply:GetMoveType() == MOVETYPE_NOCLIP and RARELOAD.Get(ply, "keepStates"))
+        and (ply:IsOnGround() or ply:InVehicle()
+            or ply:GetMoveType() == MOVETYPE_NOCLIP and RARELOAD.Get(ply, "keepStates"))
 end
 
 timer.Create("Rareload.Autosave", 1, 0, function()

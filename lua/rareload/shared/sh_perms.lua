@@ -69,7 +69,9 @@ end
 if SERVER then
     -- tier: "user", "admin", "superadmin", or "default" to undo the change. Returns false and why.
     function RARELOAD.SetTier(name, tier)
-        if tier ~= "default" and not TIERS[tier] then return false, "The tier is user, admin, superadmin or default." end
+        if tier ~= "default" and not TIERS[tier] then
+            return false, "The tier is user, admin, superadmin or default."
+        end
         RARELOAD.Tier(name)
         local set = table.Copy(tierCache.set)
         set[name] = tier ~= "default" and tier ~= Privs[name].tier and tier or nil

@@ -398,7 +398,8 @@ local function buildDetail(host, sel)
     gap(D.reloadTitle, 4)
     local modes = {}
     for _, m in ipairs(MODES) do modes[#modes + 1] = { id = m, label = L("mode." .. m) } end
-    D.mode = UI.Dropdown(host, nil, modes, function() return State.history.reload.mode or "set_previous" end, function(m)
+    local function mode() return State.history.reload.mode or "set_previous" end
+    D.mode = UI.Dropdown(host, nil, modes, mode, function(m)
         State.history.reload.mode = m
         Timeline.SendReloadConfig()
     end)
@@ -482,7 +483,9 @@ end
 
 function Timeline.Open()
     if IsValid(Timeline.frame) then Timeline.frame:Remove() end
-    local frame = UI.Window({ title = L("timeline.title"), subtitle = L("timeline.subtitle", game.GetMap()), w = 1220, h = 880 })
+    local frame = UI.Window({
+        title = L("timeline.title"), subtitle = L("timeline.subtitle", game.GetMap()), w = 1220, h = 880
+    })
     Timeline.frame = frame
     local filter, sort, search, selected = "all", "newest", "", nil
     local rows = {}

@@ -27,16 +27,15 @@ RARELOAD.Module({
         if IsValid(ply:GetDrivingEntity()) then drive.PlayerStopDriving(ply) end
 
         -- A map update can move walls, so anti-stuck always runs when the map revision changed (G53).
-        if RARELOAD.Get(ply, "antiStuck") or d.mapVersion ~= game.GetMapVersion() then
-            if RARELOAD.AntiStuck.IsStuck(pos, ply, crouched) then
-                local found, method = RARELOAD.AntiStuck.Resolve(pos, ply, crouched)
-                if found then
-                    pos = found
-                    ctx:step("warn", "anti-stuck", "moved to a free spot (" .. method .. ")")
-                else
-                    ctx:step("fail", "anti-stuck", "no free spot found")
-                    RARELOAD.Toast(ply, "toast.stuck", nil, "error")
-                end
+        local check = RARELOAD.Get(ply, "antiStuck") or d.mapVersion ~= game.GetMapVersion()
+        if check and RARELOAD.AntiStuck.IsStuck(pos, ply, crouched) then
+            local found, method = RARELOAD.AntiStuck.Resolve(pos, ply, crouched)
+            if found then
+                pos = found
+                ctx:step("warn", "anti-stuck", "moved to a free spot (" .. method .. ")")
+            else
+                ctx:step("fail", "anti-stuck", "no free spot found")
+                RARELOAD.Toast(ply, "toast.stuck", nil, "error")
             end
         end
 

@@ -55,7 +55,9 @@ hook.Add("PlayerBindPress", "Rareload.Interact", function(_, bind, down)
             return true
         end
         local g = Panels.focus
-        if g and not (IsValid(lp():GetActiveWeapon()) and lp():GetActiveWeapon():GetClass() == "weapon_physgun" and lp():KeyDown(IN_ATTACK)) then
+        local wep = lp():GetActiveWeapon()
+        local grabbing = IsValid(wep) and wep:GetClass() == "weapon_physgun" and lp():KeyDown(IN_ATTACK)
+        if g and not grabbing then
             Panels.lock, lockAng = { pile = g.key, rec = g.active.key }, lp():EyeAngles()
             lp():DrawViewModel(false)
             return true
