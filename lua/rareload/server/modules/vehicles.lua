@@ -1,5 +1,4 @@
--- Vehicles: the player's vehicles with their runtime state, and the seat they were in
--- (REWRITE_PLAN.md §20). After a paste, one Tick-driven scheduler takes each vehicle through:
+-- Vehicles: the player's vehicles with their runtime state, and the seat they were in. After a paste, one Tick-driven scheduler takes each vehicle through:
 --   WAIT_READY (the adapter's readiness probe) → APPLY (runtime state) → SETTLE (physics, only for
 --   bases that don't do it themselves) → RESEAT (put the player back in their seat) → done.
 
@@ -38,6 +37,12 @@ local function advance(item)
     end
 
     if item.state == "APPLY" then
+        -- The duplicator restored the networked values (sirens, signals, gears, modes…), but many
+        -- bases set theirs again once they are built, so the saved ones go back now, before the
+        -- adapter's own values (C7). Entity references were never saved.
+        if istable(item.dt) and isfunction(ent.RestoreNetworkVars) then
+            pcall(ent.RestoreNetworkVars, ent, Snapshot.Revive(item.dt))
+        end
         local runtime = item.runtime
         if runtime and runtime.root and adapter.applyRoot then pcall(adapter.applyRoot, ent, runtime.root) end
         if runtime and runtime.components and adapter.applyComponents then
@@ -64,6 +69,10 @@ local function advance(item)
                 if item.frozen then phys:EnableMotion(false) end
                 phys:Sleep()
             end)
+            -- A vehicle saved while moving gets its speed back once it has settled (C1).
+            if not item.frozen and item.motion and istable(item.rl) and item.rl.vel then
+                Snapshot.ApplyExtras(ent, { vel = item.rl.vel }, true)
+            end
             item.state, item.steps = "RESEAT", 0
         end
         return false
@@ -120,7 +129,8 @@ local function phantomParts(veh)
         if seen[ent] or #parts >= MAX_PARTS or not IsValid(ent) then return end
         seen[ent] = true
         local model = ent:GetModel()
-        if not Snapshot.IsVehiclePart(ent) or ent:GetNoDraw() or not isstring(model) or not string.EndsWith(model, ".mdl") then return end
+        if not Snapshot.IsVehiclePart(ent) or ent:GetNoDraw() then return end
+        if not isstring(model) or not string.EndsWith(model, ".mdl") then return end
         local lp, la = WorldToLocal(ent:GetPos(), ent:GetAngles(), veh:GetPos(), veh:GetAngles())
         -- Rounded, so physics jitter doesn't make an unchanged vehicle look changed (L35).
         parts[#parts + 1] = {
@@ -144,6 +154,7 @@ RARELOAD.Module({
     setting = "keepVehicles",
     privSave = "rareload_save_vehicles",
     privRestore = "rareload_restore_vehicles",
+    empty = Snapshot.Empty,
 
     save = function(ply, ctx)
         local targets, seen = {}, {}
@@ -190,7 +201,10 @@ RARELOAD.Module({
 
     restore = function(ply, snap, ctx)
         local max = RARELOAD.Get(nil, "maxVehicles")
-        local report = Snapshot.Restore(snap, ply, { kind = "vehicles", limit = max > 0 and max or nil })
+        local removed = ctx.exact and Snapshot.RemoveMissing(ply, ctx, snap, isVehicleRoot) or 0
+        local report = Snapshot.Restore(snap, ply,
+            { kind = "vehicles", limit = max > 0 and max or nil, reset = ctx.reset })
+        report.removed = removed
         Snapshot.Report(ctx, "vehicles", report, true)
 
         -- Vehicles still on the map (a respawn on the same map) are reseated too (L13).
@@ -209,12 +223,16 @@ RARELOAD.Module({
                 pos = def and def.Pos,
                 ang = def and def.Angle,
                 frozen = p0 and p0.Frozen,
+                rl = def and istable(def.EntityMods) and def.EntityMods.rareload or nil,
+                dt = def and def.DT,
+                motion = RARELOAD.Get(ply, "keepMotion"),
             }
         end
         for index, ent in pairs(report.created) do
             if IsValid(ent) then add(ent, snap.Entities[index]) end
         end
-        for _, ent in ipairs(report.existing) do add(ent, nil) end
+        -- A vehicle put back where it was saved is held there while it settles, like a new one.
+        for _, ent in ipairs(report.existing) do add(ent, ctx.reset and report.defs[ent] or nil) end
 
         schedule(ctx, list, ctx:async("vehicles"))
     end,

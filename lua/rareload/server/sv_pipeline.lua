@@ -1,5 +1,5 @@
--- Save/restore engine: the module registry, phase order, gating, restore tokens and report cards
--- (REWRITE_PLAN.md §14.0, §15). The only file that decides what runs and in which order.
+-- Save/restore engine: the module registry, phase order, gating, restore tokens and report cards.
+-- The only file that decides what runs and in which order.
 
 RARELOAD.Pipeline = RARELOAD.Pipeline or {}
 local Pipeline = RARELOAD.Pipeline
@@ -19,6 +19,9 @@ local ordered
 --   undo snapshot) wins over load.
 -- replaces: when this module restores, those modules are skipped (the global inventory takes the
 --   place of the map's own weapons, ammo and held weapon).
+-- skipOnDeath: not restored on a respawn after a death (the scene: map, time, weather, world settings).
+-- empty: what an exact restore uses when the save has no data for this module (a world module whose
+--   objects must all be removed).
 function RARELOAD.Module(def)
     defs[def.id] = def
     ordered = nil
@@ -32,7 +35,8 @@ function Pipeline.Order(list)
 
     local groups = {}
     for _, def in ipairs(list) do
-        local i = phaseIndex[def.phase] or error("[Rareload] module " .. def.id .. " has unknown phase " .. tostring(def.phase))
+        local i = phaseIndex[def.phase]
+            or error("[Rareload] module " .. def.id .. " has unknown phase " .. tostring(def.phase))
         groups[i] = groups[i] or {}
         table.insert(groups[i], def)
     end
@@ -139,6 +143,9 @@ end
 
 local function refuse(ply, opts, why)
     if not opts.silent then RARELOAD.Toast(ply, "toast.save_denied", nil, "error") end
+    if not opts.captureOnly then
+        RARELOAD.Log("save", ply):verbose("%s could not save (%s): %s", ply:Nick(), opts.reason or "command", why)
+    end
     return false, why
 end
 
@@ -168,7 +175,8 @@ function Pipeline.Save(ply, opts)
     end
 
     local prev = RARELOAD.History.Active(ply)
-    local ctx = { ply = ply, opts = opts, prev = prev, shared = {}, denied = {} } -- denied: saved, but can't be given back
+    -- denied: saved, but can't be given back
+    local ctx = { ply = ply, opts = opts, prev = prev, shared = {}, denied = {} }
     local session = RARELOAD.Log.Session("Save (" .. (opts.reason or "command") .. ")", ply, "save")
 
     -- A partial save keeps the other modules' data from the current save.
@@ -189,7 +197,8 @@ function Pipeline.Save(ply, opts)
                 if not ok then
                     out = prev and Pipeline.Payload(prev.data[def.id])   -- fail soft: keep the last good value
                 end
-                local detail = not ok and err or out == nil and "nothing to save" or def.summary and def.summary(out) or ""
+                local detail = not ok and err or out == nil and "nothing to save"
+                    or def.summary and def.summary(out) or ""
                 session:step(ok and "ok" or "fail", def.id, detail, ms)
                 if out ~= nil and def.heavy and not opts.captureOnly then
                     out = { ["$blob"] = RARELOAD.Store.BlobPut(out) }
@@ -210,7 +219,7 @@ function Pipeline.Save(ply, opts)
     end
 
     -- Only autosaves get the one-line card; other silent saves (cleanup, disconnect) show every step.
-    local info = { reason = opts.reason or "command", auto = opts.reason == "auto" }
+    local info = { reason = opts.reason or "command", auto = opts.reason == "auto", data = data }
     if prev and RARELOAD.Util.Equal(prev.data, data) then
         if not opts.silent then
             RARELOAD.Toast(ply, "toast.unchanged", { prev.id })
@@ -321,20 +330,27 @@ local function external(ctx, def)
     return def.load ~= nil and not istable(ctx.entry.data[def.id])
 end
 
+-- An exact restore runs a world module that the save has nothing for, so it removes those objects.
+local function emptied(ctx, def)
+    return ctx.exact and def.empty ~= nil and ctx.entry.data[def.id] == nil
+end
+
 local function dataOf(ctx, def)
     if external(ctx, def) then return loaded(ctx, def) end
+    if emptied(ctx, def) then return def.empty() end
     return Pipeline.Payload(ctx.entry.data[def.id])
 end
 
 -- Returns false, plus why when the module is in the save but the player may not get it back.
 local function wants(ctx, def)
     if ctx.skipWorld and def.phase == "world" then return false end
+    if ctx.died and def.skipOnDeath then return false end
     if ctx.only and not ctx.only[def.id] then return false end
     if external(ctx, def) then
         -- Not part of this save: a player who may not use it simply doesn't get it, without a warning.
         return (allowed(def, ctx.ply, false, ctx.reason)) and loaded(ctx, def) ~= nil
     end
-    if ctx.entry.data[def.id] == nil then return false end
+    if ctx.entry.data[def.id] == nil and not emptied(ctx, def) then return false end
     return allowed(def, ctx.ply, false, ctx.reason)
 end
 
@@ -394,10 +410,13 @@ runFrom = function(ctx, i)
     if #ctx.denied > 0 then
         RARELOAD.Toast(ctx.ply, "toast.restore_denied", { table.concat(ctx.denied, ", ") }, "error")
     end
-    ctx.session:finish({ reason = ctx.reason, entry = ctx.entry.id })
+    ctx.session:finish({ reason = ctx.reason, entry = ctx.entry.id, data = ctx.entry.data })
     hook.Run("RareloadRestored", ctx.ply, ctx.entry)
 end
 
+-- opts = { reason?, only?: { [moduleId] = true }, reset?: put saved objects still on the map back the
+--          way they were saved, exact?: also remove the player's objects the save doesn't hold,
+--          died?: a respawn after a death }
 function Pipeline.Restore(ply, entry, opts)
     opts = opts or {}
     local token = (tokens[ply] or 0) + 1
@@ -406,6 +425,7 @@ function Pipeline.Restore(ply, entry, opts)
     local reason = opts.reason or "timeline"
     local ctx = setmetatable({
         ply = ply, entry = entry, reason = reason, only = opts.only, token = token,
+        reset = opts.reset or opts.exact or false, exact = opts.exact or false, died = opts.died or false,
         spawnDone = {}, shared = {}, spawned = {}, denied = {},
         session = RARELOAD.Log.Session("Restore (" .. reason .. ")", ply, "restore"),
     }, Ctx)

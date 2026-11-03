@@ -1,12 +1,18 @@
 -- Player lifecycle: restore on spawn, death and disconnect cleanup, save on disconnect, when the host
--- quits, and before a map cleanup (REWRITE_PLAN.md §15.6).
+-- quits, and before a map cleanup.
 
 local cleaningUp = nil   -- the player whose death is cleaning the whole map (deathCleanupMode "all")
 
+-- Returns how many objects were removed.
 local function removeOwned(ply, savedOnly)
+    local n = 0
     for _, ent in ipairs(RARELOAD.Ownership.Owned(ply)) do
-        if IsValid(ent) and not ent:IsPlayer() and (not savedOnly or ent.RareloadID) then ent:Remove() end
+        if IsValid(ent) and not ent:IsPlayer() and (not savedOnly or ent.RareloadID) then
+            ent:Remove()
+            n = n + 1
+        end
     end
+    return n
 end
 
 hook.Add("PostPlayerDeath", "Rareload.Spawn.Died", function(ply)
@@ -15,29 +21,41 @@ end)
 
 
 hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
-    local died = ply.rareloadDied
-    ply.rareloadDied = nil
+    local died, cleaned = ply.rareloadDied, ply.rareloadCleaned
+    ply.rareloadDied, ply.rareloadCleaned = nil, nil
 
     if transition or not RARELOAD.Pipeline.Enabled() then return end                                 -- E22
     if not RARELOAD.Get(ply, "enabled") or not RARELOAD.Can(ply, "rareload_restore") then return end -- E15
     if died and RARELOAD.Get(ply, "skipRestoreOnDeath") then return end
 
-    local mode = died and RARELOAD.Get(nil, "deathCleanupMode") or "off"
+    -- The respawn that follows a whole-map cleanup must not start another one.
+    local mode = died and not cleaned and RARELOAD.Get(nil, "deathCleanupMode") or "off"
     if mode == "all" and not cleaningUp then
+        RARELOAD.Log("spawn", ply):info("%s died: cleaning up the whole map before they respawn", ply:Nick())
         cleaningUp = ply
         game.CleanUpMap(false, nil, function()
             cleaningUp = nil
-            timer.Simple(0, function() if IsValid(ply) then ply:Spawn() end end)
+            timer.Simple(0, function()
+                if not IsValid(ply) then return end
+                ply.rareloadDied = true -- still a respawn after a death (the scene isn't restored)
+                ply.rareloadCleaned = true
+                ply:Spawn()
+            end)
         end)
         return
     elseif mode == "owned" or mode == "saved" then
-        removeOwned(ply, mode == "saved")
+        local n = removeOwned(ply, mode == "saved")
+        RARELOAD.Log("spawn", ply):info("%s died: removed %d of their %sobjects", ply:Nick(), n,
+            mode == "saved" and "saved " or "")
     end
 
     -- With no save on this map, modules kept outside the saves (the global inventory) still restore.
     local entry = RARELOAD.History.Active(ply)
     if not entry and RARELOAD.Pipeline.Loads(ply, "spawn") then entry = { data = {} } end
-    if entry then RARELOAD.Pipeline.Restore(ply, entry, { reason = "spawn" }) end
+    if entry then
+        RARELOAD.Pipeline.Restore(ply, entry,
+            { reason = "spawn", reset = RARELOAD.Get(ply, "resetOnSpawn"), died = died })
+    end
 end)
 
 hook.Add("PlayerSetModel", "Rareload.Spawn.Model", function(ply)
@@ -59,7 +77,9 @@ end
 -- Not called for the singleplayer or listen-server host (G21); see ShutDown.
 hook.Add("PlayerDisconnected", "Rareload.Spawn.Disconnect", function(ply)
     saveIfOn("saveOnDisconnect", ply, "disconnect")
-    if RARELOAD.Get(nil, "disconnectCleanup") then removeOwned(ply, false) end -- F19
+    if RARELOAD.Get(nil, "disconnectCleanup") then -- F19
+        RARELOAD.Log("spawn", ply):info("%s left: removed %d of their objects", ply:Nick(), removeOwned(ply, false))
+    end
 end)
 
 -- `except`: the player respawning after a death cleanup; saving them now would replace their save

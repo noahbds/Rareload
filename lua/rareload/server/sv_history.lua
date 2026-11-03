@@ -1,5 +1,4 @@
--- Save history per player and map: the current save is simply the active entry (REWRITE_PLAN.md §15.4,
--- §15.8, §16.2). Timeline operations, undo, the tool's reload-key modes and edits of saved objects.
+-- Save history per player and map: the current save is simply the active entry. Timeline operations, undo, the tool's reload-key modes and edits of saved objects.
 
 RARELOAD.History = RARELOAD.History or {}
 local History = RARELOAD.History
@@ -10,11 +9,12 @@ local WORLD_KINDS = { "entities", "npcs", "vehicles" }
 History.COMPONENTS = {
     position = { "transform" },
     health = { "health" },
-    inventory = { "weapons", "activeWeapon", "globalInventory" },
+    inventory = { "weapons", "weaponState", "activeWeapon", "globalInventory", "toolState" },
     ammo = { "ammo" },
-    appearance = { "appearance" },
-    states = { "states" },
+    appearance = { "appearance", "pac" },
+    states = { "states", "body", "holding" },
     world = { "entities", "npcs", "vehicles", "constraints" },
+    scene = { "mapState", "environment", "worldSettings" },
 }
 
 -- Returns the player's saves document (a new, unsaved one if they have none) and its storage path,
@@ -57,15 +57,15 @@ function History.Previous(ply)
     return i and d.entries[i - 1] or nil
 end
 
--- Adds a save and makes it active. The oldest entries beyond `historySize` are dropped, except
--- pinned ones and the active one.
-function History.Append(ply, entry)
+-- Adds a save and makes it active (unless opts.keepActive: an imported or shared save). The oldest
+-- entries beyond `historySize` are dropped, except pinned ones and the active one.
+function History.Append(ply, entry, opts)
     local d = History.Doc(ply)
     if not d then return false end
     entry.id = d.nextId
     d.nextId = d.nextId + 1
     d.entries[#d.entries + 1] = entry
-    d.activeId = entry.id
+    if not (opts and opts.keepActive and d.activeId) then d.activeId = entry.id end
 
     local cap, i = RARELOAD.Get(ply, "historySize"), 1
     while #d.entries > cap and i <= #d.entries do
@@ -75,9 +75,7 @@ function History.Append(ply, entry)
     return save(ply, d)
 end
 
--- The name of this option is a bit confusing, what it does is to prevent the pinned save to be deleted after to many saves,
--- but it doesn't prevent the save to be deleted if the player deletes it manually.
--- TODO: rename this option to "keepPinnedSaves" or something like that. Or at least add a tooltip to explain what it does.
+-- A pinned save is never dropped when the timeline is full (History.Append); it can still be deleted by hand.
 function History.SetPinned(ply, id, pinned)
     local d = History.Doc(ply)
     local entry = find(d, id)
@@ -139,7 +137,7 @@ end
 
 -- Restore and undo -------------------------------------------------------------------------------
 
-local undos = setmetatable({}, { __mode = "k" }) -- ply -> { entry, only, ctx }; one level, like v4
+local undos = setmetatable({}, { __mode = "k" }) -- ply -> { entry, only, world, ctx }; one level, like v4
 
 -- comps: a set of component names (§15.4), or nil for everything. Returns the module set or nil.
 function History.ModulesFor(comps)
@@ -151,29 +149,38 @@ function History.ModulesFor(comps)
     return only
 end
 
--- Restores an entry now (F25). The current state of the same modules (except the world, which is
--- undone by removing what the restore created) is captured first, for undo (F26).
-function History.Restore(ply, id, comps)
+-- Restores an entry now (F25). The current state of the same modules is captured first, for undo
+-- (F26), the player's objects included when the world is restored. opts = { exact? = also remove
+-- the player's objects the save doesn't hold }. Saved objects still on the map are put back the way
+-- they were saved when the player's resetObjects setting is on, or for an exact restore.
+function History.Restore(ply, id, comps, opts)
     local entry = History.Get(ply, id)
     if not entry or not ply:Alive() then return false end
+    opts = opts or {}
     local only = History.ModulesFor(comps)
 
-    local undoOnly = {}
+    local undoOnly, world = {}, not comps or comps.world == true
     for _, name in ipairs(table.GetKeys(History.COMPONENTS)) do
-        if name ~= "world" and (not comps or comps[name]) then
+        if not comps or comps[name] then
             for _, m in ipairs(History.COMPONENTS[name]) do undoOnly[m] = true end
         end
     end
     local _, _, snapshot = RARELOAD.Pipeline.Save(ply, { only = undoOnly, captureOnly = true, silent = true })
 
-    local ctx = RARELOAD.Pipeline.Restore(ply, entry, { only = only, reason = "timeline" })
-    undos[ply] = { entry = snapshot, only = undoOnly, ctx = ctx }
+    local ctx = RARELOAD.Pipeline.Restore(ply, entry, {
+        only = only,
+        reason = "timeline",
+        exact = opts.exact and world,
+        reset = RARELOAD.Get(ply, "resetObjects"),
+    })
+    undos[ply] = { entry = snapshot, only = undoOnly, world = world, ctx = ctx }
     refresh(ply) -- the timeline should now show Undo button being active
     return true
 end
 
--- Removes what the last restore created (even vehicles that finished spawning later, E14) and puts
--- the player back the way they were before it.
+-- Puts the player back the way they were before the last restore: what it created is removed (even
+-- vehicles that finished spawning later, E14), and their objects are restored exactly as captured
+-- (moved ones put back, removed ones pasted again, new ones removed).
 function History.Undo(ply)
     local u = undos[ply]
     if not u then return false end
@@ -182,7 +189,9 @@ function History.Undo(ply)
     for _, ent in ipairs(u.ctx.spawned) do
         if IsValid(ent) then ent:Remove() end
     end
-    if u.entry then RARELOAD.Pipeline.Restore(ply, u.entry, { only = u.only, reason = "undo" }) end
+    if u.entry then
+        RARELOAD.Pipeline.Restore(ply, u.entry, { only = u.only, reason = "undo", reset = true, exact = u.world })
+    end
     return true
 end
 
@@ -290,7 +299,7 @@ end
 -- objects) and, for saves made before it held them all, from the snapshots.
 local function objectConstraints(entry, objectId)
     local DefID = RARELOAD.Snapshot.DefID
-    local self, objects = tostring(objectId), {}
+    local me, objects = tostring(objectId), {}
     eachObject(entry, function(def)
         local id = DefID(def)
         if id then
@@ -305,7 +314,7 @@ local function objectConstraints(entry, objectId)
         for _, id in pairs(ids) do
             id = tostring(id)
             list[#list + 1] = id
-            if id == self and not own then
+            if id == me and not own then
                 own = true
             else
                 to[#to + 1] = id == "world" and { world = true } or objects[id] or { id = id }
@@ -456,7 +465,7 @@ function History.RenameObject(ply, entryId, objectId, name)
     end)
     if not ok then return false, err end
     for _, ent in ents.Iterator() do
-        if ent.RareloadID == objectId then ent.RareloadName = name end
+        if ent.RareloadID and tostring(ent.RareloadID) == tostring(objectId) then ent.RareloadName = name end
     end
     return true
 end
@@ -589,8 +598,8 @@ local function handle(op, priv, args, fn)
         rate = 0.2,
         args = args,
         fn = function(ply, a)
-            local key, args = fn(ply, a)
-            if key then RARELOAD.Toast(ply, key, args) end
+            local key, targs = fn(ply, a)
+            if key then RARELOAD.Toast(ply, key, targs) end
             pushRows(ply)
         end
     })
@@ -606,10 +615,13 @@ handle("history.clear", "rareload_restore", {}, function(ply) History.Clear(ply)
 handle("history.activate", "rareload_restore", { id = "uint" }, function(ply, a)
     if History.Activate(ply, a.id) then return "toast.activated", { a.id } end
 end)
-handle("history.restore", "rareload_restore", { id = "uint", comps = "string:128?" }, function(ply, a)
-    if not ply:Alive() then return "toast.restore_dead" end
-    if History.Restore(ply, a.id, parseComps(a.comps)) then return "toast.restored", { a.id } end
-end)
+handle("history.restore", "rareload_restore", { id = "uint", comps = "string:128?", exact = "bool?" },
+    function(ply, a)
+        if not ply:Alive() then return "toast.restore_dead" end
+        if History.Restore(ply, a.id, parseComps(a.comps), { exact = a.exact }) then
+            return "toast.restored", { a.id }
+        end
+    end)
 handle("history.undo", "rareload_restore", {}, function(ply)
     return History.Undo(ply) and "toast.undone" or "toast.nothing_to_undo"
 end)
@@ -640,7 +652,8 @@ RARELOAD.Net.Handle("object.detail", {
         local entry
         if a.sid and a.sid ~= ply:SteamID64() then
             local owner = player.GetBySteamID64(a.sid)
-            if not IsValid(owner) or not RARELOAD.Get(nil, "debug") or not RARELOAD.Can(ply, "rareload_debug") then return end
+            if not IsValid(owner) then return end
+            if not RARELOAD.Get(nil, "debug") or not RARELOAD.Can(ply, "rareload_debug") then return end
             entry = History.Active(owner)
         elseif RARELOAD.Can(ply, "rareload_restore") then
             entry = a.entryId and History.Get(ply, a.entryId) or History.Active(ply)
@@ -674,7 +687,7 @@ local function objectOp(op, args, fn, priv)
         args = args,
         fn = function(ply, a)
             local ok, err = fn(ply, a)
-            if not ok then RARELOAD.Log("history"):warn("%s: %s failed: %s", ply:Nick(), op, tostring(err)) end
+            if not ok then RARELOAD.Log("history", ply):warn("%s: %s failed: %s", ply:Nick(), op, tostring(err)) end
             pushObjects(ply, a.entryId)
         end
     })
@@ -718,8 +731,12 @@ end
 local function feedFor(ply)
     local active = History.Active(ply)
     if not active then return nil end
-    return { nick = ply:Nick(), data = History.LightData(active), objects = History.ObjectsOf(active), seated = History.Info(active.data)
-    .vehicle ~= nil }
+    return {
+        nick = ply:Nick(),
+        data = History.LightData(active),
+        objects = History.ObjectsOf(active),
+        seated = History.Info(active.data).vehicle ~= nil
+    }
 end
 
 local function pushFeed(ply, targets)
@@ -765,3 +782,59 @@ cvars.AddChangeCallback("sv_rareload_debug", function(_, _, value)
         for _, p in player.Iterator() do pushFeed(p) end
     end
 end, "Rareload.History")
+
+-- Activity log -----------------------------------------------------------------------------------------
+-- One line for each change to a timeline or to an object inside a save, from the window or the console.
+
+local function logged(name, level, describe)
+    local fn = History[name]
+    History[name] = function(ply, ...)
+        local results = { fn(ply, ...) }
+        if results[1] and IsValid(ply) then
+            local log = RARELOAD.Log("timeline", ply)
+            log[level](log, describe(ply, ...))
+        end
+        return unpack(results)
+    end
+end
+
+local function idList(ids)
+    local n = 0
+    for _ in pairs(ids or {}) do n = n + 1 end
+    return n
+end
+
+logged("Delete", "info", function(ply, id) return ply:Nick() .. " deleted save No. " .. tostring(id) end)
+logged("Clear", "info", function(ply)
+    return ply:Nick() .. " cleared their saves on this map (pinned saves and the respawn point kept)"
+end)
+logged("Activate", "info", function(ply, id)
+    return ply:Nick() .. " made save No. " .. tostring(id) .. " their respawn point"
+end)
+logged("Undo", "info", function(ply) return ply:Nick() .. " undid their last restore" end)
+logged("SetPinned", "verbose", function(ply, id, pinned)
+    return ply:Nick() .. (pinned and " pinned" or " unpinned") .. " save No. " .. tostring(id)
+end)
+logged("SetNote", "verbose", function(ply, id)
+    return ply:Nick() .. " changed the note of save No. " .. tostring(id)
+end)
+logged("DeleteObject", "info", function(ply, entryId, objectId)
+    return string.format("%s removed object %s from save No. %s", ply:Nick(), tostring(objectId), tostring(entryId))
+end)
+logged("DeleteObjects", "info", function(ply, entryId, ids)
+    return string.format("%s removed %d objects from save No. %s", ply:Nick(), idList(ids), tostring(entryId))
+end)
+logged("FlagObject", "info", function(ply, entryId, objectId, flag, value)
+    return string.format("%s turned %s %s on object %s in save No. %s", ply:Nick(), tostring(flag),
+        value and "on" or "off", tostring(objectId), tostring(entryId))
+end)
+logged("RenameObject", "verbose", function(ply, entryId, objectId, name)
+    return string.format("%s named object %s in save No. %s \"%s\"", ply:Nick(), tostring(objectId),
+        tostring(entryId), tostring(name))
+end)
+logged("EditObject", "info", function(ply, entryId, objectId, edit)
+    local keys = table.GetKeys(istable(edit) and edit or {})
+    table.sort(keys)
+    return string.format("%s edited object %s in save No. %s (%s)", ply:Nick(), tostring(objectId),
+        tostring(entryId), table.concat(keys, ", "))
+end)

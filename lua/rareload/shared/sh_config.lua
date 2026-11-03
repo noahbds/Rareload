@@ -123,6 +123,22 @@ RARELOAD.Setting("keepStates", {
     priv = "rareload_restore_states",
     help = "Restore noclip, godmode, notarget, frozen and flashlight"
 })
+RARELOAD.Setting("keepBody", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "player",
+    priv = "rareload_restore_states",
+    help = "Restore speeds, jump power, gravity, size, max health and armor, FOV, suit power and fire"
+})
+RARELOAD.Setting("keepTool", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "player",
+    priv = "rareload_restore_inventory",
+    help = "Restore the selected tool and its settings"
+})
 RARELOAD.Setting("keepAppearance", {
     type = "bool",
     default = true,
@@ -146,6 +162,14 @@ RARELOAD.Setting("keepAmmo", {
     category = "player",
     priv = "rareload_restore_ammo",
     help = "Restore reserve ammo and clips"
+})
+RARELOAD.Setting("keepAttachments", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "player",
+    priv = "rareload_restore_inventory",
+    help = "Restore weapon attachments and fire modes (ARC9, ArcCW, TFA, MW Base)"
 })
 RARELOAD.Setting("globalInventory", {
     type = "bool",
@@ -192,6 +216,35 @@ RARELOAD.Setting("overwriteDeleted", {
     scope = "player",
     category = "world",
     help = "On save, drop saved objects that were deleted from the map (off keeps them saved)"
+})
+RARELOAD.Setting("keepMotion", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "world",
+    help = "Objects saved while moving come back moving at the same speed"
+})
+RARELOAD.Setting("keepGroundWeapons", {
+    type = "bool",
+    default = game.SinglePlayer(),
+    scope = "player",
+    category = "world",
+    priv = "rareload_restore_entities",
+    help = "Save and restore the weapons you spawned or dropped that lie on the ground"
+})
+RARELOAD.Setting("resetObjects", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "world",
+    help = "Timeline restores put saved objects still on the map back the way they were saved"
+})
+RARELOAD.Setting("resetOnSpawn", {
+    type = "bool",
+    default = false,
+    scope = "player",
+    category = "world",
+    help = "Respawning at your save also puts your saved objects back the way they were saved"
 })
 RARELOAD.Setting("autoSave", {
     type = "bool",
@@ -254,6 +307,24 @@ RARELOAD.Setting("historySizeMax", {
     category = "timing",
     help = "Upper limit for historySize, so players can't fill the disk"
 })
+RARELOAD.Setting("importMaxKB", {
+    type = "int",
+    default = 4096,
+    min = 64,
+    max = 65536,
+    scope = "server",
+    category = "timing",
+    help = "Largest save file a player may import, in KB once compressed"
+})
+RARELOAD.Setting("fireDuration", {
+    type = "float",
+    default = 10,
+    min = 1,
+    max = 120,
+    scope = "server",
+    category = "server",
+    help = "Seconds a player or object saved while burning burns again after a restore"
+})
 RARELOAD.Setting("enableInAllGamemodes", {
     type = "bool",
     default = false,
@@ -261,12 +332,61 @@ RARELOAD.Setting("enableInAllGamemodes", {
     category = "server",
     help = "Also run Rareload in gamemodes not derived from Sandbox (D19)"
 })
+RARELOAD.Setting("logLevel", {
+    type = "enum",
+    values = { "errors", "warnings", "activity", "debug" },
+    default = "activity",
+    scope = "server",
+    category = "server",
+    help = "What Rareload prints to the server console: errors, warnings, activity (one line per save, "
+        .. "restore and admin change) or debug (every step)"
+})
+RARELOAD.Setting("logToFile", {
+    type = "bool",
+    default = false,
+    scope = "server",
+    category = "server",
+    help = "Also write the log to data/rareload/logs, one file per day"
+})
+RARELOAD.Setting("logKeepDays", {
+    type = "int",
+    default = 14,
+    min = 1,
+    max = 365,
+    scope = "server",
+    category = "server",
+    help = "Days log files are kept"
+})
 RARELOAD.Setting("debug", {
     type = "bool",
     default = false,
     scope = "server",
     category = "server",
     help = "Print Rareload debug logs, send report cards to admins and show the world display"
+})
+RARELOAD.Setting("keepMapState", {
+    type = "bool",
+    default = game.SinglePlayer(),
+    scope = "server",
+    category = "world",
+    priv = "rareload_restore_scene",
+    help = "Save and restore the map's doors, locks, broken objects and physics props (for everyone)"
+})
+RARELOAD.Setting("keepEnvironment", {
+    type = "bool",
+    default = game.SinglePlayer(),
+    scope = "server",
+    category = "world",
+    priv = "rareload_restore_scene",
+    help = "Save and restore the time of day, weather (StormFox2) and sky (for everyone)"
+})
+RARELOAD.Setting("keepWorldSettings", {
+    type = "bool",
+    default = game.SinglePlayer(),
+    scope = "server",
+    category = "world",
+    priv = "rareload_restore_scene",
+    help = "Save and restore gravity, physics speed and the AI switches (for everyone)"
 })
 RARELOAD.Setting("deathCleanupMode", {
     type = "enum",
@@ -388,9 +508,10 @@ if SERVER then
         fn = function(ply, a)
             local def = Settings[a.key]
             if not def or def.scope == "client" or (def.type ~= "enum" and not tonumber(a.value)) then return end
-            local value = coerce(def, a.value)
+            local value, before = coerce(def, a.value), RARELOAD.ServerValue(a.key)
             def.cv:SetString(def.type == "bool" and (value and "1" or "0") or tostring(value))
-            RARELOAD.Log("settings"):info("%s set %s to %s", ply:Nick(), def.convar, tostring(value))
+            RARELOAD.Log("settings", ply):info("%s changed %s from %s to %s", ply:Nick(), a.key, tostring(before),
+                tostring(value))
         end,
     })
 
@@ -408,7 +529,8 @@ if SERVER then
             if a.locked then keys[#keys + 1] = a.key end
             table.sort(keys)
             locks:SetString(table.concat(keys, ","))
-            RARELOAD.Log("settings"):info("%s %s %s", ply:Nick(), a.locked and "locked" or "unlocked", a.key)
+            RARELOAD.Log("settings", ply):info("%s %s the player setting %s", ply:Nick(),
+                a.locked and "locked" or "unlocked", a.key)
         end,
     })
 end

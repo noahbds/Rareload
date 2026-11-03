@@ -76,6 +76,16 @@ function Inventory.Clean(t)
         end
         out.ammo.clips[class] = { clip[1], clip[2] or -1 }
     end
+    -- Weapon attachments (modules/weapon_state.lua) are kept as they are; weapons no longer in the
+    -- list are dropped from them.
+    if t.extras ~= nil then
+        if not istable(t.extras) then return nil, "\"extras\" must be an object" end
+        local extras = { weapons = {}, owned = istable(t.extras.owned) and t.extras.owned or {} }
+        for class, w in pairs(istable(t.extras.weapons) and t.extras.weapons or {}) do
+            if seen[tostring(class)] and istable(w) then extras.weapons[tostring(class)] = w end
+        end
+        if next(extras.weapons) or next(extras.owned) then out.extras = extras end
+    end
     return out, warnings
 end
 
@@ -88,6 +98,7 @@ local function ofEntry(data)
         weapons = istable(data.weapons) and data.weapons or {},
         activeWeapon = data.activeWeapon,
         ammo = istable(data.ammo) and data.ammo or emptyAmmo(),
+        extras = istable(data.weaponState) and data.weaponState or nil,
     }
 end
 
@@ -123,10 +134,13 @@ function Inventory.Write(ply, save, inv, reason, versions)
     return RARELOAD.History.Update(ply, save, function(entry)
         entry.inventoryVersions = remember(versions or entry.inventoryVersions or {}, ofEntry(entry.data), reason)
         entry.data.weapons, entry.data.activeWeapon, entry.data.ammo = inv.weapons, inv.activeWeapon, inv.ammo
+        entry.data.weaponState = inv.extras
     end)
 end
 
 local function targetName(save) return save and ("save " .. save) or "the global inventory" end
+Inventory.TargetName = targetName -- for the console commands (sv_commands.lua)
+Inventory.Empty = emptyInventory
 
 -- Pushes a target to the inventory window.
 function Inventory.Push(ply, save)
@@ -183,6 +197,14 @@ function Inventory.GiveTarget(ply, save)
     if not inv then return "toast.inventory.empty", nil, false end
     local ammo = RARELOAD.Can(ply, "rareload_restore_ammo")
     local skipped = Inventory.Apply(ply, inv, ammo)
+    -- Attachments a tick later, once the weapon bases set up their slots; then the clips again.
+    if istable(inv.extras) then
+        timer.Simple(0, function()
+            if not IsValid(ply) then return end
+            RARELOAD.Weapons.Apply(ply, inv.extras)
+            if ammo then Inventory.SetAmmo(ply, inv.ammo) end
+        end)
+    end
     if skipped > 0 then return "toast.weapons_skipped", { skipped }, true end
     return "toast.inventory.given", { #inv.weapons }, true
 end
@@ -217,59 +239,22 @@ handle("inventory.give", { save = "uint?" }, function(ply, a)
     return Inventory.GiveTarget(ply, a.save)
 end)
 
--- Console commands ---------------------------------------------------------------------------------------
+-- Activity log: every change to an inventory, and every inventory given.
+local VERBS = { edit = "edited", copy = "copied into", import = "imported into", rollback = "rolled back" }
 
-local Cmd = RARELOAD.Cmd
-
--- "global" or a save number. Returns ok, save.
-local function parseTarget(arg)
-    if arg == "global" then return true, nil end
-    local n = tonumber(arg)
-    if n and n >= 1 and n == math.floor(n) then return true, n end
-    return false
+local write = Inventory.Write
+function Inventory.Write(ply, save, inv, reason, versions)
+    local ok, err = write(ply, save, inv, reason, versions)
+    if ok and IsValid(ply) then
+        RARELOAD.Log("inventory", ply):info("%s %s %s (%d weapons)", ply:Nick(), VERBS[reason] or reason,
+            targetName(save), #(inv and inv.weapons or {}))
+    end
+    return ok, err
 end
 
-local function fileOf(ply, name)
-    local key = RARELOAD.Util.PlayerKey(ply)
-    name = RARELOAD.Store.Clean(name or "inventory")
-    return key and ("inventories/" .. key .. "/" .. (name ~= "" and name or "inventory")) or nil
+local give = Inventory.GiveTarget
+function Inventory.GiveTarget(ply, save)
+    local key, args, ok = give(ply, save)
+    if ok then RARELOAD.Log("inventory", ply):info("%s gave themselves %s", ply:Nick(), targetName(save)) end
+    return key, args, ok
 end
-
-local function command(name, usage, help, fn)
-    Cmd.Register(name, {
-        priv = PRIV,
-        usage = usage,
-        help = help,
-        fn = function(ply, args, reply)
-            if not IsValid(ply) then return reply("Only players have inventories.") end
-            local ok, save = parseTarget(args[1])
-            if not ok then return reply("Usage: rareload " .. name .. " " .. usage) end
-            local key, targs, worked = fn(ply, save, args, reply)
-            if key then RARELOAD.Toast(ply, key, targs, worked == false and "error" or "ok") end
-            Inventory.Push(ply, save)
-        end,
-    })
-end
-
-command("inventory export", "<save number|global> [file name]",
-    "Write an inventory to data/rareload/inventories/<your SteamID64>/", function(ply, save, args, reply)
-        local inv, _, exists = Inventory.Read(ply, save)
-        local rel = fileOf(ply, args[2])
-        if not exists or not rel then return reply("Failed: " .. targetName(save) .. " does not exist.") end
-        RARELOAD.Store.Save(rel, inv or emptyInventory())
-        reply("Exported " .. targetName(save) .. " to data/rareload/" .. rel .. ".json")
-    end)
-
-command("inventory import", "<save number|global> [file name]",
-    "Replace an inventory with one from data/rareload/inventories/<your SteamID64>/", function(ply, save, args, reply)
-        local rel = fileOf(ply, args[2])
-        local data = rel and RARELOAD.Store.Load(rel, true)
-        if not data then return reply("Failed: there is no data/rareload/" .. tostring(rel) .. ".json") end
-        local key, targs, ok = Inventory.SetFrom(ply, save, data, "import")
-        reply(ok and ("Imported into " .. targetName(save) .. ".") or ("Failed: " .. tostring(targs and targs[1])))
-        return key, targs, ok
-    end)
-
-command("inventory give", "<save number|global>", "Give yourself an inventory now", function(ply, save)
-    return Inventory.GiveTarget(ply, save)
-end)

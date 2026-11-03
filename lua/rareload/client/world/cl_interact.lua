@@ -1,4 +1,4 @@
--- Interacting with world display panels (REWRITE_PLAN.md §21.7, F30, F33). Shift+Use on the focused
+-- Interacting with world display panels. Shift+Use on the focused
 -- panel locks onto it: the view freezes and the viewmodel hides. While locked:
 --   ↑/↓ switch tabs, the mouse wheel scrolls, ←/→ flip a pile (or scroll a lone panel),
 --   H highlights the saved spot (a player: their respawn point), L links a moved object to its spot.
@@ -55,7 +55,9 @@ hook.Add("PlayerBindPress", "Rareload.Interact", function(_, bind, down)
             return true
         end
         local g = Panels.focus
-        if g and not (IsValid(lp():GetActiveWeapon()) and lp():GetActiveWeapon():GetClass() == "weapon_physgun" and lp():KeyDown(IN_ATTACK)) then
+        local wep = lp():GetActiveWeapon()
+        local grabbing = IsValid(wep) and wep:GetClass() == "weapon_physgun" and lp():KeyDown(IN_ATTACK)
+        if g and not grabbing then
             Panels.lock, lockAng = { pile = g.key, rec = g.active.key }, lp():EyeAngles()
             lp():DrawViewModel(false)
             return true

@@ -1,4 +1,4 @@
--- Vehicle base adapters, seats and the WAC fixes (REWRITE_PLAN.md §20, ported from v4). Each adapter
+-- Vehicle base adapters, seats and the WAC fixes. Each adapter
 -- captures the runtime state its base wipes after a duplicator paste (L14, L15) and says when a
 -- pasted vehicle is ready for it. Every call into a base is pcall-guarded: a renamed method must
 -- never break a save or a restore.
@@ -395,7 +395,9 @@ Vehicles.Adapter({
 
 hook.Add("PlayerEnteredVehicle", "Rareload.WAC.Bind", function(ply, seat)
     local aircraft = aircraftOf(seat)
-    if aircraft and aircraft.RareloadID and isWAC(aircraft) then Vehicles.adapters.wac.onSeatEnter(aircraft, seat, ply) end
+    if aircraft and aircraft.RareloadID and isWAC(aircraft) then
+        Vehicles.adapters.wac.onSeatEnter(aircraft, seat, ply)
+    end
 end)
 
 hook.Add("PlayerLeaveVehicle", "Rareload.WAC.Leave", function(ply)

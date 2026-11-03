@@ -1,4 +1,4 @@
--- The Rareload tool's screen (REWRITE_PLAN.md §21.4, F36): status, a scrolling list of the player's
+-- The Rareload tool's screen: status, a scrolling list of the player's
 -- settings, the autosave bar, and an animated icon after the reload key or a denied use. Same look as v4.
 
 RARELOAD.ToolScreen = RARELOAD.ToolScreen or {}
@@ -117,7 +117,8 @@ local function drawIcon(kind, x, y, size, alpha, p)
         local rr = bw * 0.35
         for i = 0, 9 do
             local a1, a2 = math.pi + i / 10 * math.pi, math.pi + (i + 1) / 10 * math.pi
-            thickLine(x + math.cos(a1) * rr, y + math.sin(a1) * rr, x + math.cos(a2) * rr, y + math.sin(a2) * rr, t * 0.7)
+            thickLine(x + math.cos(a1) * rr, y + math.sin(a1) * rr,
+                x + math.cos(a2) * rr, y + math.sin(a2) * rr, t * 0.7)
         end
         surface.DrawRect(x - rr - t * 0.35, y - 1, t * 0.7, 3)
         surface.DrawRect(x + rr - t * 0.35, y - 1, t * 0.7, 3)

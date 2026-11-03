@@ -28,12 +28,20 @@ RARELOAD.Priv("rareload_restore_appearance", "user", "Get the saved player model
 RARELOAD.Priv("rareload_save_states", "user", "Include noclip, godmode, frozen and flashlight when saving")
 RARELOAD.Priv("rareload_restore_states", "user", "Get saved noclip, frozen and flashlight back on spawn")
 RARELOAD.Priv("rareload_restore_privileged_states", "admin", "Get saved godmode and notarget back on spawn (S14)")
+RARELOAD.Priv("rareload_restore_privileged_body", "admin",
+    "Get saved speeds, jump power, gravity, size and max health/armor back when they differ from now")
 RARELOAD.Priv("rareload_save_entities", "user", "Include your props and entities when saving")
 RARELOAD.Priv("rareload_restore_entities", "user", "Get your saved props and entities back on spawn")
 RARELOAD.Priv("rareload_save_npcs", "user", "Include your NPCs when saving")
 RARELOAD.Priv("rareload_restore_npcs", "user", "Get your saved NPCs back on spawn")
 RARELOAD.Priv("rareload_save_vehicles", "user", "Include your vehicles when saving")
 RARELOAD.Priv("rareload_restore_vehicles", "user", "Get your saved vehicles back on spawn")
+RARELOAD.Priv("rareload_export", "user", "Export your saves to a file")
+RARELOAD.Priv("rareload_import", "admin", "Add a save from a file to your timeline")
+RARELOAD.Priv("rareload_share", "user", "Offer a copy of your saves to other players")
+RARELOAD.Priv("rareload_save_scene", "admin", "Include the map, time, weather and world settings when saving")
+RARELOAD.Priv("rareload_restore_scene", "admin",
+    "Restore the map, time, weather and world settings (they change the server for everyone)")
 RARELOAD.Priv("rareload_manage_objects", "admin", "Edit, flag or delete objects inside saves")
 RARELOAD.Priv("rareload_manage_inventory", "admin", "Edit, copy, give and roll back saved and global inventories")
 RARELOAD.Priv("rareload_teleport", "admin", "Teleport to saved positions and objects")
@@ -69,7 +77,9 @@ end
 if SERVER then
     -- tier: "user", "admin", "superadmin", or "default" to undo the change. Returns false and why.
     function RARELOAD.SetTier(name, tier)
-        if tier ~= "default" and not TIERS[tier] then return false, "The tier is user, admin, superadmin or default." end
+        if tier ~= "default" and not TIERS[tier] then
+            return false, "The tier is user, admin, superadmin or default."
+        end
         RARELOAD.Tier(name)
         local set = table.Copy(tierCache.set)
         set[name] = tier ~= "default" and tier ~= Privs[name].tier and tier or nil

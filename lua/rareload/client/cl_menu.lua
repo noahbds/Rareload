@@ -178,8 +178,10 @@ local function newRow(parent, label, opts, rightW, belowH)
         if code ~= MOUSE_RIGHT or opts.disabled and not opts.changed then return end
         if not (opts.reset and opts.changed) and not opts.menu then return end
         local m = DermaMenu()
-        if opts.reset and opts.changed then m:AddOption(L("menu.use_server_value"), opts.reset):SetIcon(
-            "icon16/arrow_undo.png") end
+        if opts.reset and opts.changed then
+            m:AddOption(L("menu.use_server_value"), opts.reset):SetIcon(
+                "icon16/arrow_undo.png")
+        end
         if opts.menu then opts.menu(m) end
         m:Open()
     end
@@ -439,7 +441,9 @@ local function control(parent, def, get, set, opts)
         row.Sync = function(self) self.value = get() end
     elseif def.type == "enum" then
         local options = {}
-        for _, v in ipairs(def.values) do options[#options + 1] = { id = v, label = L("setting." .. def.key .. "." .. v) } end
+        for _, v in ipairs(def.values) do
+            options[#options + 1] = { id = v, label = L("setting." .. def.key .. "." .. v) }
+        end
         row = dropdown(parent, label, options, get(), set, opts)
         row.Sync = function(self)
             self:Select(get())
@@ -538,14 +542,14 @@ function Menu.BuildToolPanel(panel)
                 and L("setting.keepStates.help") .. "\n" .. L("menu.states_limited")
             control(content, def, function() return RARELOAD.Get(lp, def.key) end,
                 function(v) RunConsoleCommand(def.pref, v) end, {
-                refresh = function(o)
-                    o.locked = RARELOAD.IsLocked(def.key)
-                    o.disabled = o.locked or noPriv
-                    o.changed = not o.locked and pref ~= nil and pref:GetFloat() ~= -1
-                    o.tooltip = o.locked and L("menu.locked") or noPriv and L("menu.no_priv") or limited or nil
-                end,
-                reset = function() RunConsoleCommand(def.pref, "-1") end,
-            })
+                    refresh = function(o)
+                        o.locked = RARELOAD.IsLocked(def.key)
+                        o.disabled = o.locked or noPriv
+                        o.changed = not o.locked and pref ~= nil and pref:GetFloat() ~= -1
+                        o.tooltip = o.locked and L("menu.locked") or noPriv and L("menu.no_priv") or limited or nil
+                    end,
+                    reset = function() RunConsoleCommand(def.pref, "-1") end,
+                })
         end
     end
 
@@ -588,7 +592,9 @@ local function buildServer(panel)
         return finish(panel)
     end
     intro(panel, L("menu.server_help"))
-    local function setter(def) return function(v) RARELOAD.Net.Request("settings.set", { key = def.key, value = v }) end end
+    local function setter(def)
+        return function(v) RARELOAD.Net.Request("settings.set", { key = def.key, value = v }) end
+    end
 
     caption(panel, L("menu.server_caption"))
     for _, group in ipairs(grouped(function(def) return def.scope == "server" end)) do
@@ -607,16 +613,16 @@ local function buildServer(panel)
             for i, m in ipairs(RARELOAD.State.antistuck) do
                 toggle(methods, i .. ". " .. L("antistuck." .. m.id), m.enabled,
                     function(v) config(v and "enable" or "disable", m.id) end, {
-                    tooltip = L("antistuck." .. m.id .. ".help"),
-                    menu = function(menu)
-                        menu:AddOption(L("menu.move_up"), function() config("up", m.id) end):SetIcon(
-                        "icon16/arrow_up.png")
-                        menu:AddOption(L("menu.move_down"), function() config("down", m.id) end):SetIcon(
-                        "icon16/arrow_down.png")
-                        menu:AddOption(L("menu.only_this"), function() config("only", m.id) end):SetIcon(
-                        "icon16/star.png")
-                    end,
-                })
+                        tooltip = L("antistuck." .. m.id .. ".help"),
+                        menu = function(menu)
+                            menu:AddOption(L("menu.move_up"), function() config("up", m.id) end):SetIcon(
+                                "icon16/arrow_up.png")
+                            menu:AddOption(L("menu.move_down"), function() config("down", m.id) end):SetIcon(
+                                "icon16/arrow_down.png")
+                            menu:AddOption(L("menu.only_this"), function() config("only", m.id) end):SetIcon(
+                                "icon16/star.png")
+                        end,
+                    })
             end
             button(methods, L("menu.methods_reset"), "arrow_undo", BUTTONS.gray, function() config("reset") end)
         end
@@ -630,7 +636,8 @@ local function buildServer(panel)
     button(reset, L("menu.defaults_reset"), "arrow_undo", BUTTONS.orange, function()
         UI.Confirm(L("menu.defaults_reset"), L("menu.defaults_reset_confirm"), function()
             RARELOAD.Net.Request("settings.reset")
-            if RARELOAD.Can(LocalPlayer(), "rareload_anti_stuck") then RARELOAD.Net.Request("antistuck.get") end -- the method list
+            -- the method list
+            if RARELOAD.Can(LocalPlayer(), "rareload_anti_stuck") then RARELOAD.Net.Request("antistuck.get") end
         end, L("menu.defaults_reset"))
     end)
 
@@ -641,8 +648,12 @@ local function buildServer(panel)
         local content = section(panel, L("category." .. group.name), ICONS[group.name], false)
         for _, def in ipairs(group.defs) do
             control(content, def, function() return RARELOAD.ServerValue(def.key) end, setter(def), {
-                lock = { toggle = function(locked) RARELOAD.Net.Request("settings.lock",
-                        { key = def.key, locked = locked }) end },
+                lock = {
+                    toggle = function(locked)
+                        RARELOAD.Net.Request("settings.lock",
+                            { key = def.key, locked = locked })
+                    end
+                },
                 refresh = function(o) o.lock.locked = RARELOAD.IsLocked(def.key) end,
             })
         end
@@ -689,7 +700,9 @@ end)
 -- Rebuilds every open panel after a language change (G75).
 function Menu.Rebuild()
     wrapCache = {}
-    local builders = { { Menu.toolPanel, Menu.BuildToolPanel }, { Menu.pages.server, buildServer }, { Menu.pages.client, buildClient } }
+    local builders = {
+        { Menu.toolPanel, Menu.BuildToolPanel }, { Menu.pages.server, buildServer }, { Menu.pages.client, buildClient }
+    }
     for _, b in ipairs(builders) do
         if IsValid(b[1]) then b[2](b[1]) end
     end

@@ -1,4 +1,4 @@
--- Client UI kit (REWRITE_PLAN.md §21.2, §25): translations, dates, palette, fonts and scale, the Derma
+-- Client UI kit: translations, dates, palette, fonts and scale, the Derma
 -- skin for stock controls, and the widgets every Rareload screen is built from (windows, buttons,
 -- cards, chips, dropdowns, switches, sliders, rows, stat cards, dialogs), so they all look alike.
 -- Also the toast and `rareload` client-command plumbing.
@@ -163,7 +163,8 @@ end
 local function fillDate(t, template)
     local d = os.date("*t", t)
     return (template:gsub("{(%w+)}", {
-        wday = L("date.weekday." .. d.wday), month = L("date.month." .. d.month), mon = L("date.month_short." .. d.month),
+        wday = L("date.weekday." .. d.wday), month = L("date.month." .. d.month),
+        mon = L("date.month_short." .. d.month),
         day = tostring(d.day), year = tostring(d.year), time = os.date("%H:%M:%S", t), hm = os.date("%H:%M", t),
     }))
 end
@@ -275,8 +276,10 @@ end
 
 function SKIN:PaintVScrollBar() end
 
-function SKIN:PaintScrollBarGrip(panel, w, h) draw.RoundedBox(sc(4), sc(1), 0, w - sc(2), h,
-        panel.Hovered and C.text3 or C.line) end
+function SKIN:PaintScrollBarGrip(panel, w, h)
+    draw.RoundedBox(sc(4), sc(1), 0, w - sc(2), h,
+        panel.Hovered and C.text3 or C.line)
+end
 
 function SKIN:PaintButtonUp() end
 
@@ -350,8 +353,10 @@ function UI.Button(parent, text, onClick, opts)
         local is = UI.IconSize(sc(16))
         local iw = self.icon and is + (self.label ~= "" and sc(7) or 0) or 0 -- no gap on an icon-only button
         local x = math.floor((w - tw - iw) / 2)
-        if self.icon then UI.DrawIcon(self.icon, x, math.floor((h - is) / 2), is,
-                self:IsEnabled() and color_white or C.textOff) end
+        if self.icon then
+            UI.DrawIcon(self.icon, x, math.floor((h - is) / 2), is,
+                self:IsEnabled() and color_white or C.textOff)
+        end
         draw.SimpleText(self.label, "Rareload.BodyB", x + iw, math.floor(h / 2), textCol, TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER)
         if self.active then
@@ -366,7 +371,7 @@ function UI.Button(parent, text, onClick, opts)
     function b:SizeToLabel(pad)
         surface.SetFont("Rareload.BodyB")
         self:SetWide(surface.GetTextSize(self.label) +
-        (self.icon and UI.IconSize(sc(16)) + (self.label ~= "" and sc(7) or 0) or 0) + sc(pad or 28))
+            (self.icon and UI.IconSize(sc(16)) + (self.label ~= "" and sc(7) or 0) or 0) + sc(pad or 28))
     end
 
     return b
@@ -481,7 +486,9 @@ function UI.Dropdown(parent, prefix, options, get, onSelect)
         surface.SetDrawColor(C.text3)
         draw.NoTexture()
         local x, y = w - sc(14), h / 2
-        surface.DrawPoly({ { x = x - sc(4), y = y - sc(2) }, { x = x + sc(4), y = y - sc(2) }, { x = x, y = y + sc(3) } })
+        surface.DrawPoly({
+            { x = x - sc(4), y = y - sc(2) }, { x = x + sc(4), y = y - sc(2) }, { x = x, y = y + sc(3) }
+        })
     end
     b.DoClick = function()
         local m = DermaMenu()
@@ -617,9 +624,9 @@ function UI.Rows(parent, rows)
     local rh = sc(24)
     p.Paint = function(self, w, h)
         box(sc(10), w, h, C.surface)
-        local list = rows()
+        local items = rows()
         local y = sc(6)
-        for i, r in ipairs(list) do
+        for i, r in ipairs(items) do
             if i > 1 then
                 surface.SetDrawColor(ColorAlpha(C.line, 120))
                 surface.DrawLine(sc(12), y, w - sc(12), y)
@@ -631,7 +638,7 @@ function UI.Rows(parent, rows)
                 r[3] or C.text, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
             y = y + rh
         end
-        local want = #list * rh + sc(12)
+        local want = #items * rh + sc(12)
         if self:GetTall() ~= want then self:SetTall(want) end
     end
     return p
@@ -642,15 +649,15 @@ function UI.Stats(parent, cards)
     local p = vgui.Create("DPanel", parent)
     p:SetTall(sc(64))
     p.Paint = function(_, w, h)
-        local list = cards()
+        local items = cards()
         local gap = sc(7)
-        local cw = (w - gap * (#list - 1)) / #list
-        for i, c in ipairs(list) do
+        local cw = (w - gap * (#items - 1)) / #items
+        for i, c in ipairs(items) do
             local x = (i - 1) * (cw + gap)
             draw.RoundedBox(sc(8), x, 0, cw, h, C.surface)
             if c[2] ~= nil then
-                draw.SimpleText(tostring(c[2]), "Rareload.Stat", x + cw / 2, h * 0.42, c[3] or C.text, TEXT_ALIGN_CENTER,
-                    TEXT_ALIGN_CENTER)
+                draw.SimpleText(tostring(c[2]), "Rareload.Stat", x + cw / 2, h * 0.42, c[3] or C.text,
+                    TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
             else
                 draw.SimpleText(L("ui.not_saved"), "Rareload.Small", x + cw / 2, h * 0.42, C.textOff, TEXT_ALIGN_CENTER,
                     TEXT_ALIGN_CENTER)
@@ -669,8 +676,10 @@ function UI.Empty(parent, icon, title, hint)
     p.Paint = function(_, w, h)
         UI.DrawIcon(icon, w / 2 - sc(16), h / 2 - sc(46), sc(32), ColorAlpha(color_white, 90))
         draw.SimpleText(title, "Rareload.H2", w / 2, h / 2 + sc(4), C.text2, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-        if hint then draw.SimpleText(hint, "Rareload.Small", w / 2, h / 2 + sc(28), C.text3, TEXT_ALIGN_CENTER,
-                TEXT_ALIGN_CENTER) end
+        if hint then
+            draw.SimpleText(hint, "Rareload.Small", w / 2, h / 2 + sc(28), C.text3, TEXT_ALIGN_CENTER,
+                TEXT_ALIGN_CENTER)
+        end
     end
     return p
 end
@@ -741,8 +750,10 @@ function UI.Window(opts)
     frame.Paint = function(self, w, h)
         box(sc(14), w, h, C.bg)
         draw.SimpleText(self.title, "Rareload.Title", sc(18), sc(12), C.accentHi, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-        if self.subtitle then draw.SimpleText(self.subtitle, "Rareload.Sub", sc(20), sc(40), C.text3, TEXT_ALIGN_LEFT,
-                TEXT_ALIGN_TOP) end
+        if self.subtitle then
+            draw.SimpleText(self.subtitle, "Rareload.Sub", sc(20), sc(40), C.text3, TEXT_ALIGN_LEFT,
+                TEXT_ALIGN_TOP)
+        end
         surface.SetDrawColor(C.line)
         surface.DrawLine(0, headH, w, headH)
     end

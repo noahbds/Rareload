@@ -1,7 +1,24 @@
 -- World modules: the player's props and entities, NPCs (with their AI state), and constraints between
--- props and vehicles (REWRITE_PLAN.md §14.3). Snapshots go through sv_snapshot.
+-- props and vehicles. Snapshots go through sv_snapshot.
 
 local Snapshot = RARELOAD.Snapshot
+
+-- The objects the entities module saves: everything the player owns but NPCs and vehicles.
+local function isEntityTarget(ent)
+    local parent = ent:GetParent()
+    return not ent:IsNPC() and not ent:IsVehicle() and not Snapshot.EXCLUDED[ent:GetClass()]
+        and not ent:GetPersistent() -- the engine saves those itself (G32)
+        and not (IsValid(parent) and parent:IsPlayer())
+        and not Snapshot.IsRootVehicle(ent) and not Snapshot.IsVehiclePart(ent)
+end
+
+local function isNPC(ent) return ent:IsNPC() end
+
+-- Weapons on the ground are saved only for players with keepGroundWeapons (C5).
+local function entityPicker(ply)
+    local ground = RARELOAD.Get(ply, "keepGroundWeapons")
+    return function(ent) return isEntityTarget(ent) and (ground or not ent:IsWeapon()) end
+end
 
 RARELOAD.Module({
     id = "entities",
@@ -10,24 +27,22 @@ RARELOAD.Module({
     setting = "keepEntities",
     privSave = "rareload_save_entities",
     privRestore = "rareload_restore_entities",
+    empty = Snapshot.Empty,
 
     save = function(ply, ctx)
-        local targets = {}
+        local targets, pick = {}, entityPicker(ply)
         for _, ent in ipairs(Snapshot.Owned(ply, ctx)) do
-            local parent = ent:GetParent()
-            if not ent:IsNPC() and not ent:IsVehicle() and not Snapshot.EXCLUDED[ent:GetClass()]
-                and not ent:GetPersistent() -- the engine saves those itself (G32)
-                and not (IsValid(parent) and parent:IsPlayer())
-                and not Snapshot.IsRootVehicle(ent) and not Snapshot.IsVehiclePart(ent) then
-                targets[#targets + 1] = ent
-            end
+            if pick(ent) then targets[#targets + 1] = ent end
         end
         ctx.shared.entityTargets = targets
         return Snapshot.CaptureFor(ply, ctx, "entities", targets)
     end,
 
     restore = function(ply, snap, ctx)
-        Snapshot.Report(ctx, "entities", Snapshot.Restore(snap, ply, { kind = "props" }))
+        local removed = ctx.exact and Snapshot.RemoveMissing(ply, ctx, snap, entityPicker(ply)) or 0
+        local report = Snapshot.Restore(snap, ply, { kind = "props", reset = ctx.reset })
+        report.removed = removed
+        Snapshot.Report(ctx, "entities", report)
     end,
 
     summary = function(snap) return Snapshot.Summary(snap, "entities") end,
@@ -35,8 +50,21 @@ RARELOAD.Module({
 
 -- NPC AI state is kept next to the snapshot and applied once every NPC exists, so enemies that
 -- are other restored NPCs can be relinked (L22).
-local function captureAI(npc)
+-- C8 adds the weapon in hand, its accuracy, and how the NPC feels about every player online and every
+-- other saved NPC ("ply:<SteamID64>" or "npc:<Rareload ID>" -> D_HT, D_FR, D_LI, D_NU), so a friendly
+-- soldier stays friendly.
+local function captureAI(npc, others)
     local ai = { state = npc:GetNPCState(), squad = npc:GetSquad() }
+    local wep = npc:GetActiveWeapon()
+    if IsValid(wep) then
+        ai.weapon = wep:GetClass()
+        ai.proficiency = npc:GetCurrentWeaponProficiency()
+    end
+    ai.relations = {}
+    for _, p in player.Iterator() do ai.relations["ply:" .. p:SteamID64()] = npc:Disposition(p) end
+    for _, other in ipairs(others) do
+        if other ~= npc and IsValid(other) then ai.relations["npc:" .. Snapshot.ID(other)] = npc:Disposition(other) end
+    end
     local schedule = npc:GetCurrentSchedule()
     if isnumber(schedule) and schedule >= 0 then ai.schedule = schedule end
     local enemy = npc:GetEnemy()
@@ -48,7 +76,24 @@ local function captureAI(npc)
     return ai
 end
 
+local function relationTarget(key, byId)
+    local kind, id = string.match(tostring(key), "^(%a+):(.+)$")
+    if kind == "ply" then return player.GetBySteamID64(id) end
+    if kind == "npc" then return byId[id] end
+end
+
 local function applyAI(npc, ai, byId)
+    if isstring(ai.weapon) then
+        local wep = npc:GetActiveWeapon()
+        if not IsValid(wep) or wep:GetClass() ~= ai.weapon then npc:Give(ai.weapon) end
+        if isnumber(ai.proficiency) then npc:SetCurrentWeaponProficiency(ai.proficiency) end
+    end
+    for key, disp in pairs(istable(ai.relations) and ai.relations or {}) do
+        local target = relationTarget(key, byId)
+        if IsValid(target) and isnumber(disp) and disp ~= npc:Disposition(target) then
+            npc:AddEntityRelationship(target, disp, 99)
+        end
+    end
     if ai.squad and ai.squad ~= "" then npc:SetSquad(ai.squad) end
     if ai.state then npc:SetNPCState(ai.state) end
     if ai.schedule then npc:SetSchedule(ai.schedule) end
@@ -69,6 +114,7 @@ RARELOAD.Module({
     setting = "keepNPCs",
     privSave = "rareload_save_npcs",
     privRestore = "rareload_restore_npcs",
+    empty = Snapshot.Empty,
 
     save = function(ply, ctx)
         local targets = {}
@@ -78,22 +124,29 @@ RARELOAD.Module({
         local snap = Snapshot.CaptureFor(ply, ctx, "npcs", targets)
         if not snap then return nil end
         snap.ai = snap.ai or {} -- deleted NPCs kept in the save already carry theirs
-        for _, npc in ipairs(targets) do snap.ai[Snapshot.ID(npc)] = captureAI(npc) end
+        for _, npc in ipairs(targets) do snap.ai[Snapshot.ID(npc)] = captureAI(npc, targets) end
         return snap
     end,
 
     restore = function(ply, snap, ctx)
+        local removed = ctx.exact and Snapshot.RemoveMissing(ply, ctx, snap, isNPC) or 0
         local done = ctx:async("npcs")
         ctx:waitFor(function() return RARELOAD.Pipeline.mapReady end, 10, function()
-            local report = Snapshot.Restore(snap, ply, { kind = "npcs" })
+            local report = Snapshot.Restore(snap, ply, { kind = "npcs", reset = ctx.reset })
+            report.removed = removed
             Snapshot.Report(ctx, "npcs", report)
-            local byId = {}
+            local byId, created = {}, {}
             for _, npc in pairs(report.created) do
-                if IsValid(npc) and npc.RareloadID then byId[npc.RareloadID] = npc end
+                if IsValid(npc) and npc.RareloadID then created[npc.RareloadID] = npc end
             end
+            -- Relations can point at saved NPCs still on the map too.
+            for _, npc in ipairs(report.existing) do
+                if IsValid(npc) and npc.RareloadID then byId[tostring(npc.RareloadID)] = npc end
+            end
+            for id, npc in pairs(created) do byId[tostring(id)] = npc end
             -- AI state is applied one tick later, after the NPCs finished spawning.
             ctx:nextTick(function()
-                for id, npc in pairs(byId) do
+                for id, npc in pairs(created) do
                     -- An all-digit ID comes back from JSON as a number key.
                     local ai = snap.ai and (snap.ai[id] or snap.ai[tonumber(id)])
                     if IsValid(npc) and ai then ProtectedCall(applyAI, npc, ai, byId) end
@@ -146,6 +199,55 @@ local function eachLive(entities, fn)
     end
 end
 
+local WORLD_KINDS = { "entities", "npcs", "vehicles" }
+
+-- Exact restore: removes constraints between this save's objects that the save doesn't hold (a weld
+-- added since). Constraints are counted from this module's list and, for saves made before it held
+-- them all, from the snapshots, whichever has more of a kind. Returns how many were removed.
+local function removeExtra(entry, list, entities)
+    local DefID, Payload = Snapshot.DefID, RARELOAD.Pipeline.Payload
+    local mine, want, fromSnaps = {}, {}, {}
+    for _, saved in ipairs(list) do
+        local key = keyOf(saved.def.Type, saved.ids)
+        want[key] = (want[key] or 0) + 1
+    end
+    for _, kind in ipairs(WORLD_KINDS) do
+        local snap = Payload(entry.data[kind])
+        for _, def in pairs(istable(snap) and snap.Entities or {}) do
+            local id = DefID(def)
+            if id then mine[tostring(id)] = true end
+        end
+        for _, c in pairs(istable(snap) and snap.Constraints or {}) do
+            local ids, known = {}, istable(c) and c.Type and istable(c.Entity)
+            for i, e in pairs(known and c.Entity or {}) do
+                local def = snap.Entities[e.Index] or snap.Entities[tostring(e.Index)]
+                ids[i] = e.World and "world" or def and DefID(def)
+                known = known and ids[i] ~= nil
+            end
+            if known then
+                local key = keyOf(c.Type, ids)
+                fromSnaps[key] = (fromSnaps[key] or 0) + 1
+            end
+        end
+    end
+    for key, n in pairs(fromSnaps) do want[key] = math.max(want[key] or 0, n) end
+
+    local removed = 0
+    eachLive(entities, function(c, ids)
+        for _, id in pairs(ids) do
+            if id ~= "world" and not mine[tostring(id)] then return end -- not only this save's objects
+        end
+        local key = keyOf(c.Type, ids)
+        if (want[key] or 0) > 0 then
+            want[key] = want[key] - 1
+        else
+            c.Constraint:Remove()
+            removed = removed + 1
+        end
+    end)
+    return removed
+end
+
 RARELOAD.Module({
     id = "constraints",
     phase = "world",
@@ -154,6 +256,7 @@ RARELOAD.Module({
     setting = "keepEntities",
     privSave = "rareload_save_entities",
     privRestore = "rareload_restore_entities",
+    empty = function() return {} end,
 
     save = function(ply, ctx)
         local saved = {}
@@ -182,6 +285,7 @@ RARELOAD.Module({
                 entities[#entities + 1] = ent
             end
         end
+        local removed = ctx.exact and removeExtra(ctx.entry, list, entities) or 0
         local have = {}
         eachLive(entities, function(c, ids)
             local key = keyOf(c.Type, ids)
@@ -209,7 +313,10 @@ RARELOAD.Module({
                 end
             end
         end
-        if made > 0 then ctx:result("ok", "constraints", made .. " of " .. #list .. " recreated") end
+        if made > 0 or removed > 0 then
+            ctx:result("ok", "constraints", made .. " of " .. #list .. " recreated"
+                .. (removed > 0 and ", " .. removed .. " removed (exact restore)" or ""))
+        end
     end,
 
     summary = function(list) return #list .. " constraints" end,

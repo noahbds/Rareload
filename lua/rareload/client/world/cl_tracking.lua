@@ -98,7 +98,9 @@ local function rebuild()
     local out = {}
     local function add(prefix, save, extra)
         out[#out + 1] = playerRecord(prefix, save, extra)
-        for _, o in ipairs(save.objects or {}) do out[#out + 1] = objectRecord(prefix .. ":" .. o.id, o, save, extra) end
+        for _, o in ipairs(save.objects or {}) do
+            out[#out + 1] = objectRecord(prefix .. ":" .. o.id, o, save, extra)
+        end
     end
     if World.preview then
         add("preview", World.preview, { preview = true, entryId = World.preview.id })
@@ -211,8 +213,8 @@ timer.Create("Rareload.World.Update", 0.2, 0, function()
                 seated = rec.seated,
                 playerColor = rec.playerColor
             }
-            rec.phantomSig = rec.phantomSig or
-            RARELOAD.Phantoms.Signature(w)                                    -- records are rebuilt when their data changes
+            -- records are rebuilt when their data changes
+            rec.phantomSig = rec.phantomSig or RARELOAD.Phantoms.Signature(w)
             w.sig = rec.phantomSig
             wanted[rec.key] = w
         end

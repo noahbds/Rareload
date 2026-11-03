@@ -1,4 +1,4 @@
--- The Save Timeline (REWRITE_PLAN.md §21.5, F23–F28): the player's saves on this map. A sidebar to
+-- The Save Timeline : the player's saves on this map. A sidebar to
 -- search, sort and filter them; a detail pane with the save's facts, the respawn point, restore (all
 -- or some parts), pin, note, delete, teleport, the in-world preview, the objects inspector and the
 -- reload-key mode. `rareload timeline` opens it; ↑/↓ select, Enter restores, Delete deletes.
@@ -8,7 +8,7 @@ local Timeline = RARELOAD.Timeline
 local L, UI, State = RARELOAD.L, RARELOAD.UI, RARELOAD.State
 local C, sc = UI.C, UI.sc
 
-local COMPONENTS = { "position", "health", "inventory", "ammo", "appearance", "states", "world" }
+local COMPONENTS = { "position", "health", "inventory", "ammo", "appearance", "states", "world", "scene" }
 local MODES = { "set_previous", "restore_current", "restore_previous" }
 local SORTS = { "newest", "oldest", "health", "pinned" }
 local FILTERS = { "all", "pinned", "noted", "world", "auto" }
@@ -32,9 +32,9 @@ end
 local function searchText(row)
     local i = row.info or {}
     return string.lower(table.concat(
-    { "#" .. row.id, L("save_no", row.id), row.note or "", L("reason." .. row.reason), i.active or "",
-        i.active and UI.WeaponName(i.active) or "", i.model or "", i.vehicle or "", UI.Pos(i.pos),
-        UI.Date(row.time, "long"), UI.Date(row.time, "short"), UI.TimeAgo(row.time) }, " "))
+        { "#" .. row.id, L("save_no", row.id), row.note or "", L("reason." .. row.reason), i.active or "",
+            i.active and UI.WeaponName(i.active) or "", i.model or "", i.vehicle or "", UI.Pos(i.pos),
+            UI.Date(row.time, "long"), UI.Date(row.time, "short"), UI.TimeAgo(row.time) }, " "))
 end
 
 local function view(filter, sort, search)
@@ -309,6 +309,16 @@ local function buildDetail(host, sel)
         if r then RARELOAD.InventoryManager.Open(r.id) end
     end, { style = "info", icon = "gun" })
     D.tools = split({ D.preview, D.objects, D.inventory })
+    -- Export to this game's data folder, or offer a copy to another player (A2).
+    D.export = UI.Button(host, L("share.export"), function()
+        local r = row()
+        if r then RARELOAD.Share.Export(r.id) end
+    end, { style = "info", icon = "disk" })
+    D.share = UI.Button(host, L("share.share"), function()
+        local r = row()
+        if r then RARELOAD.Share.Pick(r.id) end
+    end, { style = "info", icon = "group_go" })
+    D.shareTools = split({ D.export, D.share })
 
     D.banner = UI.Card(host, function(_, w, h)
         draw.SimpleText(L("timeline.is_active"), "Rareload.BodyB", w / 2, h / 2, C.ok, TEXT_ALIGN_CENTER,
@@ -353,6 +363,7 @@ local function buildDetail(host, sel)
         local r = row()
         if r then request("history.pin", { id = r.id, pinned = not r.pinned }) end
     end, { style = "warn", icon = "star" })
+    D.pin:SetTooltip(L("timeline.pin_help"))
     D.delete = UI.Button(D.actions, L("timeline.delete"), function() Timeline.Delete(row()) end,
         { style = "danger", icon = "cross" })
     D.restore = UI.Button(D.actions, L("timeline.restore_all"), function() Timeline.Restore(row()) end,
@@ -382,13 +393,21 @@ local function buildDetail(host, sel)
     gap(D.parts, 6)
     D.checks = {}
     for _, comp in ipairs(COMPONENTS) do
-        D.checks[comp] = UI.Check(D.parts, L("comp." .. comp), false, function() Timeline.SendReloadConfig() end)
+        -- The scene changes the server for everyone: only shown to players who may restore it.
+        if comp ~= "scene" or RARELOAD.Can(LocalPlayer(), "rareload_restore_scene") then
+            D.checks[comp] = UI.Check(D.parts, L("comp." .. comp), false, function() Timeline.SendReloadConfig() end)
+        end
     end
+    -- Exact restore (A1): both restore buttons also remove the player's objects the save doesn't hold.
+    D.exact = UI.Check(host, L("timeline.exact"), false, function() end)
+    D.exact:SetTooltip(L("timeline.exact_help"))
+    D.exact:Dock(TOP)
+    gap(D.exact, 6)
     D.applyParts = UI.Button(host, L("timeline.restore_selected"), function()
         local r, comps = row(), Timeline.Comps()
         if not r then return end
         if comps == "" then return UI.Notify(L("timeline.nothing_selected"), "error") end
-        request("history.restore", { id = r.id, comps = comps })
+        Timeline.Restore(r, comps)
     end, { icon = "arrow_rotate_clockwise" })
     D.applyParts:Dock(TOP)
     gap(D.applyParts, 12)
@@ -398,7 +417,8 @@ local function buildDetail(host, sel)
     gap(D.reloadTitle, 4)
     local modes = {}
     for _, m in ipairs(MODES) do modes[#modes + 1] = { id = m, label = L("mode." .. m) } end
-    D.mode = UI.Dropdown(host, nil, modes, function() return State.history.reload.mode or "set_previous" end, function(m)
+    local function mode() return State.history.reload.mode or "set_previous" end
+    D.mode = UI.Dropdown(host, nil, modes, mode, function(m)
         State.history.reload.mode = m
         Timeline.SendReloadConfig()
     end)
@@ -417,12 +437,16 @@ local function buildDetail(host, sel)
 end
 
 local DETAIL_PARTS = { "header", "stats", "rows", "status", "banner", "setActive", "note", "actions", "partTitle",
-    "parts",
-    "applyParts", "reloadTitle", "mode", "reloadHelp" }
+    "parts", "exact", "applyParts", "reloadTitle", "mode", "reloadHelp" }
 
 local function updateDetail(D, r)
     for _, k in ipairs(DETAIL_PARTS) do D[k]:SetVisible(r ~= nil) end
     D.tools:SetVisible(r ~= nil)
+    local me = LocalPlayer()
+    D.export:SetVisible(RARELOAD.Can(me, "rareload_export"))
+    D.share:SetVisible(RARELOAD.Can(me, "rareload_share"))
+    D.shareTools:SetVisible(r ~= nil and (D.export:IsVisible() or D.share:IsVisible()))
+    D.shareTools:InvalidateLayout()
     D.empty:SetVisible(r == nil)
     if not r then return end
     D.inventory:SetVisible(RARELOAD.InventoryManager.CanUse())
@@ -466,9 +490,20 @@ function Timeline.SendReloadConfig()
     request("history.reloadMode", { mode = State.history.reload.mode or "set_previous", comps = comps })
 end
 
-function Timeline.Restore(r)
+-- comps: the ticked parts ("position,world"), or nil for everything. An exact restore that includes
+-- the world removes objects, so it asks first (undo still brings them back).
+function Timeline.Restore(r, comps)
     if not r then return end
-    request("history.restore", { id = r.id }) -- the server's toast says when it's done
+    local exact = Timeline.D and Timeline.D.exact.value == true
+    local send = function()
+        -- the server's toast says when it's done
+        request("history.restore", { id = r.id, comps = comps, exact = exact or nil })
+    end
+    if exact and (comps == nil or string.find("," .. comps .. ",", ",world,", 1, true)) then
+        UI.Confirm(L("timeline.exact"), L("timeline.exact_confirm"), send)
+    else
+        send()
+    end
 end
 
 function Timeline.Delete(r)
@@ -482,7 +517,9 @@ end
 
 function Timeline.Open()
     if IsValid(Timeline.frame) then Timeline.frame:Remove() end
-    local frame = UI.Window({ title = L("timeline.title"), subtitle = L("timeline.subtitle", game.GetMap()), w = 1220, h = 880 })
+    local frame = UI.Window({
+        title = L("timeline.title"), subtitle = L("timeline.subtitle", game.GetMap()), w = 1220, h = 880
+    })
     Timeline.frame = frame
     local filter, sort, search, selected = "all", "newest", "", nil
     local rows = {}
@@ -499,6 +536,10 @@ function Timeline.Open()
     if RARELOAD.InventoryManager.CanUse() then
         frame:HeaderButton(L("inventory.title"), function() RARELOAD.InventoryManager.Open() end,
             { style = "primary", icon = "gun" })
+    end
+    if RARELOAD.Can(LocalPlayer(), "rareload_import") then
+        frame:HeaderButton(L("share.import"), function() RARELOAD.Share.OpenImport() end,
+            { style = "info", icon = "page_white_get" })
     end
 
     local side = vgui.Create("DPanel", frame)

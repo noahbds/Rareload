@@ -1,6 +1,6 @@
 -- Storage: the only file touching file.*. JSON documents under data/rareload/, written atomically
--- with a .bak copy, batched to at most one write every 0.5 s (REWRITE_PLAN.md §13.5, §16).
--- File names end in .json and are lowercase, because file.Write only accepts those (G5).
+-- with a .bak copy, batched to at most one write every 0.5 s.
+-- File names end in .json and are lowercase, because file.Write only accepts those.
 
 RARELOAD.Store = RARELOAD.Store or {}
 local Store = RARELOAD.Store
@@ -121,7 +121,8 @@ function Store.BlobPut(data)
     local json = util.TableToJSON(data)
     local hash = util.SHA256(json):sub(1, 16)
     local rel = blobRel(hash)
-    if cache[rel] == nil and not file.Exists(ROOT .. rel .. ".json", "DATA") then
+    -- `false` in the cache means "looked for, not there" (a blob removed by GC): it is written again.
+    if not cache[rel] and not file.Exists(ROOT .. rel .. ".json", "DATA") then
         Store.Save(rel, data)
         encoded[rel] = json -- written as is, not encoded a second time
     end
@@ -162,6 +163,51 @@ hook.Add("InitPostEntity", "Rareload.Store.GC", function()
     local removed = Store.GC()
     if removed > 0 then log():info("removed %d unused blobs", removed) end
 end)
+
+-- Log files (sv_log.lua): data/rareload/logs/<YYYY-MM-DD>.txt, one line per event.
+local LOGS = ROOT .. "logs/"
+local logDirMade = false
+
+function Store.AppendLog(day, line)
+    if not logDirMade then
+        file.CreateDir(LOGS)
+        logDirMade = true
+    end
+    file.Append(LOGS .. Store.Clean(day) .. ".txt", line .. "\n")
+end
+
+-- Deletes log files older than `days`. Returns how many were removed.
+function Store.PruneLogs(days)
+    local removed, limit = 0, os.time() - days * 86400
+    for _, name in ipairs(file.Find(LOGS .. "*.txt", "DATA") or {}) do
+        if file.Time(LOGS .. name, "DATA") < limit then
+            file.Delete(LOGS .. name)
+            removed = removed + 1
+        end
+    end
+    return removed
+end
+
+-- How many players have a saves document on this map.
+function Store.PlayersWithSaves()
+    local n = 0
+    for _, name in ipairs(file.Find(ROOT .. Store.MapDir() .. "/*.json", "DATA") or {}) do
+        if name:match("^%d+%.json$") then n = n + 1 end -- <SteamID64>.json
+    end
+    return n
+end
+
+-- How many files and bytes a folder under data/rareload holds (not counting sub-folders).
+function Store.Usage(rel)
+    local files, bytes = 0, 0
+    for _, name in ipairs(file.Find(ROOT .. rel .. "/*", "DATA") or {}) do
+        local size = file.Size(ROOT .. rel .. "/" .. name, "DATA")
+        if size and size >= 0 then
+            files, bytes = files + 1, bytes + size
+        end
+    end
+    return files, bytes
+end
 
 -- Small per-player records (reload-key mode, global inventory) live in sv.db (D17, G49).
 function Store.PData(ply, name, value)

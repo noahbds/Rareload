@@ -1,4 +1,4 @@
--- Event-driven autosave (REWRITE_PLAN.md §15.7, G73): engine events mark the modules that changed,
+-- Event-driven autosave: engine events mark the modules that changed,
 -- and a once-a-second check saves only those, at most every `autoSaveInterval` seconds per player.
 
 local MOVE = 64 * 64                                -- squared distance that counts as "moved"
@@ -19,7 +19,10 @@ local function remember(ply)
 end
 
 hook.Add("PlayerHurt", "Rareload.Autosave", function(ply) mark(ply, "health") end)
-hook.Add("WeaponEquip", "Rareload.Autosave", function(_, ply) mark(ply, "weapons", "activeWeapon") end)
+hook.Add("WeaponEquip", "Rareload.Autosave", function(_, ply) mark(ply, "weapons", "weaponState", "activeWeapon") end)
+-- Weapon bases that announce attachment changes (TFA); the others are caught by the next full save.
+hook.Add("TFA_Attachment_Attached", "Rareload.Autosave", function(wep) mark(wep:GetOwner(), "weaponState") end)
+hook.Add("TFA_Attachment_Detached", "Rareload.Autosave", function(wep) mark(wep:GetOwner(), "weaponState") end)
 hook.Add("PlayerDroppedWeapon", "Rareload.Autosave", function(ply) mark(ply, "weapons", "activeWeapon") end)
 hook.Add("PlayerSwitchWeapon", "Rareload.Autosave", function(ply) mark(ply, "activeWeapon") end)
 hook.Add("PlayerAmmoChanged", "Rareload.Autosave", function(ply) mark(ply, "ammo") end)
@@ -52,7 +55,8 @@ end
 -- Saving mid-air or mid-noclip would put the player there on respawn.
 local function safeToSave(ply)
     return ply:Alive() and ply:GetObserverMode() == OBS_MODE_NONE
-        and (ply:IsOnGround() or ply:InVehicle() or ply:GetMoveType() == MOVETYPE_NOCLIP and RARELOAD.Get(ply, "keepStates"))
+        and (ply:IsOnGround() or ply:InVehicle()
+            or ply:GetMoveType() == MOVETYPE_NOCLIP and RARELOAD.Get(ply, "keepStates"))
 end
 
 timer.Create("Rareload.Autosave", 1, 0, function()

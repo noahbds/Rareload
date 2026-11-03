@@ -11,8 +11,11 @@ local Inventory = RARELOAD.Inventory
 
 local function emptyAmmo() return { reserve = {}, clips = {} } end
 
+-- `extras`: weapon attachments and fire modes (modules/weapon_state.lua), when keepAttachments is on.
 function Inventory.Capture(ply)
-    return { weapons = Inventory.Weapons(ply), activeWeapon = Inventory.Held(ply), ammo = Inventory.Ammo(ply) }
+    local extras = RARELOAD.Get(ply, "keepAttachments") and RARELOAD.Weapons.Capture(ply) or nil
+    return { weapons = Inventory.Weapons(ply), activeWeapon = Inventory.Held(ply), ammo = Inventory.Ammo(ply),
+        extras = extras }
 end
 
 -- The player's global inventory, or nil when none was stored yet. Rareload 5.2 stored only the
@@ -60,7 +63,7 @@ RARELOAD.Module({
     setting = { "keepInventory", "globalInventory" },
     privSave = { "rareload_save_inventory", "rareload_global_inventory" },
     privRestore = { "rareload_restore_inventory", "rareload_global_inventory" },
-    replaces = { "weapons", "ammo", "activeWeapon" },
+    replaces = { "weapons", "ammo", "activeWeapon", "weaponState" },
 
     load = function(ply) return Inventory.GlobalGet(ply) end,
 
@@ -84,8 +87,16 @@ RARELOAD.Module({
     },
 
     -- Ammo and the held weapon wait for this, the tick after the spawn: the weapons exist by then.
+    -- Attachments go on a tick later still, then the clips are set again (attachments change
+    -- magazine sizes).
     restore = function(ply, inv, ctx)
-        report(ply, ctx, Inventory.Apply(ply, inv, withAmmo(ply, ctx), ctx.spawnDone.globalInventory))
+        local ammo = withAmmo(ply, ctx)
+        report(ply, ctx, Inventory.Apply(ply, inv, ammo, ctx.spawnDone.globalInventory))
+        if istable(inv.extras) and RARELOAD.Get(ply, "keepAttachments") then
+            RARELOAD.Weapons.ApplyLater(ply, inv.extras, ctx, function()
+                if ammo then Inventory.SetAmmo(ply, inv.ammo or emptyAmmo()) end
+            end)
+        end
     end,
 
     summary = function(d)

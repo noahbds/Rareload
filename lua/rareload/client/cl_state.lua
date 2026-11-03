@@ -1,4 +1,4 @@
--- The client's one store of what the server sent (REWRITE_PLAN.md §21.1). UI code reads from here and
+-- The client's one store of what the server sent. UI code reads from here and
 -- listens to RareloadStateChanged(what, key) instead of listening to the network.
 
 RARELOAD.State = RARELOAD.State or {

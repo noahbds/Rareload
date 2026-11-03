@@ -1,4 +1,4 @@
--- Highlights (REWRITE_PLAN.md §21.7, F35). Three kinds, each drawn as a pulsing tracer to the saved
+-- Highlights. Three kinds, each drawn as a pulsing tracer to the saved
 -- spot with a glowing orb, a halo on the thing itself and a label (an arrow at the screen edge when it
 -- is off screen):
 --   saved  (yellow): from you to where an object is saved;
@@ -183,5 +183,6 @@ hook.Add("HUDPaint", "Rareload.Highlight", function()
             label(r.label, mx, my - 20, r.color)
         end
     end
-    label(L("highlight.count", #list), cx, UI.sc(RARELOAD.World.preview and 66 or 26), COLORS.saved) -- below the preview banner
+    -- below the preview banner
+    label(L("highlight.count", #list), cx, UI.sc(RARELOAD.World.preview and 66 or 26), COLORS.saved)
 end)

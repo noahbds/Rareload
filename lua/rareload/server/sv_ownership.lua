@@ -1,4 +1,4 @@
--- Who owns an entity, as a SteamID64 (REWRITE_PLAN.md §14.3, G65). Sandbox's spawn hooks record the
+-- Who owns an entity, as a SteamID6. Sandbox's spawn hooks record the
 -- owner for the entity's lifetime, so ownership survives a reconnect. Other sources are checked as
 -- fallbacks: GetCreator, CPPI, fields vehicle bases use, and the player cleanup and undo lists.
 
@@ -44,6 +44,9 @@ hook.Add("PlayerSpawnedEffect", "Rareload.Ownership", function(ply, _, ent) reco
 hook.Add("PlayerSpawnedSENT", "Rareload.Ownership", record)
 hook.Add("PlayerSpawnedNPC", "Rareload.Ownership", record)
 hook.Add("PlayerSpawnedVehicle", "Rareload.Ownership", record)
+-- Weapons spawned from the spawn menu, and weapons a player drops, are theirs while on the ground (C5).
+hook.Add("PlayerSpawnedSWEP", "Rareload.Ownership", record)
+hook.Add("PlayerDroppedWeapon", "Rareload.Ownership", record)
 
 -- Reverse indexes of every player's cleanup list and the undo table, built once per scan (L19).
 local function buildLists()
@@ -91,11 +94,13 @@ function Ownership.OwnerOf(ent)
     return ownerOf(ent, buildLists())
 end
 
--- Every entity the player owns, except players, weapons and map-created entities.
+-- Every entity the player owns, except players, map-created entities and weapons someone holds
+-- (weapons on the ground are objects like any other).
 function Ownership.Owned(ply)
     local sid, lists, out = ply:SteamID64(), buildLists(), {}
     for _, ent in ents.Iterator() do
-        if IsValid(ent) and not ent:IsPlayer() and not ent:IsWeapon() and not ent:CreatedByMap()
+        if IsValid(ent) and not ent:IsPlayer() and not (ent:IsWeapon() and IsValid(ent:GetOwner()))
+            and not ent:CreatedByMap()
             and ownerOf(ent, lists) == sid then
             out[#out + 1] = ent
         end

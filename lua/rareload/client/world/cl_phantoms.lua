@@ -1,8 +1,7 @@
--- Phantoms: see-through client-side models of saved players and of saved objects (REWRITE_PLAN.md
--- §21.7, F31, F32), with the saved skin, bodygroups, material, scale and colour, a seated pose for a
+-- Phantoms: see-through client-side models of saved players and of saved objects, with the saved skin, bodygroups, material, scale and colour, a seated pose for a
 -- player saved in a vehicle, and a vehicle's parts (wheels, rotors…) placed as they were saved.
 -- Every model lives in this registry, which removes them on shutdown and re-creates any the engine
--- deleted (G36). They are never parented to server entities.
+-- deleted. They are never parented to server entities.
 
 RARELOAD.Phantoms = RARELOAD.Phantoms or { reg = {} }
 local Phantoms = RARELOAD.Phantoms
@@ -34,8 +33,8 @@ end
 -- What a phantom is built from; a change rebuilds it. A saved object can have no model (it then
 -- gets no phantom).
 local function signature(w)
-    return table.concat({ w.model or "", w.skin or 0, w.material or "", w.scale or 1, #(w.parts or {}), tostring(w.seated),
-        util.TableToJSON(w.bodygroups or {}) }, "|")
+    return table.concat({ w.model or "", w.skin or 0, w.material or "", w.scale or 1, #(w.parts or {}),
+        tostring(w.seated), util.TableToJSON(w.bodygroups or {}) }, "|")
 end
 Phantoms.Signature = signature
 
