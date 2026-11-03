@@ -38,6 +38,12 @@ local function advance(item)
     end
 
     if item.state == "APPLY" then
+        -- The duplicator restored the networked values (sirens, signals, gears, modes…), but many
+        -- bases set theirs again once they are built, so the saved ones go back now, before the
+        -- adapter's own values (C7). Entity references were never saved.
+        if istable(item.dt) and isfunction(ent.RestoreNetworkVars) then
+            pcall(ent.RestoreNetworkVars, ent, Snapshot.Revive(item.dt))
+        end
         local runtime = item.runtime
         if runtime and runtime.root and adapter.applyRoot then pcall(adapter.applyRoot, ent, runtime.root) end
         if runtime and runtime.components and adapter.applyComponents then
@@ -64,6 +70,10 @@ local function advance(item)
                 if item.frozen then phys:EnableMotion(false) end
                 phys:Sleep()
             end)
+            -- A vehicle saved while moving gets its speed back once it has settled (C1).
+            if not item.frozen and item.motion and istable(item.rl) and item.rl.vel then
+                Snapshot.ApplyExtras(ent, { vel = item.rl.vel }, true)
+            end
             item.state, item.steps = "RESEAT", 0
         end
         return false
@@ -214,6 +224,9 @@ RARELOAD.Module({
                 pos = def and def.Pos,
                 ang = def and def.Angle,
                 frozen = p0 and p0.Frozen,
+                rl = def and istable(def.EntityMods) and def.EntityMods.rareload or nil,
+                dt = def and def.DT,
+                motion = RARELOAD.Get(ply, "keepMotion"),
             }
         end
         for index, ent in pairs(report.created) do

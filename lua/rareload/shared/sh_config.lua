@@ -217,6 +217,21 @@ RARELOAD.Setting("overwriteDeleted", {
     category = "world",
     help = "On save, drop saved objects that were deleted from the map (off keeps them saved)"
 })
+RARELOAD.Setting("keepMotion", {
+    type = "bool",
+    default = true,
+    scope = "player",
+    category = "world",
+    help = "Objects saved while moving come back moving at the same speed"
+})
+RARELOAD.Setting("keepGroundWeapons", {
+    type = "bool",
+    default = game.SinglePlayer(),
+    scope = "player",
+    category = "world",
+    priv = "rareload_restore_entities",
+    help = "Save and restore the weapons you spawned or dropped that lie on the ground"
+})
 RARELOAD.Setting("resetObjects", {
     type = "bool",
     default = true,

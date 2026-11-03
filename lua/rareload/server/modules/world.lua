@@ -14,6 +14,12 @@ end
 
 local function isNPC(ent) return ent:IsNPC() end
 
+-- Weapons on the ground are saved only for players with keepGroundWeapons (C5).
+local function entityPicker(ply)
+    local ground = RARELOAD.Get(ply, "keepGroundWeapons")
+    return function(ent) return isEntityTarget(ent) and (ground or not ent:IsWeapon()) end
+end
+
 RARELOAD.Module({
     id = "entities",
     phase = "world",
@@ -24,16 +30,16 @@ RARELOAD.Module({
     empty = Snapshot.Empty,
 
     save = function(ply, ctx)
-        local targets = {}
+        local targets, pick = {}, entityPicker(ply)
         for _, ent in ipairs(Snapshot.Owned(ply, ctx)) do
-            if isEntityTarget(ent) then targets[#targets + 1] = ent end
+            if pick(ent) then targets[#targets + 1] = ent end
         end
         ctx.shared.entityTargets = targets
         return Snapshot.CaptureFor(ply, ctx, "entities", targets)
     end,
 
     restore = function(ply, snap, ctx)
-        local removed = ctx.exact and Snapshot.RemoveMissing(ply, ctx, snap, isEntityTarget) or 0
+        local removed = ctx.exact and Snapshot.RemoveMissing(ply, ctx, snap, entityPicker(ply)) or 0
         local report = Snapshot.Restore(snap, ply, { kind = "props", reset = ctx.reset })
         report.removed = removed
         Snapshot.Report(ctx, "entities", report)
@@ -44,8 +50,21 @@ RARELOAD.Module({
 
 -- NPC AI state is kept next to the snapshot and applied once every NPC exists, so enemies that
 -- are other restored NPCs can be relinked (L22).
-local function captureAI(npc)
+-- C8 adds the weapon in hand, its accuracy, and how the NPC feels about every player online and every
+-- other saved NPC ("ply:<SteamID64>" or "npc:<Rareload ID>" -> D_HT, D_FR, D_LI, D_NU), so a friendly
+-- soldier stays friendly.
+local function captureAI(npc, others)
     local ai = { state = npc:GetNPCState(), squad = npc:GetSquad() }
+    local wep = npc:GetActiveWeapon()
+    if IsValid(wep) then
+        ai.weapon = wep:GetClass()
+        ai.proficiency = npc:GetCurrentWeaponProficiency()
+    end
+    ai.relations = {}
+    for _, p in player.Iterator() do ai.relations["ply:" .. p:SteamID64()] = npc:Disposition(p) end
+    for _, other in ipairs(others) do
+        if other ~= npc and IsValid(other) then ai.relations["npc:" .. Snapshot.ID(other)] = npc:Disposition(other) end
+    end
     local schedule = npc:GetCurrentSchedule()
     if isnumber(schedule) and schedule >= 0 then ai.schedule = schedule end
     local enemy = npc:GetEnemy()
@@ -57,7 +76,24 @@ local function captureAI(npc)
     return ai
 end
 
+local function relationTarget(key, byId)
+    local kind, id = string.match(tostring(key), "^(%a+):(.+)$")
+    if kind == "ply" then return player.GetBySteamID64(id) end
+    if kind == "npc" then return byId[id] end
+end
+
 local function applyAI(npc, ai, byId)
+    if isstring(ai.weapon) then
+        local wep = npc:GetActiveWeapon()
+        if not IsValid(wep) or wep:GetClass() ~= ai.weapon then npc:Give(ai.weapon) end
+        if isnumber(ai.proficiency) then npc:SetCurrentWeaponProficiency(ai.proficiency) end
+    end
+    for key, disp in pairs(istable(ai.relations) and ai.relations or {}) do
+        local target = relationTarget(key, byId)
+        if IsValid(target) and isnumber(disp) and disp ~= npc:Disposition(target) then
+            npc:AddEntityRelationship(target, disp, 99)
+        end
+    end
     if ai.squad and ai.squad ~= "" then npc:SetSquad(ai.squad) end
     if ai.state then npc:SetNPCState(ai.state) end
     if ai.schedule then npc:SetSchedule(ai.schedule) end
@@ -88,7 +124,7 @@ RARELOAD.Module({
         local snap = Snapshot.CaptureFor(ply, ctx, "npcs", targets)
         if not snap then return nil end
         snap.ai = snap.ai or {} -- deleted NPCs kept in the save already carry theirs
-        for _, npc in ipairs(targets) do snap.ai[Snapshot.ID(npc)] = captureAI(npc) end
+        for _, npc in ipairs(targets) do snap.ai[Snapshot.ID(npc)] = captureAI(npc, targets) end
         return snap
     end,
 
@@ -99,13 +135,18 @@ RARELOAD.Module({
             local report = Snapshot.Restore(snap, ply, { kind = "npcs", reset = ctx.reset })
             report.removed = removed
             Snapshot.Report(ctx, "npcs", report)
-            local byId = {}
+            local byId, created = {}, {}
             for _, npc in pairs(report.created) do
-                if IsValid(npc) and npc.RareloadID then byId[npc.RareloadID] = npc end
+                if IsValid(npc) and npc.RareloadID then created[npc.RareloadID] = npc end
             end
+            -- Relations can point at saved NPCs still on the map too.
+            for _, npc in ipairs(report.existing) do
+                if IsValid(npc) and npc.RareloadID then byId[tostring(npc.RareloadID)] = npc end
+            end
+            for id, npc in pairs(created) do byId[tostring(id)] = npc end
             -- AI state is applied one tick later, after the NPCs finished spawning.
             ctx:nextTick(function()
-                for id, npc in pairs(byId) do
+                for id, npc in pairs(created) do
                     -- An all-digit ID comes back from JSON as a number key.
                     local ai = snap.ai and (snap.ai[id] or snap.ai[tonumber(id)])
                     if IsValid(npc) and ai then ProtectedCall(applyAI, npc, ai, byId) end
