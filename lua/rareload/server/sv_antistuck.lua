@@ -1,4 +1,4 @@
--- Anti-stuck: detects a blocked spawn position and finds the nearest free one (REWRITE_PLAN.md §19).
+-- Anti-stuck: detects a blocked spawn position and finds the nearest free one.
 -- Each method only proposes candidate points; the resolver snaps every candidate to the ground,
 -- checks it with a hull trace, and stops at the first free one or when the time budget runs out.
 

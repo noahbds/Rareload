@@ -1,4 +1,4 @@
--- The Rareload tool's screen (REWRITE_PLAN.md §21.4, F36): status, a scrolling list of the player's
+-- The Rareload tool's screen: status, a scrolling list of the player's
 -- settings, the autosave bar, and an animated icon after the reload key or a denied use. Same look as v4.
 
 RARELOAD.ToolScreen = RARELOAD.ToolScreen or {}

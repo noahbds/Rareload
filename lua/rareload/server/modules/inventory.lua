@@ -1,4 +1,4 @@
--- Inventory modules: weapons, ammo and the active weapon (REWRITE_PLAN.md §14.2).
+-- Inventory modules: weapons, ammo and the active weapon.
 -- The helpers on RARELOAD.Inventory are shared with the global inventory module and the inventory
 -- manager, so what they give and capture is the same as what these modules do.
 

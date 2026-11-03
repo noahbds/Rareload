@@ -1,4 +1,4 @@
--- Object inspector (REWRITE_PLAN.md §21.6, F29): the objects inside one save, as an overlay above the
+-- Object inspector: the objects inside one save, as an overlay above the
 -- timeline. A rail to search, sort and filter; a grid of cards; a detail pane with the object's facts
 -- and actions (highlight, teleport, look at, copy) and, with rareload_manage_objects, freeze and
 -- gravity flags, delete (one or all shown) and a coloured JSON editor that checks the text as you type.

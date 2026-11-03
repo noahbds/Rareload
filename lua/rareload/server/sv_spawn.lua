@@ -1,5 +1,5 @@
 -- Player lifecycle: restore on spawn, death and disconnect cleanup, save on disconnect, when the host
--- quits, and before a map cleanup (REWRITE_PLAN.md §15.6).
+-- quits, and before a map cleanup.
 
 local cleaningUp = nil   -- the player whose death is cleaning the whole map (deathCleanupMode "all")
 

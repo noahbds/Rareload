@@ -1,4 +1,4 @@
--- Vehicle base adapters, seats and the WAC fixes (REWRITE_PLAN.md §20, ported from v4). Each adapter
+-- Vehicle base adapters, seats and the WAC fixes. Each adapter
 -- captures the runtime state its base wipes after a duplicator paste (L14, L15) and says when a
 -- pasted vehicle is ready for it. Every call into a base is pcall-guarded: a renamed method must
 -- never break a save or a restore.

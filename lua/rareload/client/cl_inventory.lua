@@ -88,9 +88,13 @@ local function contentLines(inv)
         local text
         if istable(clip) then
             local c1, c2 = tonumber(clip[1]) or -1, tonumber(clip[2]) or -1
-            if c1 >= 0 and c2 >= 0 then text = L("inventory.clips_both", c1, c2)
-            elseif c1 >= 0 then text = L("inventory.clip", c1)
-            elseif c2 >= 0 then text = L("inventory.clip", c2) end
+            if c1 >= 0 and c2 >= 0 then
+                text = L("inventory.clips_both", c1, c2)
+            elseif c1 >= 0 then
+                text = L("inventory.clip", c1)
+            elseif c2 >= 0 then
+                text = L("inventory.clip", c2)
+            end
         end
         lines[#lines + 1] = {
             icon = class == inv.activeWeapon and "star" or "gun",
@@ -132,6 +136,7 @@ local function buildContents(parent)
         for _, line in ipairs(lines) do h = h + sc(line.title and (line.gap and 40 or 26) or ROW) end
         self:SetTall(h + sc(4))
     end
+
     canvas.Paint = function(self, w)
         local y = 0
         for _, line in ipairs(self.lines) do
@@ -183,8 +188,13 @@ end
 function Manager.Open(key)
     if not Manager.CanUse() then return end
     if IsValid(Manager.frame) then Manager.frame:Remove() end
-    local frame = UI.Window({ title = L("inventory.title"), subtitle = L("timeline.subtitle", game.GetMap()),
-        w = 1060, h = 760, overlay = true })
+    local frame = UI.Window({
+        title = L("inventory.title"),
+        subtitle = L("timeline.subtitle", game.GetMap()),
+        w = 1060,
+        h = 760,
+        overlay = true
+    })
     Manager.frame = frame
     local selected = key or GLOBAL
     local refresh, update
@@ -237,10 +247,10 @@ function Manager.Open(key)
         local rounds = 0
         for _, n in pairs(reserve) do rounds = rounds + (tonumber(n) or 0) end
         return {
-            { L("field.weapons"),           inv and #(inv.weapons or {}),          C.text },
-            { L("inventory.ammo_types"),    inv and table.Count(reserve),          C.info },
-            { L("inventory.rounds"),        inv and rounds,                        C.info },
-            { L("inventory.versions"),      data and #(data.versions or {}) or 0, C.warn },
+            { L("field.weapons"),        inv and #(inv.weapons or {}),         C.text },
+            { L("inventory.ammo_types"), inv and table.Count(reserve),         C.info },
+            { L("inventory.rounds"),     inv and rounds,                       C.info },
+            { L("inventory.versions"),   data and #(data.versions or {}) or 0, C.warn },
         }
     end)
     stats:Dock(TOP)

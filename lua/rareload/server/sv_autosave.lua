@@ -1,4 +1,4 @@
--- Event-driven autosave (REWRITE_PLAN.md §15.7, G73): engine events mark the modules that changed,
+-- Event-driven autosave: engine events mark the modules that changed,
 -- and a once-a-second check saves only those, at most every `autoSaveInterval` seconds per player.
 
 local MOVE = 64 * 64                                -- squared distance that counts as "moved"

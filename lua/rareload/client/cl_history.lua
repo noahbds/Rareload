@@ -1,4 +1,4 @@
--- The Save Timeline (REWRITE_PLAN.md §21.5, F23–F28): the player's saves on this map. A sidebar to
+-- The Save Timeline : the player's saves on this map. A sidebar to
 -- search, sort and filter them; a detail pane with the save's facts, the respawn point, restore (all
 -- or some parts), pin, note, delete, teleport, the in-world preview, the objects inspector and the
 -- reload-key mode. `rareload timeline` opens it; ↑/↓ select, Enter restores, Delete deletes.
@@ -32,9 +32,9 @@ end
 local function searchText(row)
     local i = row.info or {}
     return string.lower(table.concat(
-    { "#" .. row.id, L("save_no", row.id), row.note or "", L("reason." .. row.reason), i.active or "",
-        i.active and UI.WeaponName(i.active) or "", i.model or "", i.vehicle or "", UI.Pos(i.pos),
-        UI.Date(row.time, "long"), UI.Date(row.time, "short"), UI.TimeAgo(row.time) }, " "))
+        { "#" .. row.id, L("save_no", row.id), row.note or "", L("reason." .. row.reason), i.active or "",
+            i.active and UI.WeaponName(i.active) or "", i.model or "", i.vehicle or "", UI.Pos(i.pos),
+            UI.Date(row.time, "long"), UI.Date(row.time, "short"), UI.TimeAgo(row.time) }, " "))
 end
 
 local function view(filter, sort, search)

@@ -1,6 +1,6 @@
 -- Storage: the only file touching file.*. JSON documents under data/rareload/, written atomically
--- with a .bak copy, batched to at most one write every 0.5 s (REWRITE_PLAN.md §13.5, §16).
--- File names end in .json and are lowercase, because file.Write only accepts those (G5).
+-- with a .bak copy, batched to at most one write every 0.5 s.
+-- File names end in .json and are lowercase, because file.Write only accepts those.
 
 RARELOAD.Store = RARELOAD.Store or {}
 local Store = RARELOAD.Store

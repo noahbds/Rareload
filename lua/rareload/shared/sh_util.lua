@@ -1,4 +1,4 @@
--- Shared helpers: vector/angle (de)serialization, deep equality, player keys, naming (REWRITE_PLAN.md §13.7).
+-- Shared helpers: vector/angle (de)serialization, deep equality, player keys, naming.
 
 RARELOAD.Util = RARELOAD.Util or {}
 local Util = RARELOAD.Util

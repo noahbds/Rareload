@@ -1,4 +1,4 @@
--- Who owns an entity, as a SteamID64 (REWRITE_PLAN.md §14.3, G65). Sandbox's spawn hooks record the
+-- Who owns an entity, as a SteamID6. Sandbox's spawn hooks record the
 -- owner for the entity's lifetime, so ownership survives a reconnect. Other sources are checked as
 -- fallbacks: GetCreator, CPPI, fields vehicle bases use, and the player cleanup and undo lists.
 

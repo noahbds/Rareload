@@ -1,5 +1,5 @@
--- Save/restore engine: the module registry, phase order, gating, restore tokens and report cards
--- (REWRITE_PLAN.md §14.0, §15). The only file that decides what runs and in which order.
+-- Save/restore engine: the module registry, phase order, gating, restore tokens and report cards.
+-- The only file that decides what runs and in which order.
 
 RARELOAD.Pipeline = RARELOAD.Pipeline or {}
 local Pipeline = RARELOAD.Pipeline

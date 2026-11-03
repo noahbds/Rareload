@@ -1,5 +1,4 @@
--- Vehicles: the player's vehicles with their runtime state, and the seat they were in
--- (REWRITE_PLAN.md §20). After a paste, one Tick-driven scheduler takes each vehicle through:
+-- Vehicles: the player's vehicles with their runtime state, and the seat they were in. After a paste, one Tick-driven scheduler takes each vehicle through:
 --   WAIT_READY (the adapter's readiness probe) → APPLY (runtime state) → SETTLE (physics, only for
 --   bases that don't do it themselves) → RESEAT (put the player back in their seat) → done.
 

@@ -1,5 +1,5 @@
 -- World modules: the player's props and entities, NPCs (with their AI state), and constraints between
--- props and vehicles (REWRITE_PLAN.md §14.3). Snapshots go through sv_snapshot.
+-- props and vehicles. Snapshots go through sv_snapshot.
 
 local Snapshot = RARELOAD.Snapshot
 

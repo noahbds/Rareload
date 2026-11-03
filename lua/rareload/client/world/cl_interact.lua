@@ -1,4 +1,4 @@
--- Interacting with world display panels (REWRITE_PLAN.md §21.7, F30, F33). Shift+Use on the focused
+-- Interacting with world display panels. Shift+Use on the focused
 -- panel locks onto it: the view freezes and the viewmodel hides. While locked:
 --   ↑/↓ switch tabs, the mouse wheel scrolls, ←/→ flip a pile (or scroll a lone panel),
 --   H highlights the saved spot (a player: their respawn point), L links a moved object to its spot.

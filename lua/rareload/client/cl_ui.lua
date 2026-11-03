@@ -1,4 +1,4 @@
--- Client UI kit (REWRITE_PLAN.md §21.2, §25): translations, dates, palette, fonts and scale, the Derma
+-- Client UI kit: translations, dates, palette, fonts and scale, the Derma
 -- skin for stock controls, and the widgets every Rareload screen is built from (windows, buttons,
 -- cards, chips, dropdowns, switches, sliders, rows, stat cards, dialogs), so they all look alike.
 -- Also the toast and `rareload` client-command plumbing.
@@ -276,8 +276,10 @@ end
 
 function SKIN:PaintVScrollBar() end
 
-function SKIN:PaintScrollBarGrip(panel, w, h) draw.RoundedBox(sc(4), sc(1), 0, w - sc(2), h,
-        panel.Hovered and C.text3 or C.line) end
+function SKIN:PaintScrollBarGrip(panel, w, h)
+    draw.RoundedBox(sc(4), sc(1), 0, w - sc(2), h,
+        panel.Hovered and C.text3 or C.line)
+end
 
 function SKIN:PaintButtonUp() end
 
@@ -351,8 +353,10 @@ function UI.Button(parent, text, onClick, opts)
         local is = UI.IconSize(sc(16))
         local iw = self.icon and is + (self.label ~= "" and sc(7) or 0) or 0 -- no gap on an icon-only button
         local x = math.floor((w - tw - iw) / 2)
-        if self.icon then UI.DrawIcon(self.icon, x, math.floor((h - is) / 2), is,
-                self:IsEnabled() and color_white or C.textOff) end
+        if self.icon then
+            UI.DrawIcon(self.icon, x, math.floor((h - is) / 2), is,
+                self:IsEnabled() and color_white or C.textOff)
+        end
         draw.SimpleText(self.label, "Rareload.BodyB", x + iw, math.floor(h / 2), textCol, TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER)
         if self.active then
@@ -367,7 +371,7 @@ function UI.Button(parent, text, onClick, opts)
     function b:SizeToLabel(pad)
         surface.SetFont("Rareload.BodyB")
         self:SetWide(surface.GetTextSize(self.label) +
-        (self.icon and UI.IconSize(sc(16)) + (self.label ~= "" and sc(7) or 0) or 0) + sc(pad or 28))
+            (self.icon and UI.IconSize(sc(16)) + (self.label ~= "" and sc(7) or 0) or 0) + sc(pad or 28))
     end
 
     return b
@@ -672,8 +676,10 @@ function UI.Empty(parent, icon, title, hint)
     p.Paint = function(_, w, h)
         UI.DrawIcon(icon, w / 2 - sc(16), h / 2 - sc(46), sc(32), ColorAlpha(color_white, 90))
         draw.SimpleText(title, "Rareload.H2", w / 2, h / 2 + sc(4), C.text2, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-        if hint then draw.SimpleText(hint, "Rareload.Small", w / 2, h / 2 + sc(28), C.text3, TEXT_ALIGN_CENTER,
-                TEXT_ALIGN_CENTER) end
+        if hint then
+            draw.SimpleText(hint, "Rareload.Small", w / 2, h / 2 + sc(28), C.text3, TEXT_ALIGN_CENTER,
+                TEXT_ALIGN_CENTER)
+        end
     end
     return p
 end
@@ -744,8 +750,10 @@ function UI.Window(opts)
     frame.Paint = function(self, w, h)
         box(sc(14), w, h, C.bg)
         draw.SimpleText(self.title, "Rareload.Title", sc(18), sc(12), C.accentHi, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-        if self.subtitle then draw.SimpleText(self.subtitle, "Rareload.Sub", sc(20), sc(40), C.text3, TEXT_ALIGN_LEFT,
-                TEXT_ALIGN_TOP) end
+        if self.subtitle then
+            draw.SimpleText(self.subtitle, "Rareload.Sub", sc(20), sc(40), C.text3, TEXT_ALIGN_LEFT,
+                TEXT_ALIGN_TOP)
+        end
         surface.SetDrawColor(C.line)
         surface.DrawLine(0, headH, w, headH)
     end

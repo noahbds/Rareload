@@ -1,4 +1,4 @@
--- Player modules: position and view, health and armor, states, appearance (REWRITE_PLAN.md §14.1).
+-- Player modules: position and view, health and armor, states, appearance.
 
 local Util = RARELOAD.Util
 

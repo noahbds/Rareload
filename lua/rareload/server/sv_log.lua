@@ -1,4 +1,4 @@
--- Logging and report cards (REWRITE_PLAN.md §22). How much reaches the console is the `logLevel`
+-- Logging and report cards. How much reaches the console is the `logLevel`
 -- setting:
 --   errors    only errors
 --   warnings  errors, and warnings (a part of a save or restore that went wrong, a refused upload…)
@@ -57,8 +57,17 @@ end
 
 -- The `n` newest events matching `filter` (nil for all), oldest first. A filter word is a level
 -- (errors, warnings, activity, debug), a category, or text found in the event or the player's name.
-local FILTER_LEVELS = { errors = "error", error = "error", warnings = "warn", warning = "warn", warn = "warn",
-    activity = "info", info = "info", debug = "verbose", verbose = "verbose" }
+local FILTER_LEVELS = {
+    errors = "error",
+    error = "error",
+    warnings = "warn",
+    warning = "warn",
+    warn = "warn",
+    activity = "info",
+    info = "info",
+    debug = "verbose",
+    verbose = "verbose"
+}
 
 function RARELOAD.LogRecent(n, filter)
     local want, words = nil, {}

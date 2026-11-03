@@ -1,19 +1,21 @@
 -- Rareload loader: includes every Rareload file in a fixed order
 
+-- Rareload is a Garry's Mod addon that automatically saves and restores the state of the game world when a map is loaded.
+-- It can also be used to save and restore the state of the game world at any time, and to track changes made by players.
 RARELOAD = RARELOAD or {}
 
 RARELOAD.version = "5.3"
 RARELOAD.API = 1
 RARELOAD.loadGen = (RARELOAD.loadGen or 0) + 1
 
--- Legacy (v4) Rareload shares the RARELOAD global and the tool file, so running both breaks
--- each other. If it is installed, stay disabled and tell the player to remove it.
 local LEGACY_WSID = "3807939033"
 local LEGACY_FILES = {
     "autorun/rareload_init.lua",
     "rareload/core/rareload_core.lua"
 }
 
+-- Legacy (v4) Rareload shares the RARELOAD global and the tool file, so running both breaks
+-- each other. If it is installed, stay disabled and tell the player to remove it.
 local function legacyInstalled()
     for _, path in ipairs(LEGACY_FILES) do
         if file.Exists(path, "LUA") then return true end

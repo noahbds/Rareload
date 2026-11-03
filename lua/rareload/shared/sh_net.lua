@@ -1,5 +1,5 @@
 -- Networking: the only file using net.*. Server pushes topics (JSON, compressed, chunked, paced per
--- client); clients send validated, rate-limited, privilege-checked requests (REWRITE_PLAN.md §13.4, §17).
+-- client); clients send validated, rate-limited, privilege-checked requests.
 
 RARELOAD.Net = RARELOAD.Net or {}
 local Net = RARELOAD.Net

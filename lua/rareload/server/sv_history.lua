@@ -1,5 +1,4 @@
--- Save history per player and map: the current save is simply the active entry (REWRITE_PLAN.md §15.4,
--- §15.8, §16.2). Timeline operations, undo, the tool's reload-key modes and edits of saved objects.
+-- Save history per player and map: the current save is simply the active entry. Timeline operations, undo, the tool's reload-key modes and edits of saved objects.
 
 RARELOAD.History = RARELOAD.History or {}
 local History = RARELOAD.History
@@ -169,7 +168,9 @@ function History.Restore(ply, id, comps, opts)
     local _, _, snapshot = RARELOAD.Pipeline.Save(ply, { only = undoOnly, captureOnly = true, silent = true })
 
     local ctx = RARELOAD.Pipeline.Restore(ply, entry, {
-        only = only, reason = "timeline", exact = opts.exact and world,
+        only = only,
+        reason = "timeline",
+        exact = opts.exact and world,
         reset = RARELOAD.Get(ply, "resetObjects"),
     })
     undos[ply] = { entry = snapshot, only = undoOnly, world = world, ctx = ctx }
@@ -731,7 +732,9 @@ local function feedFor(ply)
     local active = History.Active(ply)
     if not active then return nil end
     return {
-        nick = ply:Nick(), data = History.LightData(active), objects = History.ObjectsOf(active),
+        nick = ply:Nick(),
+        data = History.LightData(active),
+        objects = History.ObjectsOf(active),
         seated = History.Info(active.data).vehicle ~= nil
     }
 end

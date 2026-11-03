@@ -1,4 +1,4 @@
--- The single `rareload <subcommand>` console command (REWRITE_PLAN.md §23). Replies are English
+-- The single `rareload <subcommand>` console command. Replies are English
 -- console text for players and admins; toasts carry the localized messages.
 
 RARELOAD.Cmd = RARELOAD.Cmd or {}
