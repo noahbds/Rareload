@@ -268,6 +268,15 @@ RARELOAD.Setting("historySizeMax", {
     category = "timing",
     help = "Upper limit for historySize, so players can't fill the disk"
 })
+RARELOAD.Setting("importMaxKB", {
+    type = "int",
+    default = 4096,
+    min = 64,
+    max = 65536,
+    scope = "server",
+    category = "timing",
+    help = "Largest save file a player may import, in KB once compressed"
+})
 RARELOAD.Setting("enableInAllGamemodes", {
     type = "bool",
     default = false,

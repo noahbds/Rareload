@@ -57,15 +57,15 @@ function History.Previous(ply)
     return i and d.entries[i - 1] or nil
 end
 
--- Adds a save and makes it active. The oldest entries beyond `historySize` are dropped, except
--- pinned ones and the active one.
-function History.Append(ply, entry)
+-- Adds a save and makes it active (unless opts.keepActive: an imported or shared save). The oldest
+-- entries beyond `historySize` are dropped, except pinned ones and the active one.
+function History.Append(ply, entry, opts)
     local d = History.Doc(ply)
     if not d then return false end
     entry.id = d.nextId
     d.nextId = d.nextId + 1
     d.entries[#d.entries + 1] = entry
-    d.activeId = entry.id
+    if not (opts and opts.keepActive and d.activeId) then d.activeId = entry.id end
 
     local cap, i = RARELOAD.Get(ply, "historySize"), 1
     while #d.entries > cap and i <= #d.entries do

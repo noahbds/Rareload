@@ -309,6 +309,16 @@ local function buildDetail(host, sel)
         if r then RARELOAD.InventoryManager.Open(r.id) end
     end, { style = "info", icon = "gun" })
     D.tools = split({ D.preview, D.objects, D.inventory })
+    -- Export to this game's data folder, or offer a copy to another player (A2).
+    D.export = UI.Button(host, L("share.export"), function()
+        local r = row()
+        if r then RARELOAD.Share.Export(r.id) end
+    end, { style = "info", icon = "disk" })
+    D.share = UI.Button(host, L("share.share"), function()
+        local r = row()
+        if r then RARELOAD.Share.Pick(r.id) end
+    end, { style = "info", icon = "group_go" })
+    D.shareTools = split({ D.export, D.share })
 
     D.banner = UI.Card(host, function(_, w, h)
         draw.SimpleText(L("timeline.is_active"), "Rareload.BodyB", w / 2, h / 2, C.ok, TEXT_ALIGN_CENTER,
@@ -429,6 +439,11 @@ local DETAIL_PARTS = { "header", "stats", "rows", "status", "banner", "setActive
 local function updateDetail(D, r)
     for _, k in ipairs(DETAIL_PARTS) do D[k]:SetVisible(r ~= nil) end
     D.tools:SetVisible(r ~= nil)
+    local me = LocalPlayer()
+    D.export:SetVisible(RARELOAD.Can(me, "rareload_export"))
+    D.share:SetVisible(RARELOAD.Can(me, "rareload_share"))
+    D.shareTools:SetVisible(r ~= nil and (D.export:IsVisible() or D.share:IsVisible()))
+    D.shareTools:InvalidateLayout()
     D.empty:SetVisible(r == nil)
     if not r then return end
     D.inventory:SetVisible(RARELOAD.InventoryManager.CanUse())
@@ -518,6 +533,10 @@ function Timeline.Open()
     if RARELOAD.InventoryManager.CanUse() then
         frame:HeaderButton(L("inventory.title"), function() RARELOAD.InventoryManager.Open() end,
             { style = "primary", icon = "gun" })
+    end
+    if RARELOAD.Can(LocalPlayer(), "rareload_import") then
+        frame:HeaderButton(L("share.import"), function() RARELOAD.Share.OpenImport() end,
+            { style = "info", icon = "page_white_get" })
     end
 
     local side = vgui.Create("DPanel", frame)

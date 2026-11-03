@@ -10,6 +10,8 @@ local MAX_REQUEST = 64 * 1024         -- S2
 local MAX_TRANSFER = 16 * 1024 * 1024 -- S11
 local MAX_INFLIGHT = 96 * 1024        -- S13
 local ACK_TIMEOUT = 30
+local UPLOAD_PART = 40000             -- raw bytes per upload part; base64 keeps a part under MAX_REQUEST
+local UPLOAD_TIMEOUT = 30
 
 -- Pure helpers (unit-tested) ---------------------------------------------------------------------
 
@@ -190,6 +192,51 @@ if SERVER then
         end,
     })
 
+    -- Uploads: a client sends a payload too big for one request (an exported save) as compressed
+    -- parts. One upload per player at a time; a new one replaces an unfinished one.
+    -- def = { priv?, maxBytes() -> compressed bytes allowed, fn(ply, text) }
+    Net._uploadHandlers = Net._uploadHandlers or {}
+    local uploadHandlers = Net._uploadHandlers
+    local uploads = weak()
+
+    function Net.HandleUpload(op, def)
+        uploadHandlers[op] = def
+    end
+
+    local function refuseUpload(ply, why)
+        uploads[ply] = nil
+        RARELOAD.Log("net"):warn("%s: upload refused: %s", ply:Nick(), why)
+        RARELOAD.Toast(ply, "toast.upload_refused", { why }, "error")
+    end
+
+    Net.Handle("upload.part", {
+        args = { op = "string:64", id = "uint", part = "uint", total = "uint", data = "string:60000" },
+        fn = function(ply, a)
+            local h = uploadHandlers[a.op]
+            if not h or h.priv and not RARELOAD.Can(ply, h.priv) then return end
+            local max = h.maxBytes()
+            local u = uploads[ply]
+            if a.part == 1 then
+                if a.total < 1 or (a.total - 1) * UPLOAD_PART >= max then return refuseUpload(ply, "too big") end
+                u = { op = a.op, id = a.id, total = a.total, parts = {}, bytes = 0 }
+                uploads[ply] = u
+            elseif not u or u.id ~= a.id or u.op ~= a.op or CurTime() - u.t > UPLOAD_TIMEOUT then
+                return
+            end
+            u.t = CurTime()
+            local raw = util.Base64Decode(a.data)
+            if not raw or a.part > u.total or u.parts[a.part] then return refuseUpload(ply, "bad part") end
+            u.parts[a.part], u.bytes = raw, u.bytes + #raw
+            if u.bytes > max then return refuseUpload(ply, "too big") end
+            if table.Count(u.parts) < u.total then return end
+
+            uploads[ply] = nil
+            local text = util.Decompress(table.concat(u.parts), MAX_TRANSFER)
+            if not text then return refuseUpload(ply, "could not be read") end
+            ProtectedCall(h.fn, ply, text)
+        end,
+    })
+
     -- Toasts carry a translation key and arguments; the client localizes them (L29).
     function RARELOAD.Toast(ply, key, args, kind)
         Net.Push(ply, "toast", { key = key, args = args or {}, kind = kind or "info" },
@@ -216,6 +263,25 @@ if CLIENT then
         net.WriteString(op)
         net.WriteString(json)
         net.SendToServer()
+    end
+
+    -- Sends `text` to the server's upload handler `op` in parts, ten a second. onProgress(sent, total)
+    -- is called after each part. Returns false and the compressed size when it is over `maxBytes`.
+    local uploadId = 0
+    function Net.Upload(op, text, onProgress, maxBytes)
+        local packed = util.Compress(text)
+        if maxBytes and #packed > maxBytes then return false, #packed end
+        local parts = Net.Split(packed, UPLOAD_PART)
+        uploadId = uploadId + 1
+        local id, sent = uploadId, 0
+        timer.Create("Rareload.Net.Upload", 0.1, #parts, function()
+            sent = sent + 1
+            Net.Request("upload.part", {
+                op = op, id = id, part = sent, total = #parts, data = util.Base64Encode(parts[sent], true)
+            })
+            if onProgress then onProgress(sent, #parts) end
+        end)
+        return true, #packed
     end
 
     net.Receive(SYNC, function()
