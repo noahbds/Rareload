@@ -370,6 +370,106 @@ Cmd.Register("data cleanup", {
     fn = function(_, _, reply) reply("Removed " .. RARELOAD.Store.GC() .. " unused blobs.") end,
 })
 
+-- Export, import and share saves (sv_share.lua) ------------------------------------------------------
+
+Cmd.Register("export", {
+    priv = "rareload_export",
+    usage = "<id> [file name]",
+    help = "Write a save to data/rareload/exports on the server (in singleplayer: your own data folder)",
+    fn = playerOnly(function(ply, args, reply)
+        local entry = RARELOAD.History.Get(ply, tonumber(args[1]))
+        if not entry then return reply("No such save. Type 'rareload history' for the list.") end
+        reply("Exported to " .. RARELOAD.Share.WriteFile(ply, entry, args[2]))
+    end),
+})
+
+Cmd.Register("import", {
+    priv = "rareload_import",
+    usage = "<file name>",
+    help = "Add a save from data/rareload/exports on the server to your timeline",
+    fn = playerOnly(function(ply, args, reply)
+        local name = RARELOAD.Store.Clean(string.gsub(args[1] or "", "%.json$", ""))
+        if name == "" then return reply("Name a file from data/rareload/exports.") end
+        local doc = RARELOAD.Share.ReadFile(name)
+        if not doc then return reply("No such file: data/rareload/exports/" .. name .. ".json") end
+        local ok, idOrWhy, dropped = RARELOAD.Share.ImportAndTell(ply, doc)
+        if not ok then return reply("Failed: " .. idOrWhy) end
+        local left = #dropped > 0 and ". Left out: " .. table.concat(dropped, ", ") or "."
+        reply("Imported as save No. " .. idOrWhy .. left)
+    end),
+})
+
+Cmd.Register("share", {
+    priv = "rareload_share",
+    usage = "<id> <player>",
+    help = "Offer a copy of one of your saves to another player",
+    fn = playerOnly(function(ply, args, reply)
+        local target = Cmd.FindPlayer(table.concat(args, " ", 2))
+        local ok, why = RARELOAD.Share.Offer(ply, tonumber(args[1]), target)
+        reply(ok and "Offer sent." or "Failed: " .. why)
+    end),
+})
+
+-- Inventories (sv_inventory.lua) ----------------------------------------------------------------------
+
+-- "global" or a save number. Returns ok, save.
+local function inventoryTarget(arg)
+    if arg == "global" then return true, nil end
+    local n = tonumber(arg)
+    if n and n >= 1 and n == math.floor(n) then return true, n end
+    return false
+end
+
+-- An inventory file of the player: data/rareload/inventories/<SteamID64>/<name>.
+local function inventoryFile(ply, name)
+    local key = RARELOAD.Util.PlayerKey(ply)
+    name = RARELOAD.Store.Clean(name or "inventory")
+    return key and ("inventories/" .. key .. "/" .. (name ~= "" and name or "inventory")) or nil
+end
+
+-- fn(ply, save, args, reply) may return a toast key, its arguments and whether it worked.
+local function inventoryCommand(name, usage, help, fn)
+    Cmd.Register(name, {
+        priv = "rareload_manage_inventory",
+        usage = usage,
+        help = help,
+        fn = function(ply, args, reply)
+            if not IsValid(ply) then return reply("Only players have inventories.") end
+            local ok, save = inventoryTarget(args[1])
+            if not ok then return reply("Usage: rareload " .. name .. " " .. usage) end
+            local key, targs, worked = fn(ply, save, args, reply)
+            if key then RARELOAD.Toast(ply, key, targs, worked == false and "error" or "ok") end
+            RARELOAD.Inventory.Push(ply, save)
+        end,
+    })
+end
+
+inventoryCommand("inventory export", "<save number|global> [file name]",
+    "Write an inventory to data/rareload/inventories/<your SteamID64>/", function(ply, save, args, reply)
+        local Inventory = RARELOAD.Inventory
+        local inv, _, exists = Inventory.Read(ply, save)
+        local rel = inventoryFile(ply, args[2])
+        if not exists or not rel then return reply("Failed: " .. Inventory.TargetName(save) .. " does not exist.") end
+        RARELOAD.Store.Save(rel, inv or Inventory.Empty())
+        reply("Exported " .. Inventory.TargetName(save) .. " to data/rareload/" .. rel .. ".json")
+    end)
+
+inventoryCommand("inventory import", "<save number|global> [file name]",
+    "Replace an inventory with one from data/rareload/inventories/<your SteamID64>/", function(ply, save, args, reply)
+        local Inventory = RARELOAD.Inventory
+        local rel = inventoryFile(ply, args[2])
+        local data = rel and RARELOAD.Store.Load(rel, true)
+        if not data then return reply("Failed: there is no data/rareload/" .. tostring(rel) .. ".json") end
+        local key, targs, ok = Inventory.SetFrom(ply, save, data, "import")
+        reply(ok and ("Imported into " .. Inventory.TargetName(save) .. ".")
+            or ("Failed: " .. tostring(targs and targs[1])))
+        return key, targs, ok
+    end)
+
+inventoryCommand("inventory give", "<save number|global>", "Give yourself an inventory now", function(ply, save)
+    return RARELOAD.Inventory.GiveTarget(ply, save)
+end)
+
 -- Subcommands the client runs (its windows and world display).
 local CLIENT_COMMANDS = {
     timeline = { help = "Open the Save Timeline" },

@@ -170,7 +170,7 @@ function Share.Import(ply, doc, opts)
     return true, entry.id, dropped
 end
 
--- Imports and tells the player how it went.
+-- Imports and tells the player how it went. Returns like Share.Import.
 local function importAndTell(ply, doc, opts)
     local ok, idOrWhy, dropped = Share.Import(ply, doc, opts)
     if not ok then
@@ -185,6 +185,16 @@ local function importAndTell(ply, doc, opts)
         RARELOAD.Toast(ply, "toast.imported", { idOrWhy }, "ok")
     end
     return true, idOrWhy, dropped
+end
+
+Share.ImportAndTell = importAndTell
+
+-- An export file from data/rareload/exports on this machine, or nil. `name` without ".json".
+function Share.ReadFile(name)
+    local rel = EXPORTS .. RARELOAD.Store.Clean(name)
+    local doc = RARELOAD.Store.Load(rel, true)
+    RARELOAD.Store._cache[rel] = nil -- read once, never kept
+    return doc
 end
 
 local function decode(text)
@@ -275,52 +285,3 @@ RARELOAD.Net.Handle("share.answer", {
 })
 
 hook.Add("PlayerDisconnected", "Rareload.Share", function(ply) offers[ply] = nil end)
-
--- Console -----------------------------------------------------------------------------------------
-
-local Cmd = RARELOAD.Cmd
-
-local function playerOnly(fn)
-    return function(ply, args, reply)
-        if not IsValid(ply) then return reply("Only players have saves.") end
-        fn(ply, args, reply)
-    end
-end
-
-Cmd.Register("export", {
-    priv = "rareload_export",
-    usage = "<id> [file name]",
-    help = "Write a save to data/rareload/exports on the server (in singleplayer: your own data folder)",
-    fn = playerOnly(function(ply, args, reply)
-        local entry = RARELOAD.History.Get(ply, tonumber(args[1]))
-        if not entry then return reply("No such save. Type 'rareload history' for the list.") end
-        reply("Exported to " .. Share.WriteFile(ply, entry, args[2]))
-    end),
-})
-
-Cmd.Register("import", {
-    priv = "rareload_import",
-    usage = "<file name>",
-    help = "Add a save from data/rareload/exports on the server to your timeline",
-    fn = playerOnly(function(ply, args, reply)
-        local name = RARELOAD.Store.Clean(string.gsub(args[1] or "", "%.json$", ""))
-        if name == "" then return reply("Name a file from data/rareload/exports.") end
-        local doc = RARELOAD.Store.Load(EXPORTS .. name, true)
-        RARELOAD.Store._cache[EXPORTS .. name] = nil
-        if not doc then return reply("No such file: data/rareload/exports/" .. name .. ".json") end
-        local ok, idOrWhy, dropped = importAndTell(ply, doc)
-        if not ok then return reply("Failed: " .. idOrWhy) end
-        local left = #dropped > 0 and ". Left out: " .. table.concat(dropped, ", ") or "."
-        reply("Imported as save No. " .. idOrWhy .. left)
-    end),
-})
-
-Cmd.Register("share", {
-    priv = "rareload_share",
-    usage = "<id> <player>",
-    help = "Offer a copy of one of your saves to another player",
-    fn = playerOnly(function(ply, args, reply)
-        local ok, why = Share.Offer(ply, tonumber(args[1]), Cmd.FindPlayer(table.concat(args, " ", 2)))
-        reply(ok and "Offer sent." or "Failed: " .. why)
-    end),
-})

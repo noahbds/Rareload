@@ -139,6 +139,8 @@ function Inventory.Write(ply, save, inv, reason, versions)
 end
 
 local function targetName(save) return save and ("save " .. save) or "the global inventory" end
+Inventory.TargetName = targetName -- for the console commands (sv_commands.lua)
+Inventory.Empty = emptyInventory
 
 -- Pushes a target to the inventory window.
 function Inventory.Push(ply, save)
@@ -235,61 +237,4 @@ handle("inventory.rollback", { save = "uint?", version = "uint" }, function(ply,
 end)
 handle("inventory.give", { save = "uint?" }, function(ply, a)
     return Inventory.GiveTarget(ply, a.save)
-end)
-
--- Console commands ---------------------------------------------------------------------------------------
-
-local Cmd = RARELOAD.Cmd
-
--- "global" or a save number. Returns ok, save.
-local function parseTarget(arg)
-    if arg == "global" then return true, nil end
-    local n = tonumber(arg)
-    if n and n >= 1 and n == math.floor(n) then return true, n end
-    return false
-end
-
-local function fileOf(ply, name)
-    local key = RARELOAD.Util.PlayerKey(ply)
-    name = RARELOAD.Store.Clean(name or "inventory")
-    return key and ("inventories/" .. key .. "/" .. (name ~= "" and name or "inventory")) or nil
-end
-
-local function command(name, usage, help, fn)
-    Cmd.Register(name, {
-        priv = PRIV,
-        usage = usage,
-        help = help,
-        fn = function(ply, args, reply)
-            if not IsValid(ply) then return reply("Only players have inventories.") end
-            local ok, save = parseTarget(args[1])
-            if not ok then return reply("Usage: rareload " .. name .. " " .. usage) end
-            local key, targs, worked = fn(ply, save, args, reply)
-            if key then RARELOAD.Toast(ply, key, targs, worked == false and "error" or "ok") end
-            Inventory.Push(ply, save)
-        end,
-    })
-end
-
-command("inventory export", "<save number|global> [file name]",
-    "Write an inventory to data/rareload/inventories/<your SteamID64>/", function(ply, save, args, reply)
-        local inv, _, exists = Inventory.Read(ply, save)
-        local rel = fileOf(ply, args[2])
-        if not exists or not rel then return reply("Failed: " .. targetName(save) .. " does not exist.") end
-        RARELOAD.Store.Save(rel, inv or emptyInventory())
-        reply("Exported " .. targetName(save) .. " to data/rareload/" .. rel .. ".json")
-    end)
-
-command("inventory import", "<save number|global> [file name]",
-    "Replace an inventory with one from data/rareload/inventories/<your SteamID64>/", function(ply, save, args, reply)
-        local rel = fileOf(ply, args[2])
-        local data = rel and RARELOAD.Store.Load(rel, true)
-        if not data then return reply("Failed: there is no data/rareload/" .. tostring(rel) .. ".json") end
-        local key, targs, ok = Inventory.SetFrom(ply, save, data, "import")
-        reply(ok and ("Imported into " .. targetName(save) .. ".") or ("Failed: " .. tostring(targs and targs[1])))
-        return key, targs, ok
-    end)
-
-command("inventory give", "<save number|global>", "Give yourself an inventory now", function(ply, save)
-    return Inventory.GiveTarget(ply, save)
 end)
