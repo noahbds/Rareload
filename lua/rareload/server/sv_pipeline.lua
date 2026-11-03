@@ -19,6 +19,7 @@ local ordered
 --   undo snapshot) wins over load.
 -- replaces: when this module restores, those modules are skipped (the global inventory takes the
 --   place of the map's own weapons, ammo and held weapon).
+-- skipOnDeath: not restored on a respawn after a death (the scene: map, time, weather, world settings).
 -- empty: what an exact restore uses when the save has no data for this module (a world module whose
 --   objects must all be removed).
 function RARELOAD.Module(def)
@@ -340,6 +341,7 @@ end
 -- Returns false, plus why when the module is in the save but the player may not get it back.
 local function wants(ctx, def)
     if ctx.skipWorld and def.phase == "world" then return false end
+    if ctx.died and def.skipOnDeath then return false end
     if ctx.only and not ctx.only[def.id] then return false end
     if external(ctx, def) then
         -- Not part of this save: a player who may not use it simply doesn't get it, without a warning.
@@ -410,7 +412,8 @@ runFrom = function(ctx, i)
 end
 
 -- opts = { reason?, only?: { [moduleId] = true }, reset?: put saved objects still on the map back the
---          way they were saved, exact?: also remove the player's objects the save doesn't hold }
+--          way they were saved, exact?: also remove the player's objects the save doesn't hold,
+--          died?: a respawn after a death }
 function Pipeline.Restore(ply, entry, opts)
     opts = opts or {}
     local token = (tokens[ply] or 0) + 1
@@ -419,7 +422,7 @@ function Pipeline.Restore(ply, entry, opts)
     local reason = opts.reason or "timeline"
     local ctx = setmetatable({
         ply = ply, entry = entry, reason = reason, only = opts.only, token = token,
-        reset = opts.reset or opts.exact or false, exact = opts.exact or false,
+        reset = opts.reset or opts.exact or false, exact = opts.exact or false, died = opts.died or false,
         spawnDone = {}, shared = {}, spawned = {}, denied = {},
         session = RARELOAD.Log.Session("Restore (" .. reason .. ")", ply, "restore"),
     }, Ctx)

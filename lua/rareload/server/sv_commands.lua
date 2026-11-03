@@ -215,7 +215,7 @@ Cmd.Register("history", {
 
 Cmd.Register("history restore", {
     priv = "rareload_restore",
-    usage = "<id> [position,health,inventory,ammo,appearance,states,world] [exact]",
+    usage = "<id> [position,health,inventory,ammo,appearance,states,world,scene] [exact]",
     help = "Restore a save now (all components by default); exact also removes your objects not in it",
     fn = playerOnly(function(ply, args, reply)
         if not ply:Alive() then return reply("Respawn first, then restore the save.") end

@@ -203,6 +203,9 @@ end
 -- A revived copy (colours back to Color objects) of saved data, for code outside this file.
 function Snapshot.Revive(v) return revive(v, 0) end
 
+-- A copy with only plain data (and tagged colours), for code outside this file.
+function Snapshot.Plain(v) return plainData(v, 0) end
+
 -- Capture -----------------------------------------------------------------------------------------
 
 -- Object state the duplicator doesn't keep (5.4 plan, C1-C3, C6) -----------------------------------

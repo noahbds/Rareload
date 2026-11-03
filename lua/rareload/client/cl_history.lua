@@ -8,7 +8,7 @@ local Timeline = RARELOAD.Timeline
 local L, UI, State = RARELOAD.L, RARELOAD.UI, RARELOAD.State
 local C, sc = UI.C, UI.sc
 
-local COMPONENTS = { "position", "health", "inventory", "ammo", "appearance", "states", "world" }
+local COMPONENTS = { "position", "health", "inventory", "ammo", "appearance", "states", "world", "scene" }
 local MODES = { "set_previous", "restore_current", "restore_previous" }
 local SORTS = { "newest", "oldest", "health", "pinned" }
 local FILTERS = { "all", "pinned", "noted", "world", "auto" }
@@ -393,7 +393,10 @@ local function buildDetail(host, sel)
     gap(D.parts, 6)
     D.checks = {}
     for _, comp in ipairs(COMPONENTS) do
-        D.checks[comp] = UI.Check(D.parts, L("comp." .. comp), false, function() Timeline.SendReloadConfig() end)
+        -- The scene changes the server for everyone: only shown to players who may restore it.
+        if comp ~= "scene" or RARELOAD.Can(LocalPlayer(), "rareload_restore_scene") then
+            D.checks[comp] = UI.Check(D.parts, L("comp." .. comp), false, function() Timeline.SendReloadConfig() end)
+        end
     end
     -- Exact restore (A1): both restore buttons also remove the player's objects the save doesn't hold.
     D.exact = UI.Check(host, L("timeline.exact"), false, function() end)

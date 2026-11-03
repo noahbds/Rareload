@@ -339,6 +339,30 @@ RARELOAD.Setting("debug", {
     category = "server",
     help = "Print Rareload debug logs, send report cards to admins and show the world display"
 })
+RARELOAD.Setting("keepMapState", {
+    type = "bool",
+    default = game.SinglePlayer(),
+    scope = "server",
+    category = "world",
+    priv = "rareload_restore_scene",
+    help = "Save and restore the map's doors, locks, broken objects and physics props (for everyone)"
+})
+RARELOAD.Setting("keepEnvironment", {
+    type = "bool",
+    default = game.SinglePlayer(),
+    scope = "server",
+    category = "world",
+    priv = "rareload_restore_scene",
+    help = "Save and restore the time of day, weather (StormFox2) and sky (for everyone)"
+})
+RARELOAD.Setting("keepWorldSettings", {
+    type = "bool",
+    default = game.SinglePlayer(),
+    scope = "server",
+    category = "world",
+    priv = "rareload_restore_scene",
+    help = "Save and restore gravity, physics speed and the AI switches (for everyone)"
+})
 RARELOAD.Setting("deathCleanupMode", {
     type = "enum",
     values = { "off", "all", "owned", "saved" },

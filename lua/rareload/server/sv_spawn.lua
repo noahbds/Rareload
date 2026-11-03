@@ -38,7 +38,8 @@ hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
     local entry = RARELOAD.History.Active(ply)
     if not entry and RARELOAD.Pipeline.Loads(ply, "spawn") then entry = { data = {} } end
     if entry then
-        RARELOAD.Pipeline.Restore(ply, entry, { reason = "spawn", reset = RARELOAD.Get(ply, "resetOnSpawn") })
+        RARELOAD.Pipeline.Restore(ply, entry,
+            { reason = "spawn", reset = RARELOAD.Get(ply, "resetOnSpawn"), died = died })
     end
 end)
 

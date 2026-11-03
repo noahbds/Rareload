@@ -15,6 +15,7 @@ History.COMPONENTS = {
     appearance = { "appearance", "pac" },
     states = { "states", "body", "holding" },
     world = { "entities", "npcs", "vehicles", "constraints" },
+    scene = { "mapState", "environment", "worldSettings" },
 }
 
 -- Returns the player's saves document (a new, unsaved one if they have none) and its storage path,

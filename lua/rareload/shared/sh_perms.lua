@@ -39,6 +39,9 @@ RARELOAD.Priv("rareload_restore_vehicles", "user", "Get your saved vehicles back
 RARELOAD.Priv("rareload_export", "user", "Export your saves to a file")
 RARELOAD.Priv("rareload_import", "admin", "Add a save from a file to your timeline")
 RARELOAD.Priv("rareload_share", "user", "Offer a copy of your saves to other players")
+RARELOAD.Priv("rareload_save_scene", "admin", "Include the map, time, weather and world settings when saving")
+RARELOAD.Priv("rareload_restore_scene", "admin",
+    "Restore the map, time, weather and world settings (they change the server for everyone)")
 RARELOAD.Priv("rareload_manage_objects", "admin", "Edit, flag or delete objects inside saves")
 RARELOAD.Priv("rareload_manage_inventory", "admin", "Edit, copy, give and roll back saved and global inventories")
 RARELOAD.Priv("rareload_teleport", "admin", "Teleport to saved positions and objects")
