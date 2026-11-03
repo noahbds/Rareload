@@ -42,7 +42,7 @@ Sizes: **S** is up to a day, **M** is a few days, **L** is a week or more, or ne
 | C3 | Animated props (sequence, cycle, speed) | S | M4 |
 | C4 | Poses and expressions (check, then fill the gaps) | S–M | M4 |
 | C5 | Weapons on the ground | M | M4 |
-| C6 | Entity API, then Wiremod, E2 and Starfall state | L | M4 |
+| C6 | Wiremod, E2 and Starfall state | L | M4 |
 | C7 | Vehicles: every networked value, ammo, sirens, signals | M | M4 |
 | C8 | NPCs: weapon, accuracy, relationships, followers | M | M4 |
 | C9 | Map state: doors, buttons, breakables, map props, movers | L | M5 |
@@ -59,7 +59,6 @@ Sizes: **S** is up to a day, **M** is a few days, **L** is a week or more, or ne
 | D8 | Compare two saves | M | M6 |
 | D9 | Server snapshots, rollback and crash recovery | L | M7 |
 | D10 | PvP rules: no saving in combat, restore cooldown | S | M7 |
-| D11 | Public developer API and documentation | M | M7 |
 | **E** | **Later (5.5 and after)** | | |
 | E1 | Persistent builds (restored at map load, owner offline) | L | — |
 | E2 | Group saves (several players, passengers) | L | — |
@@ -433,15 +432,14 @@ Fixes:
 **Settings:** `keepGroundWeapons` (player). Defaults to the value of `respectSpawnLimits` inverted:
 on in singleplayer, off on servers until the owner turns it on.
 
-### C6. Entity API, then Wiremod, E2 and Starfall — L (M4, the adapters may slip)
+### C6. Wiremod, E2 and Starfall state — L (M4, the adapters may slip)
 **Problem:** the duplicator rebuilds chips and gates, but their running state is lost: E2
 variables, latches, counters, memory chips and Starfall state.
 
 **How, in two parts:**
-1. **Generic entity API** (small, do first). If a scripted entity defines `ENT:RareloadCapture()`
-   returning plain data, it's stored in the `rareload` modifier. After a paste or reset,
-   `ENT:RareloadApply(data)` is called. Any addon can opt in without Rareload knowing it. This is
-   also how D11 is documented.
+1. **Entity state adapters** (small, do first). An internal registry, like the vehicle adapters:
+   `{ id, matches(ent), capture(ent) -> t, apply(ent, t) }`. What `capture` returns is stored in
+   the `rareload` modifier, and `apply` runs after a paste or a reset (A1).
 2. **Wiremod adapters, after research:**
    - **Gates with memory:** latch, counter, timer, RAM and ROM chips, `wire_data_store`.
    - **E2:** saving `@persist` variables. Only types that can be serialized: numbers, strings,
@@ -649,26 +647,6 @@ New server settings, all off by default:
 
 Refusals use `RareloadCanSave` / `RareloadCanRestore` internally and show a toast.
 
-### D11. Public developer API — M (M7)
-- Declare stable and document:
-  - `RARELOAD.Module`
-  - `RARELOAD.Vehicles.Adapter`
-  - `RARELOAD.Weapons.Adapter`
-  - `RARELOAD.Environment.Adapter`
-  - `ENT:RareloadCapture` / `ENT:RareloadApply`
-  - the existing hooks
-- Bump `RARELOAD.API` to 2.
-- **New hooks:**
-
-  | Hook | Runs |
-  |------|------|
-  | `RareloadPreSave(ply, reason)` | Before a save |
-  | `RareloadPreRestore(ply, entry, reason)` | Before a restore |
-  | `RareloadObjectRestored(ent, def, ply)` | After each restored object |
-  | `RareloadTimelineUpdated` | Client side, when the timeline changes |
-
-- `docs/API.md` (excluded from the Workshop upload), plus an example addon that saves its own data.
-
 ---
 
 ## E. Later (5.5 and after)
@@ -697,7 +675,7 @@ Refusals use `RareloadCanSave` / `RareloadCanRestore` internally and show a toas
 | M4 | C1–C8 | Objects captured completely |
 | M5 | C9–C11 | The scene: map, weather, world settings |
 | M6 | D3–D8 | New ways to use saves |
-| M7 | D9–D11 | Safety and developers |
+| M7 | D9, D10 | Safety |
 
 Each milestone ends with:
 - all strings in the 10 languages
