@@ -190,7 +190,7 @@ function Cmd.FindPlayer(text)
     if #matches > 1 then
         local names = {}
         for _, p in ipairs(matches) do names[#names + 1] = p:Nick() end
-        return nil, 'Multiple players match "' .. text .. '": ' .. table.concat(names, ", ")
+        return nil, "Multiple players match \"" .. text .. "\": " .. table.concat(names, ", ")
     end
     return nil, "Player not found: " .. text
 end
