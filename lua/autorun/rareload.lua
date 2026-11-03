@@ -4,7 +4,7 @@
 -- It can also be used to save and restore the state of the game world at any time, and to track changes made by players.
 RARELOAD = RARELOAD or {}
 
-RARELOAD.version = "5.3"
+RARELOAD.version = "5.4"
 RARELOAD.API = 1
 RARELOAD.loadGen = (RARELOAD.loadGen or 0) + 1
 
