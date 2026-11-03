@@ -7,31 +7,39 @@ Cmd.list = Cmd.list or {}
 
 -- def = { priv?, usage?, help, fn(ply, args, reply) }. Names may be two words ("dev reload").
 function Cmd.Register(name, def)
-    Cmd.list[name] = def
+    assert(isstring(name) and string.Trim(name) ~= "", "Invalid Rareload command name")
+    assert(istable(def) and isfunction(def.fn), "Invalid Rareload command definition: " .. name)
+    name = string.lower(string.Trim(name))
+    Cmd.list[name] = def -- Re-registration is intentional during development reloads.
 end
 
 local function replyTo(ply)
     return function(msg)
+        msg = tostring(msg)
         if IsValid(ply) then ply:PrintMessage(HUD_PRINTCONSOLE, msg) else print(msg) end
     end
 end
 
 -- Runs `rareload <args…>` for `ply` (nil = the server console).
 function Cmd.Run(ply, args)
+    args = istable(args) and table.Copy(args) or {}
     local reply = replyTo(ply)
-    local name = args[1] or "help"
-    if args[2] and Cmd.list[name .. " " .. args[2]] then
-        name = name .. " " .. table.remove(args, 2)
+    local name = string.lower(args[1] or "help")
+    if args[2] and Cmd.list[name .. " " .. string.lower(args[2])] then
+        name = name .. " " .. string.lower(table.remove(args, 2))
     end
     table.remove(args, 1)
 
     local def = Cmd.list[name]
-    if not def then
-        reply("Unknown command. Type 'rareload help'.")
-    elseif def.priv and not RARELOAD.Can(ply, def.priv) then
-        reply("You need the " .. def.priv .. " privilege for this.")
-    else
-        def.fn(ply, args, reply)
+    if not def then return reply("Unknown command. Type 'rareload help'.") end
+    if def.priv and not RARELOAD.Can(ply, def.priv) then
+        return reply("You need the " .. def.priv .. " privilege for this.")
+    end
+
+    local ok, err = xpcall(function() def.fn(ply, args, reply) end, debug.traceback)
+    if not ok then
+        RARELOAD.Log("commands"):error("Command '%s' failed: %s", name, tostring(err))
+        reply("An internal error occurred while executing this command. Check the server log.")
     end
 end
 
@@ -142,11 +150,12 @@ Cmd.Register("perms set", {
         end
 
         -- One player: by name or SteamID when online, by SteamID64 when not.
-        local target = Cmd.FindPlayer(who)
-        local sid64 = target and target:SteamID64() or string.match(who, "^7656119%d+$")
+        local target, findError = Cmd.FindPlayer(who)
+        local sid64 = target and target:SteamID64() or (who:match("^7656119%d%d%d%d%d%d%d%d%d%d$") and who)
         if not sid64 then
-            return reply("Give a tier (user, admin, superadmin, default), a player's name or a SteamID64.")
+            return reply(findError or "Give a tier (user, admin, superadmin, default), a player's name or a 17-digit SteamID64.")
         end
+        if args[3] and string.lower(args[3]) ~= "off" then return reply("The only optional value is 'off'.") end
         local on = string.lower(args[3] or "") ~= "off"
         local ok, why = RARELOAD.Grant(sid64, name, on)
         if not ok then return reply(why) end
@@ -164,16 +173,25 @@ local function playerOnly(fn)
     end
 end
 
--- A player by SteamID64, SteamID or part of their name.
+-- Exact identifiers/names win; partial names must identify exactly one player.
 function Cmd.FindPlayer(text)
-    if not text or text == "" then return nil end
-    local lower = string.lower(text)
+    if not isstring(text) or text == "" then return nil, "Name a player." end
+    local lower, matches = string.lower(text), {}
     for _, p in player.Iterator() do
-        if p:SteamID64() == text or p:SteamID() == text then return p end
+        if p:SteamID64() == text or p:SteamID() == text or string.lower(p:Nick()) == lower then
+            return p
+        end
     end
     for _, p in player.Iterator() do
-        if string.find(string.lower(p:Nick()), lower, 1, true) then return p end
+        if string.find(string.lower(p:Nick()), lower, 1, true) then matches[#matches + 1] = p end
     end
+    if #matches == 1 then return matches[1] end
+    if #matches > 1 then
+        local names = {}
+        for _, p in ipairs(matches) do names[#names + 1] = p:Nick() end
+        return nil, 'Multiple players match "' .. text .. '": ' .. table.concat(names, ", ")
+    end
+    return nil, "Player not found: " .. text
 end
 
 -- Admins can name another player as the first argument of the timeline commands.
@@ -183,8 +201,8 @@ local function targetOf(ply, args, reply)
             reply("Only admins can act on other players.")
             return nil
         end
-        local target = Cmd.FindPlayer(table.remove(args, 1))
-        if not target then reply("No such player.") end
+        local target, err = Cmd.FindPlayer(table.remove(args, 1))
+        if not target then reply(err) end
         return target
     end
     if not IsValid(ply) then
@@ -194,8 +212,13 @@ local function targetOf(ply, args, reply)
     return ply
 end
 
+local function saveID(value)
+    local id = tonumber(value)
+    return id and id >= 1 and id < math.huge and id == math.floor(id) and id or nil
+end
+
 local function result(reply, ok, what)
-    reply(ok and ("Done: " .. what) or ("Failed: " .. what .. " (no such save?)"))
+    reply(ok and ("Done: " .. what) or ("Failed: " .. what .. ". Check the save ID and try again."))
 end
 
 Cmd.Register("history", {
@@ -215,7 +238,7 @@ Cmd.Register("history", {
 
 Cmd.Register("history restore", {
     priv = "rareload_restore",
-    usage = "<id> [position,health,inventory,ammo,appearance,states,world,scene] [exact]",
+    usage = "<id> [position,health,inventory,ammo,appearance,states,world] [exact]",
     help = "Restore a save now (all components by default); exact also removes your objects not in it",
     fn = playerOnly(function(ply, args, reply)
         if not ply:Alive() then return reply("Respawn first, then restore the save.") end
@@ -226,8 +249,10 @@ Cmd.Register("history restore", {
                 table.remove(args, i)
             end
         end
+        local id = saveID(args[1])
+        if not id then return reply("Usage: rareload history restore <positive save ID> [components] [exact]") end
         local comps = RARELOAD.History.ParseComps(args[2])
-        result(reply, RARELOAD.History.Restore(ply, tonumber(args[1]), comps, { exact = exact }), "restore")
+        result(reply, RARELOAD.History.Restore(ply, id, comps, { exact = exact }), "restore")
     end),
 })
 
@@ -235,8 +260,11 @@ Cmd.Register("history activate", {
     priv = "rareload_restore",
     usage = "<id>",
     help = "Make a save your respawn point",
-    fn = playerOnly(function(ply, args, reply) result(reply, RARELOAD.History.Activate(ply, tonumber(args[1])),
-            "activate") end),
+    fn = playerOnly(function(ply, args, reply)
+        local id = saveID(args[1])
+        if not id then return reply("Usage: rareload history activate <positive save ID>") end
+        result(reply, RARELOAD.History.Activate(ply, id), "activate")
+    end),
 })
 
 Cmd.Register("history undo", {
@@ -250,7 +278,9 @@ Cmd.Register("history pin", {
     usage = "<id> [0]",
     help = "Pin a save so it's never pruned (0 unpins)",
     fn = playerOnly(function(ply, args, reply)
-        result(reply, RARELOAD.History.SetPinned(ply, tonumber(args[1]), args[2] ~= "0"), "pin")
+        local id = saveID(args[1])
+        if not id or (args[2] and args[2] ~= "0") then return reply("Usage: rareload history pin <positive save ID> [0]") end
+        result(reply, RARELOAD.History.SetPinned(ply, id, args[2] ~= "0"), "pin")
     end),
 })
 
@@ -259,8 +289,10 @@ Cmd.Register("history note", {
     usage = "<id> <text>",
     help = "Attach a note to a save",
     fn = playerOnly(function(ply, args, reply)
-        local id = tonumber(table.remove(args, 1))
-        result(reply, RARELOAD.History.SetNote(ply, id, string.sub(table.concat(args, " "), 1, 256)), "note")
+        local id = saveID(table.remove(args, 1))
+        local note = string.sub(table.concat(args, " "), 1, 256)
+        if not id or note == "" then return reply("Usage: rareload history note <positive save ID> <text>") end
+        result(reply, RARELOAD.History.SetNote(ply, id, note), "note")
     end),
 })
 
@@ -269,7 +301,9 @@ Cmd.Register("history delete", {
     usage = "<id>",
     help = "Delete a save",
     fn = playerOnly(function(ply, args, reply)
-        result(reply, RARELOAD.History.Delete(ply, tonumber(args[1])), "delete")
+        local id = saveID(args[1])
+        if not id then return reply("Usage: rareload history delete <positive save ID>") end
+        result(reply, RARELOAD.History.Delete(ply, id), "delete")
     end),
 })
 
@@ -296,8 +330,10 @@ Cmd.Register("history reload", {
 
 local function coords(args)
     local x, y, z = tonumber(args[1]), tonumber(args[2]), tonumber(args[3])
+    if not x or not y or not z or x ~= x or y ~= y or z ~= z
+        or math.abs(x) == math.huge or math.abs(y) == math.huge or math.abs(z) == math.huge then return nil end
     local v = RARELOAD.Util.ToVector({ x, y, z })
-    return v and util.IsInWorld(v) and v or nil -- L5
+    return v and util.IsInWorld(v) and v or nil
 end
 
 Cmd.Register("tp", {
@@ -329,8 +365,16 @@ Cmd.Register("antistuck test", {
     usage = "[player]",
     help = "Look for a free spot from where a player stands (debug draws the candidates)",
     fn = function(ply, args, reply)
-        local target = args[1] and Cmd.FindPlayer(args[1]) or ply
-        if not IsValid(target) then return reply("No such player.") end
+        local target = ply
+        if args[1] then
+            local err
+            target, err = Cmd.FindPlayer(args[1])
+            if not target then return reply(err) end
+        end
+        if not IsValid(target) then return reply("Name a player when running this from the server console.") end
+        if target ~= ply and not RARELOAD.Can(ply, "rareload_admin") then
+            return reply("Only admins can test anti-stuck on another player.")
+        end
         local AntiStuck = RARELOAD.AntiStuck
         local pos, crouched = target:GetPos(), target:Crouching()
         local stuck, why = AntiStuck.IsStuck(pos, target, crouched)
@@ -377,9 +421,12 @@ Cmd.Register("export", {
     usage = "<id> [file name]",
     help = "Write a save to data/rareload/exports on the server (in singleplayer: your own data folder)",
     fn = playerOnly(function(ply, args, reply)
-        local entry = RARELOAD.History.Get(ply, tonumber(args[1]))
+        local id = saveID(args[1])
+        if not id then return reply("Usage: rareload export <positive save ID> [file name]") end
+        local entry = RARELOAD.History.Get(ply, id)
         if not entry then return reply("No such save. Type 'rareload history' for the list.") end
-        reply("Exported to " .. RARELOAD.Share.WriteFile(ply, entry, args[2]))
+        local path = RARELOAD.Share.WriteFile(ply, entry, args[2])
+        reply(path and ("Exported to " .. path) or "Export failed; check the server log.")
     end),
 })
 
@@ -394,6 +441,7 @@ Cmd.Register("import", {
         if not doc then return reply("No such file: data/rareload/exports/" .. name .. ".json") end
         local ok, idOrWhy, dropped = RARELOAD.Share.ImportAndTell(ply, doc)
         if not ok then return reply("Failed: " .. idOrWhy) end
+        dropped = istable(dropped) and dropped or {}
         local left = #dropped > 0 and ". Left out: " .. table.concat(dropped, ", ") or "."
         reply("Imported as save No. " .. idOrWhy .. left)
     end),
@@ -404,9 +452,12 @@ Cmd.Register("share", {
     usage = "<id> <player>",
     help = "Offer a copy of one of your saves to another player",
     fn = playerOnly(function(ply, args, reply)
-        local target = Cmd.FindPlayer(table.concat(args, " ", 2))
-        local ok, why = RARELOAD.Share.Offer(ply, tonumber(args[1]), target)
-        reply(ok and "Offer sent." or "Failed: " .. why)
+        local id = saveID(args[1])
+        if not id or not args[2] then return reply("Usage: rareload share <positive save ID> <player>") end
+        local target, err = Cmd.FindPlayer(table.concat(args, " ", 2))
+        if not target then return reply(err) end
+        local ok, why = RARELOAD.Share.Offer(ply, id, target)
+        reply(ok and "Offer sent." or "Failed: " .. tostring(why))
     end),
 })
 
@@ -416,7 +467,7 @@ Cmd.Register("share", {
 local function inventoryTarget(arg)
     if arg == "global" then return true, nil end
     local n = tonumber(arg)
-    if n and n >= 1 and n == math.floor(n) then return true, n end
+    if n and n >= 1 and n < math.huge and n == math.floor(n) then return true, n end
     return false
 end
 
@@ -439,7 +490,7 @@ local function inventoryCommand(name, usage, help, fn)
             if not ok then return reply("Usage: rareload " .. name .. " " .. usage) end
             local key, targs, worked = fn(ply, save, args, reply)
             if key then RARELOAD.Toast(ply, key, targs, worked == false and "error" or "ok") end
-            RARELOAD.Inventory.Push(ply, save)
+            if name ~= "inventory export" and worked ~= false then RARELOAD.Inventory.Push(ply, save) end
         end,
     })
 end
@@ -479,8 +530,11 @@ local CLIENT_COMMANDS = {
     inventory = { priv = "rareload_manage_inventory", help = "Open the inventory manager" },
 }
 for name, def in pairs(CLIENT_COMMANDS) do
-    def.fn = playerOnly(function(ply, args) RARELOAD.Net.Push(ply, "cmd", { name = name, args = args }) end)
-    Cmd.Register(name, def)
+    local commandName = name
+    def.fn = playerOnly(function(ply, args)
+        RARELOAD.Net.Push(ply, "cmd", { name = commandName, args = args })
+    end)
+    Cmd.Register(commandName, def)
 end
 
 Cmd.Register("debug", {
@@ -500,7 +554,7 @@ Cmd.Register("debug", {
         elseif sub == "clear" then
             RARELOAD.LogClear()
             reply("Log cleared.")
-        else
+        elseif sub == "diag" then
             local saves, blobs = 0, 0
             local dir = "rareload/" .. RARELOAD.Store.MapDir()
             for _, name in ipairs(file.Find(dir .. "/*.json", "DATA") or {}) do
@@ -517,9 +571,11 @@ Cmd.Register("debug", {
             reply("  debug " .. (RARELOAD.Get(nil, "debug") and "on" or "off") .. ", gamemode "
                 .. (RARELOAD.Pipeline.Enabled() and "supported" or "not supported") .. ", navmesh "
                 .. (navmesh.IsLoaded() and "loaded" or "missing"))
-            reply(string.format("  %d players with saves on this map, %d world blobs", saves, blobs))
+            reply(string.format("  %d save files and %d world blobs on this map", saves, blobs))
             reply("  anti-stuck: " .. table.concat(methods, " > "))
             reply(string.format("  %d errors and %d warnings since start", counts.error, counts.warn))
+        else
+            reply("Usage: rareload debug <on|off|recent [n]|clear|diag>")
         end
     end,
 })
@@ -535,13 +591,17 @@ local SELFTEST = {
         return util.Decompress(util.Compress(s), #s) == s
     end },
     { "Storage write and read back", function()
-        local rel = "selftest"
-        RARELOAD.Store.Save(rel, { v = RARELOAD.Store.SCHEMA, value = 42 })
-        RARELOAD.Store.Flush()
+        local rel = "selftest_" .. math.floor(SysTime() * 1000000) .. "_" .. math.random(1, 999999)
+        local ok, value = pcall(function()
+            RARELOAD.Store.Save(rel, { v = RARELOAD.Store.SCHEMA, value = 42 })
+            RARELOAD.Store.Flush()
+            RARELOAD.Store._cache[rel] = nil
+            return (RARELOAD.Store.Load(rel) or {}).value == 42
+        end)
+        pcall(RARELOAD.Store.Delete, rel)
+        pcall(RARELOAD.Store.Flush)
         RARELOAD.Store._cache[rel] = nil
-        local ok = (RARELOAD.Store.Load(rel) or {}).value == 42
-        RARELOAD.Store.Delete(rel)
-        return ok
+        return ok and value == true
     end },
     { "Every module is in a known phase", function()
         return pcall(RARELOAD.Pipeline.Order, table.ClearKeys(RARELOAD.Pipeline._defs))
@@ -568,7 +628,11 @@ Cmd.Register("dev reload", {
     priv = "rareload_admin",
     help = "Reload Rareload's Lua on the server and clients",
     fn = function(_, _, reply)
-        include("autorun/rareload.lua")
+        local ok, err = pcall(include, "autorun/rareload.lua")
+        if not ok then
+            RARELOAD.Log("commands"):error("Development reload failed: %s", tostring(err))
+            return reply("Reload failed; check the server log.")
+        end
         RARELOAD.Net.Push(nil, "dev.reload", {})
         reply("Reloaded.")
     end,
