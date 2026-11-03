@@ -464,7 +464,7 @@ function History.RenameObject(ply, entryId, objectId, name)
     end)
     if not ok then return false, err end
     for _, ent in ents.Iterator() do
-        if ent.RareloadID == objectId then ent.RareloadName = name end
+        if ent.RareloadID and tostring(ent.RareloadID) == tostring(objectId) then ent.RareloadName = name end
     end
     return true
 end
