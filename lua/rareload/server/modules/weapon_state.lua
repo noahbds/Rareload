@@ -66,7 +66,7 @@ function Weapons.Apply(ply, state)
             local ok, err = pcall(a.apply, wep, w.data, ply)
             if not ok then
                 failed = failed + 1
-                RARELOAD.Log("weapons"):warn("%s: %s state not applied: %s", ply:Nick(), class, tostring(err))
+                RARELOAD.Log("weapons", ply):warn("%s: %s state not applied: %s", ply:Nick(), class, tostring(err))
             end
         elseif IsValid(wep) then
             failed = failed + 1

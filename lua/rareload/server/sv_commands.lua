@@ -32,13 +32,17 @@ function Cmd.Run(ply, args)
 
     local def = Cmd.list[name]
     if not def then return reply("Unknown command. Type 'rareload help'.") end
+    local who = IsValid(ply) and ply:Nick() or "Console"
+    local line = "rareload " .. name .. (#args > 0 and " " .. table.concat(args, " ") or "")
     if def.priv and not RARELOAD.Can(ply, def.priv) then
+        RARELOAD.Log("commands", ply):verbose("%s tried '%s' without %s", who, line, def.priv)
         return reply("You need the " .. def.priv .. " privilege for this.")
     end
+    RARELOAD.Log("commands", ply):verbose("%s ran '%s'", who, line)
 
     local ok, err = xpcall(function() def.fn(ply, args, reply) end, debug.traceback)
     if not ok then
-        RARELOAD.Log("commands"):error("Command '%s' failed: %s", name, tostring(err))
+        RARELOAD.Log("commands", ply):error("'%s' (run by %s) failed: %s", line, who, tostring(err))
         reply("An internal error occurred while executing this command. Check the server log.")
     end
 end
@@ -145,7 +149,7 @@ Cmd.Register("perms set", {
         if TIER_WORDS[string.lower(who)] then
             local ok, why = RARELOAD.SetTier(name, string.lower(who))
             if not ok then return reply(why) end
-            RARELOAD.Log("perms"):info("%s set %s to %s", by, name, RARELOAD.Tier(name))
+            RARELOAD.Log("perms", ply):info("%s set %s to %s", by, name, RARELOAD.Tier(name))
             return reply(name .. " is now for: " .. RARELOAD.Tier(name) .. note)
         end
 
@@ -161,7 +165,8 @@ Cmd.Register("perms set", {
         local ok, why = RARELOAD.Grant(sid64, name, on)
         if not ok then return reply(why) end
         local label = target and target:Nick() or sid64
-        RARELOAD.Log("perms"):info("%s %s %s %s %s", by, on and "gave" or "took", name, on and "to" or "from", label)
+        RARELOAD.Log("perms", ply):info("%s %s %s %s %s", by, on and "gave" or "took", name, on and "to" or "from",
+            label)
         reply(label .. (on and " now has " or " no longer has ") .. name .. (on and "" or " of their own") .. note)
     end,
 })
@@ -399,11 +404,13 @@ Cmd.Register("antistuck method", {
     priv = "rareload_anti_stuck",
     usage = "[list|enable|disable|only|up|down|reset] [method]",
     help = "Show or change which anti-stuck methods run, and in which order",
-    fn = function(_, args, reply)
+    fn = function(ply, args, reply)
         local action = args[1] or "list"
         if action ~= "list" then
             local ok, err = RARELOAD.AntiStuck.Configure(action, args[2])
             if not ok then return reply("Failed: " .. err) end
+            RARELOAD.Log("antistuck", ply):info("%s: anti-stuck method %s %s", IsValid(ply) and ply:Nick() or "Console",
+                tostring(args[2] or "all"), action)
         end
         for i, m in ipairs(RARELOAD.AntiStuck.List()) do
             reply(string.format("  %d. [%s] %s", i, m.enabled and "on " or "off", m.id))
@@ -540,43 +547,96 @@ for name, def in pairs(CLIENT_COMMANDS) do
     Cmd.Register(commandName, def)
 end
 
+-- Log and status (sv_log.lua, sv_status.lua) ---------------------------------------------------------
+
+local LEVEL_TAGS = { error = "ERROR", warn = "WARN", info = "", verbose = "debug" }
+
+local function printLog(reply, count, filter)
+    local events = RARELOAD.LogRecent(count, filter)
+    if #events == 0 then
+        return reply(filter and filter ~= "" and ("Nothing in the log matches \"" .. filter .. "\".")
+            or "The log is empty.")
+    end
+    local day
+    for _, e in ipairs(events) do
+        local d = os.date("%Y-%m-%d", e.t)
+        if d ~= day then
+            day = d
+            reply("-- " .. d)
+        end
+        reply(string.format("%s %-5s %-9s %s", os.date("%H:%M:%S", e.t), LEVEL_TAGS[e.level] or e.level,
+            tostring(e.category), e.text))
+    end
+    reply(string.format("(%d lines; 'rareload log <count> <filter>' to see more or fewer)", #events))
+end
+
+Cmd.Register("log", {
+    priv = "rareload_debug",
+    usage = "[count] [errors|warnings|activity|debug] [category|player|text]",
+    help = "Show what Rareload logged, newest last: e.g. 'rareload log 50 errors' or 'rareload log Noah restore'",
+    fn = function(_, args, reply)
+        local count = 40
+        if tonumber(args[1]) then count = math.Clamp(math.floor(tonumber(table.remove(args, 1))), 1, 1000) end
+        printLog(reply, count, table.concat(args, " "))
+    end,
+})
+
+Cmd.Register("log clear", {
+    priv = "rareload_debug",
+    help = "Empty the in-game log (log files are kept)",
+    fn = function(ply, _, reply)
+        RARELOAD.LogClear()
+        RARELOAD.Log("commands", ply):info("%s cleared the log", IsValid(ply) and ply:Nick() or "Console")
+        reply("Log cleared.")
+    end,
+})
+
+Cmd.Register("log level", {
+    priv = "rareload_settings",
+    usage = "<errors|warnings|activity|debug>",
+    help = "Choose what Rareload prints to the server console",
+    fn = function(ply, args, reply)
+        local level = string.lower(args[1] or "")
+        if not table.HasValue(RARELOAD.Settings.logLevel.values, level) then
+            return reply("Current level: " .. RARELOAD.Get(nil, "logLevel")
+                .. ". Usage: rareload log level <errors|warnings|activity|debug>")
+        end
+        RARELOAD.Settings.logLevel.cv:SetString(level)
+        RARELOAD.Log("settings", ply):info("%s set the log level to %s", IsValid(ply) and ply:Nick() or "Console",
+            level)
+        reply("Log level: " .. level .. ".")
+    end,
+})
+
+Cmd.Register("status", {
+    priv = "rareload_debug",
+    help = "What Rareload found on this server: supported addons, saves, settings, logging",
+    fn = function(_, _, reply)
+        for _, line in ipairs(RARELOAD.Status.Lines()) do reply(line) end
+        local methods = {}
+        for _, m in ipairs(RARELOAD.AntiStuck.List()) do
+            if m.enabled then methods[#methods + 1] = m.id end
+        end
+        reply("  Anti-stuck: " .. (#methods > 0 and table.concat(methods, " > ") or "every method is off"))
+    end,
+})
+
 Cmd.Register("debug", {
     priv = "rareload_debug",
     usage = "<on|off|recent [n]|clear|diag>",
-    help = "Turn debug on or off, show recent log events, or print a diagnostic",
-    fn = function(_, args, reply)
+    help = "Turn debug on or off; recent, clear and diag are 'rareload log', 'log clear' and 'status'",
+    fn = function(ply, args, reply)
         local sub = args[1] or "diag"
         if sub == "on" or sub == "off" then
             RARELOAD.Settings.debug.cv:SetString(sub == "on" and "1" or "0")
+            RARELOAD.Log("settings", ply):info("%s turned debug %s", IsValid(ply) and ply:Nick() or "Console", sub)
             reply("Debug " .. sub .. ".")
         elseif sub == "recent" then
-            for _, e in ipairs(RARELOAD.LogRecent(math.Clamp(tonumber(args[2]) or 30, 1, 500))) do
-                reply(string.format("  %s %-7s %-10s %s", os.date("%H:%M:%S", e.t), e.level, tostring(e.category), e
-                .text))
-            end
+            printLog(reply, math.Clamp(tonumber(args[2]) or 30, 1, 1000))
         elseif sub == "clear" then
-            RARELOAD.LogClear()
-            reply("Log cleared.")
+            Cmd.Run(ply, { "log", "clear" })
         elseif sub == "diag" then
-            local saves, blobs = 0, 0
-            local dir = "rareload/" .. RARELOAD.Store.MapDir()
-            for _, name in ipairs(file.Find(dir .. "/*.json", "DATA") or {}) do
-                if name:match("^%d+%.json$") then saves = saves + 1 end
-            end
-            blobs = #(file.Find(dir .. "/_blobs/*.json", "DATA") or {})
-            local methods = {}
-            for _, m in ipairs(RARELOAD.AntiStuck.List()) do
-                if m.enabled then methods[#methods + 1] = m.id end
-            end
-            local counts = RARELOAD.LogRing.counts
-            reply("Rareload " ..
-            RARELOAD.version .. " on " .. game.GetMap() .. (game.SinglePlayer() and " (singleplayer)" or ""))
-            reply("  debug " .. (RARELOAD.Get(nil, "debug") and "on" or "off") .. ", gamemode "
-                .. (RARELOAD.Pipeline.Enabled() and "supported" or "not supported") .. ", navmesh "
-                .. (navmesh.IsLoaded() and "loaded" or "missing"))
-            reply(string.format("  %d save files and %d world blobs on this map", saves, blobs))
-            reply("  anti-stuck: " .. table.concat(methods, " > "))
-            reply(string.format("  %d errors and %d warnings since start", counts.error, counts.warn))
+            Cmd.Run(ply, { "status" })
         else
             reply("Usage: rareload debug <on|off|recent [n]|clear|diag>")
         end

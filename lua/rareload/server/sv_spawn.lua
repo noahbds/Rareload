@@ -3,10 +3,16 @@
 
 local cleaningUp = nil   -- the player whose death is cleaning the whole map (deathCleanupMode "all")
 
+-- Returns how many objects were removed.
 local function removeOwned(ply, savedOnly)
+    local n = 0
     for _, ent in ipairs(RARELOAD.Ownership.Owned(ply)) do
-        if IsValid(ent) and not ent:IsPlayer() and (not savedOnly or ent.RareloadID) then ent:Remove() end
+        if IsValid(ent) and not ent:IsPlayer() and (not savedOnly or ent.RareloadID) then
+            ent:Remove()
+            n = n + 1
+        end
     end
+    return n
 end
 
 hook.Add("PostPlayerDeath", "Rareload.Spawn.Died", function(ply)
@@ -25,6 +31,7 @@ hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
     -- The respawn that follows a whole-map cleanup must not start another one.
     local mode = died and not cleaned and RARELOAD.Get(nil, "deathCleanupMode") or "off"
     if mode == "all" and not cleaningUp then
+        RARELOAD.Log("spawn", ply):info("%s died: cleaning up the whole map before they respawn", ply:Nick())
         cleaningUp = ply
         game.CleanUpMap(false, nil, function()
             cleaningUp = nil
@@ -37,7 +44,9 @@ hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
         end)
         return
     elseif mode == "owned" or mode == "saved" then
-        removeOwned(ply, mode == "saved")
+        local n = removeOwned(ply, mode == "saved")
+        RARELOAD.Log("spawn", ply):info("%s died: removed %d of their %sobjects", ply:Nick(), n,
+            mode == "saved" and "saved " or "")
     end
 
     -- With no save on this map, modules kept outside the saves (the global inventory) still restore.
@@ -68,7 +77,9 @@ end
 -- Not called for the singleplayer or listen-server host (G21); see ShutDown.
 hook.Add("PlayerDisconnected", "Rareload.Spawn.Disconnect", function(ply)
     saveIfOn("saveOnDisconnect", ply, "disconnect")
-    if RARELOAD.Get(nil, "disconnectCleanup") then removeOwned(ply, false) end -- F19
+    if RARELOAD.Get(nil, "disconnectCleanup") then -- F19
+        RARELOAD.Log("spawn", ply):info("%s left: removed %d of their objects", ply:Nick(), removeOwned(ply, false))
+    end
 end)
 
 -- `except`: the player respawning after a death cleanup; saving them now would replace their save

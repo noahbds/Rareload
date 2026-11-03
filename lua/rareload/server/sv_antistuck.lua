@@ -276,7 +276,10 @@ RARELOAD.Net.Handle("antistuck.config", {
     rate = 0.1,
     args = { action = "string:16", id = "string:32?" },
     fn = function(ply, a)
-        AntiStuck.Configure(a.action, a.id)
+        if AntiStuck.Configure(a.action, a.id) then
+            RARELOAD.Log("antistuck", ply):info("%s: anti-stuck method %s %s", ply:Nick(), tostring(a.id or "all"),
+                a.action)
+        end
         pushMethods(ply)
     end,
 })

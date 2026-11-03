@@ -168,7 +168,7 @@ local function watchModel(ply, model, ctx)
     model = string.lower(model)
     ctx:waitFor(function() return string.lower(ply:GetModel() or "") ~= model end, WATCH, function()
         local eps = ConVarExists(EPS_FORCE)
-        RARELOAD.Log("appearance"):warn("%s: the restored model %s was replaced by %s%s", ply:Nick(), model,
+        RARELOAD.Log("appearance", ply):warn("%s: the restored model %s was replaced by %s%s", ply:Nick(), model,
             ply:GetModel(), eps and " (Enhanced PlayerModel Selector)" or "")
         RARELOAD.Toast(ply, eps and "toast.model_enforced" or "toast.model_replaced", nil, "error")
     end)

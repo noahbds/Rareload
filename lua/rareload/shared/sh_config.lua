@@ -332,6 +332,31 @@ RARELOAD.Setting("enableInAllGamemodes", {
     category = "server",
     help = "Also run Rareload in gamemodes not derived from Sandbox (D19)"
 })
+RARELOAD.Setting("logLevel", {
+    type = "enum",
+    values = { "errors", "warnings", "activity", "debug" },
+    default = "activity",
+    scope = "server",
+    category = "server",
+    help = "What Rareload prints to the server console: errors, warnings, activity (one line per save, "
+        .. "restore and admin change) or debug (every step)"
+})
+RARELOAD.Setting("logToFile", {
+    type = "bool",
+    default = false,
+    scope = "server",
+    category = "server",
+    help = "Also write the log to data/rareload/logs, one file per day"
+})
+RARELOAD.Setting("logKeepDays", {
+    type = "int",
+    default = 14,
+    min = 1,
+    max = 365,
+    scope = "server",
+    category = "server",
+    help = "Days log files are kept"
+})
 RARELOAD.Setting("debug", {
     type = "bool",
     default = false,
@@ -483,9 +508,10 @@ if SERVER then
         fn = function(ply, a)
             local def = Settings[a.key]
             if not def or def.scope == "client" or (def.type ~= "enum" and not tonumber(a.value)) then return end
-            local value = coerce(def, a.value)
+            local value, before = coerce(def, a.value), RARELOAD.ServerValue(a.key)
             def.cv:SetString(def.type == "bool" and (value and "1" or "0") or tostring(value))
-            RARELOAD.Log("settings"):info("%s set %s to %s", ply:Nick(), def.convar, tostring(value))
+            RARELOAD.Log("settings", ply):info("%s changed %s from %s to %s", ply:Nick(), a.key, tostring(before),
+                tostring(value))
         end,
     })
 
@@ -503,7 +529,8 @@ if SERVER then
             if a.locked then keys[#keys + 1] = a.key end
             table.sort(keys)
             locks:SetString(table.concat(keys, ","))
-            RARELOAD.Log("settings"):info("%s %s %s", ply:Nick(), a.locked and "locked" or "unlocked", a.key)
+            RARELOAD.Log("settings", ply):info("%s %s the player setting %s", ply:Nick(),
+                a.locked and "locked" or "unlocked", a.key)
         end,
     })
 end

@@ -143,6 +143,9 @@ end
 
 local function refuse(ply, opts, why)
     if not opts.silent then RARELOAD.Toast(ply, "toast.save_denied", nil, "error") end
+    if not opts.captureOnly then
+        RARELOAD.Log("save", ply):verbose("%s could not save (%s): %s", ply:Nick(), opts.reason or "command", why)
+    end
     return false, why
 end
 
@@ -216,7 +219,7 @@ function Pipeline.Save(ply, opts)
     end
 
     -- Only autosaves get the one-line card; other silent saves (cleanup, disconnect) show every step.
-    local info = { reason = opts.reason or "command", auto = opts.reason == "auto" }
+    local info = { reason = opts.reason or "command", auto = opts.reason == "auto", data = data }
     if prev and RARELOAD.Util.Equal(prev.data, data) then
         if not opts.silent then
             RARELOAD.Toast(ply, "toast.unchanged", { prev.id })
@@ -407,7 +410,7 @@ runFrom = function(ctx, i)
     if #ctx.denied > 0 then
         RARELOAD.Toast(ctx.ply, "toast.restore_denied", { table.concat(ctx.denied, ", ") }, "error")
     end
-    ctx.session:finish({ reason = ctx.reason, entry = ctx.entry.id })
+    ctx.session:finish({ reason = ctx.reason, entry = ctx.entry.id, data = ctx.entry.data })
     hook.Run("RareloadRestored", ctx.ply, ctx.entry)
 end
 

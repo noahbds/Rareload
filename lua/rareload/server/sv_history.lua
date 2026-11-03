@@ -686,7 +686,7 @@ local function objectOp(op, args, fn, priv)
         args = args,
         fn = function(ply, a)
             local ok, err = fn(ply, a)
-            if not ok then RARELOAD.Log("history"):warn("%s: %s failed: %s", ply:Nick(), op, tostring(err)) end
+            if not ok then RARELOAD.Log("history", ply):warn("%s: %s failed: %s", ply:Nick(), op, tostring(err)) end
             pushObjects(ply, a.entryId)
         end
     })
@@ -779,3 +779,59 @@ cvars.AddChangeCallback("sv_rareload_debug", function(_, _, value)
         for _, p in player.Iterator() do pushFeed(p) end
     end
 end, "Rareload.History")
+
+-- Activity log -----------------------------------------------------------------------------------------
+-- One line for each change to a timeline or to an object inside a save, from the window or the console.
+
+local function logged(name, level, describe)
+    local fn = History[name]
+    History[name] = function(ply, ...)
+        local results = { fn(ply, ...) }
+        if results[1] and IsValid(ply) then
+            local log = RARELOAD.Log("timeline", ply)
+            log[level](log, describe(ply, ...))
+        end
+        return unpack(results)
+    end
+end
+
+local function idList(ids)
+    local n = 0
+    for _ in pairs(ids or {}) do n = n + 1 end
+    return n
+end
+
+logged("Delete", "info", function(ply, id) return ply:Nick() .. " deleted save No. " .. tostring(id) end)
+logged("Clear", "info", function(ply)
+    return ply:Nick() .. " cleared their saves on this map (pinned saves and the respawn point kept)"
+end)
+logged("Activate", "info", function(ply, id)
+    return ply:Nick() .. " made save No. " .. tostring(id) .. " their respawn point"
+end)
+logged("Undo", "info", function(ply) return ply:Nick() .. " undid their last restore" end)
+logged("SetPinned", "verbose", function(ply, id, pinned)
+    return ply:Nick() .. (pinned and " pinned" or " unpinned") .. " save No. " .. tostring(id)
+end)
+logged("SetNote", "verbose", function(ply, id)
+    return ply:Nick() .. " changed the note of save No. " .. tostring(id)
+end)
+logged("DeleteObject", "info", function(ply, entryId, objectId)
+    return string.format("%s removed object %s from save No. %s", ply:Nick(), tostring(objectId), tostring(entryId))
+end)
+logged("DeleteObjects", "info", function(ply, entryId, ids)
+    return string.format("%s removed %d objects from save No. %s", ply:Nick(), idList(ids), tostring(entryId))
+end)
+logged("FlagObject", "info", function(ply, entryId, objectId, flag, value)
+    return string.format("%s turned %s %s on object %s in save No. %s", ply:Nick(), tostring(flag),
+        value and "on" or "off", tostring(objectId), tostring(entryId))
+end)
+logged("RenameObject", "verbose", function(ply, entryId, objectId, name)
+    return string.format("%s named object %s in save No. %s \"%s\"", ply:Nick(), tostring(objectId),
+        tostring(entryId), tostring(name))
+end)
+logged("EditObject", "info", function(ply, entryId, objectId, edit)
+    local keys = table.GetKeys(istable(edit) and edit or {})
+    table.sort(keys)
+    return string.format("%s edited object %s in save No. %s (%s)", ply:Nick(), tostring(objectId),
+        tostring(entryId), table.concat(keys, ", "))
+end)

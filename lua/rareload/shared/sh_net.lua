@@ -157,7 +157,7 @@ if SERVER then
         local op, raw = net.ReadString(), net.ReadString()
         local h = handlers[op]
         if not h then
-            RARELOAD.Log("net"):warn("%s sent unknown request %q", ply:Nick(), op)
+            RARELOAD.Log("net", ply):warn("%s sent unknown request %q", ply:Nick(), op)
             return
         end
 
@@ -171,7 +171,7 @@ if SERVER then
 
         local args, err = Net.Validate(h.args or {}, util.JSONToTable(raw) or {}) -- default limits (S12)
         if not args then
-            RARELOAD.Log("net"):warn("%s sent a bad %q request: %s", ply:Nick(), op, err)
+            RARELOAD.Log("net", ply):warn("%s sent a bad %q request: %s", ply:Nick(), op, err)
             return
         end
         ProtectedCall(h.fn, ply, args)
@@ -205,7 +205,7 @@ if SERVER then
 
     local function refuseUpload(ply, why)
         uploads[ply] = nil
-        RARELOAD.Log("net"):warn("%s: upload refused: %s", ply:Nick(), why)
+        RARELOAD.Log("net", ply):warn("%s: upload refused: %s", ply:Nick(), why)
         RARELOAD.Toast(ply, "toast.upload_refused", { why }, "error")
     end
 

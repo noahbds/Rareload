@@ -13,7 +13,7 @@ local MAX_OBJECTS = 4096
 local OFFER_TIME = 120
 local SNAPSHOT_KINDS = { entities = true, npcs = true, vehicles = true }
 
-local function log() return RARELOAD.Log("share") end
+local function log(ply) return RARELOAD.Log("share", ply) end
 
 -- Export ------------------------------------------------------------------------------------------
 
@@ -50,6 +50,7 @@ function Share.WriteFile(ply, entry, name)
     RARELOAD.Store.Save(rel, Share.Export(ply, entry))
     RARELOAD.Store.Flush()
     RARELOAD.Store._cache[rel] = nil -- an export is never read back by this session
+    log(ply):info("%s exported save No. %s to data/rareload/%s.json", ply:Nick(), tostring(entry.id), rel)
     return "data/rareload/" .. rel .. ".json"
 end
 
@@ -179,7 +180,7 @@ function Share.Import(ply, doc, opts)
     if not RARELOAD.History.Append(ply, entry, { keepActive = true }) then
         return false, "your saves can't be stored (no SteamID)"
     end
-    log():info("%s imported a save (%s) as No. %d%s", ply:Nick(), opts.reason or "import", entry.id,
+    log(ply):info("%s imported a save (%s) as No. %d%s", ply:Nick(), opts.reason or "import", entry.id,
         #dropped > 0 and ", left out: " .. table.concat(dropped, ", ") or "")
     return true, entry.id, dropped
 end
@@ -230,6 +231,7 @@ RARELOAD.Net.Handle("export.get", {
     fn = function(ply, a)
         local entry = RARELOAD.History.Get(ply, a.id)
         if not entry then return end
+        log(ply):info("%s downloaded save No. %d as a file", ply:Nick(), a.id)
         RARELOAD.Net.Push(ply, "export.file", { name = Share.FileName(entry), doc = Share.Export(ply, entry) },
             { key = "export:" .. a.id })
     end,
@@ -261,7 +263,7 @@ function Share.Offer(ply, id, target)
         token = token, nick = ply:Nick(), id = id, note = entry.note, time = entry.time,
         objects = (info.entities or 0) + (info.npcs or 0) + (info.vehicles or 0), weapons = info.weapons,
     })
-    log():info("%s offered save No. %d to %s", ply:Nick(), id, target:Nick())
+    log(ply):info("%s offered save No. %d to %s", ply:Nick(), id, target:Nick())
     return true
 end
 
@@ -294,7 +296,7 @@ RARELOAD.Net.Handle("share.answer", {
         end
         local ok, newIdOrWhy = importAndTell(ply, decode(offer.text), { reason = "shared", from = offer.nick })
         if ok and IsValid(from) then RARELOAD.Toast(from, "toast.share_accepted", { ply:Nick() }, "ok") end
-        if not ok then log():warn("%s could not take %s's save: %s", ply:Nick(), offer.nick, newIdOrWhy) end
+        if not ok then log(ply):warn("%s could not take %s's save: %s", ply:Nick(), offer.nick, newIdOrWhy) end
     end,
 })
 

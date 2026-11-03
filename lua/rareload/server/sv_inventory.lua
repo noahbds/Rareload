@@ -238,3 +238,23 @@ end)
 handle("inventory.give", { save = "uint?" }, function(ply, a)
     return Inventory.GiveTarget(ply, a.save)
 end)
+
+-- Activity log: every change to an inventory, and every inventory given.
+local VERBS = { edit = "edited", copy = "copied into", import = "imported into", rollback = "rolled back" }
+
+local write = Inventory.Write
+function Inventory.Write(ply, save, inv, reason, versions)
+    local ok, err = write(ply, save, inv, reason, versions)
+    if ok and IsValid(ply) then
+        RARELOAD.Log("inventory", ply):info("%s %s %s (%d weapons)", ply:Nick(), VERBS[reason] or reason,
+            targetName(save), #(inv and inv.weapons or {}))
+    end
+    return ok, err
+end
+
+local give = Inventory.GiveTarget
+function Inventory.GiveTarget(ply, save)
+    local key, args, ok = give(ply, save)
+    if ok then RARELOAD.Log("inventory", ply):info("%s gave themselves %s", ply:Nick(), targetName(save)) end
+    return key, args, ok
+end
