@@ -149,15 +149,28 @@ RARELOAD.Module({
     end,
 })
 
--- The most popular playermodel addons (e.g : Enhanced PlayerModel Selector)
--- have a playermodel enforcement that might prevent the model restoration.
--- The option is called "Enforce your playermodel".
--- We might need to add a addon detection and warn the user about it. (G16, B17)
 local function setModel(ply, d)
     if isstring(d.model) and util.IsValidModel(d.model) then
         ply:SetModel(d.model)
         return true
     end
+end
+
+-- Playermodel addons can put the player's own model back right after a spawn (Enhanced PlayerModel
+-- Selector's "Enforce your playermodel", G16, B17). The restored model is watched for a moment, and
+-- the player is told which option to turn off when it was replaced. The report card is already sent
+-- by then, so this is a toast and a log line.
+local WATCH = 2
+local EPS_FORCE = "sv_playermodel_selector_force"
+
+local function watchModel(ply, model, ctx)
+    model = string.lower(model)
+    ctx:waitFor(function() return string.lower(ply:GetModel() or "") ~= model end, WATCH, function()
+        local eps = ConVarExists(EPS_FORCE)
+        RARELOAD.Log("appearance"):warn("%s: the restored model %s was replaced by %s%s", ply:Nick(), model,
+            ply:GetModel(), eps and " (Enhanced PlayerModel Selector)" or "")
+        RARELOAD.Toast(ply, eps and "toast.model_enforced" or "toast.model_replaced", nil, "error")
+    end)
 end
 
 RARELOAD.Module({
@@ -187,6 +200,7 @@ RARELOAD.Module({
     -- Everything but the model runs after the sandbox player class has set its own colors.
     restore = function(ply, d, ctx)
         if not ctx.spawnDone.appearance and setModel(ply, d) then ply:SetupHands() end
+        if isstring(d.model) and util.IsValidModel(d.model) then watchModel(ply, d.model, ctx) end
         ply:SetSkin(d.skin or 0)
         for i, value in ipairs(d.bodygroups or {}) do ply:SetBodygroup(i - 1, value) end
         local pc, wc = Util.ToVector(d.playerColor), Util.ToVector(d.weaponColor)

@@ -353,6 +353,7 @@ local function buildDetail(host, sel)
         local r = row()
         if r then request("history.pin", { id = r.id, pinned = not r.pinned }) end
     end, { style = "warn", icon = "star" })
+    D.pin:SetTooltip(L("timeline.pin_help"))
     D.delete = UI.Button(D.actions, L("timeline.delete"), function() Timeline.Delete(row()) end,
         { style = "danger", icon = "cross" })
     D.restore = UI.Button(D.actions, L("timeline.restore_all"), function() Timeline.Restore(row()) end,
