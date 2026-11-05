@@ -487,6 +487,7 @@ Snapshot.SKIP_REASONS = {
     max = "Rareload vehicle limit reached", -- sv_rareload_max_vehicles
     room = "server entity limit reached",   -- G62
     failed = "could not be created",        -- the duplicator returned nothing for it
+    given = "given back to the player",     -- a ground weapon whose class the same restore gave (C5)
 }
 
 -- Putting objects still on the map back the way they were saved (A1) ----------------------------
@@ -677,7 +678,9 @@ function Snapshot.Reset(targets, ply)
 end
 
 -- opts = { kind = "props"|"npcs"|"vehicles", limit? = max defs to paste, filter?(def) -> bool,
---          reset? = put objects still on the map back the way they were saved }
+--          reset? = put objects still on the map back the way they were saved,
+--          given? = { [class] = true } weapon classes this restore gave the player: saved ground
+--          weapons of these classes are not pasted, so a picked-up weapon doesn't come back twice }
 -- Returns { created = { [index] = ent }, existing = { ent }, defs = { [existing ent] = saved def }, total = n,
 --           reset = n (objects that had moved),
 --           skipped = { { reason = key of SKIP_REASONS, what = class or model } } }.
@@ -702,6 +705,8 @@ function Snapshot.Restore(snap, ply, opts)
             report.existing[#report.existing + 1] = live[id] -- already on the map (F15, L13)
             report.defs[live[id]] = def
             if opts.reset then resets[#resets + 1] = { ent = live[id], def = revive(def, 0) } end
+        elseif opts.given and isstring(class) and opts.given[class] then
+            why = "given" -- the weapon was picked up since the save, and this restore gave it back
         elseif not isstring(class) or not duplicator.IsAllowed(class) and not scripted_ents.GetStored(class) then
             why = "addon"
         elseif DENIED[class] or not duplicator.IsAllowed(class) or (opts.filter and not opts.filter(def)) then

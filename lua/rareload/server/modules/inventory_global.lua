@@ -91,6 +91,7 @@ RARELOAD.Module({
     -- magazine sizes).
     restore = function(ply, inv, ctx)
         local ammo = withAmmo(ply, ctx)
+        Inventory.NoteGiven(ctx, inv.weapons)
         report(ply, ctx, Inventory.Apply(ply, inv, ammo, ctx.spawnDone.globalInventory))
         if istable(inv.extras) and RARELOAD.Get(ply, "keepAttachments") then
             RARELOAD.Weapons.ApplyLater(ply, inv.extras, ctx, function()

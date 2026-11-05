@@ -99,6 +99,16 @@ local function ammoRestored(ply, ctx)
         and RARELOAD.Get(ply, "keepAmmo") and RARELOAD.Can(ply, "rareload_restore_ammo")
 end
 
+-- Notes the weapon classes this restore gives, so the entities module (world phase, after this one)
+-- doesn't also paste a saved ground copy of them (C5).
+function Inventory.NoteGiven(ctx, classes)
+    local given = ctx.shared.givenWeapons or {}
+    for _, class in ipairs(istable(classes) and classes or {}) do
+        if isstring(class) then given[class] = true end
+    end
+    ctx.shared.givenWeapons = given
+end
+
 local function give(ply, classes, ctx)
     local skipped = Inventory.Give(ply, Inventory.HeldFirst(classes, ctx.entry.data.activeWeapon),
         ammoRestored(ply, ctx))
@@ -128,6 +138,7 @@ RARELOAD.Module({
     },
 
     restore = function(ply, d, ctx)
+        Inventory.NoteGiven(ctx, d)
         if ctx.spawnDone.weapons then return end
         ply:StripWeapons()
         give(ply, d, ctx)

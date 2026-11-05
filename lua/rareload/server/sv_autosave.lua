@@ -19,7 +19,11 @@ local function remember(ply)
 end
 
 hook.Add("PlayerHurt", "Rareload.Autosave", function(ply) mark(ply, "health") end)
-hook.Add("WeaponEquip", "Rareload.Autosave", function(_, ply) mark(ply, "weapons", "weaponState", "activeWeapon") end)
+hook.Add("WeaponEquip", "Rareload.Autosave", function(wep, ply)
+    mark(ply, "weapons", "weaponState", "activeWeapon")
+    -- A saved ground weapon picked up: the next save no longer has it on the ground (C5).
+    if wep.RareloadID then mark(ply, "entities") end
+end)
 -- Weapon bases that announce attachment changes (TFA); the others are caught by the next full save.
 hook.Add("TFA_Attachment_Attached", "Rareload.Autosave", function(wep) mark(wep:GetOwner(), "weaponState") end)
 hook.Add("TFA_Attachment_Detached", "Rareload.Autosave", function(wep) mark(wep:GetOwner(), "weaponState") end)

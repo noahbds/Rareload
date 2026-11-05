@@ -368,7 +368,17 @@ RARELOAD.Module({
         if isfunction(pac.CallHook) and pac.CallHook("CanWearParts", ply) == false then
             return ctx:deny("pac", "PAC3 is not allowed for you here")
         end
-        pace.ClearOutfit(ply)
+        -- Only the outfits that aren't in the save are taken off. PAC3 handles its queue newest first,
+        -- so a full clear queued before the saved outfits would run after them and take them off too.
+        -- A saved outfit already worn is simply replaced when it is worn again.
+        local keep = {}
+        for _, part in ipairs(saved) do
+            if istable(part) and istable(part.self) then keep[tostring(part.self.UniqueID)] = true end
+        end
+        for _, part in ipairs(wornOutfits(ply)) do
+            local id = tostring(part.self.UniqueID)
+            if not keep[id] then pace.RemovePart({ part = id, uid = pac.Hash(ply), owner = ply }) end
+        end
         for _, part in ipairs(saved) do
             if istable(part) and istable(part.self) then
                 pace.HandleReceivedData(ply, { part = util.JSONToTable(util.TableToJSON(part)) })
@@ -385,6 +395,15 @@ RARELOAD.Module({
 -- still in reach. Objects held with the physgun can't be grabbed again from code.
 local PICKUP_REACH = 150
 
+-- While a player holds an object, GetEntityInUse returns the engine's player_pickup helper, not the
+-- object, so the held object is noted when it is picked up and forgotten when it is dropped.
+local held = setmetatable({}, { __mode = "kv" }) -- ply -> ent
+
+hook.Add("OnPlayerPhysicsPickup", "Rareload.Holding", function(ply, ent) held[ply] = ent end)
+hook.Add("OnPlayerPhysicsDrop", "Rareload.Holding", function(ply, ent)
+    if held[ply] == ent then held[ply] = nil end
+end)
+
 RARELOAD.Module({
     id = "holding",
     phase = "finalize",
@@ -393,7 +412,7 @@ RARELOAD.Module({
     privRestore = "rareload_restore_states",
 
     save = function(ply)
-        local ent = ply:GetEntityInUse()
+        local ent = held[ply]
         if IsValid(ent) and ent:IsPlayerHolding() and ent.RareloadID then return { id = ent.RareloadID } end
         return nil
     end,

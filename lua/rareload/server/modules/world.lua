@@ -40,7 +40,8 @@ RARELOAD.Module({
 
     restore = function(ply, snap, ctx)
         local removed = ctx.exact and Snapshot.RemoveMissing(ply, ctx, snap, entityPicker(ply)) or 0
-        local report = Snapshot.Restore(snap, ply, { kind = "props", reset = ctx.reset })
+        local report = Snapshot.Restore(snap, ply,
+            { kind = "props", reset = ctx.reset, given = ctx.shared.givenWeapons })
         report.removed = removed
         Snapshot.Report(ctx, "entities", report)
     end,
