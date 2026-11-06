@@ -73,20 +73,30 @@ end
 
 -- Sources that live on the entity table (GetCreator, vehicle base fields) come last: the duplicator
 -- tools copy that table, so a player's dupe of someone else's entity still names the original's owner.
+-- Every save asks this for every entity on the map, so the entity's table is read directly: `ent.x`
+-- goes through the Entity metatable's __index, which is slow enough to dominate a save.
+local ENTITY = FindMetaTable("Entity")
+
 local function ownerOf(ent, lists)
-    if recorded[ent] then return recorded[ent] end
-    local sid
-    if ent.CPPIGetOwner then
-        local ok, owner = pcall(ent.CPPIGetOwner, ent)
+    local sid = recorded[ent]
+    if sid then return sid end
+    local cppi = ENTITY.CPPIGetOwner -- prop protection addons add it to the metatable
+    if cppi then
+        local ok, owner = pcall(cppi, ent)
         sid = ok and toSid64(owner)
         if sid then return sid end
     end
     if lists[ent] then return lists[ent] end
-    sid = ent.GetCreator and toSid64(ent:GetCreator())
+    local tab = ent:GetTable()
+    if not tab then return nil end
+    sid = toSid64(tab.m_PlayerCreator) -- what Sandbox's GetCreator returns
     if sid then return sid end
     for _, field in ipairs(FIELDS) do
-        sid = toSid64(ent[field])
-        if sid then return sid end
+        local v = tab[field]
+        if v ~= nil then
+            sid = toSid64(v)
+            if sid then return sid end
+        end
     end
 end
 
@@ -100,9 +110,10 @@ end
 function Ownership.Owned(ply)
     local sid, lists, out = ply:SteamID64(), buildLists(), {}
     for _, ent in ents.Iterator() do
-        if IsValid(ent) and not ent:IsPlayer() and not (ent:IsWeapon() and IsValid(ent:GetOwner()))
-            and not ent:CreatedByMap() and not RARELOAD.Exclude.Is(ent) and not RARELOAD.Blocked.Has(ent:GetClass())
-            and ownerOf(ent, lists) == sid then
+        -- Cheapest tests first: most entities on a map were created by it.
+        if not ent:CreatedByMap() and not ent:IsPlayer() and ownerOf(ent, lists) == sid
+            and not (ent:IsWeapon() and IsValid(ent:GetOwner()))
+            and not RARELOAD.Exclude.Is(ent) and not RARELOAD.Blocked.Has(ent:GetClass()) then
             out[#out + 1] = ent
         end
     end

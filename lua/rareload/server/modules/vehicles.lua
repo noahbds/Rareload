@@ -131,6 +131,11 @@ local function phantomParts(veh)
         local model = ent:GetModel()
         if not Snapshot.IsVehiclePart(ent) or ent:GetNoDraw() then return end
         if not isstring(model) or not string.EndsWith(model, ".mdl") then return end
+        -- Helpers a base never draws (LVS engines and weapons have models/error.mdl, or no colour).
+        if string.lower(model) == "models/error.mdl" or ent:GetRenderMode() == RENDERMODE_NONE
+            or ent:GetColor().a == 0 then
+            return
+        end
         local lp, la = WorldToLocal(ent:GetPos(), ent:GetAngles(), veh:GetPos(), veh:GetAngles())
         -- Rounded, so physics jitter doesn't make an unchanged vehicle look changed (L35).
         parts[#parts + 1] = {

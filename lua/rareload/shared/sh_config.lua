@@ -490,7 +490,7 @@ RARELOAD.Setting("wdInteractDistance", {
     max = 5000,
     scope = "client",
     category = "display",
-    help = "World display: how far away you can focus an info panel"
+    help = "World display: how far away aiming at a saved object focuses its panel (its tag: as far as panels show)"
 })
 RARELOAD.Setting("toastHold", {
     type = "float",

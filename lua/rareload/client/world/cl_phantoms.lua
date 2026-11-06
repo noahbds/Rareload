@@ -63,7 +63,9 @@ local function build(w)
     ent.parts = {}
     for _, p in ipairs(w.parts or {}) do
         local lp, la = Util.ToVector(p.lp), Util.ToAngle(p.la)
-        local part = lp and la and UI.IsModel(p.model) and newModel(p.model)
+        -- Older saves can list a base's invisible helpers, whose model is error.mdl.
+        local real = UI.IsModel(p.model) and string.lower(p.model) ~= "models/error.mdl"
+        local part = lp and la and real and newModel(p.model)
         if part then
             part:SetSkin(p.skin or 0)
             part:SetParent(ent)

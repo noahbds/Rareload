@@ -184,13 +184,16 @@ local KEEP = { string = true, number = true, boolean = true, table = true, Vecto
 -- A copy with only plain data, and colors tagged since they lose their type in JSON (L18). Tables
 -- nested deeper than 16 levels are dropped: entity tables can refer to themselves.
 local function plainData(v, depth)
+    if type(v) ~= "table" then return v end
     if IsColor(v) then return { __color = { v.r, v.g, v.b, v.a } } end
-    if not istable(v) then return v end
     if depth > 16 then return nil end
     local out = {}
+    -- Every object of every save goes through here: only tables are looked at further.
     for k, x in pairs(v) do
-        local kt = type(k)
-        if KEEP[type(x)] and (kt == "string" or kt == "number") then out[k] = plainData(x, depth + 1) end
+        local kt, xt = type(k), type(x)
+        if KEEP[xt] and (kt == "string" or kt == "number") then
+            if xt == "table" then out[k] = plainData(x, depth + 1) else out[k] = x end
+        end
     end
     return out
 end

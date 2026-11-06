@@ -992,17 +992,18 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
         g.dist = eye:Distance(g.base.center)
         g.tag = tagLayout(g)
         g.tagPos, g.tagAng, g.tagScale = tagPlacement(g, eye)
-        if g.dist < interact then
-            -- The open card keeps the focus while it is looked at; otherwise the nearest tag or model aimed at.
-            local t
-            if g.key == openKey then
-                local w, h = sizeOf(g.active)
-                local pos, ang, scale = placement(g.mn, g.mx, g.size, eye)
-                t = hitTest(pos, ang, scale, w, h, eye, aim) and 0
-            end
-            t = t or hitTest(g.tagPos, g.tagAng, g.tagScale, g.tag.w, TAG_H, eye, aim) or aimedModel(g, eye, aim)
-            if t and (not focusT or t < focusT) then focus, focusT = g, t end
+        -- The open card keeps the focus while it is looked at; otherwise the nearest tag or model aimed at.
+        -- A tag or card aimed at is focused wherever it is drawn (from high above, every object can be
+        -- further than the focus distance); aiming at the model itself only counts within that distance.
+        local t
+        if g.key == openKey then
+            local w, h = sizeOf(g.active)
+            local pos, ang, scale = placement(g.mn, g.mx, g.size, eye)
+            t = hitTest(pos, ang, scale, w, h, eye, aim) and 0
         end
+        t = t or hitTest(g.tagPos, g.tagAng, g.tagScale, g.tag.w, TAG_H, eye, aim)
+            or g.dist < interact and aimedModel(g, eye, aim) or nil
+        if t and (not focusT or t < focusT) then focus, focusT = g, t end
     end
 
     -- The lock follows its pile when the piles are re-formed as models move.
