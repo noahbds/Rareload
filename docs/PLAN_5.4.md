@@ -66,8 +66,8 @@ Sizes: **S** is up to a day, **M** is a few days, **L** is a week or more, or ne
 | E4 | Saves tab in the spawn menu | M | — |
 | E5 | Shared storage for server networks (MySQL) | L | — |
 
-**Decided: 5.4 is M0 to M5. M6 and M7 (D3 to D10) and A3 move to 5.5.** M0 to M5 make a complete release on their own:
-"captures everything, and restores, shares and manages it properly".
+**Decided: 5.4 is everything above except section E**, M0 to M7 and A3, released together as 5.4 (5.4 was
+never published on its own). 5.5 will be something else, months later. Section E stays for later.
 
 ---
 

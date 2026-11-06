@@ -1,4 +1,4 @@
--- Objects left out of saves (5.5, D1): the context-menu mark (sh_exclude.lua) and the server's list
+-- Objects left out of saves (5.4 plan, D1): the context-menu mark (sh_exclude.lua) and the server's list
 -- of blocked classes. A convar can't hold the list (250 characters), so it is a stored document,
 -- data/rareload/blocked.json, edited from the server menu or with `rareload block`.
 

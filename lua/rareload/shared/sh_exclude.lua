@@ -1,4 +1,4 @@
--- Objects left out of saves (5.5, D1). Any object can be marked "don't save with Rareload" from the
+-- Objects left out of saves (5.4 plan, D1). Any object can be marked "don't save with Rareload" from the
 -- context menu; Rareload then never saves it, never removes it (exact restore, death cleanup) and
 -- never restores it. The mark is a networked flag on the entity. Server owners can also block whole
 -- classes (sv_exclude.lua).

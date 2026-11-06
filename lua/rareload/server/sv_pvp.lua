@@ -1,4 +1,4 @@
--- Rules for PvP servers (5.5, D10), all off by default:
+-- Rules for PvP servers (5.4 plan, D10), all off by default:
 --   saveCombatDelay   no saving within N seconds of taking or dealing combat damage
 --   restoreCooldown   seconds between two timeline restores, for each player
 --   restoreNeedsSpawn timeline restores only within N seconds of spawning

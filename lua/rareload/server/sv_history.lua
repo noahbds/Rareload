@@ -229,7 +229,7 @@ function History.ReloadKey(ply)
     return cfg.mode == "restore_previous" and "toast.reload.restored" or "toast.reload.previous", previous.id
 end
 
--- Quick keys and commands (5.5, D3) ---------------------------------------------------------------
+-- Quick keys and commands (5.4 plan, D3) ---------------------------------------------------------------
 -- The quick slot is a save like any other (it becomes the respawn point too); the document remembers
 -- which one it is, so quickload finds it even after more saves were made. Each function tells the
 -- player how it went and returns whether it did something.

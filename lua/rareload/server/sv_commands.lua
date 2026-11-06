@@ -424,7 +424,7 @@ Cmd.Register("data cleanup", {
     fn = function(_, _, reply) reply("Removed " .. RARELOAD.Store.GC() .. " unused blobs.") end,
 })
 
--- Quick commands (5.5, D3): the same as the quick keys and the reload key, from the console -----------
+-- Quick commands (5.4 plan, D3): the same as the quick keys and the reload key, from the console -----------
 -- The toast on screen says why one didn't happen.
 local function quickResult(reply, ok, what)
     reply(ok and ("Done: " .. what) or ("Not done: " .. what .. " (the message on screen says why)."))
