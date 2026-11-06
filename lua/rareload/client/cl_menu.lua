@@ -41,6 +41,7 @@ local ICONS = {
     highlight = "flag_yellow",
     debug = "wrench",
     methods = "arrow_switch",
+    blocked = "database_delete",
 }
 local SUFFIXES = { autoSaveInterval = "s", autoSaveAngleThreshold = "°", asMaxSearchTime = "s", toastHold = "s" }
 
@@ -629,6 +630,33 @@ local function buildServer(panel)
         fill()
         hook.Add("RareloadStateChanged", methods, function(_, what) if what == "antistuck" then fill() end end)
         RARELOAD.Net.Request("antistuck.get")
+    end
+
+    if RARELOAD.Can(LocalPlayer(), "rareload_block_classes") then
+        local blocked = section(panel, L("menu.blocked"), ICONS.blocked, false)
+        local function set(add, class) RARELOAD.Net.Request("blocked.set", { add = add, class = class }) end
+        local function fill()
+            blocked:Clear()
+            note(blocked, L("menu.blocked_help"))
+            local entry = UI.TextEntry(blocked, L("menu.blocked_placeholder"))
+            entry:Dock(TOP)
+            entry:DockMargin(0, 2, 0, 4)
+            entry:SetTall(28)
+            entry.OnEnter = function(self)
+                local class = string.Trim(self:GetValue())
+                if class ~= "" then set(true, class) end
+            end
+            button(blocked, L("menu.blocked_add"), "add", BUTTONS.gray, function() entry:OnEnter() end)
+            local list = RARELOAD.State.blocked or {}
+            if #list == 0 then note(blocked, L("menu.blocked_none")) end
+            for _, class in ipairs(list) do
+                button(blocked, class, "cross", BUTTONS.gray, function() set(false, class) end)
+                    :SetTooltip(L("menu.blocked_remove"))
+            end
+        end
+        fill()
+        hook.Add("RareloadStateChanged", blocked, function(_, what) if what == "blocked" then fill() end end)
+        RARELOAD.Net.Request("blocked.get")
     end
 
     local reset = section(panel, L("menu.defaults_reset_title"), "arrow_undo", false)

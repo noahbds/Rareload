@@ -424,6 +424,35 @@ Cmd.Register("data cleanup", {
     fn = function(_, _, reply) reply("Removed " .. RARELOAD.Store.GC() .. " unused blobs.") end,
 })
 
+-- Blocked classes (sv_exclude.lua) ----------------------------------------------------------------------
+
+Cmd.Register("block list", {
+    priv = "rareload_block_classes",
+    help = "List the object classes Rareload never saves or restores",
+    fn = function(_, _, reply)
+        local list = RARELOAD.Blocked.List()
+        if #list == 0 then return reply("No classes are blocked.") end
+        reply(#list .. " blocked: " .. table.concat(list, ", "))
+    end,
+})
+
+local function blockCommand(name, add)
+    Cmd.Register("block " .. name, {
+        priv = "rareload_block_classes",
+        usage = "<class>",
+        help = add and "Never save or restore objects of this class" or "Save and restore this class again",
+        fn = function(ply, args, reply)
+            local ok, what = (add and RARELOAD.Blocked.Add or RARELOAD.Blocked.Remove)(args[1])
+            if not ok then return reply("Failed: " .. what) end
+            RARELOAD.Log("exclude", ply):info("%s %s the class %s", IsValid(ply) and ply:Nick() or "Console",
+                add and "blocked" or "unblocked", what)
+            reply((add and "Blocked " or "Unblocked ") .. what .. ".")
+        end,
+    })
+end
+blockCommand("add", true)
+blockCommand("remove", false)
+
 -- Export, import and share saves (sv_share.lua) ------------------------------------------------------
 
 Cmd.Register("export", {

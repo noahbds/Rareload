@@ -358,8 +358,20 @@ local function sortedKeys(t)
     return keys
 end
 
+-- Objects still on the map that are now left out of saves (D1): a save doesn't keep them as
+-- "deleted", which would bring them back or move them on the next restore.
+local function excludedIds()
+    local out = {}
+    for _, ent in ents.Iterator() do
+        if ent.RareloadID and (RARELOAD.Exclude.Is(ent) or RARELOAD.Blocked.Has(ent:GetClass())) then
+            out[tostring(ent.RareloadID)] = true
+        end
+    end
+    return out
+end
+
 function Snapshot.KeepDeleted(old, fresh)
-    local have, top = {}, 0
+    local have, top, excluded = {}, 0, excludedIds()
     for index, def in pairs(fresh.Entities) do
         local id = Snapshot.DefID(def)
         if id then have[id] = index end
@@ -372,7 +384,7 @@ function Snapshot.KeepDeleted(old, fresh)
         local id = Snapshot.DefID(def)
         if id and have[id] then
             moved[tostring(index)] = have[id]
-        elseif id then
+        elseif id and not excluded[tostring(id)] then
             top = top + 1
             moved[tostring(index)], kept[tostring(index)] = top, true
             fresh.Entities[top] = def
@@ -704,12 +716,16 @@ function Snapshot.Restore(snap, ply, opts)
         if id and IsValid(live[id]) then
             report.existing[#report.existing + 1] = live[id] -- already on the map (F15, L13)
             report.defs[live[id]] = def
-            if opts.reset then resets[#resets + 1] = { ent = live[id], def = revive(def, 0) } end
+            -- An object left out of saves since (D1) stays as it is.
+            if opts.reset and not RARELOAD.Exclude.Is(live[id]) then
+                resets[#resets + 1] = { ent = live[id], def = revive(def, 0) }
+            end
         elseif opts.given and isstring(class) and opts.given[class] then
             why = "given" -- the weapon was picked up since the save, and this restore gave it back
         elseif not isstring(class) or not duplicator.IsAllowed(class) and not scripted_ents.GetStored(class) then
             why = "addon"
-        elseif DENIED[class] or not duplicator.IsAllowed(class) or (opts.filter and not opts.filter(def)) then
+        elseif DENIED[class] or RARELOAD.Blocked.Has(class) or not duplicator.IsAllowed(class)
+            or (opts.filter and not opts.filter(def)) then
             why = "denied"
         elseif isstring(model) and string.StartsWith(model, "models/") and not util.IsValidModel(model) then
             why, what = "model", model

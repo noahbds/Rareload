@@ -90,6 +90,11 @@ RARELOAD.Net.On("antistuck", function(p)
     changed("antistuck")
 end)
 
+RARELOAD.Net.On("blocked", function(p)
+    State.blocked = istable(p.classes) and p.classes or {}
+    changed("blocked")
+end)
+
 RARELOAD.Net.On("autosave", function()
     State.lastAutosave = CurTime()
     changed("autosave")

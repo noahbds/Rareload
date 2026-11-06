@@ -94,13 +94,14 @@ function Ownership.OwnerOf(ent)
     return ownerOf(ent, buildLists())
 end
 
--- Every entity the player owns, except players, map-created entities and weapons someone holds
--- (weapons on the ground are objects like any other).
+-- Every entity the player owns, except players, map-created entities, weapons someone holds (weapons
+-- on the ground are objects like any other), and objects left out of saves: marked from the context
+-- menu or of a blocked class (D1). Rareload never saves, removes or cleans those up.
 function Ownership.Owned(ply)
     local sid, lists, out = ply:SteamID64(), buildLists(), {}
     for _, ent in ents.Iterator() do
         if IsValid(ent) and not ent:IsPlayer() and not (ent:IsWeapon() and IsValid(ent:GetOwner()))
-            and not ent:CreatedByMap()
+            and not ent:CreatedByMap() and not RARELOAD.Exclude.Is(ent) and not RARELOAD.Blocked.Has(ent:GetClass())
             and ownerOf(ent, lists) == sid then
             out[#out + 1] = ent
         end

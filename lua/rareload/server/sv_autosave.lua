@@ -14,6 +14,9 @@ local function mark(ply, ...)
     dirty[ply] = d
 end
 
+RARELOAD.Autosave = RARELOAD.Autosave or {}
+RARELOAD.Autosave.Mark = mark
+
 local function remember(ply)
     base[ply] = { pos = ply:GetPos(), yaw = ply:EyeAngles().y }
 end
