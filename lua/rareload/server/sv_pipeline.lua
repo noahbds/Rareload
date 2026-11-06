@@ -141,8 +141,14 @@ end
 
 -- Save --------------------------------------------------------------------------------------------
 
-local function refuse(ply, opts, why)
-    if not opts.silent then RARELOAD.Toast(ply, "toast.save_denied", nil, "error") end
+-- `toast`: { toast = key?, args? } from a rule that explains itself (RareloadCanSave); a rule
+-- without a key shows nothing (it refused a save the player didn't ask for).
+local function refuse(ply, opts, why, toast)
+    if istable(toast) then
+        if toast.toast and not opts.silent then RARELOAD.Toast(ply, toast.toast, toast.args, "error") end
+    elseif not opts.silent then
+        RARELOAD.Toast(ply, "toast.save_denied", nil, "error")
+    end
     if not opts.captureOnly then
         RARELOAD.Log("save", ply):verbose("%s could not save (%s): %s", ply:Nick(), opts.reason or "command", why)
     end
@@ -165,7 +171,8 @@ function Pipeline.Save(ply, opts)
     if not RARELOAD.Can(ply, "rareload_save") then return refuse(ply, opts, "permission") end
     if not ply:Alive() or ply:GetObserverMode() ~= OBS_MODE_NONE then return refuse(ply, opts, "state") end   -- E33
     if not RARELOAD.Util.PlayerKey(ply) then return refuse(ply, opts, "no steamid") end                      -- E24
-    if hook.Run("RareloadCanSave", ply, opts.reason) == false then return refuse(ply, opts, "hook") end
+    local veto, rule = hook.Run("RareloadCanSave", ply, opts.reason)
+    if veto == false then return refuse(ply, opts, "hook", rule) end
     if not opts.silent and not opts.captureOnly then
         if CurTime() - (lastManual[ply] or -math.huge) < MANUAL_COOLDOWN then
             RARELOAD.Toast(ply, "toast.save_wait", nil, "error")

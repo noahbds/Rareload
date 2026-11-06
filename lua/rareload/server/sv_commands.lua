@@ -424,6 +424,39 @@ Cmd.Register("data cleanup", {
     fn = function(_, _, reply) reply("Removed " .. RARELOAD.Store.GC() .. " unused blobs.") end,
 })
 
+-- Quick commands (5.5, D3): the same as the quick keys and the reload key, from the console -----------
+-- The toast on screen says why one didn't happen.
+local function quickResult(reply, ok, what)
+    reply(ok and ("Done: " .. what) or ("Not done: " .. what .. " (the message on screen says why)."))
+end
+
+Cmd.Register("restore", {
+    priv = "rareload_restore",
+    usage = "[position,health,inventory,ammo,appearance,states,world,scene]",
+    help = "Restore your respawn point now (all components by default)",
+    fn = playerOnly(function(ply, args, reply)
+        quickResult(reply, RARELOAD.History.RestoreActive(ply, RARELOAD.History.ParseComps(args[1])), "restore")
+    end),
+})
+
+Cmd.Register("back", {
+    priv = "rareload_restore",
+    help = "Restore the save before your respawn point, which becomes your respawn point",
+    fn = playerOnly(function(ply, _, reply) quickResult(reply, RARELOAD.History.Back(ply), "back") end),
+})
+
+Cmd.Register("quicksave", {
+    priv = "rareload_save",
+    help = "Save into your quick slot (the quick save key does the same)",
+    fn = playerOnly(function(ply, _, reply) quickResult(reply, RARELOAD.History.QuickSave(ply), "quicksave") end),
+})
+
+Cmd.Register("quickload", {
+    priv = "rareload_restore",
+    help = "Restore your quick slot (the quick load key does the same)",
+    fn = playerOnly(function(ply, _, reply) quickResult(reply, RARELOAD.History.QuickLoad(ply), "quickload") end),
+})
+
 -- Blocked classes (sv_exclude.lua) ----------------------------------------------------------------------
 
 Cmd.Register("block list", {

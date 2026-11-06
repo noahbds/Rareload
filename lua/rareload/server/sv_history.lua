@@ -156,6 +156,12 @@ end
 function History.Restore(ply, id, comps, opts)
     local entry = History.Get(ply, id)
     if not entry or not ply:Alive() then return false end
+    -- Rules for the whole restore (PvP cooldowns, other addons). A rule may name its own toast.
+    local veto, why = hook.Run("RareloadCanRestore", ply, "timeline")
+    if veto == false then
+        if istable(why) and why.toast then RARELOAD.Toast(ply, why.toast, why.args, "error") end
+        return false
+    end
     opts = opts or {}
     local only = History.ModulesFor(comps)
 
@@ -212,15 +218,95 @@ function History.ReloadKey(ply)
     local active, previous = History.Active(ply), History.Previous(ply)
     if not active then return "toast.reload.empty" end
 
+    -- A refused restore has already told the player why.
     if cfg.mode == "restore_current" then
-        History.Restore(ply, active.id, comps)
+        if not History.Restore(ply, active.id, comps) then return nil end
         return "toast.reload.restored", active.id
     end
     if not previous then return "toast.reload.no_previous" end
-    if cfg.mode == "restore_previous" then History.Restore(ply, previous.id, comps) end
+    if cfg.mode == "restore_previous" and not History.Restore(ply, previous.id, comps) then return nil end
     History.Activate(ply, previous.id) -- walking back one save at a time
     return cfg.mode == "restore_previous" and "toast.reload.restored" or "toast.reload.previous", previous.id
 end
+
+-- Quick keys and commands (5.5, D3) ---------------------------------------------------------------
+-- The quick slot is a save like any other (it becomes the respawn point too); the document remembers
+-- which one it is, so quickload finds it even after more saves were made. Each function tells the
+-- player how it went and returns whether it did something.
+
+function History.Quick(ply)
+    local d = History.Doc(ply)
+    return d and d.quickId and (find(d, d.quickId)) or nil
+end
+
+function History.QuickSave(ply)
+    if not RARELOAD.Pipeline.Save(ply, { reason = "quick" }) then return false end
+    local d, active = History.Doc(ply), History.Active(ply)
+    if not d or not active then return false end
+    d.quickId = active.id
+    save(ply, d)
+    return true
+end
+
+local function restoreAndTell(ply, entry, comps)
+    if not ply:Alive() then
+        RARELOAD.Toast(ply, "toast.restore_dead", nil, "error")
+        return false
+    end
+    if not History.Restore(ply, entry.id, comps) then return false end
+    RARELOAD.Toast(ply, "toast.restored", { entry.id }, "ok")
+    return true
+end
+
+function History.QuickLoad(ply)
+    local quick = History.Quick(ply)
+    if not quick then
+        RARELOAD.Toast(ply, "toast.quick_empty", nil, "error")
+        return false
+    end
+    return restoreAndTell(ply, quick)
+end
+
+-- Restores the respawn point now. comps: as History.Restore.
+function History.RestoreActive(ply, comps)
+    local active = History.Active(ply)
+    if not active then
+        RARELOAD.Toast(ply, "toast.reload.empty", nil, "error")
+        return false
+    end
+    return restoreAndTell(ply, active, comps)
+end
+
+-- Restores the save before the respawn point, which becomes the respawn point.
+function History.Back(ply)
+    local previous = History.Previous(ply)
+    if not previous then
+        RARELOAD.Toast(ply, History.Active(ply) and "toast.reload.no_previous" or "toast.reload.empty", nil, "error")
+        return false
+    end
+    if not restoreAndTell(ply, previous) then return false end
+    History.Activate(ply, previous.id)
+    return true
+end
+
+-- The quick keys (cl_keys.lua): the server sees each key press once, from the player's commands, and
+-- never while they type in a menu or the chat.
+local KEYS = { cl_rareload_key_save = History.QuickSave, cl_rareload_key_load = History.QuickLoad }
+local lastKey = setmetatable({}, { __mode = "k" })
+
+hook.Add("PlayerButtonDown", "Rareload.QuickKeys", function(ply, button)
+    if ply:IsBot() then return end
+    for convar, fn in pairs(KEYS) do
+        if button ~= 0 and ply:GetInfoNum(convar, 0) == button then
+            if CurTime() - (lastKey[ply] or -math.huge) < 1 then return end
+            lastKey[ply] = CurTime()
+            if not RARELOAD.Can(ply, "rareload_use_tool") then return end
+            if fn == History.QuickLoad and not RARELOAD.Can(ply, "rareload_restore") then return end
+            fn(ply)
+            return
+        end
+    end
+end)
 
 -- Objects inside saves (F29) ----------------------------------------------------------------------
 

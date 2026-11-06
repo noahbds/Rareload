@@ -316,6 +316,33 @@ RARELOAD.Setting("importMaxKB", {
     category = "timing",
     help = "Largest save file a player may import, in KB once compressed"
 })
+RARELOAD.Setting("saveCombatDelay", {
+    type = "int",
+    default = 0,
+    min = 0,
+    max = 600,
+    scope = "server",
+    category = "timing",
+    help = "PvP: no saving within this many seconds of taking or dealing combat damage (0 = off)"
+})
+RARELOAD.Setting("restoreCooldown", {
+    type = "int",
+    default = 0,
+    min = 0,
+    max = 3600,
+    scope = "server",
+    category = "timing",
+    help = "PvP: seconds a player waits between two timeline restores (0 = off)"
+})
+RARELOAD.Setting("restoreNeedsSpawn", {
+    type = "int",
+    default = 0,
+    min = 0,
+    max = 600,
+    scope = "server",
+    category = "timing",
+    help = "PvP: timeline restores only within this many seconds of spawning (0 = off)"
+})
 RARELOAD.Setting("fireDuration", {
     type = "float",
     default = 10,

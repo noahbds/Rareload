@@ -42,6 +42,7 @@ local ICONS = {
     debug = "wrench",
     methods = "arrow_switch",
     blocked = "database_delete",
+    keys = "keyboard",
 }
 local SUFFIXES = { autoSaveInterval = "s", autoSaveAngleThreshold = "°", asMaxSearchTime = "s", toastHold = "s" }
 
@@ -566,6 +567,30 @@ function Menu.BuildToolPanel(panel)
             if def.pref then RunConsoleCommand(def.pref, "-1") end
         end
     end)
+
+    -- Quick save and quick load keys (cl_keys.lua): a binder per key, and a click on it waits for one.
+    local keys = section(panel, L("menu.keys"), ICONS.keys, false)
+    note(keys, L("menu.keys_help"))
+    for _, k in ipairs(RARELOAD.Keys or {}) do
+        local row = vgui.Create("DPanel", keys)
+        row:Dock(TOP)
+        row:DockMargin(0, 2, 0, 2)
+        row:SetTall(30)
+        row:SetPaintBackground(false)
+        local label = L(k.label)
+        row.Paint = function(_, _, h)
+            draw.SimpleText(label, "Rareload.Menu.Row", 4, h / 2, TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        end
+        local binder = vgui.Create("DBinder", row)
+        binder:Dock(RIGHT)
+        binder:SetWide(120)
+        binder:SetConVar(k.convar)
+        binder:SetFont("Rareload.Menu.Value")
+        binder:SetTextColor(TEXT)
+        binder.Paint = function(self, w, h)
+            draw.RoundedBox(6, 0, 0, w, h, self:IsHovered() and BUTTONS.gray or UI.Mix(BUTTONS.gray, color_black, 0.3))
+        end
+    end
 
     if RARELOAD.Can(lp, "rareload_debug") then
         local hl = section(panel, L("menu.highlights"), ICONS.highlight, false)
