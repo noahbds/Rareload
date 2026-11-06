@@ -736,7 +736,177 @@ Verify:
 
 ------------------------------------------------------------------------
 
-## 9. Explicitly Out of Scope
+## 9. Phase 6 --- Debloat, Native Functions and Measured Optimization
+
+**Goal:** remove genuinely dead code, replace hand-rolled logic with the
+engine's own functions, and apply the few optimizations that a
+measurement actually justifies --- without turning this into a
+stylistic rewrite.
+
+This phase runs *after* the ownership and validation work, because
+centralizing mutations (Phases 1--3) and pruning redundant checks
+(Phase 4) is what exposes the code that is truly unused. Deleting
+"unused" code before the audit risks removing a path the audit would
+have re-routed rather than deleted.
+
+### 9.0 Reality check (measured 2026-11, 5.4 branch)
+
+The 5.x codebase is already close to the Garry's Mod wiki's optimization
+guidance, so this phase is a scalpel, not a chainsaw. What is *already*
+correct and must **not** be "fixed":
+
+  -----------------------------------------------------------------------
+  Already good                        Evidence
+  ----------------------------------- -----------------------------------
+  `player.Iterator()` everywhere;     `grep player.GetAll` → none;
+  no cached `player.GetAll` loops      iterator used in `sv_autosave`,
+                                      `sv_spawn`, `sv_history`,
+                                      `world.lua`, `sh_net`, …
+
+  Render objects created once at file Colors/materials at
+  scope, not per frame                 `cl_highlight.lua:13-14`,
+                                      `cl_toolscreen.lua:8`
+
+  Exact net writers, not              `sh_net.lua:138-144`
+  `net.WriteTable`                     (`WriteUInt`/`WriteData`)
+
+  State is pushed on change, paced     `sh_net.lua` Tick sender sends
+  and ACKed --- not resent every tick  queued chunks only; autosave is
+                                      dirty-driven
+
+  Dense appends already use            `Net.Split` (`chunks[#chunks+1]`),
+  `t[#t+1]`                            snapshot code
+
+  `glualint` with `lint_unusedVars`    `.glualint.json`, CI `lint` job is
+  runs green in CI                     green → no unused *locals* remain
+  -----------------------------------------------------------------------
+
+The wiki's own first rule applies to every item below: *"Correctness and
+readability should usually come first,"* and *measure with `SysTime`
+before and after* --- do not optimize on appearance
+([optimizationTips](https://wiki.facepunch.com/gmod/optimizationTips)).
+
+### 9.1 Dead-code removal (the real "unused things")
+
+`glualint`'s `lint_unusedVars` already guarantees no unused *local*
+variables survive. It does **not** flag:
+
+-   Unused **function parameters** (`lint_unusedParameters` is `false`).
+-   Unused **loop variables** (`lint_unusedLoopVars` is `false`).
+-   Unused **table fields / globals** --- an orphaned
+    `function RARELOAD.Util.Foo()` or `Module`-registry helper that
+    nothing calls.
+
+Actions:
+
+1.  Turn on `lint_unusedParameters` and `lint_unusedLoopVars` in
+    `.glualint.json`, fix or `_`-prefix what they surface, and keep them
+    on so regressions can't creep back. Expect noise in callback
+    signatures the engine dictates (hook params); prefix those with `_`
+    rather than deleting.
+2.  Add a `luacheck` pass (or a small reference-count script over the
+    `RARELOAD.*` and `Util.*` namespaces) for **unused module-level
+    functions**, which `glualint` cannot see. Every hit is either dead
+    (remove) or an intended public API (document it as such). Resolve
+    each explicitly; a silent orphan is the bug this phase targets.
+3.  Remove code the Phase 1--4 audits proved unreachable: mutation
+    helpers superseded by History-owned paths, defensive branches whose
+    callers can no longer pass the guarded value, and any
+    compatibility/alias left from 5.4.
+
+Record every removal with its reason, mirroring Phase 4's rule that
+*"every removed check has a clear reason."*
+
+### 9.2 Native-function and better-method audit
+
+Prefer the engine's own tools over equivalents implemented in Lua, but
+only where behaviour is identical and the wiki does not warn against it.
+Audit, per hit:
+
+-   **Iteration:** confirm no new `player.GetAll`/`ents.GetAll`-into-a-
+    cache loops were introduced. Use `player.Iterator()` --- it reads a
+    Lua-side cache and avoids a Lua↔C++ crossing and a fresh table
+    ([player.Iterator](https://wiki.facepunch.com/gmod/player.Iterator)).
+    Respect its caveats: the returned table is read-only, and it is not
+    guaranteed fresh inside `OnEntityCreated`/`EntityRemoved`.
+-   **Appends:** `t[#t+1]` for dense sequential appends can beat
+    `table.insert`; keep `table.insert` for positional inserts or where
+    it reads more clearly (only ~9 call sites exist today ---
+    `cl_panels`, `cl_menu`, `sh_net`, `sv_pipeline`, …).
+-   **Nested scans:** any O(n·m) loop over two collections should become
+    a lookup table / single pass
+    ([optimizationTips](https://wiki.facepunch.com/gmod/optimizationTips)).
+    Check `sv_antistuck.lua` entity gathering and the client world feed.
+-   **Net sizing:** size `net.WriteUInt(n, bits)` to the value's real
+    range rather than a reflexive 32; match reads to writes; use
+    `net.WriteBool`/`WriteFloat`/`WriteEntity` for their types
+    ([net.WriteUInt](https://wiki.facepunch.com/gmod/net.WriteUInt)).
+    Review the fixed-width headers in `sh_net.lua:138-144`.
+-   **String building:** collect into a table and `table.concat` instead
+    of `..` in a loop where a hot path builds strings (log lines,
+    report cards).
+-   **Engine-vs-Lua boundary:** do **not** assume moving work to a C
+    function is faster --- every crossing has a cost; measure the hot
+    path first ([garry.net](https://garry.net/posts/optimising-gmod)).
+
+### 9.3 Reconcile the "no timers" rule with reality
+
+The architecture note *"the pipeline uses a per-tick queue, never
+timers"* is about **deferred pipeline/restore work**, not a blanket ban.
+These timers are legitimate debounce/flush/pacing and must stay:
+
+  -----------------------------------------------------------------------
+  Timer                               Purpose
+  ----------------------------------- -----------------------------------
+  `Rareload.Store.Flush` (0.5s)       Batch disk writes
+  `Rareload.Autosave` (1s)            Dirty-driven autosave tick
+  `Rareload.History.Push` (0.1s)      Debounce client pushes
+  `Rareload.Net.Upload` (0.1s)        Pace upload parts
+  `Rareload.World.Update` (0.2s)      Client world-feed refresh
+  -----------------------------------------------------------------------
+
+Document this distinction in `docs/architecture/STATE_OWNERSHIP.md` so
+the cleanup does not mistakenly convert a correct debounce timer into
+tick-queue work, or vice versa.
+
+### 9.4 Where the bloat actually concentrates
+
+By size, the client UI files dominate (`cl_panels.lua` ~1060,
+`cl_ui.lua` ~880, `cl_menu.lua` ~770, `cl_inspector.lua` ~730,
+`cl_history.lua` ~660). This is the same surface Phase 3 audits for
+duplicated state, so **run 9.1/9.2 on the client UI as part of Phase
+3**, not as a separate sweep: dead UI helpers and derived-state copies
+are the highest-yield, lowest-risk debloat targets, and the panels are
+not performance-critical the way the save/restore path is.
+
+### 9.5 Measurement harness
+
+Use instrumentation that already exists rather than guessing:
+
+-   The pipeline already times each module (`run()` returns ms) and
+    writes it to the report card --- capture a before/after for a large
+    save and a large restore.
+-   `sh_net`'s in-flight byte accounting gives transfer sizes before and
+    after any net-sizing change.
+-   Wrap any candidate hot path in `SysTime()` and run it several times,
+    as the wiki instructs; keep the numbers in the commit message.
+
+**Exit criteria:**
+
+-   `lint_unusedParameters` and `lint_unusedLoopVars` are enabled and
+    green.
+-   Every unused module-level function is removed or documented as a
+    public API.
+-   No hand-rolled logic remains where an identical, un-warned native
+    function exists.
+-   Every optimization landed in this phase cites a before/after
+    `SysTime`/byte measurement in its commit.
+-   No readability regression and no behaviour change (the Phase 5
+    regression suite still passes).
+
+------------------------------------------------------------------------
+
+## 10. Explicitly Out of Scope
 
 Do not use 5.5 as an excuse to:
 
@@ -748,7 +918,13 @@ Do not use 5.5 as an excuse to:
 -   Change the save format without a demonstrated need.
 -   Rename every API solely for stylistic consistency.
 -   Combine this work with unrelated feature development.
--   Perform broad performance optimization without measurements.
+-   Perform *broad* or *speculative* performance optimization without
+    measurements. (Targeted, measured cleanup and native-function
+    substitution are in scope --- see Phase 6, which requires a
+    before/after number for every change.)
+-   Mechanically strip `table.insert`, parameters, or helpers purely for
+    style. A thing is removed only when proven unused or measurably
+    better, not because it looks redundant.
 -   Add compatibility layers for hypothetical integrations without a
     concrete use case.
 
@@ -757,7 +933,7 @@ more elaborate one.
 
 ------------------------------------------------------------------------
 
-## 10. Definition of Done
+## 11. Definition of Done
 
 ### State ownership
 
@@ -793,9 +969,20 @@ more elaborate one.
 -   [ ] Required regression scenarios pass.
 -   [ ] Architecture documentation matches the final code.
 
+### Debloat and optimization (Phase 6)
+
+-   [ ] `lint_unusedParameters` and `lint_unusedLoopVars` are enabled
+    and CI is green.
+-   [ ] Every unused module-level function is removed or documented as a
+    public API.
+-   [ ] No hand-rolled logic remains where an identical, un-warned
+    native function exists.
+-   [ ] Every optimization that landed cites a before/after measurement.
+-   [ ] The legitimate debounce/flush timers are documented and intact.
+
 ------------------------------------------------------------------------
 
-## 11. Priority and Recommended Execution Order
+## 12. Priority and Recommended Execution Order
 
   -----------------------------------------------------------------------
   Priority                Work                    Reason
@@ -821,6 +1008,11 @@ more elaborate one.
                                                   contracts are
                                                   established
 
+  P2                      Debloat and native-     Only safe once
+                          function audit          contracts and ownership
+                          (Phase 6)               are settled; needs
+                                                  measurement
+
   P2                      Documentation and final Prevents the
                           audit                   architecture from
                                                   regressing
@@ -831,17 +1023,20 @@ Recommended order:
 1.  Complete Phase 0 and review the ownership map.
 2.  Refactor History mutation paths.
 3.  Verify Store behavior and persistence failure semantics.
-4.  Simplify client projections.
+4.  Simplify client projections (run the Phase 6 UI debloat here ---
+    §9.4).
 5.  Audit and document validation boundaries.
 6.  Remove redundant internal checks.
-7.  Run the complete regression suite and final ownership audit.
+7.  Debloat and native-function audit (Phase 6): dead code, native
+    substitutions, measured optimizations.
+8.  Run the complete regression suite and final ownership audit.
 
 Do not combine phases merely to reduce the number of commits. Keep
 changes reviewable and independently testable.
 
 ------------------------------------------------------------------------
 
-## 12. Guiding Architectural Rule
+## 13. Guiding Architectural Rule
 
 > **A system may own data, persist data, transport data, execute
 > operations on data, or project data for presentation. It should not
@@ -861,3 +1056,33 @@ The desired outcome for 5.5 is not necessarily fewer lines of code. It
 is fewer mutation paths, fewer duplicated invariants, clearer ownership,
 and a codebase that is easier to reason about without tracing the entire
 system.
+
+------------------------------------------------------------------------
+
+## 14. References
+
+Sources behind the Phase 6 optimization and native-function guidance
+(verified 2026-11):
+
+-   **Garry's Mod optimization tips** (primary; measure first, cache
+    render objects, lookup tables over nested scans, exact net writers,
+    `t[#t+1]` for dense appends) ---
+    <https://wiki.facepunch.com/gmod/optimizationTips>
+-   **`player.Iterator`** (Lua-side cache, avoids a Lua↔C++ crossing;
+    read-only return; not fresh inside entity-create/remove hooks) ---
+    <https://wiki.facepunch.com/gmod/player.Iterator>
+-   **`net.WriteUInt`** (bit sizing to the value's real range; match
+    reads to writes) --- <https://wiki.facepunch.com/gmod/net.WriteUInt>
+-   **Optimising Garry's Mod** by Garry Newman (the Lua↔engine boundary
+    has a real cost; do not assume C is faster; measure the hot path)
+    --- <https://garry.net/posts/optimising-gmod>
+-   **`glualint` / GLuaFixer** (the linter in CI; `lint_unusedVars`,
+    `lint_unusedParameters`, `lint_unusedLoopVars`) ---
+    <https://github.com/FPtje/GLuaFixer>
+
+Community benchmarks consulted for `t[#t+1]` vs `table.insert` and
+numeric-`for` vs `ipairs` ordering (lower authority; not LuaJIT-specific,
+so treated as directional only, confirmed against the Facepunch wiki):
+[Defold forum](https://forum.defold.com/t/some-tests-lua-performance/70782),
+[OTLand Lua guide](https://docs.otland.net/lua-guide/auxiliary),
+[OpenResty best practices](https://github.com/moonbingbing/openresty-best-practices/blob/master/ngx_lua/lua_opt.md).
