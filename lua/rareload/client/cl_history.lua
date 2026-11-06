@@ -533,10 +533,6 @@ function Timeline.Open()
     end, { style = "danger", icon = "bin" })
     frame:HeaderButton(L("timeline.refresh"), function() request("history.get") end,
         { style = "info", icon = "arrow_refresh" })
-    if RARELOAD.InventoryManager.CanUse() then
-        frame:HeaderButton(L("inventory.title"), function() RARELOAD.InventoryManager.Open() end,
-            { style = "primary", icon = "gun" })
-    end
     if RARELOAD.Can(LocalPlayer(), "rareload_import") then
         frame:HeaderButton(L("share.import"), function() RARELOAD.Share.OpenImport() end,
             { style = "info", icon = "page_white_get" })
