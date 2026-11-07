@@ -14,7 +14,7 @@ local FEATURES = {
     { key = "keepInventory" }, { key = "globalInventory" }, { key = "keepAmmo" }, { key = "keepHealth" },
     { key = "keepStates" }, { key = "keepAppearance" }, { key = "keepEntities" }, { key = "keepNPCs" },
     { key = "keepVehicles" }, { key = "deathCleanupMode" }, { key = "debug" },
-    { key = "autoSaveInterval", unit = "s" }, { key = "autoSaveAngleThreshold", unit = "°" }, { key = "historySize" },
+    { key = "autoSaveInterval" }, { key = "autoSaveAngleThreshold" }, { key = "historySize" },
 }
 
 -- Overlay per toast: icon kind and its text.
@@ -146,7 +146,7 @@ local function valueText(f)
     local v = RARELOAD.Get(LocalPlayer(), f.key)
     if def.type == "bool" then return v and L("ui.on") or L("ui.off"), v end
     if def.type == "enum" then return L("setting." .. f.key .. "." .. v), v ~= def.values[1] end
-    return string.format(def.type == "float" and "%.1f" or "%d", v) .. (f.unit or ""), nil
+    return string.format(def.type == "float" and "%.1f" or "%d", v) .. (def.unit or ""), nil
 end
 
 -- The autosave bar: time since the last autosave against the interval, then "waiting for a change".

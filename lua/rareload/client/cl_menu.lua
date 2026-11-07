@@ -44,8 +44,6 @@ local ICONS = {
     blocked = "database_delete",
     keys = "keyboard",
 }
-local SUFFIXES = { autoSaveInterval = "s", autoSaveAngleThreshold = "°", asMaxSearchTime = "s", toastHold = "s" }
-
 local function anim(from, to, speed) return Lerp(math.min(FrameTime() * (speed or 12), 1), from, to) end
 
 -- Settings matching `filter`, grouped by category in menu order.
@@ -452,7 +450,7 @@ local function control(parent, def, get, set, opts)
             self.combo:SetEnabled(not opts.disabled)
         end
     else
-        row = slider(parent, label, get(), def.min, def.max, def.type == "float" and 1 or 0, SUFFIXES[def.key],
+        row = slider(parent, label, get(), def.min, def.max, def.type == "float" and 1 or 0, def.unit,
             function(v) set(tostring(v)) end, opts)
         row.Sync = function(self) self.value = get() end
     end

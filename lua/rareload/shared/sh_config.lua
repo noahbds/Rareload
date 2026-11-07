@@ -91,184 +91,69 @@ function RARELOAD.Get(ply, key)
     return value
 end
 
-RARELOAD.Setting("enabled", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "general",
-    priv = "rareload_restore",
-    help = "Respawn players at their Rareload save"
+-- Settings that share a scope and a category: { key, field = value, … } each, in menu order.
+local function group(scope, category, list)
+    for _, def in ipairs(list) do
+        local key = table.remove(def, 1)
+        def.scope, def.category = scope, category
+        RARELOAD.Setting(key, def)
+    end
+end
+
+group("player", "general", {
+    { "enabled", type = "bool", default = true, priv = "rareload_restore",
+        help = "Respawn players at their Rareload save" },
+    { "antiStuck", type = "bool", default = true,
+        help = "Move players out of blocked saved positions" },
 })
-RARELOAD.Setting("antiStuck", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "general",
-    help = "Move players out of blocked saved positions"
+group("player", "player", {
+    { "keepHealth", type = "bool", default = true, priv = "rareload_restore_health_armor",
+        help = "Restore health and armor" },
+    { "keepStates", type = "bool", default = true, priv = "rareload_restore_states",
+        help = "Restore noclip, godmode, notarget, frozen and flashlight" },
+    { "keepBody", type = "bool", default = true, priv = "rareload_restore_states",
+        help = "Restore speeds, jump power, gravity, size, max health and armor, FOV, suit power and fire" },
+    { "keepTool", type = "bool", default = true, priv = "rareload_restore_inventory",
+        help = "Restore the selected tool and its settings" },
+    { "keepAppearance", type = "bool", default = true, priv = "rareload_restore_appearance",
+        help = "Restore the player model, skin, bodygroups and colors" },
+    { "keepInventory", type = "bool", default = true, priv = "rareload_restore_inventory",
+        help = "Restore weapons and the active weapon" },
+    { "keepAmmo", type = "bool", default = true, priv = "rareload_restore_ammo",
+        help = "Restore reserve ammo and clips" },
+    { "keepAttachments", type = "bool", default = true, priv = "rareload_restore_inventory",
+        help = "Restore weapon attachments and fire modes (ARC9, ArcCW, TFA, MW Base)" },
+    { "globalInventory", type = "bool", default = false, priv = "rareload_global_inventory",
+        help = "Use one inventory across all maps" },
 })
-RARELOAD.Setting("keepHealth", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "player",
-    priv = "rareload_restore_health_armor",
-    help = "Restore health and armor"
+group("player", "world", {
+    { "keepEntities", type = "bool", default = true, priv = "rareload_restore_entities",
+        help = "Save and restore the props and entities you own" },
+    { "keepNPCs", type = "bool", default = true, priv = "rareload_restore_npcs",
+        help = "Save and restore the NPCs you own" },
+    { "keepVehicles", type = "bool", default = true, priv = "rareload_restore_vehicles",
+        help = "Save and restore your vehicles and put you back in your seat" },
+    { "overwriteModified", type = "bool", default = true,
+        help = "On save, overwrite objects that are already saved (off keeps their saved state)" },
+    { "overwriteDeleted", type = "bool", default = true,
+        help = "On save, drop saved objects that were deleted from the map (off keeps them saved)" },
+    { "keepMotion", type = "bool", default = true,
+        help = "Objects saved while moving come back moving at the same speed" },
+    { "keepGroundWeapons", type = "bool", default = game.SinglePlayer(), priv = "rareload_restore_entities",
+        help = "Save and restore the weapons you spawned or dropped that lie on the ground" },
+    { "resetObjects", type = "bool", default = true,
+        help = "Timeline restores put saved objects still on the map back the way they were saved" },
+    { "resetOnSpawn", type = "bool", default = false,
+        help = "Respawning at your save also puts your saved objects back the way they were saved" },
 })
-RARELOAD.Setting("keepStates", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "player",
-    priv = "rareload_restore_states",
-    help = "Restore noclip, godmode, notarget, frozen and flashlight"
-})
-RARELOAD.Setting("keepBody", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "player",
-    priv = "rareload_restore_states",
-    help = "Restore speeds, jump power, gravity, size, max health and armor, FOV, suit power and fire"
-})
-RARELOAD.Setting("keepTool", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "player",
-    priv = "rareload_restore_inventory",
-    help = "Restore the selected tool and its settings"
-})
-RARELOAD.Setting("keepAppearance", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "player",
-    priv = "rareload_restore_appearance",
-    help = "Restore the player model, skin, bodygroups and colors"
-})
-RARELOAD.Setting("keepInventory", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "player",
-    priv = "rareload_restore_inventory",
-    help = "Restore weapons and the active weapon"
-})
-RARELOAD.Setting("keepAmmo", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "player",
-    priv = "rareload_restore_ammo",
-    help = "Restore reserve ammo and clips"
-})
-RARELOAD.Setting("keepAttachments", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "player",
-    priv = "rareload_restore_inventory",
-    help = "Restore weapon attachments and fire modes (ARC9, ArcCW, TFA, MW Base)"
-})
-RARELOAD.Setting("globalInventory", {
-    type = "bool",
-    default = false,
-    scope = "player",
-    category = "player",
-    priv = "rareload_global_inventory",
-    help = "Use one inventory across all maps"
-})
-RARELOAD.Setting("keepEntities", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "world",
-    priv = "rareload_restore_entities",
-    help = "Save and restore the props and entities you own"
-})
-RARELOAD.Setting("keepNPCs", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "world",
-    priv = "rareload_restore_npcs",
-    help = "Save and restore the NPCs you own"
-})
-RARELOAD.Setting("keepVehicles", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "world",
-    priv = "rareload_restore_vehicles",
-    help = "Save and restore your vehicles and put you back in your seat"
-})
-RARELOAD.Setting("overwriteModified", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "world",
-    help = "On save, overwrite objects that are already saved (off keeps their saved state)"
-})
-RARELOAD.Setting("overwriteDeleted", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "world",
-    help = "On save, drop saved objects that were deleted from the map (off keeps them saved)"
-})
-RARELOAD.Setting("keepMotion", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "world",
-    help = "Objects saved while moving come back moving at the same speed"
-})
-RARELOAD.Setting("keepGroundWeapons", {
-    type = "bool",
-    default = game.SinglePlayer(),
-    scope = "player",
-    category = "world",
-    priv = "rareload_restore_entities",
-    help = "Save and restore the weapons you spawned or dropped that lie on the ground"
-})
-RARELOAD.Setting("resetObjects", {
-    type = "bool",
-    default = true,
-    scope = "player",
-    category = "world",
-    help = "Timeline restores put saved objects still on the map back the way they were saved"
-})
-RARELOAD.Setting("resetOnSpawn", {
-    type = "bool",
-    default = false,
-    scope = "player",
-    category = "world",
-    help = "Respawning at your save also puts your saved objects back the way they were saved"
-})
-RARELOAD.Setting("saveOnDeath", {
-    type = "bool",
-    default = false,
-    scope = "player",
-    category = "general",
-    priv = "rareload_save",
-    help = "Save just before dying (it doesn't replace the respawn point), to go back to it later"
-})
-RARELOAD.Setting("deathChoice", {
-    type = "bool",
-    default = false,
-    scope = "player",
-    category = "general",
-    priv = "rareload_restore",
-    help = "After dying, choose where to respawn: the respawn point, the map spawn or where you died"
-})
-RARELOAD.Setting("deathChoiceAlways", {
-    type = "enum",
-    values = { "ask", "save", "map", "death" },
-    default = "ask",
-    scope = "player",
-    category = "general",
-    priv = "rareload_restore",
-    help = "Where to respawn after dying: asked (with the respawn choice on), or always the same place"
+group("player", "general", {
+    { "saveOnDeath", type = "bool", default = false, priv = "rareload_save",
+        help = "Save just before dying (it doesn't replace the respawn point), to go back to it later" },
+    { "deathChoice", type = "bool", default = false, priv = "rareload_restore",
+        help = "After dying, choose where to respawn: the respawn point, the map spawn or where you died" },
+    { "deathChoiceAlways", type = "enum", values = { "ask", "save", "map", "death" }, default = "ask",
+        priv = "rareload_restore",
+        help = "Where to respawn after dying: asked (with the respawn choice on), or always the same place" },
 })
 -- The old "Normal respawn after dying" (skipRestoreOnDeath) is now "Respawn after dying: at the map's
 -- spawn". Turned on, the server or player value moves over once.
@@ -285,320 +170,102 @@ else
     if old:GetInt() == 1 then RunConsoleCommand("rareload_pref_death_choice_always", "map") end
     if old:GetInt() ~= -1 then RunConsoleCommand("rareload_pref_skip_restore_on_death", "-1") end
 end
-RARELOAD.Setting("autoSave", {
-    type = "bool",
-    default = false,
-    scope = "player",
-    category = "general",
-    priv = "rareload_save",
-    help = "Save automatically when something changes"
+group("player", "general", {
+    { "autoSave", type = "bool", default = false, priv = "rareload_save",
+        help = "Save automatically when something changes" },
+    { "saveOnDisconnect", type = "bool", default = false, priv = "rareload_save",
+        help = "Save everything when you disconnect or the server shuts down" },
+    { "saveOnCleanup", type = "bool", default = false, priv = "rareload_save",
+        help = "Save everything when the map is cleaned up" },
 })
-RARELOAD.Setting("saveOnDisconnect", {
-    type = "bool",
-    default = false,
-    scope = "player",
-    category = "general",
-    priv = "rareload_save",
-    help = "Save everything when you disconnect or the server shuts down"
+group("player", "timing", {
+    { "autoSaveInterval", type = "int", default = 30, min = 1, max = 600, unit = "s",
+        help = "Autosave: minimum seconds between two saves" },
+    { "autoSaveAngleThreshold", type = "float", default = 45, min = 1, max = 180, unit = "°",
+        help = "Autosave: degrees of view change that count as a change" },
+    { "historySize", type = "int", default = 50, min = 1, max = 1000, capBy = "historySizeMax",
+        help = "How many saves each player keeps per map" },
 })
-RARELOAD.Setting("saveOnCleanup", {
-    type = "bool",
-    default = false,
-    scope = "player",
-    category = "general",
-    priv = "rareload_save",
-    help = "Save everything when the map is cleaned up"
+group("server", "timing", {
+    { "historySizeMax", type = "int", default = 100, min = 1, max = 1000,
+        help = "Upper limit for historySize, so players can't fill the disk" },
+    { "importMaxKB", type = "int", default = 4096, min = 64, max = 65536,
+        help = "Largest save file a player may import, in KB once compressed" },
+    { "saveCombatDelay", type = "int", default = 0, min = 0, max = 600,
+        help = "PvP: no saving within this many seconds of taking or dealing combat damage (0 = off)" },
+    { "restoreCooldown", type = "int", default = 0, min = 0, max = 3600,
+        help = "PvP: seconds a player waits between two timeline restores (0 = off)" },
+    { "restoreNeedsSpawn", type = "int", default = 0, min = 0, max = 600,
+        help = "PvP: timeline restores only within this many seconds of spawning (0 = off)" },
+    { "restoreBatch", type = "int", default = 50, min = 0, max = 1000,
+        help = "Objects created per tick when restoring a large build, so it doesn't freeze the server (0 = all at"
+            .. " once)" },
 })
-RARELOAD.Setting("autoSaveInterval", {
-    type = "int",
-    default = 30,
-    min = 1,
-    max = 600,
-    scope = "player",
-    category = "timing",
-    help = "Autosave: minimum seconds between two saves"
+group("server", "server", {
+    { "snapshotInterval", type = "int", default = 0, min = 0, max = 120,
+        help = "Minutes between two server snapshots of every player's objects, for rollback (0 = off)" },
+    { "snapshotKeep", type = "int", default = 6, min = 1, max = 50,
+        help = "How many server snapshots are kept on each map" },
+    { "crashRecovery", type = "enum", values = { "off", "ask", "auto" }, default = "ask",
+        help = "After a crash, a player's objects from the last snapshot newer than their save: off, offered, or"
+            .. " restored" },
 })
-RARELOAD.Setting("autoSaveAngleThreshold", {
-    type = "float",
-    default = 45,
-    min = 1,
-    max = 180,
-    scope = "player",
-    category = "timing",
-    help = "Autosave: degrees of view change that count as a change"
+group("server", "timing", {
+    { "pinnedMax", type = "int", default = 20, min = 1, max = 500,
+        help = "Most pinned saves each player can have on a map (pinned saves are never dropped)" },
+    { "checkpointMax", type = "int", default = 20, min = 1, max = 100,
+        help = "Most checkpoints each player can have on a map" },
 })
-RARELOAD.Setting("historySize", {
-    type = "int",
-    default = 50,
-    min = 1,
-    max = 1000,
-    scope = "player",
-    category = "timing",
-    capBy = "historySizeMax",
-    help = "How many saves each player keeps per map"
+group("server", "server", {
+    { "fireDuration", type = "float", default = 10, min = 1, max = 120,
+        help = "Seconds a player or object saved while burning burns again after a restore" },
+    { "enableInAllGamemodes", type = "bool", default = false,
+        help = "Also run Rareload in gamemodes not derived from Sandbox (D19)" },
+    { "logLevel", type = "enum", values = { "errors", "warnings", "activity", "debug" }, default = "activity",
+        help = "What Rareload prints to the server console: errors, warnings, activity (one line per save, "
+            .. "restore and admin change) or debug (every step)" },
+    { "logToFile", type = "bool", default = false,
+        help = "Also write the log to data/rareload/logs, one file per day" },
+    { "logKeepDays", type = "int", default = 14, min = 1, max = 365,
+        help = "Days log files are kept" },
+    { "debug", type = "bool", default = false,
+        help = "Print Rareload debug logs, send report cards to admins and show the world display" },
 })
-RARELOAD.Setting("historySizeMax", {
-    type = "int",
-    default = 100,
-    min = 1,
-    max = 1000,
-    scope = "server",
-    category = "timing",
-    help = "Upper limit for historySize, so players can't fill the disk"
+group("server", "world", {
+    { "keepMapState", type = "bool", default = game.SinglePlayer(), priv = "rareload_restore_scene",
+        help = "Save and restore the map's doors, locks, broken objects and physics props (for everyone)" },
+    { "keepEnvironment", type = "bool", default = game.SinglePlayer(), priv = "rareload_restore_scene",
+        help = "Save and restore the time of day, weather (StormFox2) and sky (for everyone)" },
+    { "keepWorldSettings", type = "bool", default = game.SinglePlayer(), priv = "rareload_restore_scene",
+        help = "Save and restore gravity, physics speed and the AI switches (for everyone)" },
+    { "deathCleanupMode", type = "enum", values = { "off", "all", "owned", "saved" }, default = "off",
+        help = "Before respawning a dead player: off, clean the whole map, "
+            .. "remove their own objects, or remove only their saved objects" },
+    { "disconnectCleanup", type = "bool", default = false,
+        help = "Remove a player's objects when they disconnect" },
+    { "maxVehicles", type = "int", default = 0, min = 0, max = 100,
+        help = "Most vehicles restored per player (0 = no limit)" },
+    { "respectSpawnLimits", type = "bool", default = not game.SinglePlayer(),
+        help = "Restored objects go through Sandbox spawn permissions and sbox_max limits (D10)" },
 })
-RARELOAD.Setting("importMaxKB", {
-    type = "int",
-    default = 4096,
-    min = 64,
-    max = 65536,
-    scope = "server",
-    category = "timing",
-    help = "Largest save file a player may import, in KB once compressed"
+group("server", "antistuck", {
+    { "asMaxSearchTime", type = "float", default = 0.3, min = 0.05, max = 5, unit = "s",
+        help = "Anti-stuck: seconds to spend looking for a free spot" },
+    { "asMaxDistance", type = "int", default = 1200, min = 64, max = 8192,
+        help = "Anti-stuck: how far from the saved position to look" },
 })
-RARELOAD.Setting("saveCombatDelay", {
-    type = "int",
-    default = 0,
-    min = 0,
-    max = 600,
-    scope = "server",
-    category = "timing",
-    help = "PvP: no saving within this many seconds of taking or dealing combat damage (0 = off)"
-})
-RARELOAD.Setting("restoreCooldown", {
-    type = "int",
-    default = 0,
-    min = 0,
-    max = 3600,
-    scope = "server",
-    category = "timing",
-    help = "PvP: seconds a player waits between two timeline restores (0 = off)"
-})
-RARELOAD.Setting("restoreNeedsSpawn", {
-    type = "int",
-    default = 0,
-    min = 0,
-    max = 600,
-    scope = "server",
-    category = "timing",
-    help = "PvP: timeline restores only within this many seconds of spawning (0 = off)"
-})
-RARELOAD.Setting("restoreBatch", {
-    type = "int",
-    default = 50,
-    min = 0,
-    max = 1000,
-    scope = "server",
-    category = "timing",
-    help = "Objects created per tick when restoring a large build, so it doesn't freeze the server (0 = all at once)"
-})
-RARELOAD.Setting("snapshotInterval", {
-    type = "int",
-    default = 0,
-    min = 0,
-    max = 120,
-    scope = "server",
-    category = "server",
-    help = "Minutes between two server snapshots of every player's objects, for rollback (0 = off)"
-})
-RARELOAD.Setting("snapshotKeep", {
-    type = "int",
-    default = 6,
-    min = 1,
-    max = 50,
-    scope = "server",
-    category = "server",
-    help = "How many server snapshots are kept on each map"
-})
-RARELOAD.Setting("crashRecovery", {
-    type = "enum",
-    values = { "off", "ask", "auto" },
-    default = "ask",
-    scope = "server",
-    category = "server",
-    help = "After a crash, a player's objects from the last snapshot newer than their save: off, offered, or restored"
-})
-RARELOAD.Setting("pinnedMax", {
-    type = "int",
-    default = 20,
-    min = 1,
-    max = 500,
-    scope = "server",
-    category = "timing",
-    help = "Most pinned saves each player can have on a map (pinned saves are never dropped)"
-})
-RARELOAD.Setting("checkpointMax", {
-    type = "int",
-    default = 20,
-    min = 1,
-    max = 100,
-    scope = "server",
-    category = "timing",
-    help = "Most checkpoints each player can have on a map"
-})
-RARELOAD.Setting("fireDuration", {
-    type = "float",
-    default = 10,
-    min = 1,
-    max = 120,
-    scope = "server",
-    category = "server",
-    help = "Seconds a player or object saved while burning burns again after a restore"
-})
-RARELOAD.Setting("enableInAllGamemodes", {
-    type = "bool",
-    default = false,
-    scope = "server",
-    category = "server",
-    help = "Also run Rareload in gamemodes not derived from Sandbox (D19)"
-})
-RARELOAD.Setting("logLevel", {
-    type = "enum",
-    values = { "errors", "warnings", "activity", "debug" },
-    default = "activity",
-    scope = "server",
-    category = "server",
-    help = "What Rareload prints to the server console: errors, warnings, activity (one line per save, "
-        .. "restore and admin change) or debug (every step)"
-})
-RARELOAD.Setting("logToFile", {
-    type = "bool",
-    default = false,
-    scope = "server",
-    category = "server",
-    help = "Also write the log to data/rareload/logs, one file per day"
-})
-RARELOAD.Setting("logKeepDays", {
-    type = "int",
-    default = 14,
-    min = 1,
-    max = 365,
-    scope = "server",
-    category = "server",
-    help = "Days log files are kept"
-})
-RARELOAD.Setting("debug", {
-    type = "bool",
-    default = false,
-    scope = "server",
-    category = "server",
-    help = "Print Rareload debug logs, send report cards to admins and show the world display"
-})
-RARELOAD.Setting("keepMapState", {
-    type = "bool",
-    default = game.SinglePlayer(),
-    scope = "server",
-    category = "world",
-    priv = "rareload_restore_scene",
-    help = "Save and restore the map's doors, locks, broken objects and physics props (for everyone)"
-})
-RARELOAD.Setting("keepEnvironment", {
-    type = "bool",
-    default = game.SinglePlayer(),
-    scope = "server",
-    category = "world",
-    priv = "rareload_restore_scene",
-    help = "Save and restore the time of day, weather (StormFox2) and sky (for everyone)"
-})
-RARELOAD.Setting("keepWorldSettings", {
-    type = "bool",
-    default = game.SinglePlayer(),
-    scope = "server",
-    category = "world",
-    priv = "rareload_restore_scene",
-    help = "Save and restore gravity, physics speed and the AI switches (for everyone)"
-})
-RARELOAD.Setting("deathCleanupMode", {
-    type = "enum",
-    values = { "off", "all", "owned", "saved" },
-    default = "off",
-    scope = "server",
-    category = "world",
-    help = "Before respawning a dead player: off, clean the whole map, "
-        .. "remove their own objects, or remove only their saved objects"
-})
-RARELOAD.Setting("disconnectCleanup", {
-    type = "bool",
-    default = false,
-    scope = "server",
-    category = "world",
-    help = "Remove a player's objects when they disconnect"
-})
-RARELOAD.Setting("maxVehicles", {
-    type = "int",
-    default = 0,
-    min = 0,
-    max = 100,
-    scope = "server",
-    category = "world",
-    help = "Most vehicles restored per player (0 = no limit)"
-})
-RARELOAD.Setting("respectSpawnLimits", {
-    type = "bool",
-    default = not game.SinglePlayer(),
-    scope = "server",
-    category = "world",
-    help = "Restored objects go through Sandbox spawn permissions and sbox_max limits (D10)"
-})
-RARELOAD.Setting("asMaxSearchTime", {
-    type = "float",
-    default = 0.3,
-    min = 0.05,
-    max = 5,
-    scope = "server",
-    category = "antistuck",
-    help = "Anti-stuck: seconds to spend looking for a free spot"
-})
-RARELOAD.Setting("asMaxDistance", {
-    type = "int",
-    default = 1200,
-    min = 64,
-    max = 8192,
-    scope = "server",
-    category = "antistuck",
-    help = "Anti-stuck: how far from the saved position to look"
-})
-RARELOAD.Setting("wdDrawDistance", {
-    type = "int",
-    default = 800,
-    min = 100,
-    max = 5000,
-    scope = "client",
-    category = "display",
-    help = "World display: how far away saved objects show an info panel"
-})
-RARELOAD.Setting("wdMaxDrawPerFrame", {
-    type = "int",
-    default = 16,
-    min = 1,
-    max = 100,
-    scope = "client",
-    category = "display",
-    help = "World display: most info panels drawn at once"
-})
-RARELOAD.Setting("wdInteractDistance", {
-    type = "int",
-    default = 400,
-    min = 100,
-    max = 5000,
-    scope = "client",
-    category = "display",
-    help = "World display: how far away aiming at a saved object focuses its panel (its tag: as far as panels show)"
-})
-RARELOAD.Setting("showCheckpoints", {
-    type = "bool",
-    default = true,
-    scope = "client",
-    category = "display",
-    help = "Show your checkpoints as markers in the world"
-})
-RARELOAD.Setting("toastHold", {
-    type = "float",
-    default = 6,
-    min = 1,
-    max = 30,
-    scope = "client",
-    category = "display",
-    help = "Seconds a debug report card stays on screen (cards with more steps stay a little longer)"
+group("client", "display", {
+    { "wdDrawDistance", type = "int", default = 800, min = 100, max = 5000,
+        help = "World display: how far away saved objects show an info panel" },
+    { "wdMaxDrawPerFrame", type = "int", default = 16, min = 1, max = 100,
+        help = "World display: most info panels drawn at once" },
+    { "wdInteractDistance", type = "int", default = 400, min = 100, max = 5000,
+        help = "World display: how far away aiming at a saved object focuses its panel (its tag: as far as panels"
+            .. " show)" },
+    { "showCheckpoints", type = "bool", default = true,
+        help = "Show your checkpoints as markers in the world" },
+    { "toastHold", type = "float", default = 6, min = 1, max = 30, unit = "s",
+        help = "Seconds a debug report card stays on screen (cards with more steps stay a little longer)" },
 })
 
 if SERVER then
