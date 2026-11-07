@@ -53,7 +53,7 @@ function Checkpoints.Add(ply, name)
     if i then
         entry.disabled = d.checkpoints[i].disabled
         d.checkpoints[i] = entry -- the same name moves the checkpoint
-        cursor[ply] = i + 1
+        cursor[ply] = i - 1
     elseif #d.checkpoints >= max then
         return false, "toast.checkpoint_full", { max }
     else
@@ -82,7 +82,7 @@ function Checkpoints.Remove(ply, what)
     local d, rel = store(ply)
     local name = d.checkpoints[i].name
     table.remove(d.checkpoints, i)
-    if cursor[ply] and cursor[ply] > i then cursor[ply] = cursor[ply] - 1 end
+    if cursor[ply] and cursor[ply] >= i then cursor[ply] = cursor[ply] - 1 end
     RARELOAD.Store.Save(rel, d)
     push(ply)
     return true, "toast.checkpoint_removed", { name }
@@ -116,15 +116,15 @@ function Checkpoints.Go(ply, what)
     return true, "toast.checkpoint_went", { c.name }
 end
 
--- Cycles backwards through the player's enabled checkpoints, starting from the most recent one and wrapping around.
+-- Cycles forward through the player's enabled checkpoints (#1 -> #2 -> ... -> #N) and wraps around.
 function Checkpoints.Cycle(ply)
     local list = Checkpoints.List(ply)
     local n = #list
     if n == 0 then return false, "toast.checkpoint_none" end
     local cur = cursor[ply]
-    local start = (cur and cur >= 1 and cur <= n) and ((cur - 2) % n + 1) or n
+    local start = (cur and cur >= 1 and cur <= n) and (cur % n + 1) or 1
     for step = 0, n - 1 do
-        local idx = (start - 1 - step) % n + 1
+        local idx = (start - 1 + step) % n + 1
         if not list[idx].disabled then
             return Checkpoints.Go(ply, idx)
         end
