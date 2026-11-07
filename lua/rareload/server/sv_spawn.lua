@@ -16,13 +16,14 @@ local function removeOwned(ply, savedOnly)
 end
 
 hook.Add("PostPlayerDeath", "Rareload.Spawn.Died", function(ply)
-    ply.rareloadDied = true
+    RARELOAD.Death.State(ply).died = true
 end)
 
 
 hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
-    local died, cleaned = ply.rareloadDied, ply.rareloadCleaned
-    ply.rareloadDied, ply.rareloadCleaned = nil, nil
+    local st = RARELOAD.Death.State(ply)
+    local died, cleaned = st.died, st.cleaned
+    st.died, st.cleaned = nil, nil
 
     if transition or not RARELOAD.Pipeline.Enabled() then return end                                 -- E22
     if not RARELOAD.Get(ply, "enabled") or not RARELOAD.Can(ply, "rareload_restore") then return end -- E15
@@ -36,8 +37,8 @@ hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
             cleaningUp = nil
             timer.Simple(0, function()
                 if not IsValid(ply) then return end
-                ply.rareloadDied = true -- still a respawn after a death (the scene isn't restored)
-                ply.rareloadCleaned = true
+                st.died = true -- still a respawn after a death (the scene isn't restored)
+                st.cleaned = true
                 ply:Spawn()
             end)
         end)
@@ -50,8 +51,8 @@ hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
 
     -- The respawn choice after a death (D4): the map spawn restores nothing; "where I died" restores
     -- the save as usual, at the spot where the player died.
-    local choice = ply.rareloadSpawnChoice
-    ply.rareloadSpawnChoice = nil
+    local choice = st.choice
+    st.choice = nil
     if choice == "map" then return end
     local spot = choice == "death" and RARELOAD.Death.TakeSpot(ply) or nil
 

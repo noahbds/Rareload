@@ -274,15 +274,9 @@ function Store.Prune(days)
             local rel = sid and dir .. "/" .. sid
             local doc = rel and Store.Load(rel)
             if doc and istable(doc.entries) then
-                local before = #doc.entries
-                for i = #doc.entries, 1, -1 do
-                    local e = doc.entries[i]
-                    if (tonumber(e.time) or 0) < cutoff and not e.pinned and e.id ~= doc.activeId then
-                        table.remove(doc.entries, i)
-                    end
-                end
-                if #doc.entries ~= before then
-                    removed = removed + before - #doc.entries
+                local n = RARELOAD.History.PruneDoc(doc, cutoff) -- History decides which saves may go
+                if n > 0 then
+                    removed = removed + n
                     Store.Save(rel, doc)
                 end
             end

@@ -30,9 +30,11 @@ end
 
 local refresh -- pushes the new timeline and world display data, defined below
 
-local function save(ply, d)
+-- The only writer of a player's saves document. `quiet`: nothing the timeline shows changed
+-- (checkpoints), so the timeline and world display aren't pushed again.
+local function save(ply, d, quiet)
     local _, rel = History.Doc(ply)
-    refresh(ply)
+    if not quiet then refresh(ply) end
     return RARELOAD.Store.Save(rel, d)
 end
 
@@ -40,6 +42,18 @@ local function find(d, id)
     for i, entry in ipairs(d and d.entries or {}) do
         if entry.id == id then return entry, i end
     end
+end
+
+-- Entries never dropped to make room or by age: pinned ones, the respawn point and the quick slot.
+-- (A death save may go; its id is then forgotten.)
+local function kept(d, e)
+    return e.pinned or e.id == d.activeId or e.id == d.quickId
+end
+
+-- After entries were removed: the quick slot and the death save point at an entry, or at nothing.
+local function forgetMissing(d)
+    if d.quickId and not find(d, d.quickId) then d.quickId = nil end
+    if d.deathId and not find(d, d.deathId) then d.deathId = nil end
 end
 
 function History.Get(ply, id)
@@ -60,21 +74,56 @@ end
 
 -- Adds a save and makes it active (unless opts.keepActive: an imported or shared save). The oldest
 -- entries beyond `historySize` are dropped, except pinned ones and the active one.
+-- opts = { keepActive? (not the respawn point), death? (the player's death save, D4) }
 function History.Append(ply, entry, opts)
     local d = History.Doc(ply)
     if not d then return false end
+    opts = opts or {}
     entry.id = d.nextId
     d.nextId = d.nextId + 1
     if not isstring(ply) and IsValid(ply) then d.nick = ply:Nick() end
     d.entries[#d.entries + 1] = entry
-    if not (opts and opts.keepActive and d.activeId) then d.activeId = entry.id end
+    if not (opts.keepActive and d.activeId) then d.activeId = entry.id end
+    if opts.death then d.deathId = entry.id end
 
     local cap, i = RARELOAD.Get(ply, "historySize"), 1
     while #d.entries > cap and i <= #d.entries do
         local e = d.entries[i]
-        if e.pinned or e.id == d.activeId then i = i + 1 else table.remove(d.entries, i) end
+        if kept(d, e) or e.id == d.deathId then i = i + 1 else table.remove(d.entries, i) end
     end
+    forgetMissing(d)
     return save(ply, d)
+end
+
+-- Makes an existing entry the player's death save (a death that changed nothing since a save).
+function History.SetDeath(ply, id)
+    local d = History.Doc(ply)
+    if not d or not find(d, id) then return false end
+    d.deathId = id
+    return save(ply, d)
+end
+
+-- Deletes the entries older than `cutoff` (os.time) that History may drop; for Store.Prune. Returns
+-- how many were deleted. The caller stores the document.
+function History.PruneDoc(d, cutoff)
+    local before = #d.entries
+    for i = #d.entries, 1, -1 do
+        local e = d.entries[i]
+        if (tonumber(e.time) or 0) < cutoff and not kept(d, e) then table.remove(d.entries, i) end
+    end
+    forgetMissing(d)
+    return before - #d.entries
+end
+
+-- The player's checkpoints (D7) are kept in the same document: fn(list) changes the list and
+-- returns ok, ...; the document is stored when ok. Returns what fn returned.
+function History.UpdateCheckpoints(ply, fn)
+    local d = History.Doc(ply)
+    if not d then return false end
+    d.checkpoints = istable(d.checkpoints) and d.checkpoints or {}
+    local result = table.Pack(fn(d.checkpoints))
+    if result[1] then save(ply, d, true) end
+    return unpack(result, 1, result.n)
 end
 
 -- A pinned save is never dropped when the timeline is full (History.Append); it can still be deleted by hand.
@@ -120,18 +169,20 @@ function History.Delete(ply, id)
     if not i then return false end
     table.remove(d.entries, i)
     if d.activeId == id then d.activeId = d.entries[#d.entries] and d.entries[#d.entries].id or nil end
+    forgetMissing(d)
     return save(ply, d)
 end
 
--- Removes every entry except pinned ones and the active one.
+-- Removes every entry except pinned ones, the active one and the quick slot.
 function History.Clear(ply)
     local d = History.Doc(ply)
     if not d then return false end
-    local kept = {}
+    local left = {}
     for _, e in ipairs(d.entries) do
-        if e.pinned or e.id == d.activeId then kept[#kept + 1] = e end
+        if kept(d, e) then left[#left + 1] = e end
     end
-    d.entries = kept
+    d.entries = left
+    forgetMissing(d)
     return save(ply, d)
 end
 
@@ -225,6 +276,13 @@ function History.ReloadConfig(ply)
     local cfg = RARELOAD.Store.PData(ply, "reload")
     if not istable(cfg) or not History.RELOAD_MODES[cfg.mode] then cfg = { mode = "set_previous" } end
     return cfg
+end
+
+-- comps: as History.ParseComps returns. Returns false for an unknown mode.
+function History.SetReloadConfig(ply, mode, comps)
+    if not History.RELOAD_MODES[mode] then return false end
+    RARELOAD.Store.PData(ply, "reload", { mode = mode, comps = comps })
+    return true
 end
 
 -- Returns a toast key describing the outcome, and the number of the save it's about.
@@ -795,8 +853,8 @@ handle("history.undo", "rareload_restore", {}, function(ply)
     return History.Undo(ply) and "toast.undone" or "toast.nothing_to_undo"
 end)
 handle("history.reloadMode", "rareload_use_tool", { mode = "string:32", comps = "string:128?" }, function(ply, a)
-    if isstring(ply) or not History.RELOAD_MODES[a.mode] then return end
-    RARELOAD.Store.PData(ply, "reload", { mode = a.mode, comps = parseComps(a.comps) })
+    if isstring(ply) then return end
+    History.SetReloadConfig(ply, a.mode, parseComps(a.comps))
 end)
 
 RARELOAD.Net.Handle("history.players", {

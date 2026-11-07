@@ -364,8 +364,9 @@ Cmd.Register("history reload", {
     usage = "<set_previous|restore_current|restore_previous> [components]",
     help = "Choose what the tool's reload key does",
     fn = playerOnly(function(ply, args, reply)
-        if not RARELOAD.History.RELOAD_MODES[args[1]] then return reply("Unknown mode.") end
-        RARELOAD.Store.PData(ply, "reload", { mode = args[1], comps = RARELOAD.History.ParseComps(args[2]) })
+        if not RARELOAD.History.SetReloadConfig(ply, args[1], RARELOAD.History.ParseComps(args[2])) then
+            return reply("Unknown mode.")
+        end
         reply("Reload key: " .. args[1])
     end),
 })

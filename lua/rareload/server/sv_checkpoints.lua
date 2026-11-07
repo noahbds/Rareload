@@ -10,15 +10,6 @@ local PRIV = "rareload_checkpoints"
 local MAX_NAME = 48
 local cursor = setmetatable({}, { __mode = "k" })
 
--- The saves document, with its checkpoint list made when about to change it (reading leaves the
--- document as it is).
-local function store(ply)
-    local d, rel = RARELOAD.History.Doc(ply)
-    if not d then return nil end
-    d.checkpoints = istable(d.checkpoints) and d.checkpoints or {}
-    return d, rel
-end
-
 function Checkpoints.List(ply)
     local d = RARELOAD.History.Doc(ply)
     return d and istable(d.checkpoints) and d.checkpoints or {}
@@ -41,37 +32,37 @@ end
 
 -- Returns true, or false and a toast key with its arguments.
 function Checkpoints.Add(ply, name)
-    local d, rel = store(ply)
-    if not d then return false, "toast.checkpoint_failed" end
-    name = string.Trim(tostring(name or ""))
-    if name == "" then name = "#" .. (#d.checkpoints + 1) end
-    name = string.sub(name, 1, MAX_NAME)
     local max = RARELOAD.Get(nil, "checkpointMax")
-    local i = Checkpoints.Find(ply, name)
-    local entry = { name = name, pos = Util.Vec(ply:GetPos()), ang = Util.Ang(ply:EyeAngles()),
-        crouched = ply:Crouching() or nil }
-    if i then
-        entry.disabled = d.checkpoints[i].disabled
-        d.checkpoints[i] = entry -- the same name moves the checkpoint
-        cursor[ply] = i - 1
-    elseif #d.checkpoints >= max then
-        return false, "toast.checkpoint_full", { max }
-    else
-        d.checkpoints[#d.checkpoints + 1] = entry
-        cursor[ply] = nil
-    end
-    RARELOAD.Store.Save(rel, d)
-    push(ply)
-    return true, "toast.checkpoint_added", { name }
+    local ok, key, args = RARELOAD.History.UpdateCheckpoints(ply, function(list)
+        name = string.Trim(tostring(name or ""))
+        if name == "" then name = "#" .. (#list + 1) end
+        name = string.sub(name, 1, MAX_NAME)
+        local i = Checkpoints.Find(ply, name)
+        local entry = { name = name, pos = Util.Vec(ply:GetPos()), ang = Util.Ang(ply:EyeAngles()),
+            crouched = ply:Crouching() or nil }
+        if i then
+            entry.disabled = list[i].disabled
+            list[i] = entry -- the same name moves the checkpoint
+            cursor[ply] = i - 1
+        elseif #list >= max then
+            return false, "toast.checkpoint_full", { max }
+        else
+            list[#list + 1] = entry
+            cursor[ply] = nil
+        end
+        return true, "toast.checkpoint_added", { name }
+    end)
+    if ok then push(ply) elseif not key then key = "toast.checkpoint_failed" end
+    return ok, key, args
 end
 
 function Checkpoints.Toggle(ply, what)
     local i = Checkpoints.Find(ply, what)
     if not i then return false, "toast.checkpoint_unknown" end
-    local d, rel = store(ply)
-    local c = d.checkpoints[i]
-    c.disabled = not c.disabled or nil
-    RARELOAD.Store.Save(rel, d)
+    RARELOAD.History.UpdateCheckpoints(ply, function(list)
+        list[i].disabled = not list[i].disabled or nil
+        return true
+    end)
     push(ply)
     return true
 end
@@ -79,11 +70,12 @@ end
 function Checkpoints.Remove(ply, what)
     local i = Checkpoints.Find(ply, what)
     if not i then return false, "toast.checkpoint_unknown" end
-    local d, rel = store(ply)
-    local name = d.checkpoints[i].name
-    table.remove(d.checkpoints, i)
+    local name
+    RARELOAD.History.UpdateCheckpoints(ply, function(list)
+        name = table.remove(list, i).name
+        return true
+    end)
     if cursor[ply] and cursor[ply] >= i then cursor[ply] = cursor[ply] - 1 end
-    RARELOAD.Store.Save(rel, d)
     push(ply)
     return true, "toast.checkpoint_removed", { name }
 end

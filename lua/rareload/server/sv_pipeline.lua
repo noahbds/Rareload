@@ -163,7 +163,8 @@ local lastManual = setmetatable({}, { __mode = "k" })
 -- opts = { at?: Vector, reason?: string, only?: { [moduleId] = true }, silent?: bool, captureOnly?: bool,
 --          keepMissing?: bool (a module that captures nothing keeps its data from the current save),
 --          keepActive?: bool (the save doesn't become the respawn point),
---          deathHealth?: { hp, armor } (the health before the fatal hit, for a save made on death) }
+--          deathHealth?: { hp, armor } (the health before the fatal hit, for a save made on death),
+--          death?: bool (the save becomes the player's death save) }
 -- Returns true plus "saved" or "unchanged", or false plus the reason. With captureOnly the entry is
 -- returned instead of saved, with heavy data inline (used for undo, which must not depend on blobs).
 function Pipeline.Save(ply, opts)
@@ -244,7 +245,7 @@ function Pipeline.Save(ply, opts)
         return true, "unchanged"
     end
 
-    RARELOAD.History.Append(ply, entry, { keepActive = opts.keepActive })
+    RARELOAD.History.Append(ply, entry, { keepActive = opts.keepActive, death = opts.death })
     if not opts.silent then RARELOAD.Toast(ply, "toast.saved", { entry.id }, "ok") end
     info.result, info.entry = "saved", entry.id
     session:finish(info)

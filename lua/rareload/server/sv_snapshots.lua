@@ -163,13 +163,16 @@ function Snapshots.Recoverable(ply)
     return snap, part
 end
 
+-- Players to offer crash recovery to after their first spawn, and players already recovered.
+local crashCheck, recovered = setmetatable({}, { __mode = "k" }), setmetatable({}, { __mode = "k" })
+
 function Snapshots.Recover(ply)
     local snap, part = Snapshots.Recoverable(ply)
-    if not snap or ply.rareloadRecovered then
+    if not snap or recovered[ply] then
         RARELOAD.Toast(ply, "toast.recover_none", nil, "error")
         return false
     end
-    ply.rareloadRecovered = true
+    recovered[ply] = true
     local ok = RARELOAD.History.RestoreEntry(ply, { data = part.data }, { world = true },
         { exact = true, admin = true, reason = "recover" })
     if ok then RARELOAD.Toast(ply, "toast.recovered", { os.date("%H:%M", snap.time) }, "ok") end
@@ -177,14 +180,14 @@ function Snapshots.Recover(ply)
 end
 
 hook.Add("PlayerInitialSpawn", "Rareload.Snapshots", function(ply)
-    if not Snapshots.crashed then return end
-    ply.rareloadCrashCheck = true
+    recovered[ply] = nil
+    crashCheck[ply] = Snapshots.crashed or nil
 end)
 
 -- After the player's first spawn restore: offer (or restore) their objects from before the crash.
 local function afterFirstSpawn(ply)
-    if not ply.rareloadCrashCheck then return end
-    ply.rareloadCrashCheck = nil
+    if not crashCheck[ply] then return end
+    crashCheck[ply] = nil
     if RARELOAD.Can(ply, PRIV) then RARELOAD.Toast(ply, "toast.crash_detected", nil, "error") end
     local snap = Snapshots.Recoverable(ply)
     if not snap then return end
@@ -199,7 +202,7 @@ end
 hook.Add("RareloadRestored", "Rareload.Snapshots", function(ply) afterFirstSpawn(ply) end)
 hook.Add("PlayerSpawn", "Rareload.Snapshots", function(ply)
     -- No save on this map: nothing is restored, so the check happens a tick later.
-    if ply.rareloadCrashCheck and not RARELOAD.History.Active(ply) then
+    if crashCheck[ply] and not RARELOAD.History.Active(ply) then
         local queue = Pipeline._queue
         queue[#queue + 1] = function() if IsValid(ply) then afterFirstSpawn(ply) end end
     end

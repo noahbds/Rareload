@@ -8,6 +8,21 @@ local Death = RARELOAD.Death
 
 local beforeHit = setmetatable({}, { __mode = "k" }) -- ply -> { hp, armor } before the last damage
 
+-- What Rareload remembers about a player between their death and their respawn, kept off the
+-- player entity: pending (died, not told yet), told (death save id told about), spot (where they
+-- died), backAt (when they last respawned there), choice (respawn choice), died and cleaned (for the
+-- spawn restore, sv_spawn.lua).
+local states = setmetatable({}, { __mode = "k" })
+
+function Death.State(ply)
+    local st = states[ply]
+    if not st then
+        st = {}
+        states[ply] = st
+    end
+    return st
+end
+
 hook.Add("EntityTakeDamage", "Rareload.Death", function(ent)
     if ent:IsPlayer() and ent:Alive() then beforeHit[ent] = { hp = ent:Health(), armor = ent:Armor() } end
 end)
@@ -28,26 +43,27 @@ end
 hook.Add("DoPlayerDeath", "Rareload.Death", function(ply)
     if not RARELOAD.Pipeline.Enabled() or not RARELOAD.Get(ply, "enabled") then return end
     if not RARELOAD.Get(ply, "saveOnDeath") or not RARELOAD.Can(ply, "rareload_save") then return end
-    local ok, result, entry = RARELOAD.Pipeline.Save(ply, {
-        reason = "death", silent = true, keepActive = true,
+    local ok, result = RARELOAD.Pipeline.Save(ply, {
+        reason = "death", silent = true, keepActive = true, death = true,
         deathHealth = beforeHit[ply] or { hp = 1, armor = ply:Armor() },
     })
     if not ok then return end
-    if result == "unchanged" then entry = RARELOAD.History.Active(ply) end
-    local d, rel = RARELOAD.History.Doc(ply)
-    if not (d and entry and entry.id) then return end
-    d.deathId = entry.id
-    RARELOAD.Store.Save(rel, d)
+    -- Nothing changed since the respawn point: that save is the death save (B-16: one write either way).
+    if result == "unchanged" then
+        local active = RARELOAD.History.Active(ply)
+        if not (active and RARELOAD.History.SetDeath(ply, active.id)) then return end
+    end
     tell(ply)
 end)
 
 -- After the respawn: what they can do, and the choice of where to respawn when they want one.
 hook.Add("PlayerSpawn", "Rareload.Death", function(ply)
-    local died = ply.rareloadDeathPending
-    ply.rareloadDeathPending = nil
+    local st = Death.State(ply)
+    local died = st.pending
+    st.pending = nil
     local entry = died and Death.Entry(ply)
-    if entry and ply.rareloadDeathTold ~= entry.id then
-        ply.rareloadDeathTold = entry.id
+    if entry and st.told ~= entry.id then
+        st.told = entry.id
         RARELOAD.Toast(ply, "toast.death_saved", { entry.id })
     end
 end)
@@ -58,9 +74,10 @@ end)
 local DEADLY = 5
 
 hook.Add("PostPlayerDeath", "Rareload.Death", function(ply)
-    ply.rareloadDeathPending = true
-    local back = ply.rareloadBackAt and CurTime() - ply.rareloadBackAt < DEADLY
-    ply.rareloadDeathSpot = not back and {
+    local st = Death.State(ply)
+    st.pending = true
+    local back = st.backAt and CurTime() - st.backAt < DEADLY
+    st.spot = not back and {
         pos = ply:GetPos(), ang = ply:EyeAngles(), crouched = ply:Crouching(),
     } or nil
     -- The marker moves to this death, with or without a death save.
@@ -73,19 +90,20 @@ hook.Add("PostPlayerDeath", "Rareload.Death", function(ply)
     -- asking; "map" is the old "Normal respawn after dying". "death" with no spot: the respawn point.
     local always = RARELOAD.Get(ply, "deathChoiceAlways")
     if always ~= "ask" then
-        ply.rareloadSpawnChoice = (always ~= "death" or ply.rareloadDeathSpot) and always or "save"
+        st.choice = (always ~= "death" or st.spot) and always or "save"
         return
     end
     if not RARELOAD.Get(ply, "deathChoice") then return end
-    RARELOAD.Net.Push(ply, "death.choice", { death = ply.rareloadDeathSpot ~= nil })
+    RARELOAD.Net.Push(ply, "death.choice", { death = st.spot ~= nil })
 end)
 
 -- The spot to respawn at for "where I died" (used once), or nil.
 function Death.TakeSpot(ply)
-    local spot = ply.rareloadDeathSpot
-    ply.rareloadDeathSpot = nil
+    local st = Death.State(ply)
+    local spot = st.spot
+    st.spot = nil
     if not spot then return nil end
-    ply.rareloadBackAt = CurTime()
+    st.backAt = CurTime()
     return { pos = spot.pos, ang = Angle(spot.ang.p, spot.ang.y, 0), crouched = spot.crouched }
 end
 
@@ -117,8 +135,9 @@ RARELOAD.Net.Handle("death.respawn", {
     args = { mode = "string:8" },
     fn = function(ply, a)
         if ply:Alive() or not CHOICES[a.mode] then return end
-        if a.mode == "death" and not ply.rareloadDeathSpot then return end
-        ply.rareloadSpawnChoice = a.mode
+        local st = Death.State(ply)
+        if a.mode == "death" and not st.spot then return end
+        st.choice = a.mode
         ply:Spawn()
     end,
 })
