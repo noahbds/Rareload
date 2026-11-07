@@ -49,18 +49,20 @@ function CP.Open()
             return
         end
         for i, c in ipairs(CP.list) do
+            local off = c.disabled == true
             local row = vgui.Create("DPanel", scroll)
             row:Dock(TOP)
             row:SetTall(sc(46))
             row:DockMargin(0, 0, sc(4), sc(6))
             row.Paint = function(_, w, h)
                 draw.RoundedBox(sc(8), 0, 0, w, h, C.surface)
-                UI.DrawIcon("flag_blue", sc(12), (h - sc(16)) / 2, sc(16))
-                draw.SimpleText(UI.Clip(i .. ". " .. c.name, "Rareload.BodyB", w - sc(260)), "Rareload.BodyB", sc(38),
-                    h / 2, C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                UI.DrawIcon("flag_blue", sc(12), (h - sc(16)) / 2, sc(16),
+                    off and ColorAlpha(color_white, 90) or color_white)
+                draw.SimpleText(UI.Clip(i .. ". " .. c.name, "Rareload.BodyB", w - sc(310)), "Rareload.BodyB", sc(38),
+                    h / 2, off and C.textOff or C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
                 if c.vec then
                     draw.SimpleText(L("inspector.units", math.Round(LocalPlayer():GetPos():Distance(c.vec))),
-                        "Rareload.Small", w - sc(214), h / 2, C.text3, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+                        "Rareload.Small", w - sc(260), h / 2, C.text3, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
                 end
             end
             local del = UI.Button(row, "", function() request("checkpoint.remove", { i = i }) end,
@@ -73,7 +75,12 @@ function CP.Open()
                 { style = "info", icon = "arrow_right" })
             go:Dock(RIGHT)
             go:SetWide(sc(120))
-            go:DockMargin(0, sc(6), 0, sc(6))
+            go:DockMargin(sc(6), sc(6), 0, sc(6))
+            local sw = UI.Switch(row, "", not off, function() request("checkpoint.toggle", { i = i }) end,
+                { tooltip = L(off and "screen.disabled" or "screen.enabled") })
+            sw:Dock(RIGHT)
+            sw:SetWide(sc(50))
+            sw:DockMargin(0, sc(8), 0, sc(8))
         end
     end
     fill()
@@ -90,7 +97,7 @@ concommand.Add("rareload_checkpoints", function() CP.Open() end, nil, "Open your
 local RANGE = 3000
 
 local function shown()
-    return #CP.list > 0 and RARELOAD.Get(nil, "showCheckpoints")
+    return #CP.list > 0 and RARELOAD.Get(nil, "showCheckpoints") and RARELOAD.World.Active()
 end
 
 local function alphaAt(d) return math.Clamp((RANGE - d) / 600, 0, 1) * 255 end
@@ -100,7 +107,7 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Checkpoints", function(dept
     local eye = EyePos()
     render.SetColorMaterial()
     for _, c in ipairs(CP.list) do
-        local d = c.vec and eye:Distance(c.vec)
+        local d = not c.disabled and c.vec and eye:Distance(c.vec)
         if d and d < RANGE and d > 40 then
             render.DrawBeam(c.vec, c.vec + Vector(0, 0, 80), 4, 0, 1, ColorAlpha(C.accent, alphaAt(d) * 0.7))
         end
@@ -111,7 +118,7 @@ hook.Add("HUDPaint", "Rareload.Checkpoints", function()
     if not shown() then return end
     local eye = EyePos()
     for i, c in ipairs(CP.list) do
-        local d = c.vec and eye:Distance(c.vec)
+        local d = not c.disabled and c.vec and eye:Distance(c.vec)
         if d and d < RANGE and d > 40 then
             local p = (c.vec + Vector(0, 0, 88)):ToScreen()
             if p.visible then

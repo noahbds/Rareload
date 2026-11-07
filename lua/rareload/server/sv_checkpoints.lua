@@ -8,6 +8,7 @@ local Util = RARELOAD.Util
 
 local PRIV = "rareload_checkpoints"
 local MAX_NAME = 48
+local cursor = setmetatable({}, { __mode = "k" })
 
 -- The saves document, with its checkpoint list made when about to change it (reading leaves the
 -- document as it is).
@@ -50,15 +51,29 @@ function Checkpoints.Add(ply, name)
     local entry = { name = name, pos = Util.Vec(ply:GetPos()), ang = Util.Ang(ply:EyeAngles()),
         crouched = ply:Crouching() or nil }
     if i then
+        entry.disabled = d.checkpoints[i].disabled
         d.checkpoints[i] = entry -- the same name moves the checkpoint
+        cursor[ply] = i + 1
     elseif #d.checkpoints >= max then
         return false, "toast.checkpoint_full", { max }
     else
         d.checkpoints[#d.checkpoints + 1] = entry
+        cursor[ply] = nil
     end
     RARELOAD.Store.Save(rel, d)
     push(ply)
     return true, "toast.checkpoint_added", { name }
+end
+
+function Checkpoints.Toggle(ply, what)
+    local i = Checkpoints.Find(ply, what)
+    if not i then return false, "toast.checkpoint_unknown" end
+    local d, rel = store(ply)
+    local c = d.checkpoints[i]
+    c.disabled = not c.disabled or nil
+    RARELOAD.Store.Save(rel, d)
+    push(ply)
+    return true
 end
 
 function Checkpoints.Remove(ply, what)
@@ -67,6 +82,7 @@ function Checkpoints.Remove(ply, what)
     local d, rel = store(ply)
     local name = d.checkpoints[i].name
     table.remove(d.checkpoints, i)
+    if cursor[ply] and cursor[ply] > i then cursor[ply] = cursor[ply] - 1 end
     RARELOAD.Store.Save(rel, d)
     push(ply)
     return true, "toast.checkpoint_removed", { name }
@@ -95,22 +111,43 @@ function Checkpoints.Go(ply, what)
     ply:SetPos(pos)
     if ang then ply:SetEyeAngles(ang) end
     ply:SetLocalVelocity(vector_origin)
+    cursor[ply] = i
     RARELOAD.Log("checkpoints", ply):verbose("%s went to checkpoint %s", ply:Nick(), c.name)
     return true, "toast.checkpoint_went", { c.name }
+end
+
+-- Cycles backwards through the player's enabled checkpoints, starting from the most recent one and wrapping around.
+function Checkpoints.Cycle(ply)
+    local list = Checkpoints.List(ply)
+    local n = #list
+    if n == 0 then return false, "toast.checkpoint_none" end
+    local cur = cursor[ply]
+    local start = (cur and cur >= 1 and cur <= n) and ((cur - 2) % n + 1) or n
+    for step = 0, n - 1 do
+        local idx = (start - 1 - step) % n + 1
+        if not list[idx].disabled then
+            return Checkpoints.Go(ply, idx)
+        end
+    end
+    return false, "toast.checkpoint_none"
 end
 
 local function tell(ply, ok, key, args)
     if key then RARELOAD.Toast(ply, key, args, ok and "ok" or "error") end
 end
 
-RARELOAD.Net.Handle("checkpoint.get", { priv = PRIV, rate = 0.5, fn = push })
+RARELOAD.Net.Handle("checkpoint.get", { priv = PRIV, rate = 0.2, fn = push })
 RARELOAD.Net.Handle("checkpoint.add", {
-    priv = PRIV, rate = 0.5, args = { name = "string:64" },
+    priv = PRIV, rate = 0.2, args = { name = "string:64" },
     fn = function(ply, a) tell(ply, Checkpoints.Add(ply, a.name)) end,
 })
 RARELOAD.Net.Handle("checkpoint.go", {
-    priv = PRIV, rate = 0.5, args = { i = "uint" },
+    priv = PRIV, rate = 0.15, args = { i = "uint" },
     fn = function(ply, a) tell(ply, Checkpoints.Go(ply, a.i)) end,
+})
+RARELOAD.Net.Handle("checkpoint.toggle", {
+    priv = PRIV, rate = 0.1, args = { i = "uint" },
+    fn = function(ply, a) Checkpoints.Toggle(ply, a.i) end,
 })
 RARELOAD.Net.Handle("checkpoint.remove", {
     priv = PRIV, rate = 0.2, args = { i = "uint" },
