@@ -692,14 +692,10 @@ function Snapshot.Reset(targets, ply)
     return count
 end
 
--- opts = { kind = "props"|"npcs"|"vehicles", limit? = max defs to paste, filter?(def) -> bool,
---          reset? = put objects still on the map back the way they were saved,
---          given? = { [class] = true } weapon classes this restore gave the player: saved ground
---          weapons of these classes are not pasted, so a picked-up weapon doesn't come back twice }
--- Returns { created = { [index] = ent }, existing = { ent }, defs = { [existing ent] = saved def }, total = n,
---           reset = n (objects that had moved),
---           skipped = { { reason = key of SKIP_REASONS, what = class or model } } }.
-function Snapshot.Restore(snap, ply, opts)
+-- Restoring in three stages: what to paste and what to put back (prepare), creating the objects
+-- (all at once, or in batches over several ticks for a large build, D2), and what comes after.
+
+local function prepare(snap, ply, opts)
     local live = {}
     for _, ent in ents.Iterator() do
         if ent.RareloadID then live[tostring(ent.RareloadID)] = ent end
@@ -758,25 +754,35 @@ function Snapshot.Restore(snap, ply, opts)
 
     -- Before the paste, so constraints pasted between new and existing objects join them where saved.
     if #resets > 0 then report.reset = Snapshot.Reset(resets, ply) end
+    return { snap = snap, ply = ply, report = report, paste = paste, kinds = kinds, limits = limits,
+        motion = motion }
+end
 
-    if next(paste) then
-        duplicator.SetLocalPos(vector_origin)
-        duplicator.SetLocalAng(angle_zero)
-        local constraints = revive(snap.Constraints or {}, 0)
-        -- With spawn limits on, the player is the paste owner, so constraint limits apply too.
-        report.created = duplicator.Paste(limits and ply or nil, paste, constraints)
-        -- Some duplicator factories create nothing without a player (Glide's VehicleFactory returns
-        -- early), so what failed without one is pasted again with the player as owner. The retry
-        -- has no constraints: the ones between objects that already exist must not be made twice.
-        if not limits and IsValid(ply) then
-            local retry = {}
-            for index, def in pairs(paste) do
-                if not IsValid(report.created[index]) then retry[index] = def end
-            end
-            if next(retry) then
-                for index, ent in pairs(duplicator.Paste(ply, retry, {})) do report.created[index] = ent end
-            end
+local function pasteAll(st)
+    local report, paste, limits, ply, snap = st.report, st.paste, st.limits, st.ply, st.snap
+    duplicator.SetLocalPos(vector_origin)
+    duplicator.SetLocalAng(angle_zero)
+    local constraints = revive(snap.Constraints or {}, 0)
+    -- With spawn limits on, the player is the paste owner, so constraint limits apply too.
+    report.created = duplicator.Paste(limits and ply or nil, paste, constraints)
+    -- Some duplicator factories create nothing without a player (Glide's VehicleFactory returns
+    -- early), so what failed without one is pasted again with the player as owner. The retry
+    -- has no constraints: the ones between objects that already exist must not be made twice.
+    if not limits and IsValid(ply) then
+        local retry = {}
+        for index, def in pairs(paste) do
+            if not IsValid(report.created[index]) then retry[index] = def end
         end
+        if next(retry) then
+            for index, ent in pairs(duplicator.Paste(ply, retry, {})) do report.created[index] = ent end
+        end
+    end
+end
+
+-- After the paste: saved frozen state, running thrusters, the extras, what failed, and the undo.
+local function finish(st)
+    local report, paste, kinds, ply, motion = st.report, st.paste, st.kinds, st.ply, st.motion
+    if next(paste) then
         -- Classes with their own duplicator factory (Glide, other vehicle bases) skip the generic
         -- physics restore, so a frozen object would fall: its saved Frozen state is applied here.
         for index, ent in pairs(report.created) do
@@ -821,6 +827,159 @@ function Snapshot.Restore(snap, ply, opts)
     return report
 end
 
+-- opts = { kind = "props"|"npcs"|"vehicles", limit? = max defs to paste, filter?(def) -> bool,
+--          reset? = put objects still on the map back the way they were saved,
+--          given? = { [class] = true } weapon classes this restore gave the player: saved ground
+--          weapons of these classes are not pasted, so a picked-up weapon doesn't come back twice }
+-- Returns { created = { [index] = ent }, existing = { ent }, defs = { [existing ent] = saved def }, total = n,
+--           reset = n (objects that had moved),
+--           skipped = { { reason = key of SKIP_REASONS, what = class or model } } }.
+function Snapshot.Restore(snap, ply, opts)
+    local st = prepare(snap, ply, opts)
+    if next(st.paste) then pasteAll(st) end
+    return finish(st)
+end
+
+-- Smooth restore of large builds (5.4 plan, D2) -------------------------------------------------------
+-- Above `restoreBatch` objects, the objects are created a batch per tick instead of in one
+-- duplicator.Paste, so a large build doesn't freeze the server. It does what duplicator.Paste does,
+-- in the same order: create every entity (here over several ticks, each held frozen so nothing falls
+-- or flies apart before its welds exist), then, once all exist, apply every entity's and bone's
+-- modifiers and PostEntityPaste (which wiring relinks from), then the constraints.
+
+-- duplicator.Paste's creation step for one entity. Returns the entity or nil.
+local function createOne(owner, def)
+    def = table.Copy(def) -- CreateEntityFromTable changes the table it is given
+    local e
+    if not ProtectedCall(function() e = duplicator.CreateEntityFromTable(owner, def) end) then return nil end
+    if not IsValid(e) then return nil end
+    if e.RestoreNetworkVars then e:RestoreNetworkVars(def.DT) end
+    if e.OnDuplicated then e:OnDuplicated(def) end
+    e.BoneMods = table.Copy(def.BoneMods)
+    e.EntityMods = table.Copy(def.EntityMods)
+    e.PhysicsObjects = table.Copy(def.PhysicsObjects)
+    return e
+end
+
+local function holdStill(ent)
+    for i = 0, ent:GetPhysicsObjectCount() - 1 do
+        local phys = ent:GetPhysicsObjectNum(i)
+        if IsValid(phys) then phys:EnableMotion(false) end
+    end
+end
+
+-- The saved frozen state, once everything exists: unfrozen objects move again.
+local function letGo(ent, def)
+    local physics = istable(def.PhysicsObjects) and def.PhysicsObjects or {}
+    for i = 0, ent:GetPhysicsObjectCount() - 1 do
+        local phys, saved = ent:GetPhysicsObjectNum(i), physics[i] or physics[tostring(i)]
+        if IsValid(phys) and not (istable(saved) and saved.Frozen) then
+            phys:EnableMotion(true)
+            phys:Wake()
+        end
+    end
+end
+
+-- Like Snapshot.Restore, but a large paste is spread over ticks. Calls onDone(report) when every
+-- object exists (at once when the paste is small). While it waits, the restore waits too (ctx:async).
+function Snapshot.RestoreBatched(snap, ply, opts, ctx, onDone)
+    local st = prepare(snap, ply, opts)
+    local batch = RARELOAD.Get(nil, "restoreBatch")
+    local count = table.Count(st.paste)
+    if batch <= 0 or count <= batch then
+        if count > 0 then pasteAll(st) end
+        return onDone(finish(st))
+    end
+
+    local resume = ctx:async(opts.kind or "objects")
+    local owner = st.limits and ply or nil
+    local indexes = table.GetKeys(st.paste)
+    table.sort(indexes, function(a, b) return (tonumber(a) or 0) < (tonumber(b) or 0) end)
+    local created, at, ticks = {}, 1, 0
+    duplicator.SetLocalPos(vector_origin)
+    duplicator.SetLocalAng(angle_zero)
+    if IsValid(ply) then RARELOAD.Toast(ply, "toast.restore_batched", { count }) end
+
+    -- The pipeline's tick queue is a new table every tick, so it is looked up each time: a reference
+    -- kept from now would be the list the current tick is still running.
+    local function later(fn)
+        local queue = RARELOAD.Pipeline._queue
+        queue[#queue + 1] = fn
+    end
+
+    -- Runs fn(item) for `batch` items a tick, then after().
+    local function inBatches(list, fn, after)
+        local i = 1
+        local function tick()
+            ticks = ticks + 1
+            for _ = 1, batch do
+                local item = list[i]
+                if item == nil then break end
+                i = i + 1
+                ProtectedCall(fn, item)
+            end
+            if list[i] ~= nil then later(tick) else after() end
+        end
+        later(tick)
+    end
+
+    -- Once every object exists: modifiers and PostEntityPaste (each sees every created object), then
+    -- the constraints, then the saved frozen state, each spread over ticks too, so neither this work
+    -- nor the physics waking up all at once lands on one tick.
+    local function complete()
+        local made, constraints = {}, {}
+        for _, index in ipairs(indexes) do
+            if IsValid(created[index]) then made[#made + 1] = index end
+        end
+        for _, c in pairs(revive(snap.Constraints or {}, 0)) do constraints[#constraints + 1] = c end
+        inBatches(made, function(index)
+            local ent = created[index]
+            if not IsValid(ent) then return end
+            duplicator.ApplyEntityModifiers(owner, ent)
+            duplicator.ApplyBoneModifiers(owner, ent)
+            if ent.PostEntityPaste then ent:PostEntityPaste(owner or NULL, ent, created) end
+        end, function()
+            inBatches(constraints, function(c)
+                duplicator.CreateConstraintFromTable(c, created, owner)
+            end, function()
+                inBatches(made, function(index)
+                    if IsValid(created[index]) then letGo(created[index], st.paste[index]) end
+                end, function()
+                    st.report.created = created
+                    st.report.ticks = ticks
+                    onDone(finish(st))
+                    resume()
+                end)
+            end)
+        end)
+    end
+
+    -- One batch per tick, through the pipeline's tick queue. A batch runs even if this restore was
+    -- replaced since: what it started is finished and handed to the player, never left half-made.
+    local function step()
+        ticks = ticks + 1
+        for _ = 1, batch do
+            local index = indexes[at]
+            if not index then break end
+            at = at + 1
+            local def = st.paste[index]
+            local e = createOne(owner, def)
+            -- Some factories create nothing without a player (Glide), as in pasteAll.
+            if not e and not st.limits and IsValid(ply) then e = createOne(ply, def) end
+            if e then
+                holdStill(e)
+                created[index] = e
+            end
+        end
+        if indexes[at] then
+            later(step)
+        else
+            complete()
+        end
+    end
+    later(step)
+end
+
 -- Objects that spawned inside each other are frozen instead of flying apart (E34, G63).
 function Snapshot.FreezePenetrating(entities)
     local frozen = 0
@@ -852,6 +1011,7 @@ function Snapshot.Report(ctx, label, report, keepMoving)
     -- What happened, e.g. "1 of 3 restored, 2 already on the map, 1 put back · addon not installed:
     -- timedoor". A restore that only created everything keeps the module's own summary.
     local head = created .. " of " .. report.total .. " restored"
+    if report.ticks then head = head .. " over " .. report.ticks .. " ticks" end
     if #report.existing > 0 then head = head .. ", " .. #report.existing .. " already on the map" end
     if (report.reset or 0) > 0 then head = head .. ", " .. report.reset .. " put back" end
     if (report.removed or 0) > 0 then head = head .. ", " .. report.removed .. " removed (exact restore)" end

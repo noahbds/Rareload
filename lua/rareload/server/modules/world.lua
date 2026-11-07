@@ -40,10 +40,12 @@ RARELOAD.Module({
 
     restore = function(ply, snap, ctx)
         local removed = ctx.exact and Snapshot.RemoveMissing(ply, ctx, snap, entityPicker(ply)) or 0
-        local report = Snapshot.Restore(snap, ply,
-            { kind = "props", reset = ctx.reset, given = ctx.shared.givenWeapons })
-        report.removed = removed
-        Snapshot.Report(ctx, "entities", report)
+        -- A large build is created over several ticks (D2).
+        Snapshot.RestoreBatched(snap, ply, { kind = "props", reset = ctx.reset, given = ctx.shared.givenWeapons },
+            ctx, function(report)
+                report.removed = removed
+                Snapshot.Report(ctx, "entities", report)
+            end)
     end,
 
     summary = function(snap) return Snapshot.Summary(snap, "entities") end,

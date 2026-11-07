@@ -343,6 +343,15 @@ RARELOAD.Setting("restoreNeedsSpawn", {
     category = "timing",
     help = "PvP: timeline restores only within this many seconds of spawning (0 = off)"
 })
+RARELOAD.Setting("restoreBatch", {
+    type = "int",
+    default = 50,
+    min = 0,
+    max = 1000,
+    scope = "server",
+    category = "timing",
+    help = "Objects created per tick when restoring a large build, so it doesn't freeze the server (0 = all at once)"
+})
 RARELOAD.Setting("fireDuration", {
     type = "float",
     default = 10,
