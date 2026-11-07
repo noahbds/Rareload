@@ -49,18 +49,22 @@ hook.Add("PlayerSpawnedSWEP", "Rareload.Ownership", record)
 hook.Add("PlayerDroppedWeapon", "Rareload.Ownership", record)
 
 -- Reverse indexes of every player's cleanup list and the undo table, built once per scan (L19).
+-- GMod keys both by the player's UniqueID and keeps them across a reconnect, when an undo entry's
+-- Owner is no longer a valid player: the key names the player then (B-06).
 local function buildLists()
-    local owners = {}
-    for _, ply in player.Iterator() do
-        for _, list in pairs(ply.CleanupList or {}) do
+    local owners, byUid = {}, {}
+    for _, ply in player.Iterator() do byUid[tostring(ply:UniqueID())] = ply:SteamID64() end
+    for uid, types in pairs(cleanup.GetList() or {}) do
+        local sid = byUid[tostring(uid)]
+        for _, list in pairs(sid and types or {}) do
             for _, ent in pairs(list) do
-                if IsValid(ent) and not owners[ent] then owners[ent] = ply:SteamID64() end
+                if IsValid(ent) and not owners[ent] then owners[ent] = sid end
             end
         end
     end
-    for _, entries in pairs(undo.GetTable() or {}) do
+    for uid, entries in pairs(undo.GetTable() or {}) do
         for _, entry in pairs(entries) do
-            local sid = istable(entry) and toSid64(entry.Owner)
+            local sid = istable(entry) and (toSid64(entry.Owner) or byUid[tostring(uid)])
             if sid then
                 for _, ent in pairs(entry.Entities or {}) do
                     if IsValid(ent) and not owners[ent] then owners[ent] = sid end
