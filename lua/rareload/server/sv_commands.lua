@@ -896,16 +896,16 @@ local SELFTEST = {
         local ok, value = pcall(function()
             RARELOAD.Store.Save(rel, { v = RARELOAD.Store.SCHEMA, value = 42 })
             RARELOAD.Store.Flush()
-            RARELOAD.Store._cache[rel] = nil
+            RARELOAD.Store.Forget(rel)
             return (RARELOAD.Store.Load(rel) or {}).value == 42
         end)
         pcall(RARELOAD.Store.Delete, rel)
         pcall(RARELOAD.Store.Flush)
-        RARELOAD.Store._cache[rel] = nil
+        RARELOAD.Store.Forget(rel)
         return ok and value == true
     end },
     { "Every module is in a known phase", function()
-        return pcall(RARELOAD.Pipeline.Order, table.ClearKeys(RARELOAD.Pipeline._defs))
+        return pcall(RARELOAD.Pipeline.Order, table.ClearKeys(RARELOAD.Pipeline.Defs()))
     end },
 }
 

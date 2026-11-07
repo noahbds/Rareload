@@ -102,6 +102,12 @@ function Store.Save(rel, doc)
     return true
 end
 
+-- Drops a document from memory (one read once, like an export): the next Load reads the file again.
+-- What is waiting to be written is kept.
+function Store.Forget(rel)
+    if not dirty[rel] then cache[rel], readonly[rel] = nil, nil end
+end
+
 function Store.Delete(rel)
     local base = ROOT .. rel
     for _, suffix in ipairs({ ".json", ".tmp.json", ".bak.json" }) do

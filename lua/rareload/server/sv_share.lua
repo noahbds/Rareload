@@ -49,7 +49,7 @@ function Share.WriteFile(ply, entry, name)
     local rel = EXPORTS .. Share.FileName(entry, name)
     RARELOAD.Store.Save(rel, Share.Export(ply, entry))
     RARELOAD.Store.Flush()
-    RARELOAD.Store._cache[rel] = nil -- an export is never read back by this session
+    RARELOAD.Store.Forget(rel) -- an export is never read back by this session
     log(ply):info("%s exported save No. %s to data/rareload/%s.json", ply:Nick(), tostring(entry.id), rel)
     return "data/rareload/" .. rel .. ".json"
 end
@@ -151,7 +151,7 @@ function Share.Import(ply, doc, opts)
     local sameMap = doc.map == game.GetMap()
     local data, dropped, objects = {}, {}, 0
     for id, value in pairs(doc.entry.data) do
-        local def = RARELOAD.Pipeline._defs[id]
+        local def = RARELOAD.Pipeline.Def(id)
         local ok, why = def ~= nil and def.load == nil, "unknown part"
         if ok and not sameMap and (def.phase == "world" or id == "transform") then
             ok, why = false, "made on " .. tostring(doc.map)
@@ -174,7 +174,7 @@ function Share.Import(ply, doc, opts)
     if not (sameMap and own) then Share.Rekey(data) end
     if not own and istable(data.weaponState) then data.weaponState.owned = nil end
     for id, value in pairs(data) do
-        local def = RARELOAD.Pipeline._defs[id]
+        local def = RARELOAD.Pipeline.Def(id)
         if def.heavy then data[id] = { ["$blob"] = RARELOAD.Store.BlobPut(value) } end
     end
 
@@ -215,7 +215,7 @@ Share.ImportAndTell = importAndTell
 function Share.ReadFile(name)
     local rel = EXPORTS .. RARELOAD.Store.Clean(name)
     local doc = RARELOAD.Store.Load(rel, true)
-    RARELOAD.Store._cache[rel] = nil -- read once, never kept
+    RARELOAD.Store.Forget(rel) -- read once, never kept
     return doc
 end
 

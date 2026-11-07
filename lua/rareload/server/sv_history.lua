@@ -711,7 +711,7 @@ end
 function History.LightData(entry)
     local light = {}
     for id, value in pairs(entry and entry.data or {}) do
-        local def = RARELOAD.Pipeline._defs[id]
+        local def = RARELOAD.Pipeline.Def(id)
         if def and not def.heavy and def.phase ~= "world" then light[id] = value end
     end
     return light

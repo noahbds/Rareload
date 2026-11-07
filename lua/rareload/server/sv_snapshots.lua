@@ -36,7 +36,7 @@ local function capture(ply)
     if not ok or not entry then return nil end
     local data = {}
     for id, value in pairs(entry.data) do
-        local def = Pipeline._defs[id]
+        local def = Pipeline.Def(id)
         data[id] = def and def.heavy and { ["$blob"] = RARELOAD.Store.BlobPut(value) } or value
     end
     return next(data) and data or nil
@@ -71,8 +71,7 @@ function Snapshots.Take(done)
                 local data = capture(p)
                 if data then snap.players[#snap.players + 1] = { sid = p:SteamID64(), nick = p:Nick(), data = data } end
             end
-            local queue = Pipeline._queue
-            queue[#queue + 1] = step
+            Pipeline.Defer(step)
             return
         end
         local d = doc()
@@ -85,8 +84,7 @@ function Snapshots.Take(done)
         RARELOAD.Log("snapshots", nil):verbose("snapshot No. %d: %d players", snap.id, #snap.players)
         if done then done(snap) end
     end
-    local queue = Pipeline._queue
-    queue[#queue + 1] = step
+    Pipeline.Defer(step)
     return true
 end
 
@@ -203,8 +201,7 @@ hook.Add("RareloadRestored", "Rareload.Snapshots", function(ply) afterFirstSpawn
 hook.Add("PlayerSpawn", "Rareload.Snapshots", function(ply)
     -- No save on this map: nothing is restored, so the check happens a tick later.
     if crashCheck[ply] and not RARELOAD.History.Active(ply) then
-        local queue = Pipeline._queue
-        queue[#queue + 1] = function() if IsValid(ply) then afterFirstSpawn(ply) end end
+        Pipeline.Defer(function() if IsValid(ply) then afterFirstSpawn(ply) end end)
     end
 end)
 

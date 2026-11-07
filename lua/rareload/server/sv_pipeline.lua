@@ -75,6 +75,16 @@ end
 -- Fail on bad module definitions at load time, not on the first save.
 hook.Add("RareloadLoaded", "Rareload.Pipeline.Validate", function() order() end)
 
+-- A registered module's definition, or nil; and every definition by id (do not modify either).
+function Pipeline.Def(id) return defs[id] end
+function Pipeline.Defs() return defs end
+
+-- Runs fn on the next tick, in order with the rest of the deferred work.
+function Pipeline.Defer(fn)
+    local queue = Pipeline._queue
+    queue[#queue + 1] = fn
+end
+
 -- One Tick hook runs deferred work; the pipeline and modules never use timers (§15.1).
 hook.Add("Tick", "Rareload.Pipeline.NextTick", function()
     local queue = Pipeline._queue
@@ -93,8 +103,7 @@ Pipeline.mapReady = Pipeline.mapReady or false
 hook.Add("InitPostEntity", "Rareload.Pipeline.MapReady", function() Pipeline.mapReady = true end)
 hook.Add("PreCleanupMap", "Rareload.Pipeline.MapReady", function() Pipeline.mapReady = false end)
 hook.Add("PostCleanupMap", "Rareload.Pipeline.MapReady", function()
-    local queue = Pipeline._queue
-    queue[#queue + 1] = function() Pipeline.mapReady = true end
+    Pipeline.Defer(function() Pipeline.mapReady = true end)
 end)
 
 -- After a Source save load or a map transition the engine already restored the world, so the first
@@ -267,10 +276,9 @@ function Ctx:isCurrent()
 end
 
 function Ctx:nextTick(fn)
-    local queue = Pipeline._queue
-    queue[#queue + 1] = function()
+    Pipeline.Defer(function()
         if self:isCurrent() then fn() end
-    end
+    end)
 end
 
 -- Polls `pred` once per tick; runs `fn` when it's true, or `onTimeout` after `timeout` seconds.

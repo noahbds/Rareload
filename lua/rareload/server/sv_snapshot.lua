@@ -906,12 +906,7 @@ function Snapshot.RestoreBatched(snap, ply, opts, ctx, onDone)
     duplicator.SetLocalAng(angle_zero)
     if IsValid(ply) then RARELOAD.Toast(ply, "toast.restore_batched", { count }) end
 
-    -- The pipeline's tick queue is a new table every tick, so it is looked up each time: a reference
-    -- kept from now would be the list the current tick is still running.
-    local function later(fn)
-        local queue = RARELOAD.Pipeline._queue
-        queue[#queue + 1] = fn
-    end
+    local later = RARELOAD.Pipeline.Defer
 
     -- Runs fn(item) for `batch` items a tick, then after().
     local function inBatches(list, fn, after)
