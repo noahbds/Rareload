@@ -148,3 +148,20 @@ To prevent adding dead defensive code for theoretical bugs that cannot happen in
 - **Deliverables Written**:
   - Created [`/Users/noah/gmod-debug-mcp/MCP_IMPROVEMENT_PLAN.md`](file:///Users/noah/gmod-debug-mcp/MCP_IMPROVEMENT_PLAN.md) covering Phases `M1`–`M5`.
   - Updated [`RARELOAD_FUTURE_5.5_STATE_OWNERSHIP_AND_VALIDATION_PLAN.md`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/RARELOAD_FUTURE_5.5_STATE_OWNERSHIP_AND_VALIDATION_PLAN.md#L1511-L1557) (`§15.14`).
+
+
+## 2026-11-07 — Full 54-File Rareload 5.4 (`main` `64797e3`) & `gmod-debug-mcp` (`v0.5.0` `3534946`) Codebase Audit
+- **Scope Audited**:
+  - Read **100% of all 54 Lua files (`16,616` LOC)** on `main` (`64797e3`, published Rareload `5.4` including `5.4-part-2` PR `#9`: `sv_checkpoints.lua`, `sv_death.lua`, `sv_snapshots.lua`, `cl_checkpoints.lua`, `cl_death.lua`, `cl_place.lua`, `Snapshot.RestoreBatched`, `History.MoveEntry`, `History.RestoreEntry` undo stack, `Store.Overview`/`Store.Prune`, and `1c655e7` `sh_perms.lua` `MAX_NW = 500`).
+  - Verified [`/Users/noah/gmod-debug-mcp`](file:///Users/noah/gmod-debug-mcp) `v0.5.0` (`3534946`, all 5 phases `M1`–`M5` implemented).
+- **Major Updates Applied to [`RARELOAD_FUTURE_5.5_STATE_OWNERSHIP_AND_VALIDATION_PLAN.md`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/RARELOAD_FUTURE_5.5_STATE_OWNERSHIP_AND_VALIDATION_PLAN.md)**:
+  1. **State Ownership Fixes for 5.4-part-2 Modules (Phases 0–3)**:
+     - Added `sv_checkpoints.lua:15-21`, `sv_death.lua:37-40`, and `sv_storage.lua:249-302` (`Store.Overview`/`Store.Prune` forgetting `d.deathId` and `d.quickId`) to Phase 2 `History`/`Store` encapsulation.
+     - Added `sv_snapshots.lua:39,74,88,203` and `sv_snapshot.lua:906` (`Pipeline._defs`/`Pipeline._queue` reach-ins) to Phase 1 `Pipeline.Session(ply)` / `Pipeline.ModuleDefs()` encapsulation.
+     - Added `cl_checkpoints.lua:11-26` and `cl_death.lua:15-17` client caches to Phase 3 `cl_state.lua`.
+  2. **Deduplication & Performance Expansion Across All 54 Files (Phases 6–8)**:
+     - Added `sh_net.lua` (56 net op schemas), `sv_commands.lua` (`949` LOC, 48 command paths), `sv_history.lua` (`1,043` LOC, `ModulesFor`/`Objects`/`DeleteObject`/`MoveEntry` consolidation), and `cl_place.lua:171-334` per-frame HUD trace/halo allocation removal.
+  3. **Skeptical Triage & 4 New 5.4-part-2 Bug Candidates (Phases 11–12 & §15.17)**:
+     - Proven `S-03` (`object.detail` sending `def = obj.def`) **`FALSE_POSITIVE`** (`world/cl_panels.lua:284-327` `objectCats` requires `detail.def` for 4 tabs of the 3D2D World Display).
+     - Recorded `S-07` (`sh_perms.lua:182-206`) as already resolved in `1c655e7` (except revoking when `> MAX_NW`).
+     - Added **`B-13`** (`sv_snapshots.lua:35` & `sv_history.lua:190` calling `Pipeline.Save(..., { captureOnly = true })` which aborts on dead/spectating/disabled players), **`B-14`** (`sv_snapshot.lua:885-981` `Snapshot.RestoreBatched` overlapping timer race & `DENIED[def.ClassOverride]`), **`B-15`** (`sv_history.lua:768-779` `history.move` target player refresh), and **`B-16`** (`sv_death.lua:34-40` double `Store.Save` & `keepActive` comparison bug).
