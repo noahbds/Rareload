@@ -165,3 +165,15 @@ To prevent adding dead defensive code for theoretical bugs that cannot happen in
      - Proven `S-03` (`object.detail` sending `def = obj.def`) **`FALSE_POSITIVE`** (`world/cl_panels.lua:284-327` `objectCats` requires `detail.def` for 4 tabs of the 3D2D World Display).
      - Recorded `S-07` (`sh_perms.lua:182-206`) as already resolved in `1c655e7` (except revoking when `> MAX_NW`).
      - Added **`B-13`** (`sv_snapshots.lua:35` & `sv_history.lua:190` calling `Pipeline.Save(..., { captureOnly = true })` which aborts on dead/spectating/disabled players), **`B-14`** (`sv_snapshot.lua:885-981` `Snapshot.RestoreBatched` overlapping timer race & `DENIED[def.ClassOverride]`), **`B-15`** (`sv_history.lua:768-779` `history.move` target player refresh), and **`B-16`** (`sv_death.lua:34-40` double `Store.Save` & `keepActive` comparison bug).
+
+
+## 2026-11-07 — Phase 4 Expansion: Full Quantitative Audit of Defensive Programming Across All 54 Lua Files
+- **Total Defensive Guards Counted Across 54 Files (`16,616` LOC)**: **984 guards** (`304` `or {}`, `259` `istable`, `197` `IsValid`, `128` `isstring`/`isnumber`/`isbool`/`isfunction`, `61` `tonumber(...) or` / `tostring(...)` coercions, `34` `pcall`/`ProtectedCall`).
+- **6 Concrete Cleanup Rules Added to [`§7 Phase 4`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/RARELOAD_FUTURE_5.5_STATE_OWNERSHIP_AND_VALIDATION_PLAN.md#L281-L508)**:
+  1. **Rule 1 (`§7.3`)**: Normalize `History.Doc(ply)` (`entries`, `checkpoints`, `entry.data`, `entry.note`) and `Snapshot.Normalize(snap)` (`Entities`, `Constraints`, `runtime`, `ai`, `def.EntityMods.rareload`, `def.PhysicsObjects`) **once** on load/capture—removing **~130 `istable(...)` / `or {}` guards**.
+  2. **Rule 2 (`§7.4`)**: Prefix `Snapshot.ID(ent)` with `"r"` (`"r" .. util.SHA256(...):sub(1, 11)`) and normalize keys once on disk load (`Snapshot.Normalize`, `ammo.reserve`)—eliminating **all 35 dual-key probes** (`snap.runtime[id] or snap.runtime[tonumber(id)]`, `def.PhysicsObjects[0] or def.PhysicsObjects["0"]`, `ammo.reserve[name] or ammo.reserve[tonumber(name)]`, `tostring(ent.RareloadID) == tostring(objectId)`).
+  3. **Rule 3 (`§7.5`)**: Trust `sh_net.lua` (`Net.Validate`) and server-built `Net.Push` payloads—removing **~45 redundant net guards and `tostring(...)` calls**.
+  4. **Rule 4 (`§7.6`)**: Stop re-guarding `RARELOAD.State` and `History.Info` across `cl_history.lua`, `cl_inventory.lua`, `cl_inspector.lua`, and `world/cl_panels.lua` (`ordered(t)`)—removing **~85 client `or {}` / `istable` guards**.
+  5. **Rule 5 (`§7.7`)**: Stop checking `isfunction(ply.SetWalkSpeed)` on standard GMod `Player` metatable methods (`modules/player.lua:230-320`) and stop re-validating `Inventory.Clean` / `weapon_state.lua` / `scene.lua` internal tables.
+  6. **Rule 6 (`§7.8`)**: Remove synchronous duplicate `IsValid` checks and internal-only `pcall` wrappers (`sv_status.lua`, `sv_commands.lua`).
+  - **Total Phase 4 Impact**: Removes **~260 redundant defensive guards** and saves **~270 LOC**.

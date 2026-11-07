@@ -278,24 +278,234 @@ In 5.4, most new features (`history.players`, `snapshots`, `data.usage`, `blocke
 
 ------------------------------------------------------------------------
 
-## 7. Phase 4 --- Simplify Defensive Programming & Harden Trust Boundaries
+## 7. Phase 4 --- Eliminate Excessive Defensive Programming & Enforce Boundary-Once Normalization
 
-**Goal:** enforce strict validation at every external trust boundary while removing redundant checks inside internal helpers whose callers already guarantee the contract.
+**Goal:** cure one of Rareload's biggest sources of code bloat and visual noise—**paranoid, repetitive defensive programming**—by normalizing data shapes **once** at external trust boundaries and removing the hundreds of redundant `istable(...)`, `or {}`, `tonumber(...) or 0`, `tostring(...)`, dual-key probes (`t[id] or t[tonumber(id)]`), and redundant `IsValid` / `pcall` checks scattered across internal functions.
 
-### 7.1 Complete Trust Boundary Inventory in Rareload 5.4
+---
 
-| Trust Boundary | Entry Point(s) in 5.4 | Required Validation Policy |
-| :--- | :--- | :--- |
-| **1. Client → Server Net Requests (`36` ops)** | [`sh_net.lua:19-41`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/shared/sh_net.lua#L19-L41) (`CLIENT_OPS` schema + `priv` + `rate`) & `Net.On` handlers in `sv_history.lua`, `sv_checkpoints.lua`, `sv_death.lua`, `sv_exclude.lua`, `sv_snapshots.lua`, `sv_storage.lua`, `sv_share.lua`, `sv_inventory.lua`, `sv_antistuck.lua`, `sh_config.lua` | Strict type/range validation (`checkType`), privilege check (`RARELOAD.Can`), per-op token-bucket rate limit, finite coordinate/angle checks (`history.move`), and `Snapshot.Plain` sanitization (`object.edit`) |
-| **2. Chunked Uploads (`import`, `inventory.upload`)** | [`sh_net.lua:207-244`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/shared/sh_net.lua#L207-L244), [`sv_share.lua:171-193`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_share.lua#L171-L193), [`sv_inventory.lua:242-259`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_inventory.lua#L242-L259) | Enforce `1 <= a.part <= u.total`, byte cap (`importMaxKB`), `Util.CheckJSON` depth cap (`<= 32`), `Snapshot.Plain`, denied-class check (`Snapshot.IsDeniedClass`), and safe numeric bounds |
-| **3. Disk JSON & Blob Loader** | [`sv_storage.lua:60-90, 127-146`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_storage.lua#L60-L90) | `.bak` fallback, `.corrupt` quarantine, `readonly` lock on corrupt files, and `schema` migration |
-| **4. Console Commands (`rareload ...`)** | [`sv_commands.lua:1-949`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_commands.lua#L1-L949) | Privilege check (`can`), target resolution (`targetOf` / `withTarget`), and typed argument parsing |
-| **5. Third-Party Addon & Engine Boundaries** | `vehicle_adapters.lua`, `weapon_state.lua`, `entity_state.lua`, `scene.lua`, `player.lua`, `sh_perms.lua` (CAMI), `sv_ownership.lua` (CPPI) | Keep all `pcall` / `ProtectedCall` / `IsValid` guards around external addon tables, hooks, and entities |
-| **6. Internal Helper → Internal Helper** | Inside `sv_history.lua`, `sv_snapshot.lua`, `sv_inventory.lua`, `cl_ui.lua`, `cl_panels.lua` | Rely on documented contracts (e.g., `Inventory.Clean` output, `History.Doc` structure) without re-validating the same table shape on every internal call |
+### 7.1 Quantitative Audit: Why Rareload 5.4 Feels Over-Defensive (984 Guards Across 54 Files)
 
-### 7.2 Preserve Meaningful Runtime Checks
+A static scan across all **54 Lua files (`16,616` LOC)** of published Rareload 5.4 counts **984 defensive type, fallback, coercion, and wrapper expressions** (~1 every 16 lines of code):
 
-Never remove checks that guard against disconnected players (`IsValid(ply)`), removed entities (`IsValid(ent)`), superseded batched restores (`ctx:isCurrent()`), missing weapon/entity classes (`weapons.GetStored`, `scripted_ents.GetStored`), or third-party addon errors (`pcall`).
+| Defensive Pattern | Count in 5.4 | Where It Is Legitimate (Keep) | Where It Is Pure Bloat (Remove in Phase 4) |
+| :--- | :---: | :--- | :--- |
+| **`or {}` fallback tables** | **304** | Defaulting optional `opts = opts or {}` or initializing empty state once | Inside loops, `Paint` hooks, and internal readers (`d and d.entries or {}`, `snap and snap.Entities or {}`, `row.info or {}`, `State.players or {}`) where the table is already guaranteed non-nil |
+| **`istable(...)` guards** | **259** | External JSON imports (`sv_share.lua`), Inspector edits (`ValidateEdit`), third-party addon tables (`ARC9`, `StormFox2`, `LVS`) | Re-checking internal subtables (`istable(def.EntityMods)`, `istable(v.data)`, `istable(p.list)`, `istable(detail.constraints)`) that Rareload itself created or normalized |
+| **`IsValid(...)` guards** | **197** | Delayed timers/hooks, live entities on the map, Derma frame references, `net.Receive` player check | Re-checking `IsValid(ply)` or `IsValid(ent)` inside synchronous internal helpers immediately after the caller already checked it in the same tick |
+| **`isstring` / `isnumber` / `isbool` / `isfunction`** | **128** | `Net.Validate` (`sh_net.lua`), `Inventory.Clean` (`sv_inventory.lua`), third-party method checks | Re-checking validated `Net.Handle` args, `Net.On` server payloads, or vanilla GMod `Player` metatable methods (`isfunction(ply.SetWalkSpeed)`) |
+| **`tonumber(...) or` & `tostring(...)` coercions** | **61** | Parsing raw console command string `args` in `sv_commands.lua` | Dual-key probing (`snap.runtime[id] or snap.runtime[tonumber(id)]`, `ammo.reserve[name] or ammo.reserve[tonumber(name)]`) and `tostring(id)` on already-typed IDs |
+| **`pcall` / `ProtectedCall`** | **34** | `Util.CheckJSON`, `Net` dispatch, `Pipeline` module boundaries, third-party vehicle/weapon adapters, `CPPI` | Wrapping internal Rareload functions (`sv_status.lua`, `sv_commands.lua`) that already return `ok, err` |
+
+**Top 12 Most Over-Defensive Files in Rareload 5.4:**
+1. [`sv_snapshot.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_snapshot.lua) — **122 guards** (`40 istable`, `39 IsValid`, `21 or {}`, `10 tonumber(...) or`, `7 isstring`)
+2. [`modules/weapon_state.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/modules/weapon_state.lua) — **80 guards** (`34 istable`, `19 or {}`, `7 isstring`, `6 isnumber`, `5 isfunction`)
+3. [`sv_history.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_history.lua) — **67 guards** (`23 or {}`, `21 istable`, `12 isstring`, `7 IsValid`)
+4. [`world/cl_panels.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/world/cl_panels.lua) — **44 guards** (`19 istable`, `18 or {}`, `4 IsValid`)
+5. [`sv_commands.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_commands.lua) — **44 guards** (`20 IsValid`, `7 or {}`, `6 pcall`, `4 isstring`, `3 istable`)
+6. [`modules/player.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/modules/player.lua) — **38 guards** (`16 istable`, `7 isnumber`, `5 isfunction`, `5 or {}`)
+7. [`modules/scene.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/modules/scene.lua) — **35 guards** (`14 istable`, `6 isnumber`, `6 IsValid`, `3 isfunction`, `3 pcall`)
+8. [`sv_inventory.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_inventory.lua) — **33 guards** (`16 istable`, `11 or {}`, `2 isstring`, `2 IsValid`)
+9. [`sv_share.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_share.lua) — **32 guards** (`19 istable`, `5 isstring`, `4 or {}`, `3 IsValid`)
+10. [`modules/vehicle_adapters.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/modules/vehicle_adapters.lua) — **32 guards** (`9 isfunction`, `8 or {}`, `6 IsValid`, `5 pcall`)
+11. [`sv_storage.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_storage.lua) — **26 guards** (`19 or {}`, `5 istable`, `2 tonumber(...) or`)
+12. [`cl_state.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_state.lua), [`cl_history.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_history.lua), [`cl_inventory.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_inventory.lua), [`cl_inspector.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_inspector.lua) — **75 guards combined** (`46 or {}` across the 4 client state/window files).
+
+---
+
+### 7.2 Architectural Principle: "Parse & Normalize Once at the Boundary — Trust Internal Contracts"
+
+Instead of checking `if istable(x)` and `x or {}` at every internal call site, Rareload 5.5 enforces validation and structural normalization **strictly at the 5 external trust boundaries**, and guarantees canonical shapes everywhere inside the addon:
+
+| Trust Boundary | Entry Point(s) | What Must Be Validated & Normalized Here (Once) | What Internal Callers Can Assume Afterwards (Zero Re-Checks) |
+| :--- | :--- | :--- | :--- |
+| **1. Client → Server Net (`36` ops)** | [`sh_net.lua:32-55, 155-178`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/shared/sh_net.lua#L32-L55) (`Net.Validate`) | `IsValid(ply)`, `RARELOAD.Can(ply, h.priv)`, rate limit, and exact field types/lengths (`bool`, `number`, `uint`, `string:N`) | `ply` is valid and authorized; every non-optional field in `a` exists with the exact Lua type declared in `args` |
+| **2. Untrusted JSON Payloads (`import`, `inventory.upload`, `object.edit`)** | [`sv_share.lua:105-193`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_share.lua#L105-L193), [`sv_inventory.lua:37-94`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_inventory.lua#L37-L94), [`sv_history.lua:491-499`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_history.lua#L491-L499) | `Util.CheckJSON` (depth `<= 32`), `Snapshot.Plain`, `Inventory.Clean`, `History.ValidateEdit`, `Snapshot.IsDeniedClass` | Cleaned inventories always have `{ weapons = {...}, ammo = { reserve = {...}, clips = {...} } }`; validated edits are plain tables |
+| **3. Disk JSON & Blob Loader** | [`sv_storage.lua:60-90, 127-146`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_storage.lua#L60-L90), [`sv_history.lua:23-29`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_history.lua#L23-L29) | `.bak` recovery, `.corrupt` quarantine, and **one-time structural + key normalization** (`normalizeDoc`, `normalizeBlob`) | `d.entries` and `d.checkpoints` are always tables; `snap.Entities`, `snap.Constraints`, `snap.runtime`, `snap.ai`, `def.EntityMods.rareload`, and `def.PhysicsObjects` are always tables with normalized key types |
+| **4. Console Commands (`rareload ...`)** | [`sv_commands.lua:1-949`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_commands.lua#L1-L949) | Privilege check (`can`), target resolution (`targetOf` / `withTarget`), and typed CLI argument parsing | Downstream `History.*`, `Checkpoints.*`, `Snapshots.*`, `Inventory.*` functions receive valid players/SIDs and typed arguments |
+| **5. Engine & Third-Party Addons** | `vehicle_adapters.lua`, `weapon_state.lua`, `entity_state.lua`, `scene.lua`, `player.lua`, `sh_perms.lua`, `sv_ownership.lua` | `IsValid(ent)` on live map entities and `pcall` around third-party addon APIs (`LVS`, `Simfphys`, `Glide`, `WAC`, `ARC9`, `ArcCW`, `TFA`, `MW`, `WireLib`, `StormFox2`, `pace`, `CPPI`) | Captured module output tables are plain, well-typed Lua tables that internal `summary` and `Info` functions can read directly |
+
+---
+
+### 7.3 Rule 1: Normalize Document & Snapshot Shapes Once on Load (`sv_history.lua`, `sv_storage.lua`, `sv_snapshot.lua`) — Removes ~130 `istable` / `or {}` Guards
+
+#### Why Defensive Checks Multiplied Here
+Currently, `History.Doc(ply)` (`sv_history.lua:23-29`) and `Store.BlobGet(hash)` (`sv_storage.lua:127-140`) return raw `util.JSONToTable` tables without normalizing optional subtables. Because `d.checkpoints`, `entry.data`, `snap.Entities`, `snap.Constraints`, `snap.runtime`, `snap.ai`, `def.EntityMods`, `def.EntityMods.rareload`, and `def.PhysicsObjects` might be `nil`, **every internal function** defensively re-checks them:
+- `sv_history.lua:40, 672` & `sv_storage.lua:168, 237, 276`: `for _, entry in ipairs(d and d.entries or {})`
+- `sv_history.lua:655` & `sv_storage.lua:169, 205`: `for _, value in pairs(entry and entry.data or {})`
+- `sv_history.lua:381, 509, 540, 612` & `sv_snapshot.lua:342, 434`: `for _, def in pairs(snap and snap.Entities or {})`
+- `sv_history.lua:346-351`:
+  ```lua
+  -- BEFORE (sv_history.lua:346-351 — 6 defensive checks in 6 lines!):
+  local mods = istable(def.EntityMods) and def.EntityMods or {}
+  local phys = istable(def.PhysicsObjects) and (def.PhysicsObjects[0] or def.PhysicsObjects["0"]) or {}
+  local rl = istable(mods.rareload) and mods.rareload or {}
+  local id = RARELOAD.Snapshot.DefID(def)
+  local runtime = id and istable(snap.runtime) and (snap.runtime[id] or snap.runtime[tonumber(id)]) or nil
+  local ai = id and istable(snap.ai) and (snap.ai[id] or snap.ai[tonumber(id)]) or nil
+  ```
+- `sv_snapshot.lua:150, 511, 593, 604, 613, 681`: repeats `local mods = istable(def.EntityMods) and def.EntityMods or {}` and `local rl = istable(mods.rareload) and mods.rareload or {}` **6 separate times** in the same file!
+
+#### Concrete Refactor
+1. **Normalize `History.Doc(ply)` once on load (`sv_history.lua:23-35`)**:
+   - Ensure `d.entries = d.entries or {}` and `d.checkpoints = d.checkpoints or {}`.
+   - When loading from disk (`Store.Load`), normalize each `entry` in `d.entries` once: `entry.data = entry.data or {}` and `entry.note = noteText(entry.note)` (removing the per-push `e.note = noteText(e.note)` mutation inside `History.Rows(ply)` at `sv_history.lua:673`!).
+2. **Normalize Snapshot Blobs once in `Snapshot.Normalize(snap)` (called by `Store.BlobGet` on cache miss and `Snapshot.Capture`)**:
+   - Ensure `snap.Entities = snap.Entities or {}`, `snap.Constraints = snap.Constraints or {}`, `snap.runtime = snap.runtime or {}`, `snap.ai = snap.ai or {}`.
+   - For each `def` in `snap.Entities`, ensure `def.EntityMods = def.EntityMods or {}`, `def.EntityMods.rareload = def.EntityMods.rareload or {}`, and `def.PhysicsObjects = def.PhysicsObjects or {}`.
+3. **Result (`objectInfo` in `sv_history.lua:345-352` after normalization)**:
+   ```lua
+   -- AFTER (zero defensive istable / or {} / dual-key probes):
+   local function objectInfo(def, kind, snap)
+       local mods, phys = def.EntityMods, def.PhysicsObjects[0]
+       local rl = mods.rareload
+       local id = rl.id
+       local runtime, ai = snap.runtime[id], snap.ai[id]
+   ```
+
+---
+
+### 7.4 Rule 2: Eliminate Dual-Key String/Number Probing (`t[id] or t[tonumber(id)]`) at the Root — Removes ~35 Coercions
+
+#### Why Defensive Dual-Key Probing Exists Today
+As noted in the comment at [`sv_snapshot.lua:147-148`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_snapshot.lua#L147-L148):
+> `-- IDs are 12 hex characters; about one in 300 is all digits, which JSON reads back as a number, so an ID is always handled as a string.`
+
+Because `util.JSONToTable` converts all-digit string keys (`"0"`, `"357"`, or an all-digit hex `RareloadID`) into Lua numbers when loading a JSON file, the codebase currently probes **both** string and number keys everywhere:
+- [`sv_history.lua:347`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_history.lua#L347): `def.PhysicsObjects[0] or def.PhysicsObjects["0"]`
+- [`sv_history.lua:350, 478`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_history.lua#L350): `snap.runtime[id] or snap.runtime[tonumber(id)]`
+- [`sv_history.lua:351, 477`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_history.lua#L351): `snap.ai[id] or snap.ai[tonumber(id)]`
+- [`sv_history.lua:458`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_history.lua#L458): `snap.Entities[e.Index] or snap.Entities[tostring(e.Index)]`
+- [`sv_snapshot.lua:396`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_snapshot.lua#L396): `old[field][id] or old[field][tonumber(id)]`
+- [`sv_snapshot.lua:516`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_snapshot.lua#L516): `bones[i] or bones[tostring(i)]`
+- [`sv_history.lua:584`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_history.lua#L584), [`modules/player.lua:429`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/modules/player.lua#L429), [`sv_snapshot.lua:152, 157, 370, 390, 436, 440`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_snapshot.lua#L152): `tostring(ent.RareloadID) == tostring(objectId)`
+- [`world/cl_panels.lua:165, 168`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/world/cl_panels.lua#L165-L168) & [`cl_inventory.lua:110, 115`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_inventory.lua#L110-L115): `ammo.reserve[name] or ammo.reserve[tonumber(name)]` (`-- "357" comes back as a number`).
+
+#### Concrete Refactor
+1. **Prefix `Snapshot.ID(ent)` with `"r"` ([`sv_snapshot.lua:113`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_snapshot.lua#L113))**:
+   - Change `util.SHA256(...):sub(1, 12)` to `"r" .. util.SHA256(...):sub(1, 11)` (just like `Snapshot.Num` already prefixes `"k_"` at line 139!). A newly generated `RareloadID` can **never** be all digits.
+2. **One-time key normalization in `Snapshot.Normalize(snap)` (for existing saves on disk)**:
+   - Convert `snap.Entities` keys and `def.PhysicsObjects` keys to `tonumber(k)`.
+   - Convert `snap.runtime` and `snap.ai` keys and `def.EntityMods.rareload.id` to `tostring(k)`.
+3. **One-time key normalization for `ammo.reserve` (`sv_inventory.lua` / `cl_state.lua`)**:
+   - Convert `ammo.reserve` keys to `tostring(k)` once when loading from disk or receiving over net.
+4. **Delete all 35 dual-key lookups and `tostring(id)` coercions** across `sv_snapshot.lua`, `sv_history.lua`, `modules/player.lua`, `cl_inventory.lua`, and `world/cl_panels.lua`.
+
+---
+
+### 7.5 Rule 3: Trust `sh_net.lua` Schema Validation & Server-Built Payloads — Removes ~45 Net Handler Guards
+
+#### Why Defensive Checks Multiplied Here
+In [`sh_net.lua:32-55, 155-178`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/shared/sh_net.lua#L32-L55), `Net.Validate(h.args, ...)` already validates every request argument's type and string length and drops unknown keys before calling `h.fn(ply, args)`. On the client, the server is the sole sender of `SYNC` topics. Yet handlers re-validate guaranteed types:
+1. **Client `Net.On` handlers re-checking server-built tables (`cl_state.lua`, `cl_checkpoints.lua`, `cl_share.lua`, `cl_death.lua`)**:
+   - [`cl_state.lua:51, 60, 65, 115`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_state.lua#L51-L115): writes `istable(p.list) and p.list or {}`, `istable(p.lines) and p.lines or {}`, `istable(p.classes) and p.classes or {}` even though `sv_history.lua:825`, `sv_snapshots.lua:191`, `sv_storage.lua:326`, and `sv_exclude.lua:51` **always** push non-nil tables (`{ list = list }`, `{ lines = lines }`, `{ classes = list }`). Simply write `State.players = p.list`, `State.snapshots = p.list`, `State.usage = p.lines`, `State.blocked = p.classes`.
+   - [`cl_checkpoints.lua:13`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_checkpoints.lua#L13): writes `istable(p.list) and p.list or {}` when `sv_checkpoints.lua:25` always pushes `{ list = list(ply) }`.
+   - [`cl_share.lua:22-23, 120-127`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_share.lua#L22-L127): writes `if not isstring(p.name) or not istable(p.doc) then return end`, `if not isstring(p.token) then return end`, `if (tonumber(p.objects) or 0) > 0`, `tostring(p.nick)`, `tonumber(p.id) or 0` on payloads constructed exclusively by `sv_share.lua:206, 250-262` where `name`/`token`/`nick` are always strings and `objects`/`weapons`/`id` are always numbers.
+2. **Server `Net.Handle` callbacks & `logged(...)` wrappers re-coercing validated `uint`/`string` args (`sv_history.lua:861, 1010-1042`)**:
+   - In [`sv_history.lua:1010-1042`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_history.lua#L1010-L1042), 10 `logged(...)` formatters call `tostring(id)`, `tostring(entryId)`, `tostring(objectId)`, `tostring(flag)`, `tostring(name)` **17 times** on parameters that are already validated numbers or strings. Lua's `..` and `string.format("%s", ...)` / `"%d"` format numbers and strings natively without `tostring(...)`.
+
+---
+
+### 7.6 Rule 4: Stop Re-Guarding `RARELOAD.State` and `History.Info` Across Client UI Files — Removes ~85 Client `or {}` / `istable` Guards
+
+#### 1. `cl_history.lua` (`15` `or {}` guards — [`cl_history.lua:26-547`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_history.lua#L26-L547))
+- `History.Rows(ply)` (`sv_history.lua:685`) **always** sets `row.info = History.Info(e.data)`, which **always** returns a table (`sv_history.lua:623`).
+- Yet [`cl_history.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_history.lua) writes `local i = row.info or {}` **8 separate times** (lines `26, 40, 74, 162, 204, 225, 241, 371`), plus `for _, p in ipairs(State.players or {})` at line `547` (when `State.players` is initialized to `{}` at `cl_state.lua:10` and never nil).
+- **Action:** Guarantee `row.info` is a table in `State.history.rows` and access `row.info` and `State.players` directly.
+
+#### 2. `cl_inventory.lua` (`11` `or {}` + `3` `tonumber(...) or` guards — [`cl_inventory.lua:78-407`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_inventory.lua#L78-L407))
+- Look at how `cl_inventory.lua` accesses `State.inventory[key]`:
+  - Line 78: `local clips = inv.ammo and inv.ammo.clips or {}`
+  - Line 79: `#(inv.weapons or {})`
+  - Line 80: `if #(inv.weapons or {}) == 0`
+  - Line 81: `table.Copy(inv.weapons or {})`
+  - Line 90: `tonumber(clip[1]) or -1, tonumber(clip[2]) or -1`
+  - Line 108: `local reserve = inv.ammo and inv.ammo.reserve or {}`
+  - Line 246: `local reserve = inv and inv.ammo and inv.ammo.reserve or {}`
+  - Line 248: `rounds = rounds + (tonumber(n) or 0)`
+  - Line 250: `inv and #(inv.weapons or {})`
+  - Line 253: `data and #(data.versions or {}) or 0`
+  - Line 348: `for i, v in ipairs(data and data.versions or {})`
+  - Line 407: `local versions = exists and #(data.versions or {}) or 0`
+- **Action:** Add `State.Inventory(target)` in [`cl_state.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_state.lua) that always returns a normalized record `{ inv = { weapons = {}, ammo = { reserve = {}, clips = {} } }, versions = {}, exists = false }`. Every single `inv and inv.ammo and inv.ammo.reserve or {}` and `data and #(data.versions or {}) or 0` in `cl_inventory.lua` collapses to direct field access (`inv.weapons`, `inv.ammo.reserve`, `inv.ammo.clips`, `#data.versions`).
+
+#### 3. `world/cl_panels.lua` (`19` `istable` + `18` `or {}` guards — [`world/cl_panels.lua:97-327`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/world/cl_panels.lua#L97-L327))
+- Look at `ordered(t)` at [`world/cl_panels.lua:95-104`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/world/cl_panels.lua#L95-L104):
+  ```lua
+  local function ordered(t)
+      local keys, i = {}, 0
+      for k in pairs(istable(t) and t or {}) do keys[#keys + 1] = k end
+  ```
+  `ordered(t)` **already handles `nil` or non-table `t` safely**! Yet every caller in `objectCats` (lines `277, 303, 307, 309, 317, 325`) still wraps the argument in `istable(...) and ... or {}`:
+  ```lua
+  -- BEFORE (world/cl_panels.lua:303-325 — redundant istable + temporary {} allocation at every call!):
+  for k, v in ordered(istable(c.set) and c.set or {}) do ... end
+  for k, v in ordered(istable(detail.runtime) and detail.runtime.root or {}) do ... end
+  for k, v in ordered(istable(detail.runtime) and detail.runtime.components or {}) do ... end
+  for k, v in ordered(istable(def.DT) and def.DT or {}) do ... end
+  for name, data in ordered(istable(def.EntityMods) and def.EntityMods or {}) do ... end
+  ```
+- **Action:** Make `ordered(t)` return a no-op iterator immediately `if not istable(t) then return noop end`, and change all 6 callers to pass `c.set`, `detail.runtime and detail.runtime.root`, `detail.runtime and detail.runtime.components`, `def.DT`, `def.EntityMods`, and `o.bodygroups` directly!
+
+---
+
+### 7.7 Rule 5: Stop Re-Validating Internal Domain Data & Standard GMod Metatable Methods (`sv_inventory.lua`, `modules/player.lua`, `modules/scene.lua`, `modules/weapon_state.lua`)
+
+1. **Standard GMod `Player` Metatable Methods ([`modules/player.lua:230-320`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/modules/player.lua#L230-L320))**:
+   - `modules/player.lua` checks `if not isfunction(ply[method]) then return nil end` (`L231`), `if isnumber(d[f[1]]) and isfunction(ply[f[3]])` (`L310`), and `if isnumber(d.suit) and isfunction(ply.SetSuitPower)` (`L316`) for standard GMod `Player` methods (`GetWalkSpeed`/`SetWalkSpeed`, `GetRunSpeed`/`SetRunSpeed`, `GetJumpPower`/`SetJumpPower`, `GetMaxHealth`/`SetMaxHealth`, `GetSuitPower`/`SetSuitPower`) that have been built into GMod's C++ `Player` metatable since GMod 13.
+   - **Action:** Call `ply[getter](ply)` and `ply[setter](ply, val)` directly without `isfunction(...)` guards.
+2. **Already-Cleaned Inventory Tables ([`sv_inventory.lua:97-250`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_inventory.lua#L97-L250) & [`modules/inventory_global.lua:20-65`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/modules/inventory_global.lua#L20-L65))**:
+   - In `sv_inventory.lua:150`, `v.data` was produced by `ofEntry(entry.data)` (`L135`), which always sets `weapons` to a table; `#(istable(v.data) and v.data.weapons or {})` simplifies to `#v.data.weapons`.
+   - In `sv_inventory.lua:250`, `inv` was just returned by `Inventory.Clean(raw)` (`L244`); `#(inv and inv.weapons or {})` simplifies to `#inv.weapons`.
+   - In `modules/inventory_global.lua`, `Inventory.GlobalGet(ply)` already returns a normalized `{ weapons = {...}, ammo = { reserve = {...}, clips = {...} } }` table; remove the 6 redundant `istable` and `or {}` checks when reading it.
+3. **Internal Weapon-State & Scene Tables ([`modules/weapon_state.lua:63-268`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/modules/weapon_state.lua#L63-L268) & [`modules/scene.lua:99-201`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/modules/scene.lua#L99-L201))**:
+   - Keep `istable` / `isfunction` / `pcall` guards when probing external SWEP tables (`wep.Attachments`, `ARC9`, `ArcCW`, `TFA`, `MW_ATTS`, `StormFox2`), **but remove** redundant `istable(t.slots) and t.slots or {}`, `istable(t.sel) and t.sel or {}`, `istable(t.atts) and t.atts or {}`, and `istable(d.entities) and d.entities or {}` when reading Rareload's own captured payload tables!
+
+---
+
+### 7.8 Rule 6: Remove Redundant `IsValid` and Internal `pcall` Wrappers (`sv_commands.lua`, `sv_snapshot.lua`, `sv_status.lua`)
+
+1. **Synchronous `IsValid(ply)` / `IsValid(ent)` Call Chains**:
+   - Once `sv_commands.lua` validates `IsValid(ply)` at command entry (or `Net.Receive` validates `ply`), synchronous helpers called in the same tick (`History.*`, `Checkpoints.*`, `Snapshots.*`, `Inventory.*`) do not re-check `IsValid(ply)` unless `ply` can be an offline SteamID64 string (`isstring(ply)`).
+   - Once `collectEntities` in `sv_snapshot.lua:455-505` filters `IsValid(ent)` for the current tick's capture list, synchronous per-entity helpers called immediately in the same loop (`Snapshot.ID(ent)`, `Snapshot.Num(ent)`, `motionOf(ent)`, `animOf(ent)`) do not re-check `IsValid(ent)`.
+2. **Restrict `pcall` / `ProtectedCall` Strictly to External Boundaries**:
+   - Keep `pcall` / `ProtectedCall` at:
+     - `sh_util.lua:140` (`Util.CheckJSON` parser bailout)
+     - `sh_net.lua:177, 236` (`Net` request/upload dispatch isolation)
+     - `sv_pipeline.lua:70, 315` (`Pipeline` module capture/restore isolation)
+     - `sv_ownership.lua:34, 49` (`CPPI` calls)
+     - `vehicles.lua`, `vehicle_adapters.lua`, `weapon_state.lua`, `entity_state.lua`, `scene.lua` (third-party addon hooks and `duplicator.Paste`).
+   - Remove redundant `pcall` wrappers around internal Rareload functions in `sv_status.lua:60` and `sv_commands.lua`.
+
+---
+
+### 7.9 Summary of Phase 4 Defensive Cleanup Targets Across the Codebase
+
+| File | Current Guards in 5.4 | Guards Removed in Phase 4 | How They Are Eliminated | Est. Lines Saved |
+| :--- | :---: | :---: | :--- | :---: |
+| [`sv_history.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_history.lua) | 67 | **~42** | Canonical `History.Doc` + `Snapshot.Normalize` + `"r"`-prefixed IDs + remove `tostring` in `logged` | **~45 LOC** |
+| [`sv_snapshot.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_snapshot.lua) | 122 | **~48** | `Snapshot.Normalize` (`Entities`, `Constraints`, `EntityMods.rareload`, `PhysicsObjects`) + `"r"` ID prefix | **~50 LOC** |
+| [`world/cl_panels.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/world/cl_panels.lua) | 44 | **~28** | Nil-safe `ordered(t)` + normalized `ammo.reserve` string keys + normalized `detail.def` | **~30 LOC** |
+| [`modules/weapon_state.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/modules/weapon_state.lua) | 80 | **~24** | Trust Rareload's own captured `state.weapons`, `t.slots`, `t.sel`, `t.atts` tables | **~25 LOC** |
+| [`cl_state.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_state.lua) + [`cl_history.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_history.lua) + [`cl_inventory.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_inventory.lua) + [`cl_inspector.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_inspector.lua) | 75 | **~52** | Canonical `State.Inventory(target)`, `State.Objects(id)`, guaranteed `row.info`, trust server `Net.On` tables | **~55 LOC** |
+| [`sv_inventory.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_inventory.lua) + [`modules/inventory_global.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/modules/inventory_global.lua) | 46 | **~18** | Trust `Inventory.Clean` and `ofEntry` output shapes without re-checking `istable` / `or {}` | **~20 LOC** |
+| [`modules/player.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/modules/player.lua) + [`modules/scene.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/modules/scene.lua) | 73 | **~22** | Remove `isfunction(ply.SetWalkSpeed)` checks on built-in `Player` metatable methods; trust `d.entities` | **~20 LOC** |
+| [`sv_storage.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_storage.lua) + [`sv_commands.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_commands.lua) + [`cl_share.lua`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_share.lua) | 82 | **~26** | Normalize docs on load; validate `ply` once in command spec; trust server `export.file` / `share.offer` payloads | **~25 LOC** |
+| **Total Across Phase 4** | **984** | **~260 Guards Removed** | **Validate & Normalize at 5 Trust Boundaries Only** | **~270 LOC Saved** |
+
+### 7.10 Preserve Meaningful Runtime Checks (Never Remove)
+
+Never remove checks that guard against genuine runtime uncertainty:
+- Disconnected players in timers/hooks (`IsValid(ply)`) and removed world entities (`IsValid(ent)`).
+- Superseded multi-tick restores (`ctx:isCurrent()`).
+- Missing weapon or entity classes from uninstalled Workshop addons (`weapons.GetStored`, `scripted_ents.GetStored`, `util.IsValidModel`).
+- Third-party addon errors (`pcall` / `ProtectedCall` around `LVS`, `Simfphys`, `Glide`, `WAC`, `ARC9`, `ArcCW`, `TFA`, `MW`, `WireLib`, `StormFox2`, `pace`, `CPPI`).
+
+**Exit criteria:**
+
+-   All 5 external trust boundaries normalize data shapes and key types once on entry.
+-   Zero dual-key probes (`t[id] or t[tonumber(id)]`) remain anywhere in `lua/`.
+-   ~260 redundant `istable`, `or {}`, `tonumber`, `tostring`, `isfunction`, and internal `pcall` guards are removed (~270 LOC saved), verified with `0` diagnostics in `glua_check` (`check` MCP tool) and `0` runtime errors across all 26 `run_tests` regression scenarios.
 
 ------------------------------------------------------------------------
 
@@ -961,29 +1171,14 @@ Inside `step()`, either:
 
 ---
 
-### 15.15 B-15 (NEW in 5.4): `history.move` ([`sv_history.lua:768-779`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_history.lua#L768-L779)) & `cl_place.lua` Missing Coordinate Bounds / `NaN` Guard and Admin Target World-Feed Refresh
+### 15.15 B-15 (NEW in 5.4): `history.move` ([`sv_history.lua:768-779`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_history.lua#L768-L779)) & `cl_place.lua` — Server Side Proven `FALSE_POSITIVE` by Reading `sv_history.lua:746, 949-967`
 
-**Severity:** Low–Medium (Out-of-Bounds / Stuck Respawn Position via Raw Net Request & Stale World Feed on Admin Move)
+**Severity:** Low / Mostly `FALSE_POSITIVE` (Server already checks `util.IsInWorld` and refreshes `target`; only verify `cl_place.lua` ghost cleanup on `ShutDown`)
 
-**Root Cause:**
-1. In [`sv_history.lua:768-779`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_history.lua#L768-L779):
-   ```lua
-   RARELOAD.Net.On("history.move", function(ply, a)
-       local sid = targetSid(ply, a.sid)
-       if not sid then return end
-       local pos = Vector(a.x, a.y, a.z) + Vector(0, 0, 16)
-       local ok = History.Update(sid, a.id, function(entry)
-           entry.data.transform = entry.data.transform or {}
-           entry.data.transform.pos = { x = pos.x, y = pos.y, z = pos.z }
-           entry.data.transform.ang = { p = 0, y = a.yaw % 360, r = 0 }
-       end)
-   ```
-   While `sh_net.lua:48` checks `v == v and math.abs(v) < 1e9`, source map coordinates outside `[-16384, 16384]` are outside the BSP world bounds, and if `entry.data` is nil or `entry.id == doc.activeId` for an online target player (`a.sid ~= ply:SteamID64()`), `History.Refresh(ply)` at line 777 only refreshes `ply` (the admin), **not** the target player whose active save moved!
-2. In [`cl_place.lua:14-17`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_place.lua#L14-L17), ensure `PlaceUI.Stop()` is also hooked to `ShutDown` (like `cl_phantoms.lua:130`) so `PlaceUI.ghost` is always cleaned up on disconnect/map change.
-
-**Surgical Fix (`sv_history.lua:768-779`, `cl_place.lua:14-17`):**
-1. Clamp or reject coordinates outside `[-32768, 32768]` in `history.move`, and if `sid ~= ply:SteamID64()`, also call `pushFeed()` (or `History.Refresh(targetPly)`) so the World Display phantom updates immediately for everyone.
-2. Add `hook.Add("ShutDown", "Rareload.Place", PlaceUI.Stop)` in `cl_place.lua`.
+**Why the Server Sub-Claims Are `FALSE_POSITIVE` (`0 LOC` Changed on Server):**
+1. Reading [`sv_history.lua:768-779`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_history.lua#L768-L779) in full confirmed that `history.move` **already** checks `if not util.IsInWorld(pos + Vector(0, 0, 16)) then return "toast.place_outside" end` at line 771!
+2. Furthermore, reading `handle(...)` (`sv_history.lua:744-753`) and `refresh(ply)` (`sv_history.lua:949-967`) proved that `handle` passes `target` (`targetFor(ply, a.sid)`) as the first parameter to `History.Update(target, a.id, ...)`, which calls `save(target, d)` → `refresh(target)` → `pushRows(online)` and `pushFeed(online)`! Thus the target player's World Display phantom **already** updates automatically when an admin moves their save.
+3. Only the client-side `ShutDown` cleanup of `PlaceUI.ghost` in [`cl_place.lua:14-17`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/client/cl_place.lua#L14-L17) remains to verify in-game via `entities { realm: "client", include_csents: true }`.
 
 ---
 
