@@ -52,19 +52,46 @@ hook.Add("PlayerSpawn", "Rareload.Death", function(ply)
     end
 end)
 
+-- Where the player died, for "Where I died": a normal respawn there, nothing saved or restored. Not
+-- kept when they died again within a few seconds of respawning there (a deadly spot), so "always"
+-- can't loop.
+local DEADLY = 5
+
 hook.Add("PostPlayerDeath", "Rareload.Death", function(ply)
     ply.rareloadDeathPending = true
+    local back = ply.rareloadBackAt and CurTime() - ply.rareloadBackAt < DEADLY
+    ply.rareloadDeathSpot = not back and {
+        pos = ply:GetPos(), ang = ply:EyeAngles(), crouched = ply:Crouching(),
+    } or nil
     if not RARELOAD.Can(ply, "rareload_restore") then return end
     -- "Respawn after dying" (also set by "Always choose this"): the same place every time, without
-    -- asking; "map" is the old "Normal respawn after dying". "death" with no death save: the respawn point.
+    -- asking; "map" is the old "Normal respawn after dying". "death" with no spot: the respawn point.
     local always = RARELOAD.Get(ply, "deathChoiceAlways")
     if always ~= "ask" then
-        ply.rareloadSpawnChoice = (always ~= "death" or Death.Entry(ply)) and always or "save"
+        ply.rareloadSpawnChoice = (always ~= "death" or ply.rareloadDeathSpot) and always or "save"
         return
     end
     if not RARELOAD.Get(ply, "deathChoice") then return end
-    RARELOAD.Net.Push(ply, "death.choice", { death = Death.Entry(ply) ~= nil })
+    RARELOAD.Net.Push(ply, "death.choice", { death = ply.rareloadDeathSpot ~= nil })
 end)
+
+-- Puts the respawned player where they died (through anti-stuck). Returns true when it did.
+function Death.ToSpot(ply)
+    local spot = ply.rareloadDeathSpot
+    ply.rareloadDeathSpot = nil
+    if not spot then return false end
+    local pos = spot.pos
+    if RARELOAD.AntiStuck.IsStuck(pos, ply, spot.crouched) then
+        pos = RARELOAD.AntiStuck.Resolve(pos, ply, spot.crouched)
+        if not pos then return false end
+    end
+    if spot.crouched then ply:AddFlags(FL_DUCKING) end
+    ply:SetPos(pos)
+    ply:SetEyeAngles(Angle(spot.ang.p, spot.ang.y, 0))
+    ply:SetLocalVelocity(vector_origin)
+    ply.rareloadBackAt = CurTime()
+    return true
+end
 
 -- Restores the death save. Returns true, or false (the player was told why).
 function Death.Back(ply)
@@ -86,7 +113,7 @@ end
 RARELOAD.Net.Handle("death.back", { priv = "rareload_restore", rate = 1, fn = function(ply) Death.Back(ply) end })
 
 -- The respawn choice: "save" (the respawn point, as usual), "map" (the map's spawn, nothing restored)
--- or "death" (the death save, this time only).
+-- or "death" (where they died, a normal respawn there).
 local CHOICES = { save = true, map = true, death = true }
 RARELOAD.Net.Handle("death.respawn", {
     priv = "rareload_restore",
@@ -94,7 +121,7 @@ RARELOAD.Net.Handle("death.respawn", {
     args = { mode = "string:8" },
     fn = function(ply, a)
         if ply:Alive() or not CHOICES[a.mode] then return end
-        if a.mode == "death" and not Death.Entry(ply) then return end
+        if a.mode == "death" and not ply.rareloadDeathSpot then return end
         ply.rareloadSpawnChoice = a.mode
         ply:Spawn()
     end,
