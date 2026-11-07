@@ -307,18 +307,35 @@ end
 
 -- The quick keys (cl_keys.lua): the server sees each key press once, from the player's commands, and
 -- never while they type in a menu or the chat.
-local KEYS = { cl_rareload_key_save = History.QuickSave, cl_rareload_key_load = History.QuickLoad }
+-- Checkpoint keys (D7): a new checkpoint here, and back to the last one.
+local function checkpointKey(fn)
+    return function(ply)
+        local ok, key, args = fn(ply)
+        if key then RARELOAD.Toast(ply, key, args, ok and "ok" or "error") end
+    end
+end
+local KEYS = {
+    cl_rareload_key_save = { fn = History.QuickSave },
+    cl_rareload_key_load = { fn = History.QuickLoad, priv = "rareload_restore" },
+    cl_rareload_key_checkpoint = { fn = checkpointKey(function(ply) return RARELOAD.Checkpoints.Add(ply) end),
+        priv = "rareload_checkpoints" },
+    cl_rareload_key_checkpoint_go = { fn = checkpointKey(function(ply)
+        local n = #RARELOAD.Checkpoints.List(ply)
+        if n == 0 then return false, "toast.checkpoint_none" end
+        return RARELOAD.Checkpoints.Go(ply, n)
+    end), priv = "rareload_checkpoints" },
+}
 local lastKey = setmetatable({}, { __mode = "k" })
 
 hook.Add("PlayerButtonDown", "Rareload.QuickKeys", function(ply, button)
     if ply:IsBot() then return end
-    for convar, fn in pairs(KEYS) do
+    for convar, k in pairs(KEYS) do
         if button ~= 0 and ply:GetInfoNum(convar, 0) == button then
             if CurTime() - (lastKey[ply] or -math.huge) < 1 then return end
             lastKey[ply] = CurTime()
             if not RARELOAD.Can(ply, "rareload_use_tool") then return end
-            if fn == History.QuickLoad and not RARELOAD.Can(ply, "rareload_restore") then return end
-            fn(ply)
+            if k.priv and not RARELOAD.Can(ply, k.priv) then return end
+            k.fn(ply)
             return
         end
     end

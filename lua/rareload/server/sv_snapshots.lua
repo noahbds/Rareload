@@ -18,6 +18,11 @@ local function rel() return RARELOAD.Store.MapDir() .. "/_server" end
 local function doc()
     local d = RARELOAD.Store.Load(rel())
     if not istable(d) or not istable(d.snapshots) then d = { v = RARELOAD.Store.SCHEMA, nextId = 1, snapshots = {} } end
+    -- Snapshots from before the players became a list (keyed by SteamID64, unreadable) are dropped.
+    for i = #d.snapshots, 1, -1 do
+        local players = d.snapshots[i].players
+        if not istable(players) or (players[1] == nil and next(players) ~= nil) then table.remove(d.snapshots, i) end
+    end
     return d
 end
 
@@ -39,6 +44,15 @@ end
 
 local taking = false
 
+-- The players of a snapshot are a list of { sid, nick, data }: a table keyed by SteamID64 would not
+-- survive the JSON round trip (util.JSONToTable turns number-like keys into numbers, which then lose
+-- digits).
+local function partOf(snap, sid)
+    for _, part in ipairs(snap.players) do
+        if part.sid == sid then return part end
+    end
+end
+
 -- Takes a snapshot, one player per tick. done(snapshot) when finished; false when one is running.
 function Snapshots.Take(done)
     if taking then return false end
@@ -55,7 +69,7 @@ function Snapshots.Take(done)
         if p then
             if IsValid(p) then
                 local data = capture(p)
-                if data then snap.players[p:SteamID64()] = { nick = p:Nick(), data = data } end
+                if data then snap.players[#snap.players + 1] = { sid = p:SteamID64(), nick = p:Nick(), data = data } end
             end
             local queue = Pipeline._queue
             queue[#queue + 1] = step
@@ -68,7 +82,7 @@ function Snapshots.Take(done)
         while #d.snapshots > RARELOAD.Get(nil, "snapshotKeep") do table.remove(d.snapshots, 1) end
         RARELOAD.Store.Save(rel(), d)
         taking = false
-        RARELOAD.Log("snapshots", nil):verbose("snapshot No. %d: %d players", snap.id, table.Count(snap.players))
+        RARELOAD.Log("snapshots", nil):verbose("snapshot No. %d: %d players", snap.id, #snap.players)
         if done then done(snap) end
     end
     local queue = Pipeline._queue
@@ -97,7 +111,8 @@ end
 -- those who could not be (offline or dead).
 function Snapshots.Rollback(snap, only)
     local done, skipped = 0, {}
-    for sid, part in pairs(snap.players) do
+    for _, part in ipairs(snap.players) do
+        local sid = part.sid
         if not only or only == sid then
             local ply = player.GetBySteamID64(sid)
             local ok = IsValid(ply) and RARELOAD.History.RestoreEntry(ply, { data = part.data }, { world = true },
@@ -141,7 +156,7 @@ hook.Add("ShutDown", "Rareload.Snapshots", function() RARELOAD.Store.SetFlag("ru
 function Snapshots.Recoverable(ply)
     local list = Snapshots.List()
     local snap = list[#list]
-    local part = snap and snap.players[ply:SteamID64()]
+    local part = snap and partOf(snap, ply:SteamID64())
     if not part then return nil end
     local active = RARELOAD.History.Active(ply)
     if active and (tonumber(active.time) or 0) >= snap.time then return nil end
@@ -196,7 +211,7 @@ local function push(ply)
     local rows = {}
     for _, s in ipairs(Snapshots.List()) do
         local names = {}
-        for _, part in pairs(s.players) do names[#names + 1] = part.nick end
+        for _, part in ipairs(s.players) do names[#names + 1] = part.nick end
         table.sort(names)
         rows[#rows + 1] = { id = s.id, time = s.time, players = names }
     end
@@ -209,7 +224,7 @@ RARELOAD.Net.Handle("snapshot.take", {
     rate = 2,
     fn = function(ply)
         if not Snapshots.Take(function(snap)
-            RARELOAD.Toast(ply, "toast.snapshot_taken", { snap.id, table.Count(snap.players) }, "ok")
+            RARELOAD.Toast(ply, "toast.snapshot_taken", { snap.id, #snap.players }, "ok")
             push(ply)
         end) then
             RARELOAD.Toast(ply, "toast.snapshot_busy", nil, "error")

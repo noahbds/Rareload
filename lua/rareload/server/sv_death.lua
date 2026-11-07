@@ -54,9 +54,15 @@ end)
 
 hook.Add("PostPlayerDeath", "Rareload.Death", function(ply)
     ply.rareloadDeathPending = true
-    if RARELOAD.Get(ply, "deathChoice") and RARELOAD.Can(ply, "rareload_restore") then
-        RARELOAD.Net.Push(ply, "death.choice", { death = Death.Entry(ply) ~= nil })
+    if not RARELOAD.Get(ply, "deathChoice") or not RARELOAD.Can(ply, "rareload_restore") then return end
+    -- "Always choose this": the remembered choice, without asking ("death" with no death save: the
+    -- respawn point).
+    local always = RARELOAD.Get(ply, "deathChoiceAlways")
+    if always ~= "ask" then
+        ply.rareloadSpawnChoice = (always ~= "death" or Death.Entry(ply)) and always or "save"
+        return
     end
+    RARELOAD.Net.Push(ply, "death.choice", { death = Death.Entry(ply) ~= nil })
 end)
 
 -- Restores the death save. Returns true, or false (the player was told why).

@@ -53,7 +53,12 @@ RARELOAD.Net.On("death.choice", function(p)
     if IsValid(DeathUI.choice) then DeathUI.choice:Remove() end
     local frame = UI.Window({ title = L("death.choice_title"), subtitle = L("death.choice_help"), w = 460, h = 300 })
     DeathUI.choice = frame
+    local always = false
     local function choose(mode)
+        if always then
+            RunConsoleCommand(RARELOAD.Settings.deathChoiceAlways.pref, mode)
+            UI.Notify(L("death.always_set"), "info")
+        end
         RARELOAD.Net.Request("death.respawn", { mode = mode })
         frame:Close()
     end
@@ -68,9 +73,19 @@ RARELOAD.Net.On("death.choice", function(p)
         b:SetTall(sc(44))
         b:DockMargin(0, 0, 0, sc(8))
     end
-    -- Gone once the player is alive again (a server can respawn them by itself).
+    local check = UI.Check(frame, L("death.always"), false, function(v) always = v end)
+    check:Dock(TOP)
+    check:DockMargin(0, sc(4), 0, 0)
+    -- Gone once the player is alive again (a server can respawn them by itself). The message arrives
+    -- before the client sees its own death, so only after the player was seen dead (or 3 s at most).
+    local opened = CurTime()
     frame.Think = function(self)
         local lp = LocalPlayer()
-        if IsValid(lp) and lp:Alive() then self:Remove() end
+        if not IsValid(lp) then return end
+        if not lp:Alive() then
+            self.sawDead = true
+        elseif self.sawDead or CurTime() - opened > 3 then
+            self:Remove()
+        end
     end
 end)

@@ -76,8 +76,14 @@ function RARELOAD.Get(ply, key)
     if def.scope == "player" and IsValid(ply) and (SERVER or ply == LocalPlayer()) and not RARELOAD.IsLocked(key) then
         -- A player without the value (bots have no userinfo; GetInfoNum then returns 0, not the
         -- default) uses the server value.
-        local pref = tonumber(SERVER and ply:GetInfo(def.pref) or GetConVar(def.pref):GetString()) or -1
-        if pref ~= -1 then value = coerce(def, pref) end
+        -- An enum's own value is its text.
+        local raw = SERVER and ply:GetInfo(def.pref) or GetConVar(def.pref):GetString()
+        if def.type == "enum" then
+            if raw ~= "" and raw ~= "-1" then value = coerce(def, raw) end
+        else
+            local pref = tonumber(raw) or -1
+            if pref ~= -1 then value = coerce(def, pref) end
+        end
     end
     if def.capBy then
         value = math.min(value, RARELOAD.Get(nil, def.capBy))
@@ -261,6 +267,15 @@ RARELOAD.Setting("deathChoice", {
     category = "general",
     priv = "rareload_restore",
     help = "After dying, choose where to respawn: the respawn point, the map spawn or where you died"
+})
+RARELOAD.Setting("deathChoiceAlways", {
+    type = "enum",
+    values = { "ask", "save", "map", "death" },
+    default = "ask",
+    scope = "player",
+    category = "general",
+    priv = "rareload_restore",
+    help = "With the respawn choice on: ask after each death, or always respawn at the same place"
 })
 RARELOAD.Setting("autoSave", {
     type = "bool",

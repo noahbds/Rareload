@@ -5,6 +5,8 @@
 RARELOAD.Keys = {
     { convar = "cl_rareload_key_save", label = "menu.key_quicksave" },
     { convar = "cl_rareload_key_load", label = "menu.key_quickload" },
+    { convar = "cl_rareload_key_checkpoint", label = "menu.key_checkpoint" },
+    { convar = "cl_rareload_key_checkpoint_go", label = "menu.key_checkpoint_go" },
 }
 
 for _, k in ipairs(RARELOAD.Keys) do
