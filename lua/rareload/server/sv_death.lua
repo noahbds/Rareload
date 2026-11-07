@@ -1,7 +1,7 @@
 -- Death recovery (5.4 plan, D4). With saveOnDeath on, dying makes a save (reason "death") from just
 -- before the death: the weapons are still held, and the health is the one before the fatal hit. It
 -- doesn't become the respawn point. The player sees a marker where they died, can go back with the
--- timeline or `rareload death`, and chooses where to respawn (deathRespawn).
+-- timeline or `rareload death`, and, with deathChoice on, chooses where to respawn.
 
 RARELOAD.Death = RARELOAD.Death or {}
 local Death = RARELOAD.Death
@@ -54,11 +54,12 @@ end)
 
 hook.Add("PostPlayerDeath", "Rareload.Death", function(ply)
     ply.rareloadDeathPending = true
-    if not RARELOAD.Can(ply, "rareload_restore") then return end
-    -- Where to respawn: asked, or the player's setting ("death" with no death save: the respawn point).
-    local mode = RARELOAD.Get(ply, "deathRespawn")
-    if mode ~= "ask" then
-        ply.rareloadSpawnChoice = (mode ~= "death" or Death.Entry(ply)) and mode or "save"
+    if not RARELOAD.Get(ply, "deathChoice") or not RARELOAD.Can(ply, "rareload_restore") then return end
+    -- "Always choose this": the remembered choice, without asking ("death" with no death save: the
+    -- respawn point).
+    local always = RARELOAD.Get(ply, "deathChoiceAlways")
+    if always ~= "ask" then
+        ply.rareloadSpawnChoice = (always ~= "death" or Death.Entry(ply)) and always or "save"
         return
     end
     RARELOAD.Net.Push(ply, "death.choice", { death = Death.Entry(ply) ~= nil })

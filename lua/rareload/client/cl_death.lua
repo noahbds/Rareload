@@ -48,7 +48,7 @@ hook.Add("HUDPaint", "Rareload.Death", function()
         TEXT_ALIGN_CENTER)
 end)
 
--- The choice of where to respawn (player setting deathRespawn = "ask").
+-- The choice of where to respawn (player setting deathChoice).
 RARELOAD.Net.On("death.choice", function(p)
     if IsValid(DeathUI.choice) then DeathUI.choice:Remove() end
     local frame = UI.Window({ title = L("death.choice_title"), subtitle = L("death.choice_help"), w = 460, h = 300 })
@@ -56,7 +56,7 @@ RARELOAD.Net.On("death.choice", function(p)
     local always = false
     local function choose(mode)
         if always then
-            RunConsoleCommand(RARELOAD.Settings.deathRespawn.pref, mode)
+            RunConsoleCommand(RARELOAD.Settings.deathChoiceAlways.pref, mode)
             UI.Notify(L("death.always_set"), "info")
         end
         RARELOAD.Net.Request("death.respawn", { mode = mode })

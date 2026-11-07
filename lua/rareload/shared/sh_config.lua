@@ -260,14 +260,22 @@ RARELOAD.Setting("saveOnDeath", {
     priv = "rareload_save",
     help = "Save just before dying (it doesn't replace the respawn point), to go back to it later"
 })
-RARELOAD.Setting("deathRespawn", {
-    type = "enum",
-    values = { "save", "ask", "map", "death" },
-    default = "save",
+RARELOAD.Setting("deathChoice", {
+    type = "bool",
+    default = false,
     scope = "player",
     category = "general",
     priv = "rareload_restore",
-    help = "Where to respawn after dying: the respawn point, ask each time, the map spawn or where you died"
+    help = "After dying, choose where to respawn: the respawn point, the map spawn or where you died"
+})
+RARELOAD.Setting("deathChoiceAlways", {
+    type = "enum",
+    values = { "ask", "save", "map", "death" },
+    default = "ask",
+    scope = "player",
+    category = "general",
+    priv = "rareload_restore",
+    help = "With the respawn choice on: ask after each death, or always respawn at the same place"
 })
 RARELOAD.Setting("autoSave", {
     type = "bool",
