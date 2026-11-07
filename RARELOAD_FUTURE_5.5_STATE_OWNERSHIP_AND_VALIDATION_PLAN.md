@@ -831,6 +831,39 @@ Use `gmod-debug-mcp` `v0.5.0` (`profile` with `mode = "bench"`, `"bench_frames"`
 - **Client Frame & GC Profiling**: Use `profile { mode: "bench_frames", frames: 300 }` and `profile { mode: "hooks", duration: 5 }` with the Inspector, Timeline, Checkpoints, and World Display open before and after Phase 8 (`UI.Rows`/`UI.Stats` caching + zero-allocation `Paint` hooks + `sh_exclude.lua` sphere query removal).
 - **Code Size & Static Analysis**: Run `wc -l` across all 54 Lua files, `glualint`, and `check` (`glua_check`) before and after each phase.
 
+### 13.5 GMod Addon Standards & Convention Audit (Codify the Implicit Rules)
+
+**Honest baseline:** measured against community GMod standards (the CFC GLua style guidelines, §20 B-12, and the Facepunch realm-prefix / `AddCSLuaFile` / unique-filename / namespaced-hook guidance, §20 B-13), Rareload 5.4 **already complies with the large majority of them** — this audit is about closing the *remaining* specific gaps and writing the conventions down so they stop drifting, **not** a rewrite. What is already correct (and must be preserved, not "improved"):
+
+| Standard | Rareload 5.4 status |
+| :--- | :--- |
+| Realm prefixes `sh_`/`sv_`/`cl_` driving load behavior | ✅ Followed; loader `AddCSLuaFile`s shared+client, `include`s server-only ([`autorun/rareload.lua:68-109`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/autorun/rareload.lua#L68-L109)) |
+| Single global namespace (`RARELOAD.*`) instead of loose globals | ✅ Followed |
+| camelCase locals/functions, SCREAMING_SNAKE constants, PascalCase methods | ✅ Followed (`cacheDoc`, `byDistance` / `CELL`, `CACHE_CAP` / `History.Append`, `AntiStuck.IsStuck`) |
+| `~=`/`and`/`or`/`not` (not GMod `!=`/`&&`) | ✅ Followed (enforced by `lint_syntaxInconsistencies`) |
+| Unique filenames & addon-namespaced net strings (`rareload.sync`, `rareload.req`) | ✅ Followed |
+| `addon.json`, `.glualint.json`, `.editorconfig`, localization folder | ✅ Present |
+
+**Genuine gaps to fix in 5.5 (specific, bounded):**
+1. **No written conventions doc.** The rules above live only in the maintainers' heads. Add `docs/architecture/CONVENTIONS.md` stating: realm-prefix load rules, the `RARELOAD.*` namespace, naming scheme (camelCase / SCREAMING_SNAKE / PascalCase), hook & net-string namespacing, and the single-use-local policy (§13.6). This is a Phase 0/10 deliverable, not code.
+2. **Inconsistent hook-name scheme.** Most hooks use dotted identifiers (`"Rareload.Net.Send"`, `"Rareload.AntiStuck.Watch"`), but a few are concatenated (`"RareloadLegacyConflict"` in [`autorun/rareload.lua:49`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/autorun/rareload.lua#L49), `"RareloadLoaded"`/`"RareloadStateChanged"` events). Pick one scheme (CFC suggests `Org_Addon_Purpose`; Rareload's existing dotted `Rareload.<System>.<Purpose>` is fine and clearer) and apply it to every `hook.Add`/`timer.Create` identifier so none can silently collide.
+3. **Accidental-global sweep.** Run `glualint --analyse-globals` over all 54 files (glualint's default rules do **not** flag a missing `local`, §20 B-14). Every reported global that is not `RARELOAD`, a registered GMod hook table, or an intentional public symbol is a missing `local` — fix it. Record the intended public surface in `CONVENTIONS.md`.
+4. **Hardcoded version string.** [`autorun/rareload.lua:7`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/autorun/rareload.lua#L7) still reads `RARELOAD.version = "5.4"`. Bump to `"5.5"` and treat `RARELOAD.version` as the single source (any other copy, e.g. a `README` badge, references it).
+
+### 13.6 Readability Pass: Named Steps, Magic Numbers, and the Single-Use-Local Question
+
+The request to curb "overuse of single-use local functions" needs a **judgment rule, not a blanket inline** — and the evidence cuts both ways. The CFC style guide (§20 B-12) explicitly *recommends* extracting skip-logic and complex conditions **into** named local functions for readability, so a single-use local is often the *right* call. Apply this policy:
+
+-   **Keep** a single-use local function (or local variable) when it *names* a non-obvious step, a magic expression, or a complex condition — e.g. `snap()`, `byDistance()`, `legacyInstalled()` each earn their name even though some are called once. Naming the step is the readability win, exactly what the guide asks for.
+-   **Inline** a single-use local only when it is a trivial pass-through that adds an indirection hop without clarifying anything (a one-liner that just forwards its args, or a wrapper whose name restates the callee).
+-   **Extract** genuinely repeated or deeply-nested inline logic into a *named* helper (this overlaps Phase 7 dedup) — do not leave a complex expression unnamed to avoid "a single-use function".
+
+Concrete readability items to sweep while here (bounded, not a rewrite):
+-   **Pull remaining magic numbers into named constants** where the meaning isn't local-obvious: e.g. the `36`-unit ring Z-offset and `128` vertical cap in `displacement` ([`sv_antistuck.lua:107-112`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_antistuck.lua#L107-L112)), and the `maxs.z * 0.5` hull-center factor ([`sv_antistuck.lua:22`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_antistuck.lua#L22)). Leave idiomatic math locals (`tr`, `mv`, loop `i`/`a`/`b`) alone — terseness in trace/math hot paths is conventional GLua, not a defect.
+-   **Verify every function sits in its owning file** per the Phase 0–3 ownership map (§2.1): a function that reads/writes another subsystem's state is "misplaced" and should move to (or route through) its owner — this is already the thrust of Phases 1–3, so §13.6 just adds the explicit "right file?" check per function during the hygiene pass.
+
+**Exit criteria (§13.5–§13.6):** `docs/architecture/CONVENTIONS.md` exists and matches the code; `glualint --analyse-globals` reports no unintended globals; all hook/timer identifiers follow one namespaced scheme; `RARELOAD.version` is `"5.5"` and single-sourced; no complex expression was left unnamed merely to avoid a single-use local, and no single-use local that names a real step was inlined at the cost of clarity.
+
 ---
 
 ## 14. Phase 11 --- Security, Privilege & Untrusted-Input Hardening
@@ -1252,9 +1285,37 @@ if istable(entry) and entry.id then
 
 ---
 
-### 15.17 Live `gmod-debug-mcp` `v0.5.0` Reproduction Probe & Skeptical Triage Matrix (Phases 11 & 12 — All 23 Candidates)
+### 15.17 B-17 (NEW): `AntiStuck.IsStuck` ([`sv_antistuck.lua:19-27`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_antistuck.lua#L19-L27)) False-Positive "Stuck" Detection Relocates Players From Perfectly Valid Spawns
 
-Because many static-analysis findings cannot actually happen in a real Garry's Mod session (or are already partially blocked by the engine or upstream checks), **every candidate (`S-01`..`S-07`, `B-01`..`B-16`) has an explicit Skeptical Check and a Live `gmod-debug-mcp` `v0.5.0` Probe**. Any candidate (or sub-claim) that fails to reproduce in the running game is dropped immediately (`0 LOC added`).
+**Severity:** Medium–High (Unnecessary relocation away from a correct saved position; distinct from `B-05`, which caches *bad* spots — this is the *detection* side)
+
+**Root Cause:**
+`AntiStuck.IsStuck(pos, ply, crouched)` decides a position is blocked from a single hull trace whose **only filter is the spawning player**:
+```lua
+local tr = util.TraceHull({ start = pos, endpos = pos, mins = mins, maxs = maxs, mask = MASK_PLAYERSOLID, filter = ply })
+if tr.StartSolid or tr.AllSolid then return true, "blocked" end
+```
+`MASK_PLAYERSOLID` includes other players, NPCs, and `CONTENTS_MONSTER`, and the filter excludes only `ply`, so the test reports **"blocked" whenever any transient entity overlaps the saved spot** — even though the spot itself is free and the entity will move. Concrete false-positive triggers, each common on the exact code path (`PlayerSpawn` → restore → `AntiStuck.Resolve`):
+1. **The player's own just-created ragdoll / dropped weapons / death corpse** still occupying the saved position at respawn (the most common case, because death recovery restores *to* where the player died).
+2. **Another player standing on a shared `info_player_*` spawn** at a busy spawn point.
+3. **An NPC or a physics prop** that drifted onto the spot since the save.
+4. A stale/incorrect `crouched` argument selecting `GetHullDuck()` vs `GetHull()` so the wrong-height hull is tested (false positive under a low ceiling, or false negative).
+5. `util.IsInWorld(pos + Vector(0,0,maxs.z*0.5))` tests a **single** point (`G70`); a hull center that lands inside thin world detail (a railing, a func_detail) reports "outside the map" though the player would fit.
+
+The cost of the false positive is a needless teleport: `AntiStuck.Resolve` runs the whole method chain and moves the player to a *different* position than the one they saved, defeating the point of a precise restore.
+
+**Surgical Fix (hypothesis — gate via §14.0 before writing):**
+1. Separate "blocked by world/static geometry" (a real stuck) from "blocked only by a transient entity" (not stuck). Run the primary test against world brushes only (`MASK_PLAYERSOLID_BRUSHONLY` / `CONTENTS_SOLID`); if that is clear, treat entity-only overlap as **not stuck** (or re-trace with a `filter` function that also ignores the player's own ragdoll, dropped weapons, and other live players).
+2. Derive `crouched` from the player's actual intended spawn pose rather than a caller-passed flag, or test the standing hull and fall back to the duck hull before declaring "blocked".
+3. Keep the real-stuck cases intact (genuinely inside world geometry, outside the map). Do **not** relax detection so far that players spawn inside walls.
+
+**Live Probe (`gmod-debug-mcp`):** `bots` to place a second player/NPC exactly on a saved spawn, then `run_lua` `AntiStuck.IsStuck(savedPos, ply)` and assert it returns `false` when only an entity overlaps; `entities` + `player_input` to reproduce the respawn-onto-own-ragdoll case; `trace_query` to confirm which mask/filter yields the correct verdict. If the engine already clears `StartSolid` for these overlaps in-game (it may not, for players), drop the sub-claim.
+
+---
+
+### 15.18 Live `gmod-debug-mcp` `v0.5.0` Reproduction Probe & Skeptical Triage Matrix (Phases 11 & 12 — All 24 Candidates)
+
+Because many static-analysis findings cannot actually happen in a real Garry's Mod session (or are already partially blocked by the engine or upstream checks), **every candidate (`S-01`..`S-07`, `B-01`..`B-17`) has an explicit Skeptical Check and a Live `gmod-debug-mcp` `v0.5.0` Probe**. Any candidate (or sub-claim) that fails to reproduce in the running game is dropped immediately (`0 LOC added`).
 
 | ID | Candidate & File(s) | Skeptical Check (Why Parts Might Be Unreproducible in GMod) | Exact Live `gmod-debug-mcp` `v0.5.0` Probe (`/Users/noah/gmod-debug-mcp`) | Gate Rule (`CONFIRMED` vs `FALSE_POSITIVE`) |
 | :--- | :--- | :--- | :--- | :--- |
@@ -1290,7 +1351,7 @@ Because many static-analysis findings cannot actually happen in a real Garry's M
 
 ---
 
-### 15.18 `gmod-debug-mcp` `v0.5.0` Tooling Integration (Implemented in Commit `3534946`)
+### 15.19 `gmod-debug-mcp` `v0.5.0` Tooling Integration (Implemented in Commit `3534946`)
 
 > **Full standalone plan**: [`/Users/noah/gmod-debug-mcp/MCP_IMPROVEMENT_PLAN.md`](file:///Users/noah/gmod-debug-mcp/MCP_IMPROVEMENT_PLAN.md)
 > **Implementation status**: **Completed in [`/Users/noah/gmod-debug-mcp`](file:///Users/noah/gmod-debug-mcp) `v0.5.0` (commit `3534946`, 38/38 tests passing in `test/v050.test.js`)!**
@@ -1437,6 +1498,9 @@ Sources consulted and cross-verified across 20+ domains using the `game-research
 - **B-9. Facepunch Wiki — *Addon Localization*** (<https://wiki.facepunch.com/gmod/Addon_Localization>): `.properties` files live under `resource/localization/<lang>/`; **"the first row must currently be left empty"**; the **key before `=` must not contain spaces**; English (`en`) is loaded before other languages to backfill; `\uXXXX` escapes are supported. Grounds the §9.2 server-side parser rules.
 - **B-10. Facepunch Wiki — `language.Add`** (<https://wiki.facepunch.com/gmod/language.Add>): adds a phrase for the player's currently selected language (`gmod_language`) — a client-realm API, with no server equivalent. Confirms §9.2's direct `file.Read(..., "GAME")` parse is the correct server-side route, not a reinvented wheel.
 - **B-11. glua/CAMI — *Common Admin Mod Interface*** (<https://github.com/glua/CAMI>): `CAMI.RegisterPrivilege` exposes an addon's privileges to whichever admin mod is installed (ULX/SAM/ServerGuard GUIs); `CAMI.PlayerHasAccess` answers checks via callback; when no admin mod implements the privilege part, CAMI falls back to the user/admin/superadmin group. Grounds the §9.3 "do not break CAMI registration" invariant.
+- **B-12. CFC-Servers — *GLua Style Guidelines*** (<https://github.com/CFC-Servers/cfc_glua_style_guidelines>): community GLua conventions — camelCase locals/functions, SCREAMING_SNAKE constants, PascalCase globals/methods; `~=`/`and`/`or`/`not` over GMod operators; `--` comments; early returns; magic numbers pulled into named variables; **extract complex skip-logic/conditions into named local functions** (so single-use locals that name a real step are encouraged, not banned). Grounds §13.5–§13.6.
+- **B-13. Facepunch Wiki — *AddCSLuaFile* / *Workshop Addon Creation* / *include*; Squish *Integration for Addon Maintainers*** (<https://wiki.facepunch.com/gmod/Global.AddCSLuaFile>, <https://wiki.facepunch.com/gmod/Workshop_Addon_Creation>, <https://wiki.facepunch.com/gmod/Global.include>, <https://docs.squish.wtf/garrys-mod/integration-for-addon-maintainers>): realm prefixes (`sv_`/`sh_`/`cl_`) drive load/send behavior; the Lua filesystem is shared across addons so filenames **and hook names must be unique/addon-namespaced** (`Org_Addon_Purpose`); standard top-level folders. Grounds the §13.5 structure audit.
+- **B-14. glualint (FPtje/GLuaFixer) — docs & `--analyse-globals`** (<https://hackage.haskell.org/package/glualint>): `lint_shadowing` and `lint_unusedVars` are on by default, but **no default rule flags a missing `local` (an accidental global)** — the `--analyse-globals` CLI pass lists a file's defined globals for manual review. Grounds §13.5 gap #3.
 
 ### Tier 2 — Production LuaJIT Engineering & Static Analysis References (High Credibility)
 10. **FPtje (`Falco`) — `GLuaFixer` / `glualint`** (<https://github.com/FPtje/GLuaFixer>): Static analyzer and formatter for Garry's Mod Lua; documents `lint_unusedVars`, `lint_unusedParameters`, `lint_unusedLoopVars`, and scope hygiene rules.
