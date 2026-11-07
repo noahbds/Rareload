@@ -69,37 +69,36 @@ local sc = UI.sc
 
 local clipCache, clipCount = {}, 0 -- UI.Clip results, below
 
+-- Every Rareload font: name = { size, weight }. Window fonts follow the screen size; the tool screen,
+-- the world display and the spawn menu (not scaled) keep theirs. No shadows: they blur small text.
+local SCALED_FONTS = {
+    ["Rareload.Title"] = { 25, 800 }, ["Rareload.Sub"] = { 14, 500 }, ["Rareload.H1"] = { 22, 700 },
+    ["Rareload.H2"] = { 17, 600 }, ["Rareload.Body"] = { 15, 500 }, ["Rareload.BodyB"] = { 15, 700 },
+    ["Rareload.Small"] = { 13, 500 }, ["Rareload.Tiny"] = { 11, 700 }, ["Rareload.Stat"] = { 26, 800 },
+    ["Rareload.Mono"] = { 14, 500 },
+}
+local FIXED_FONTS = {
+    ["Rareload.Screen"] = { 22, 600 }, ["Rareload.ScreenTitle"] = { 38, 900 },
+    ["Rareload.Panel"] = { 24, 500 }, ["Rareload.PanelB"] = { 24, 700 }, ["Rareload.PanelTitle"] = { 32, 800 },
+    ["Rareload.PanelSmall"] = { 19, 600 }, ["Rareload.Label"] = { 19, 700 },
+    ["Rareload.Menu.Title"] = { 26, 800 }, ["Rareload.Menu.Head"] = { 17, 700 }, ["Rareload.Menu.Row"] = { 16, 500 },
+    ["Rareload.Menu.Value"] = { 16, 700 }, ["Rareload.Menu.Note"] = { 13, 500 },
+}
+
+local function font(name, size, weight)
+    surface.CreateFont(name, { font = "Roboto", size = size, weight = weight, extended = true })
+end
+
 local function createFonts()
     UI.S = math.Clamp(ScrH() / 1080, 0.85, 2)
-    local function font(name, size, weight)
-        surface.CreateFont(name,
-            { font = "Roboto", size = math.floor(size * UI.S + 0.5), weight = weight, extended = true })
-    end
-    font("Rareload.Title", 25, 800)
-    font("Rareload.Sub", 14, 500)
-    font("Rareload.H1", 22, 700)
-    font("Rareload.H2", 17, 600)
-    font("Rareload.Body", 15, 500)
-    font("Rareload.BodyB", 15, 700)
-    font("Rareload.Small", 13, 500)
-    font("Rareload.Tiny", 11, 700)
-    font("Rareload.Stat", 26, 800)
-    font("Rareload.Mono", 14, 500)
+    for name, f in pairs(SCALED_FONTS) do font(name, math.floor(f[1] * UI.S + 0.5), f[2]) end
 end
 createFonts()
+for name, f in pairs(FIXED_FONTS) do font(name, f[1], f[2]) end
 hook.Add("OnScreenSizeChanged", "Rareload.UI.Fonts", function()
     createFonts()
     clipCache, clipCount = {}, 0
 end)
-
--- Fixed-size fonts for the tool screen and the world display, which don't depend on the screen.
-surface.CreateFont("Rareload.Screen", { font = "Roboto", size = 22, weight = 600, extended = true })
-surface.CreateFont("Rareload.ScreenTitle", { font = "Roboto", size = 38, weight = 900, extended = true })
-surface.CreateFont("Rareload.Panel", { font = "Roboto", size = 24, weight = 500, extended = true })
-surface.CreateFont("Rareload.PanelB", { font = "Roboto", size = 24, weight = 700, extended = true })
-surface.CreateFont("Rareload.PanelTitle", { font = "Roboto", size = 32, weight = 800, extended = true })
-surface.CreateFont("Rareload.PanelSmall", { font = "Roboto", size = 19, weight = 600, extended = true })
-surface.CreateFont("Rareload.Label", { font = "Roboto", size = 19, weight = 700, extended = true })
 
 -- Silk icons shipped with GMod.
 local icons = {}

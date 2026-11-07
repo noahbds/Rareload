@@ -2,8 +2,9 @@ RARELOAD.Menu = RARELOAD.Menu or {}
 local Menu = RARELOAD.Menu
 local L, UI = RARELOAD.L, RARELOAD.UI
 
+-- The spawn menu's own, lighter tones; the accent and text colours are the windows' (UI.C).
 local BG, CARD, CARD_HI = Color(30, 33, 40), Color(41, 45, 54), Color(50, 55, 66)
-local ACCENT, TEXT, TEXT2, MUTED = Color(65, 145, 255), Color(240, 242, 247), Color(170, 176, 190), Color(110, 116, 130)
+local ACCENT, TEXT, TEXT2, MUTED = UI.C.accent, UI.C.text, UI.C.text2, Color(110, 116, 130)
 local TRACK, SWITCH_OFF, HOVER = Color(60, 65, 77), Color(70, 75, 88), Color(255, 255, 255)
 local BUTTONS = {
     green = Color(56, 158, 92),
@@ -14,15 +15,7 @@ local BUTTONS = {
     gray = Color(88, 94, 108),
 }
 
--- The spawn menu isn't scaled, so sizes are fixed. No shadows: they blur small text.
-local function font(name, size, weight)
-    surface.CreateFont(name, { font = "Roboto", size = size, weight = weight, extended = true })
-end
-font("Rareload.Menu.Title", 26, 800)
-font("Rareload.Menu.Head", 17, 700)
-font("Rareload.Menu.Row", 16, 500)
-font("Rareload.Menu.Value", 16, 700)
-font("Rareload.Menu.Note", 13, 500)
+-- Its fonts (Rareload.Menu.*) are made with the others in cl_ui.lua.
 
 local GUTTER, PAD, LINE = 22, 8, 19 -- icon column, right padding, label line height
 local HEAD_H = 34
