@@ -40,7 +40,7 @@ local function upload(name, status)
     if not text or text == "" then return UI.Notify(L("share.unreadable"), "error") end
     local max = RARELOAD.Get(nil, "importMaxKB") * 1024
     local ok, size = RARELOAD.Net.Upload("import", text, function(sent, total)
-        status(L("share.uploading", sent, total))
+        status(sent < total and L("share.uploading", sent, total) or "") -- the server's toast tells the rest
     end, max)
     if not ok then
         status("")
