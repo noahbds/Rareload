@@ -26,7 +26,6 @@ hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
 
     if transition or not RARELOAD.Pipeline.Enabled() then return end                                 -- E22
     if not RARELOAD.Get(ply, "enabled") or not RARELOAD.Can(ply, "rareload_restore") then return end -- E15
-    if died and RARELOAD.Get(ply, "skipRestoreOnDeath") then return end
 
     -- The respawn that follows a whole-map cleanup must not start another one.
     local mode = died and not cleaned and RARELOAD.Get(nil, "deathCleanupMode") or "off"
@@ -49,12 +48,25 @@ hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
             mode == "saved" and "saved " or "")
     end
 
+    -- The respawn choice after a death (D4): the map spawn restores nothing; "where I died" restores
+    -- the save as usual, at the spot where the player died.
+    local choice = ply.rareloadSpawnChoice
+    ply.rareloadSpawnChoice = nil
+    if choice == "map" then return end
+    local spot = choice == "death" and RARELOAD.Death.TakeSpot(ply) or nil
+
     -- With no save on this map, modules kept outside the saves (the global inventory) still restore.
     local entry = RARELOAD.History.Active(ply)
     if not entry and RARELOAD.Pipeline.Loads(ply, "spawn") then entry = { data = {} } end
+    -- With no saved position, the transform module still puts the player at the death spot.
+    if spot and not (entry and entry.data.transform) then
+        local data = { transform = {} }
+        for k, v in pairs(entry and entry.data or {}) do data[k] = v end
+        entry = { id = entry and entry.id, time = entry and entry.time, data = data }
+    end
     if entry then
         RARELOAD.Pipeline.Restore(ply, entry,
-            { reason = "spawn", reset = RARELOAD.Get(ply, "resetOnSpawn"), died = died })
+            { reason = "spawn", reset = RARELOAD.Get(ply, "resetOnSpawn"), died = died, deathSpot = spot })
     end
 end)
 

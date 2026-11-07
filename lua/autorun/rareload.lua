@@ -61,7 +61,8 @@ local SHARED = {
     "sh_util",
     "sh_perms",
     "sh_net",
-    "sh_config"
+    "sh_config",
+    "sh_exclude"
 }
 
 local function includeShared(path)

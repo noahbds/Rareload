@@ -141,8 +141,14 @@ end
 
 -- Save --------------------------------------------------------------------------------------------
 
-local function refuse(ply, opts, why)
-    if not opts.silent then RARELOAD.Toast(ply, "toast.save_denied", nil, "error") end
+-- `toast`: { toast = key?, args? } from a rule that explains itself (RareloadCanSave); a rule
+-- without a key shows nothing (it refused a save the player didn't ask for).
+local function refuse(ply, opts, why, toast)
+    if istable(toast) then
+        if toast.toast and not opts.silent then RARELOAD.Toast(ply, toast.toast, toast.args, "error") end
+    elseif not opts.silent then
+        RARELOAD.Toast(ply, "toast.save_denied", nil, "error")
+    end
     if not opts.captureOnly then
         RARELOAD.Log("save", ply):verbose("%s could not save (%s): %s", ply:Nick(), opts.reason or "command", why)
     end
@@ -155,7 +161,9 @@ local MANUAL_COOLDOWN = 1
 local lastManual = setmetatable({}, { __mode = "k" })
 
 -- opts = { at?: Vector, reason?: string, only?: { [moduleId] = true }, silent?: bool, captureOnly?: bool,
---          keepMissing?: bool (a module that captures nothing keeps its data from the current save) }
+--          keepMissing?: bool (a module that captures nothing keeps its data from the current save),
+--          keepActive?: bool (the save doesn't become the respawn point),
+--          deathHealth?: { hp, armor } (the health before the fatal hit, for a save made on death) }
 -- Returns true plus "saved" or "unchanged", or false plus the reason. With captureOnly the entry is
 -- returned instead of saved, with heavy data inline (used for undo, which must not depend on blobs).
 function Pipeline.Save(ply, opts)
@@ -163,9 +171,12 @@ function Pipeline.Save(ply, opts)
     if not Pipeline.Enabled() then return false, "gamemode" end
     if not RARELOAD.Get(ply, "enabled") then return refuse(ply, opts, "disabled") end
     if not RARELOAD.Can(ply, "rareload_save") then return refuse(ply, opts, "permission") end
-    if not ply:Alive() or ply:GetObserverMode() ~= OBS_MODE_NONE then return refuse(ply, opts, "state") end   -- E33
+    -- A save made on death (D4) runs while the player is already dead, before the gamemode drops the weapon.
+    local living = ply:Alive() or opts.deathHealth ~= nil
+    if not living or ply:GetObserverMode() ~= OBS_MODE_NONE then return refuse(ply, opts, "state") end   -- E33
     if not RARELOAD.Util.PlayerKey(ply) then return refuse(ply, opts, "no steamid") end                      -- E24
-    if hook.Run("RareloadCanSave", ply, opts.reason) == false then return refuse(ply, opts, "hook") end
+    local veto, rule = hook.Run("RareloadCanSave", ply, opts.reason)
+    if veto == false then return refuse(ply, opts, "hook", rule) end
     if not opts.silent and not opts.captureOnly then
         if CurTime() - (lastManual[ply] or -math.huge) < MANUAL_COOLDOWN then
             RARELOAD.Toast(ply, "toast.save_wait", nil, "error")
@@ -229,12 +240,12 @@ function Pipeline.Save(ply, opts)
         return true, "unchanged"
     end
 
-    RARELOAD.History.Append(ply, entry)
+    RARELOAD.History.Append(ply, entry, { keepActive = opts.keepActive })
     if not opts.silent then RARELOAD.Toast(ply, "toast.saved", { entry.id }, "ok") end
     info.result, info.entry = "saved", entry.id
     session:finish(info)
     hook.Run("RareloadSaved", ply, entry)
-    return true, "saved"
+    return true, "saved", entry
 end
 
 -- Restore -----------------------------------------------------------------------------------------
@@ -416,7 +427,8 @@ end
 
 -- opts = { reason?, only?: { [moduleId] = true }, reset?: put saved objects still on the map back the
 --          way they were saved, exact?: also remove the player's objects the save doesn't hold,
---          died?: a respawn after a death }
+--          died?: a respawn after a death, deathSpot?: { pos, ang, crouched } to respawn at instead
+--          of the saved position (D4) }
 function Pipeline.Restore(ply, entry, opts)
     opts = opts or {}
     local token = (tokens[ply] or 0) + 1
@@ -426,6 +438,7 @@ function Pipeline.Restore(ply, entry, opts)
     local ctx = setmetatable({
         ply = ply, entry = entry, reason = reason, only = opts.only, token = token,
         reset = opts.reset or opts.exact or false, exact = opts.exact or false, died = opts.died or false,
+        deathSpot = opts.deathSpot,
         spawnDone = {}, shared = {}, spawned = {}, denied = {},
         session = RARELOAD.Log.Session("Restore (" .. reason .. ")", ply, "restore"),
     }, Ctx)

@@ -127,6 +127,13 @@ local function checkModule(id, value)
     return true
 end
 
+-- An imported save keeps the time it was made (5.4 plan, A2); a missing or future time is now.
+local function originalTime(t)
+    t = tonumber(t)
+    if not t or t <= 0 or t > os.time() then return os.time() end
+    return math.floor(t)
+end
+
 -- Adds an export document to the player's timeline as a new save (not their respawn point). The
 -- document is changed (new object IDs), so it must not be shared with cached saves.
 -- opts = { reason? ("import" | "shared"), from? (who shared it) }.
@@ -174,7 +181,7 @@ function Share.Import(ply, doc, opts)
     local note = isstring(doc.entry.note) and string.Trim(doc.entry.note) or ""
     if opts.from then note = string.Trim("[" .. opts.from .. "] " .. note) end
     local entry = {
-        time = os.time(), reason = opts.reason or "import", data = data,
+        time = originalTime(doc.entry.time), reason = opts.reason or "import", data = data,
         note = note ~= "" and string.sub(note, 1, 256) or nil,
     }
     if not RARELOAD.History.Append(ply, entry, { keepActive = true }) then

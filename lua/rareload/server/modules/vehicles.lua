@@ -131,6 +131,11 @@ local function phantomParts(veh)
         local model = ent:GetModel()
         if not Snapshot.IsVehiclePart(ent) or ent:GetNoDraw() then return end
         if not isstring(model) or not string.EndsWith(model, ".mdl") then return end
+        -- Helpers a base never draws (LVS engines and weapons have models/error.mdl, or no colour).
+        if string.lower(model) == "models/error.mdl" or ent:GetRenderMode() == RENDERMODE_NONE
+            or ent:GetColor().a == 0 then
+            return
+        end
         local lp, la = WorldToLocal(ent:GetPos(), ent:GetAngles(), veh:GetPos(), veh:GetAngles())
         -- Rounded, so physics jitter doesn't make an unchanged vehicle look changed (L35).
         parts[#parts + 1] = {
@@ -219,7 +224,9 @@ RARELOAD.Module({
                 ent = ent,
                 adapter = adapter,
                 runtime = snap.runtime and (snap.runtime[id] or snap.runtime[tonumber(id)]),
-                seat = snap.seat and snap.seat.vehicle == id and snap.seat.seat or nil,
+                -- Not when respawning where they died (D4): the player stays at that spot.
+                seat = not ctx.deathSpot and snap.seat and snap.seat.vehicle == id
+                    and snap.seat.seat or nil,
                 pos = def and def.Pos,
                 ang = def and def.Angle,
                 frozen = p0 and p0.Frozen,

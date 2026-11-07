@@ -40,9 +40,30 @@ local function forgetDetails(prefix)
 end
 
 RARELOAD.Net.On("history", function(p)
+    local shown = RARELOAD.Timeline and RARELOAD.Timeline.target
+    if p.target ~= shown then return end
     for _, row in ipairs(p.rows or {}) do row.note = asText(row.note) end
     State.history = { rows = p.rows or {}, reload = p.reload or {}, undo = p.undo == true, loaded = true }
     changed("history")
+end)
+
+RARELOAD.Net.On("history.players", function(p)
+    State.players = istable(p.list) and p.list or {}
+    table.sort(State.players, function(a, b)
+        if a.online ~= b.online then return a.online end
+        return string.lower(a.nick or "") < string.lower(b.nick or "")
+    end)
+    changed("players")
+end)
+
+RARELOAD.Net.On("snapshots", function(p)
+    State.snapshots = istable(p.list) and p.list or {}
+    changed("snapshots")
+end)
+
+RARELOAD.Net.On("data.usage", function(p)
+    State.usage = istable(p.lines) and p.lines or {}
+    changed("usage")
 end)
 
 RARELOAD.Net.On("history.objects", function(p)
@@ -88,6 +109,11 @@ end)
 RARELOAD.Net.On("antistuck", function(p)
     State.antistuck = p.methods or {}
     changed("antistuck")
+end)
+
+RARELOAD.Net.On("blocked", function(p)
+    State.blocked = istable(p.classes) and p.classes or {}
+    changed("blocked")
 end)
 
 RARELOAD.Net.On("autosave", function()

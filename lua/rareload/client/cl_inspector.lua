@@ -670,7 +670,9 @@ function Inspector.Open(entryId)
     scroll:Dock(FILL)
     scroll:DockMargin(sc(12), 0, sc(12), 0)
     local grid = vgui.Create("DIconLayout", scroll)
-    grid:Dock(FILL)
+    -- TOP, not FILL: the grid sizes itself to its cards. Docked FILL inside the scroll canvas, its
+    -- height and the canvas's depend on each other and can stay at one row, hiding the rest.
+    grid:Dock(TOP)
     grid:SetSpaceX(sc(10))
     grid:SetSpaceY(sc(10))
 

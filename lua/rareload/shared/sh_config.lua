@@ -76,8 +76,14 @@ function RARELOAD.Get(ply, key)
     if def.scope == "player" and IsValid(ply) and (SERVER or ply == LocalPlayer()) and not RARELOAD.IsLocked(key) then
         -- A player without the value (bots have no userinfo; GetInfoNum then returns 0, not the
         -- default) uses the server value.
-        local pref = tonumber(SERVER and ply:GetInfo(def.pref) or GetConVar(def.pref):GetString()) or -1
-        if pref ~= -1 then value = coerce(def, pref) end
+        -- An enum's own value is its text.
+        local raw = SERVER and ply:GetInfo(def.pref) or GetConVar(def.pref):GetString()
+        if def.type == "enum" then
+            if raw ~= "" and raw ~= "-1" then value = coerce(def, raw) end
+        else
+            local pref = tonumber(raw) or -1
+            if pref ~= -1 then value = coerce(def, pref) end
+        end
     end
     if def.capBy then
         value = math.min(value, RARELOAD.Get(nil, def.capBy))
@@ -99,13 +105,6 @@ RARELOAD.Setting("antiStuck", {
     scope = "player",
     category = "general",
     help = "Move players out of blocked saved positions"
-})
-RARELOAD.Setting("skipRestoreOnDeath", {
-    type = "bool",
-    default = false,
-    scope = "player",
-    category = "general",
-    help = "Don't restore the save when respawning after a death"
 })
 RARELOAD.Setting("keepHealth", {
     type = "bool",
@@ -246,6 +245,46 @@ RARELOAD.Setting("resetOnSpawn", {
     category = "world",
     help = "Respawning at your save also puts your saved objects back the way they were saved"
 })
+RARELOAD.Setting("saveOnDeath", {
+    type = "bool",
+    default = false,
+    scope = "player",
+    category = "general",
+    priv = "rareload_save",
+    help = "Save just before dying (it doesn't replace the respawn point), to go back to it later"
+})
+RARELOAD.Setting("deathChoice", {
+    type = "bool",
+    default = false,
+    scope = "player",
+    category = "general",
+    priv = "rareload_restore",
+    help = "After dying, choose where to respawn: the respawn point, the map spawn or where you died"
+})
+RARELOAD.Setting("deathChoiceAlways", {
+    type = "enum",
+    values = { "ask", "save", "map", "death" },
+    default = "ask",
+    scope = "player",
+    category = "general",
+    priv = "rareload_restore",
+    help = "Where to respawn after dying: asked (with the respawn choice on), or always the same place"
+})
+-- The old "Normal respawn after dying" (skipRestoreOnDeath) is now "Respawn after dying: at the map's
+-- spawn". Turned on, the server or player value moves over once.
+if SERVER then
+    local old = CreateConVar("sv_rareload_skip_restore_on_death", "0", FCVAR_ARCHIVE,
+        "Replaced by sv_rareload_death_choice_always")
+    if old:GetBool() then
+        RunConsoleCommand("sv_rareload_death_choice_always", "map")
+        old:SetBool(false)
+    end
+else
+    local old = CreateClientConVar("rareload_pref_skip_restore_on_death", "-1", true, false,
+        "Replaced by rareload_pref_death_choice_always")
+    if old:GetInt() == 1 then RunConsoleCommand("rareload_pref_death_choice_always", "map") end
+    if old:GetInt() ~= -1 then RunConsoleCommand("rareload_pref_skip_restore_on_death", "-1") end
+end
 RARELOAD.Setting("autoSave", {
     type = "bool",
     default = false,
@@ -315,6 +354,86 @@ RARELOAD.Setting("importMaxKB", {
     scope = "server",
     category = "timing",
     help = "Largest save file a player may import, in KB once compressed"
+})
+RARELOAD.Setting("saveCombatDelay", {
+    type = "int",
+    default = 0,
+    min = 0,
+    max = 600,
+    scope = "server",
+    category = "timing",
+    help = "PvP: no saving within this many seconds of taking or dealing combat damage (0 = off)"
+})
+RARELOAD.Setting("restoreCooldown", {
+    type = "int",
+    default = 0,
+    min = 0,
+    max = 3600,
+    scope = "server",
+    category = "timing",
+    help = "PvP: seconds a player waits between two timeline restores (0 = off)"
+})
+RARELOAD.Setting("restoreNeedsSpawn", {
+    type = "int",
+    default = 0,
+    min = 0,
+    max = 600,
+    scope = "server",
+    category = "timing",
+    help = "PvP: timeline restores only within this many seconds of spawning (0 = off)"
+})
+RARELOAD.Setting("restoreBatch", {
+    type = "int",
+    default = 50,
+    min = 0,
+    max = 1000,
+    scope = "server",
+    category = "timing",
+    help = "Objects created per tick when restoring a large build, so it doesn't freeze the server (0 = all at once)"
+})
+RARELOAD.Setting("snapshotInterval", {
+    type = "int",
+    default = 0,
+    min = 0,
+    max = 120,
+    scope = "server",
+    category = "server",
+    help = "Minutes between two server snapshots of every player's objects, for rollback (0 = off)"
+})
+RARELOAD.Setting("snapshotKeep", {
+    type = "int",
+    default = 6,
+    min = 1,
+    max = 50,
+    scope = "server",
+    category = "server",
+    help = "How many server snapshots are kept on each map"
+})
+RARELOAD.Setting("crashRecovery", {
+    type = "enum",
+    values = { "off", "ask", "auto" },
+    default = "ask",
+    scope = "server",
+    category = "server",
+    help = "After a crash, a player's objects from the last snapshot newer than their save: off, offered, or restored"
+})
+RARELOAD.Setting("pinnedMax", {
+    type = "int",
+    default = 20,
+    min = 1,
+    max = 500,
+    scope = "server",
+    category = "timing",
+    help = "Most pinned saves each player can have on a map (pinned saves are never dropped)"
+})
+RARELOAD.Setting("checkpointMax", {
+    type = "int",
+    default = 20,
+    min = 1,
+    max = 100,
+    scope = "server",
+    category = "timing",
+    help = "Most checkpoints each player can have on a map"
 })
 RARELOAD.Setting("fireDuration", {
     type = "float",
@@ -463,7 +582,14 @@ RARELOAD.Setting("wdInteractDistance", {
     max = 5000,
     scope = "client",
     category = "display",
-    help = "World display: how far away you can focus an info panel"
+    help = "World display: how far away aiming at a saved object focuses its panel (its tag: as far as panels show)"
+})
+RARELOAD.Setting("showCheckpoints", {
+    type = "bool",
+    default = true,
+    scope = "client",
+    category = "display",
+    help = "Show your checkpoints as markers in the world"
 })
 RARELOAD.Setting("toastHold", {
     type = "float",

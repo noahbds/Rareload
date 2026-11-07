@@ -41,6 +41,8 @@ local ICONS = {
     highlight = "flag_yellow",
     debug = "wrench",
     methods = "arrow_switch",
+    blocked = "database_delete",
+    keys = "keyboard",
 }
 local SUFFIXES = { autoSaveInterval = "s", autoSaveAngleThreshold = "°", asMaxSearchTime = "s", toastHold = "s" }
 
@@ -556,6 +558,9 @@ function Menu.BuildToolPanel(panel)
     local actions = section(panel, L("menu.actions"), ICONS.actions)
     button(actions, L("menu.save_here"), "disk", BUTTONS.green, function() RunConsoleCommand("rareload", "save") end)
     button(actions, L("menu.open_timeline"), "time", BUTTONS.indigo, function() RARELOAD.Timeline.Open() end)
+    if RARELOAD.Can(lp, "rareload_checkpoints") then
+        button(actions, L("checkpoint.title"), "flag_blue", BUTTONS.cyan, function() RARELOAD.CheckpointsUI.Open() end)
+    end
     button(actions, L("menu.client_settings"), "monitor", BUTTONS.gray, function() Menu.Open("client") end)
     if RARELOAD.Can(lp, "rareload_settings") then
         button(actions, L("menu.server_settings"), "cog_edit", BUTTONS.orange, function() Menu.Open("server") end)
@@ -565,6 +570,30 @@ function Menu.BuildToolPanel(panel)
             if def.pref then RunConsoleCommand(def.pref, "-1") end
         end
     end)
+
+    -- Quick save and quick load keys (cl_keys.lua): a binder per key, and a click on it waits for one.
+    local keys = section(panel, L("menu.keys"), ICONS.keys, false)
+    note(keys, L("menu.keys_help"))
+    for _, k in ipairs(RARELOAD.Keys or {}) do
+        local row = vgui.Create("DPanel", keys)
+        row:Dock(TOP)
+        row:DockMargin(0, 2, 0, 2)
+        row:SetTall(30)
+        row:SetPaintBackground(false)
+        local label = L(k.label)
+        row.Paint = function(_, _, h)
+            draw.SimpleText(label, "Rareload.Menu.Row", 4, h / 2, TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        end
+        local binder = vgui.Create("DBinder", row)
+        binder:Dock(RIGHT)
+        binder:SetWide(120)
+        binder:SetConVar(k.convar)
+        binder:SetFont("Rareload.Menu.Value")
+        binder:SetTextColor(TEXT)
+        binder.Paint = function(self, w, h)
+            draw.RoundedBox(6, 0, 0, w, h, self:IsHovered() and BUTTONS.gray or UI.Mix(BUTTONS.gray, color_black, 0.3))
+        end
+    end
 
     if RARELOAD.Can(lp, "rareload_debug") then
         local hl = section(panel, L("menu.highlights"), ICONS.highlight, false)
@@ -629,6 +658,71 @@ local function buildServer(panel)
         fill()
         hook.Add("RareloadStateChanged", methods, function(_, what) if what == "antistuck" then fill() end end)
         RARELOAD.Net.Request("antistuck.get")
+    end
+
+    if RARELOAD.Can(LocalPlayer(), "rareload_block_classes") then
+        local blocked = section(panel, L("menu.blocked"), ICONS.blocked, false)
+        local function set(add, class) RARELOAD.Net.Request("blocked.set", { add = add, class = class }) end
+        local function fill()
+            blocked:Clear()
+            note(blocked, L("menu.blocked_help"))
+            local entry = UI.TextEntry(blocked, L("menu.blocked_placeholder"))
+            entry:Dock(TOP)
+            entry:DockMargin(0, 2, 0, 4)
+            entry:SetTall(28)
+            entry.OnEnter = function(self)
+                local class = string.Trim(self:GetValue())
+                if class ~= "" then set(true, class) end
+            end
+            button(blocked, L("menu.blocked_add"), "add", BUTTONS.gray, function() entry:OnEnter() end)
+            local list = RARELOAD.State.blocked or {}
+            if #list == 0 then note(blocked, L("menu.blocked_none")) end
+            for _, class in ipairs(list) do
+                button(blocked, class, "cross", BUTTONS.gray, function() set(false, class) end)
+                    :SetTooltip(L("menu.blocked_remove"))
+            end
+        end
+        fill()
+        hook.Add("RareloadStateChanged", blocked, function(_, what) if what == "blocked" then fill() end end)
+        RARELOAD.Net.Request("blocked.get")
+    end
+
+    if RARELOAD.Can(LocalPlayer(), "rareload_rollback") then
+        local snaps = section(panel, L("menu.snapshots"), "camera", false)
+        local function fill()
+            snaps:Clear()
+            note(snaps, L("menu.snapshots_help"))
+            button(snaps, L("menu.snapshot_take"), "camera_add", BUTTONS.green,
+                function() RARELOAD.Net.Request("snapshot.take") end)
+            local list = RARELOAD.State.snapshots or {}
+            if #list == 0 then note(snaps, L("menu.snapshots_none")) end
+            for i = #list, 1, -1 do
+                local s = list[i]
+                local label = L("menu.snapshot_rollback", s.id, os.date("%H:%M", s.time), #s.players)
+                button(snaps, label, "arrow_undo", BUTTONS.orange, function()
+                    UI.Confirm(L("menu.snapshots"), L("menu.snapshot_confirm", table.concat(s.players, ", ")),
+                        function() RARELOAD.Net.Request("snapshot.rollback", { id = s.id }) end, L("menu.snapshots"))
+                end):SetTooltip(table.concat(s.players, ", "))
+            end
+        end
+        fill()
+        hook.Add("RareloadStateChanged", snaps, function(_, what) if what == "snapshots" then fill() end end)
+        RARELOAD.Net.Request("snapshot.list")
+    end
+
+    if RARELOAD.Can(LocalPlayer(), "rareload_data_cleanup") then
+        local storage = section(panel, L("menu.storage"), "database", false)
+        local function fill()
+            storage:Clear()
+            note(storage, L("menu.storage_help"))
+            for _, line in ipairs(RARELOAD.State.usage or {}) do note(storage, line) end
+            button(storage, L("menu.storage_refresh"), "arrow_refresh", BUTTONS.gray,
+                function() RARELOAD.Net.Request("data.usage") end)
+            button(storage, L("menu.storage_cleanup"), "bin", BUTTONS.orange,
+                function() RunConsoleCommand("rareload", "data", "cleanup", "all") end)
+        end
+        fill()
+        hook.Add("RareloadStateChanged", storage, function(_, what) if what == "usage" then fill() end end)
     end
 
     local reset = section(panel, L("menu.defaults_reset_title"), "arrow_undo", false)

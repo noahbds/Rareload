@@ -13,7 +13,14 @@ local MODES = { "set_previous", "restore_current", "restore_previous" }
 local SORTS = { "newest", "oldest", "health", "pinned" }
 local FILTERS = { "all", "pinned", "noted", "world", "auto" }
 
-local function request(op, args) RARELOAD.Net.Request(op, args) end
+-- While an admin looks at another player's timeline (A3), every timeline operation names that player.
+local function request(op, args)
+    if Timeline.target and string.StartsWith(op, "history.") then
+        args = table.Copy(args or {})
+        args.sid = Timeline.target
+    end
+    RARELOAD.Net.Request(op, args)
+end
 
 local function objectsOf(row)
     local i = row.info or {}
@@ -318,7 +325,12 @@ local function buildDetail(host, sel)
         local r = row()
         if r then RARELOAD.Share.Pick(r.id) end
     end, { style = "info", icon = "group_go" })
-    D.shareTools = split({ D.export, D.share })
+    -- Move where the save respawns the player (D6).
+    D.place = UI.Button(host, L("place.button"), function()
+        local r = row()
+        if r then RARELOAD.PlaceUI.Start(r.id, r.info.model, Timeline.target) end
+    end, { style = "info", icon = "arrow_inout" })
+    D.shareTools = split({ D.place, D.export, D.share })
 
     D.banner = UI.Card(host, function(_, w, h)
         draw.SimpleText(L("timeline.is_active"), "Rareload.BodyB", w / 2, h / 2, C.ok, TEXT_ALIGN_CENTER,
@@ -445,7 +457,8 @@ local function updateDetail(D, r)
     local me = LocalPlayer()
     D.export:SetVisible(RARELOAD.Can(me, "rareload_export"))
     D.share:SetVisible(RARELOAD.Can(me, "rareload_share"))
-    D.shareTools:SetVisible(r ~= nil and (D.export:IsVisible() or D.share:IsVisible()))
+    D.place:SetVisible(RARELOAD.Can(me, "rareload_save") and r ~= nil and r.info.pos ~= nil)
+    D.shareTools:SetVisible(r ~= nil and (D.place:IsVisible() or D.export:IsVisible() or D.share:IsVisible()))
     D.shareTools:InvalidateLayout()
     D.empty:SetVisible(r == nil)
     if not r then return end
@@ -515,12 +528,52 @@ end
 
 -- Window --------------------------------------------------------------------------------------------
 
+-- Admins pick whose timeline to look at: online players, and offline ones with saves on this map.
+local function pickPlayer(onPick)
+    RARELOAD.Net.Request("history.players")
+    local frame = UI.Window({ title = L("timeline.players"), subtitle = L("timeline.players_help"), w = 640,
+        h = 560, overlay = true })
+    local scroll = UI.Scroll(frame)
+    scroll:Dock(FILL)
+    local mine = UI.Button(scroll, L("timeline.my_saves"), function()
+        onPick(nil)
+        frame:Close()
+    end, { style = "success", icon = "user" })
+    mine:Dock(TOP)
+    mine:DockMargin(0, 0, sc(4), sc(10))
+    hook.Add("RareloadStateChanged", frame, function(_, what)
+        if what ~= "players" or not IsValid(scroll) then return end
+        local me = LocalPlayer():SteamID64()
+        for _, p in ipairs(State.players or {}) do
+            if p.sid == me then continue end
+            local label = p.nick .. "  ·  " .. L("timeline.count", p.saves)
+                .. (p.online and "" or "  ·  " .. L("timeline.offline"))
+            local b = UI.Button(scroll, label, function()
+                onPick(p)
+                frame:Close()
+            end, { style = p.online and "info" or "ghost", icon = p.online and "user_green" or "user_gray" })
+            b:Dock(TOP)
+            b:DockMargin(0, 0, sc(4), sc(6))
+        end
+    end)
+end
+
 function Timeline.Open()
     if IsValid(Timeline.frame) then Timeline.frame:Remove() end
+    Timeline.target = nil
     local frame = UI.Window({
         title = L("timeline.title"), subtitle = L("timeline.subtitle", game.GetMap()), w = 1220, h = 880
     })
     Timeline.frame = frame
+    -- Back to the player's own timeline when the window closes.
+    local onRemove = frame.OnRemove
+    frame.OnRemove = function(self)
+        if onRemove then onRemove(self) end
+        if Timeline.target then
+            Timeline.target = nil
+            RARELOAD.Net.Request("history.get")
+        end
+    end
     local filter, sort, search, selected = "all", "newest", "", nil
     local rows = {}
     local refresh
@@ -533,13 +586,19 @@ function Timeline.Open()
     end, { style = "danger", icon = "bin" })
     frame:HeaderButton(L("timeline.refresh"), function() request("history.get") end,
         { style = "info", icon = "arrow_refresh" })
-    if RARELOAD.InventoryManager.CanUse() then
-        frame:HeaderButton(L("inventory.title"), function() RARELOAD.InventoryManager.Open() end,
-            { style = "primary", icon = "gun" })
-    end
     if RARELOAD.Can(LocalPlayer(), "rareload_import") then
         frame:HeaderButton(L("share.import"), function() RARELOAD.Share.OpenImport() end,
             { style = "info", icon = "page_white_get" })
+    end
+    if RARELOAD.Can(LocalPlayer(), "rareload_manage_saves") then
+        frame:HeaderButton(L("timeline.players"), function()
+            pickPlayer(function(p)
+                Timeline.target = p and p.sid or nil
+                frame.subtitle = p and L("timeline.subtitle_of", p.nick, game.GetMap()) or
+                    L("timeline.subtitle", game.GetMap())
+                RARELOAD.Net.Request("history.get", { sid = Timeline.target })
+            end)
+        end, { style = "info", icon = "group" })
     end
 
     local side = vgui.Create("DPanel", frame)

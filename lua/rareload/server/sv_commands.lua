@@ -200,15 +200,32 @@ function Cmd.FindPlayer(text)
     return nil, "Player not found: " .. text
 end
 
--- Admins can name another player as the first argument of the timeline commands.
+-- A player who is offline but has saves on this map: by SteamID64, STEAM_ ID, or the name they last
+-- saved with (A3). Returns their SteamID64.
+local function offlineTarget(text)
+    local sid = text:match("^7656119%d+$") or (text:match("^STEAM_%d:%d:%d+$") and util.SteamIDTo64(text))
+    if sid then return sid end
+    local lower, found = string.lower(text), {}
+    for _, name in ipairs(file.Find("rareload/" .. RARELOAD.Store.MapDir() .. "/*.json", "DATA") or {}) do
+        local id = name:match("^(%d+)%.json$")
+        local d = id and RARELOAD.History.Doc(id)
+        if d and d.nick and string.find(string.lower(d.nick), lower, 1, true) then found[#found + 1] = id end
+    end
+    if #found == 1 then return found[1] end
+end
+
+-- Admins (rareload_manage_saves) can name a player, online or not, as the first argument of the
+-- timeline commands. The target is the player when online, else their SteamID64.
 local function targetOf(ply, args, reply)
     if args[1] and not tonumber(args[1]) then
-        if not RARELOAD.Can(ply, "rareload_admin") then
-            reply("Only admins can act on other players.")
+        if not RARELOAD.Can(ply, "rareload_manage_saves") then
+            reply("You need the rareload_manage_saves privilege to act on other players' saves.")
             return nil
         end
-        local target, err = Cmd.FindPlayer(table.remove(args, 1))
-        if not target then reply(err) end
+        local text = table.remove(args, 1)
+        local target, err = Cmd.FindPlayer(text)
+        target = target or offlineTarget(text)
+        if not target then reply(err or ("Player not found: " .. text)) end
         return target
     end
     if not IsValid(ply) then
@@ -221,6 +238,22 @@ end
 local function saveID(value)
     local id = tonumber(value)
     return id and id >= 1 and id < math.huge and id == math.floor(id) and id or nil
+end
+
+-- A timeline command that also takes a player first (A3): the action is logged when it is someone
+-- else's saves.
+local function withTarget(name, fn)
+    return function(ply, args, reply)
+        if args[1] and not tonumber(args[1]) then
+            local target = targetOf(ply, args, reply)
+            if not target then return end
+            RARELOAD.Log("admin", ply):info("%s ran 'rareload %s' on the saves of %s", IsValid(ply) and ply:Nick()
+                or "Console", name, isstring(target) and target or target:Nick())
+            return fn(target, args, reply)
+        end
+        if not IsValid(ply) then return reply("Name a player.") end
+        return fn(ply, args, reply)
+    end
 end
 
 local function result(reply, ok, what)
@@ -244,9 +277,10 @@ Cmd.Register("history", {
 
 Cmd.Register("history restore", {
     priv = "rareload_restore",
-    usage = "<id> [position,health,inventory,ammo,appearance,states,world,scene] [exact]",
+    usage = "[player] <id> [position,health,inventory,ammo,appearance,states,world,scene] [exact]",
     help = "Restore a save now (all components by default); exact also removes your objects not in it",
-    fn = playerOnly(function(ply, args, reply)
+    fn = withTarget("history restore", function(ply, args, reply)
+        if isstring(ply) then return reply("That player is offline: saves are restored only for players in game.") end
         if not ply:Alive() then return reply("Respawn first, then restore the save.") end
         local exact = false
         for i = #args, 2, -1 do
@@ -264,9 +298,9 @@ Cmd.Register("history restore", {
 
 Cmd.Register("history activate", {
     priv = "rareload_restore",
-    usage = "<id>",
+    usage = "[player] <id>",
     help = "Make a save your respawn point",
-    fn = playerOnly(function(ply, args, reply)
+    fn = withTarget("history activate", function(ply, args, reply)
         local id = saveID(args[1])
         if not id then return reply("Usage: rareload history activate <positive save ID>") end
         result(reply, RARELOAD.History.Activate(ply, id), "activate")
@@ -281,9 +315,9 @@ Cmd.Register("history undo", {
 
 Cmd.Register("history pin", {
     priv = "rareload_restore",
-    usage = "<id> [0]",
+    usage = "[player] <id> [0]",
     help = "Pin a save so it's never pruned (0 unpins)",
-    fn = playerOnly(function(ply, args, reply)
+    fn = withTarget("history pin", function(ply, args, reply)
         local id = saveID(args[1])
         if not id or (args[2] and args[2] ~= "0") then
             return reply("Usage: rareload history pin <positive save ID> [0]")
@@ -294,9 +328,9 @@ Cmd.Register("history pin", {
 
 Cmd.Register("history note", {
     priv = "rareload_restore",
-    usage = "<id> <text>",
+    usage = "[player] <id> <text>",
     help = "Attach a note to a save",
-    fn = playerOnly(function(ply, args, reply)
+    fn = withTarget("history note", function(ply, args, reply)
         local id = saveID(table.remove(args, 1))
         local note = string.sub(table.concat(args, " "), 1, 256)
         if not id or note == "" then return reply("Usage: rareload history note <positive save ID> <text>") end
@@ -306,9 +340,9 @@ Cmd.Register("history note", {
 
 Cmd.Register("history delete", {
     priv = "rareload_restore",
-    usage = "<id>",
+    usage = "[player] <id>",
     help = "Delete a save",
-    fn = playerOnly(function(ply, args, reply)
+    fn = withTarget("history delete", function(ply, args, reply)
         local id = saveID(args[1])
         if not id then return reply("Usage: rareload history delete <positive save ID>") end
         result(reply, RARELOAD.History.Delete(ply, id), "delete")
@@ -420,9 +454,211 @@ Cmd.Register("antistuck method", {
 
 Cmd.Register("data cleanup", {
     priv = "rareload_data_cleanup",
-    help = "Delete saved world data no save uses any more",
-    fn = function(_, _, reply) reply("Removed " .. RARELOAD.Store.GC() .. " unused blobs.") end,
+    usage = "[all]",
+    help = "Delete saved world data no save uses any more, on this map (or every map with 'all')",
+    fn = function(ply, args, reply)
+        local all = args[1] == "all"
+        local n = all and RARELOAD.Store.GCAll() or RARELOAD.Store.GC()
+        RARELOAD.Log("admin", ply):info("%s cleaned up unused data%s: %d blobs", IsValid(ply) and ply:Nick() or
+            "Console", all and " on every map" or "", n)
+        reply("Removed " .. n .. " unused blobs" .. (all and " on every map." or "."))
+    end,
 })
+
+Cmd.Register("data usage", {
+    priv = "rareload_data_cleanup",
+    help = "What the saves take on disk: by map, by player, unused data and the biggest saves",
+    fn = function(_, _, reply)
+        for _, line in ipairs(RARELOAD.Store.UsageLines(RARELOAD.Store.Overview())) do reply(line) end
+    end,
+})
+
+Cmd.Register("data prune", {
+    priv = "rareload_data_cleanup",
+    usage = "<days>",
+    help = "Delete saves older than this many days on every map (pinned saves and respawn points are kept)",
+    fn = function(ply, args, reply)
+        local days = tonumber(args[1])
+        if not days or days < 1 or days ~= math.floor(days) then return reply("Usage: rareload data prune <days>") end
+        local n = RARELOAD.Store.Prune(days)
+        RARELOAD.Log("admin", ply):info("%s deleted %d saves older than %d days", IsValid(ply) and ply:Nick() or
+            "Console", n, days)
+        reply("Deleted " .. n .. " saves older than " .. days .. " days.")
+    end,
+})
+
+-- Quick commands (5.4 plan, D3): the same as the quick keys and the reload key, from the console -----------
+-- The toast on screen says why one didn't happen.
+local function quickResult(reply, ok, what)
+    reply(ok and ("Done: " .. what) or ("Not done: " .. what .. " (the message on screen says why)."))
+end
+
+Cmd.Register("restore", {
+    priv = "rareload_restore",
+    usage = "[position,health,inventory,ammo,appearance,states,world,scene]",
+    help = "Restore your respawn point now (all components by default)",
+    fn = playerOnly(function(ply, args, reply)
+        quickResult(reply, RARELOAD.History.RestoreActive(ply, RARELOAD.History.ParseComps(args[1])), "restore")
+    end),
+})
+
+Cmd.Register("back", {
+    priv = "rareload_restore",
+    help = "Restore the save before your respawn point, which becomes your respawn point",
+    fn = playerOnly(function(ply, _, reply) quickResult(reply, RARELOAD.History.Back(ply), "back") end),
+})
+
+Cmd.Register("death", {
+    priv = "rareload_restore",
+    help = "Go back to the save made when you last died (needs \"Save when dying\")",
+    fn = playerOnly(function(ply, _, reply)
+        quickResult(reply, RARELOAD.Death.Back(ply), "back to before you died")
+    end),
+})
+
+Cmd.Register("quicksave", {
+    priv = "rareload_save",
+    help = "Save into your quick slot (the quick save key does the same)",
+    fn = playerOnly(function(ply, _, reply) quickResult(reply, RARELOAD.History.QuickSave(ply), "quicksave") end),
+})
+
+Cmd.Register("quickload", {
+    priv = "rareload_restore",
+    help = "Restore your quick slot (the quick load key does the same)",
+    fn = playerOnly(function(ply, _, reply) quickResult(reply, RARELOAD.History.QuickLoad(ply), "quickload") end),
+})
+
+-- Checkpoints (sv_checkpoints.lua) -----------------------------------------------------------------------
+
+local function checkpointReply(reply, ok, key, args)
+    local text = RARELOAD.Checkpoints.English[key] or key
+    reply((ok and "" or "Not done: ") .. string.format(text, unpack(args or {})))
+end
+
+Cmd.Register("checkpoint list", {
+    priv = "rareload_checkpoints",
+    help = "List your checkpoints on this map",
+    fn = playerOnly(function(ply, _, reply)
+        local list = RARELOAD.Checkpoints.List(ply)
+        if #list == 0 then return reply("You have no checkpoints on this map.") end
+        for i, c in ipairs(list) do
+            reply(string.format("  %d. %s  (%.0f, %.0f, %.0f)", i, c.name, c.pos[1], c.pos[2], c.pos[3]))
+        end
+    end),
+})
+
+Cmd.Register("checkpoint add", {
+    priv = "rareload_checkpoints",
+    usage = "[name]",
+    help = "Set a checkpoint where you stand (an existing name moves it)",
+    fn = playerOnly(function(ply, args, reply)
+        checkpointReply(reply, RARELOAD.Checkpoints.Add(ply, table.concat(args, " ")))
+    end),
+})
+
+Cmd.Register("checkpoint go", {
+    priv = "rareload_checkpoints",
+    usage = "<name or number>",
+    help = "Teleport to one of your checkpoints",
+    fn = playerOnly(function(ply, args, reply)
+        checkpointReply(reply, RARELOAD.Checkpoints.Go(ply, table.concat(args, " ")))
+    end),
+})
+
+Cmd.Register("checkpoint remove", {
+    priv = "rareload_checkpoints",
+    usage = "<name or number>",
+    help = "Delete one of your checkpoints",
+    fn = playerOnly(function(ply, args, reply)
+        checkpointReply(reply, RARELOAD.Checkpoints.Remove(ply, table.concat(args, " ")))
+    end),
+})
+
+-- Server snapshots and rollback (sv_snapshots.lua) --------------------------------------------------------
+
+Cmd.Register("snapshot", {
+    priv = "rareload_rollback",
+    help = "Take a server snapshot of every player's objects now",
+    fn = function(ply, _, reply)
+        local ok = RARELOAD.Snapshots.Take(function(snap)
+            local text = "Snapshot No. " .. snap.id .. ": " .. table.Count(snap.players) .. " players."
+            if IsValid(ply) then ply:PrintMessage(HUD_PRINTCONSOLE, text) else print(text) end
+        end)
+        if not ok then reply("A snapshot is already being taken.") end
+    end,
+})
+
+Cmd.Register("snapshots", {
+    priv = "rareload_rollback",
+    help = "List the server snapshots of this map",
+    fn = function(_, _, reply)
+        local list = RARELOAD.Snapshots.List()
+        if #list == 0 then return reply("No snapshots on this map. Set sv_rareload_snapshot_interval to take them.") end
+        for _, s in ipairs(list) do
+            local names = {}
+            for _, part in pairs(s.players) do names[#names + 1] = part.nick end
+            reply(string.format("  #%d  %s  (%d min ago)  %s", s.id, os.date("%Y-%m-%d %H:%M", s.time),
+                math.floor((os.time() - s.time) / 60), table.concat(names, ", ")))
+        end
+    end,
+})
+
+Cmd.Register("rollback", {
+    priv = "rareload_rollback",
+    usage = "<minutes|#id> [player]",
+    help = "Put players' objects back as they were in a snapshot (the newest one at least that old, or #id)",
+    fn = function(ply, args, reply)
+        local snap = RARELOAD.Snapshots.Find(args[1])
+        if not snap then return reply("No such snapshot. Type 'rareload snapshots' for the list.") end
+        local only
+        if args[2] then
+            local target = Cmd.FindPlayer(table.concat(args, " ", 2))
+            if not target then return reply("That player is not in game.") end
+            only = target:SteamID64()
+        end
+        local n, skipped = RARELOAD.Snapshots.Rollback(snap, only)
+        RARELOAD.Log("admin", ply):info("%s rolled back to snapshot No. %d: %d players%s",
+            IsValid(ply) and ply:Nick() or "Console", snap.id, n,
+            #skipped > 0 and (", not: " .. table.concat(skipped, ", ")) or "")
+        reply("Rolled back " .. n .. " players to snapshot No. " .. snap.id
+            .. (#skipped > 0 and (" (not in game or dead: " .. table.concat(skipped, ", ") .. ")") or "") .. ".")
+    end,
+})
+
+Cmd.Register("recover", {
+    priv = "rareload_restore",
+    help = "After a server crash: get your objects back from the last snapshot, when it is newer than your save",
+    fn = playerOnly(function(ply, _, reply) quickResult(reply, RARELOAD.Snapshots.Recover(ply), "recover") end),
+})
+
+-- Blocked classes (sv_exclude.lua) ----------------------------------------------------------------------
+
+Cmd.Register("block list", {
+    priv = "rareload_block_classes",
+    help = "List the object classes Rareload never saves or restores",
+    fn = function(_, _, reply)
+        local list = RARELOAD.Blocked.List()
+        if #list == 0 then return reply("No classes are blocked.") end
+        reply(#list .. " blocked: " .. table.concat(list, ", "))
+    end,
+})
+
+local function blockCommand(name, add)
+    Cmd.Register("block " .. name, {
+        priv = "rareload_block_classes",
+        usage = "<class>",
+        help = add and "Never save or restore objects of this class" or "Save and restore this class again",
+        fn = function(ply, args, reply)
+            local ok, what = (add and RARELOAD.Blocked.Add or RARELOAD.Blocked.Remove)(args[1])
+            if not ok then return reply("Failed: " .. what) end
+            RARELOAD.Log("exclude", ply):info("%s %s the class %s", IsValid(ply) and ply:Nick() or "Console",
+                add and "blocked" or "unblocked", what)
+            reply((add and "Blocked " or "Unblocked ") .. what .. ".")
+        end,
+    })
+end
+blockCommand("add", true)
+blockCommand("remove", false)
 
 -- Export, import and share saves (sv_share.lua) ------------------------------------------------------
 
@@ -538,6 +774,7 @@ local CLIENT_COMMANDS = {
     highlight = { usage = "<all|link|players|clear>", help = "Highlight saved objects and players (world display)" },
     preview = { usage = "off", help = "Hide the Save Timeline preview" },
     inventory = { priv = "rareload_manage_inventory", help = "Open the inventory manager" },
+    checkpoints = { priv = "rareload_checkpoints", help = "Open your checkpoints" },
 }
 for name, def in pairs(CLIENT_COMMANDS) do
     local commandName = name

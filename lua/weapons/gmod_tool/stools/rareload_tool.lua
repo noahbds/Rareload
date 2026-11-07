@@ -28,14 +28,14 @@ end
 function TOOL:LeftClick(trace)
     if not trace.Hit or trace.HitSky then
         if SERVER then RARELOAD.Toast(self:GetOwner(), "toast.aim_ground", nil, "error") end
-        return false
+        return false -- we don't want laser pew pew)
     end
     return save(self, trace.HitPos)
 end
 
 function TOOL:RightClick()
     save(self, nil)
-    return false
+    return false -- same
 end
 
 function TOOL:Reload()
