@@ -352,6 +352,15 @@ RARELOAD.Setting("restoreBatch", {
     category = "timing",
     help = "Objects created per tick when restoring a large build, so it doesn't freeze the server (0 = all at once)"
 })
+RARELOAD.Setting("checkpointMax", {
+    type = "int",
+    default = 20,
+    min = 1,
+    max = 100,
+    scope = "server",
+    category = "timing",
+    help = "Most checkpoints each player can have on a map"
+})
 RARELOAD.Setting("fireDuration", {
     type = "float",
     default = 10,
@@ -500,6 +509,13 @@ RARELOAD.Setting("wdInteractDistance", {
     scope = "client",
     category = "display",
     help = "World display: how far away aiming at a saved object focuses its panel (its tag: as far as panels show)"
+})
+RARELOAD.Setting("showCheckpoints", {
+    type = "bool",
+    default = true,
+    scope = "client",
+    category = "display",
+    help = "Show your checkpoints as markers in the world"
 })
 RARELOAD.Setting("toastHold", {
     type = "float",

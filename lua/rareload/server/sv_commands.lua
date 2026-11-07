@@ -457,6 +457,52 @@ Cmd.Register("quickload", {
     fn = playerOnly(function(ply, _, reply) quickResult(reply, RARELOAD.History.QuickLoad(ply), "quickload") end),
 })
 
+-- Checkpoints (sv_checkpoints.lua) -----------------------------------------------------------------------
+
+local function checkpointReply(reply, ok, key, args)
+    local text = RARELOAD.Checkpoints.English[key] or key
+    reply((ok and "" or "Not done: ") .. string.format(text, unpack(args or {})))
+end
+
+Cmd.Register("checkpoint list", {
+    priv = "rareload_checkpoints",
+    help = "List your checkpoints on this map",
+    fn = playerOnly(function(ply, _, reply)
+        local list = RARELOAD.Checkpoints.List(ply)
+        if #list == 0 then return reply("You have no checkpoints on this map.") end
+        for i, c in ipairs(list) do
+            reply(string.format("  %d. %s  (%.0f, %.0f, %.0f)", i, c.name, c.pos[1], c.pos[2], c.pos[3]))
+        end
+    end),
+})
+
+Cmd.Register("checkpoint add", {
+    priv = "rareload_checkpoints",
+    usage = "[name]",
+    help = "Set a checkpoint where you stand (an existing name moves it)",
+    fn = playerOnly(function(ply, args, reply)
+        checkpointReply(reply, RARELOAD.Checkpoints.Add(ply, table.concat(args, " ")))
+    end),
+})
+
+Cmd.Register("checkpoint go", {
+    priv = "rareload_checkpoints",
+    usage = "<name or number>",
+    help = "Teleport to one of your checkpoints",
+    fn = playerOnly(function(ply, args, reply)
+        checkpointReply(reply, RARELOAD.Checkpoints.Go(ply, table.concat(args, " ")))
+    end),
+})
+
+Cmd.Register("checkpoint remove", {
+    priv = "rareload_checkpoints",
+    usage = "<name or number>",
+    help = "Delete one of your checkpoints",
+    fn = playerOnly(function(ply, args, reply)
+        checkpointReply(reply, RARELOAD.Checkpoints.Remove(ply, table.concat(args, " ")))
+    end),
+})
+
 -- Blocked classes (sv_exclude.lua) ----------------------------------------------------------------------
 
 Cmd.Register("block list", {
@@ -600,6 +646,7 @@ local CLIENT_COMMANDS = {
     highlight = { usage = "<all|link|players|clear>", help = "Highlight saved objects and players (world display)" },
     preview = { usage = "off", help = "Hide the Save Timeline preview" },
     inventory = { priv = "rareload_manage_inventory", help = "Open the inventory manager" },
+    checkpoints = { priv = "rareload_checkpoints", help = "Open your checkpoints" },
 }
 for name, def in pairs(CLIENT_COMMANDS) do
     local commandName = name

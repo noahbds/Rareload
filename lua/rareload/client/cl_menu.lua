@@ -558,6 +558,9 @@ function Menu.BuildToolPanel(panel)
     local actions = section(panel, L("menu.actions"), ICONS.actions)
     button(actions, L("menu.save_here"), "disk", BUTTONS.green, function() RunConsoleCommand("rareload", "save") end)
     button(actions, L("menu.open_timeline"), "time", BUTTONS.indigo, function() RARELOAD.Timeline.Open() end)
+    if RARELOAD.Can(lp, "rareload_checkpoints") then
+        button(actions, L("checkpoint.title"), "flag_blue", BUTTONS.cyan, function() RARELOAD.CheckpointsUI.Open() end)
+    end
     button(actions, L("menu.client_settings"), "monitor", BUTTONS.gray, function() Menu.Open("client") end)
     if RARELOAD.Can(lp, "rareload_settings") then
         button(actions, L("menu.server_settings"), "cog_edit", BUTTONS.orange, function() Menu.Open("server") end)

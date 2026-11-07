@@ -47,7 +47,8 @@ hook.Add("RareloadCanSave", "Rareload.PvP", function(ply, reason, what)
 end)
 
 hook.Add("RareloadCanRestore", "Rareload.PvP", function(ply, reason, what)
-    if reason ~= "timeline" or what ~= nil then return end
+    -- Timeline restores and checkpoints (D7) are both a teleport the player chose.
+    if (reason ~= "timeline" and reason ~= "checkpoint") or what ~= nil then return end
     local now = CurTime()
     local cooldown, window = RARELOAD.Get(nil, "restoreCooldown"), RARELOAD.Get(nil, "restoreNeedsSpawn")
     if cooldown > 0 and lastRestore[ply] and now - lastRestore[ply] < cooldown then
