@@ -17,11 +17,7 @@ function Weapons.Adapter(adapter)
     Weapons.adapters[adapter.id] = adapter
 end
 
-local function call(fn, ...)
-    if not isfunction(fn) then return nil end
-    local ok, result = pcall(fn, ...)
-    if ok then return result end
-end
+local call = RARELOAD.Util.Call
 
 function Weapons.AdapterFor(wep)
     for _, a in SortedPairs(Weapons.adapters) do

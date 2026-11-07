@@ -30,10 +30,7 @@ end)
 
 -- Import --------------------------------------------------------------------------------------------
 
-local function sizeText(bytes)
-    if bytes >= 1024 * 1024 then return string.format("%.1f MB", bytes / 1024 / 1024) end
-    return string.format("%d KB", math.max(1, math.Round(bytes / 1024)))
-end
+local sizeText = RARELOAD.Util.FormatBytes
 
 local function upload(name, status)
     local text = file.Read(DIR .. name, "DATA")

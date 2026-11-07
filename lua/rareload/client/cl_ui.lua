@@ -525,16 +525,46 @@ function UI.Dropdown(parent, prefix, options, get, onSelect)
         })
     end
     b.DoClick = function()
-        local m = DermaMenu()
-        m:SetSkin("Rareload")
-        for _, o in ipairs(options) do
-            local opt = m:AddOption(o.label, function() onSelect(o.id) end)
-            opt:SetChecked(o.id == get())
-            opt:SetTextColor(C.text)
+        local items = {}
+        for i, o in ipairs(options) do
+            items[i] = { label = o.label, fn = function() onSelect(o.id) end, checked = o.id == get() }
         end
-        m:Open()
+        UI.Menu(items)
     end
     return b
+end
+
+-- Buttons side by side in equal widths, docked to the top of `parent`; hidden ones leave no gap.
+function UI.SplitRow(parent, buttons, tall)
+    local p = vgui.Create("DPanel", parent)
+    p:Dock(TOP)
+    p:SetTall(sc(tall))
+    p.Paint = function() end
+    for _, b in ipairs(buttons) do b:SetParent(p) end
+    p.PerformLayout = function(_, w, h)
+        local shown = {}
+        for _, b in ipairs(buttons) do if b:IsVisible() then shown[#shown + 1] = b end end
+        local bw = (w - sc(6) * (#shown - 1)) / math.max(#shown, 1)
+        for i, b in ipairs(shown) do
+            b:SetPos(math.floor((i - 1) * (bw + sc(6))), 0)
+            b:SetSize(math.floor(bw), h)
+        end
+    end
+    return p
+end
+
+-- A popup menu in Rareload's look. items = { { label, fn, icon? (silk name), checked? } }.
+function UI.Menu(items)
+    local m = DermaMenu()
+    m:SetSkin("Rareload")
+    for _, item in ipairs(items) do
+        local opt = m:AddOption(item.label, item.fn)
+        if item.icon then opt:SetIcon("icon16/" .. item.icon .. ".png") end
+        if item.checked ~= nil then opt:SetChecked(item.checked) end
+        opt:SetTextColor(C.text)
+    end
+    m:Open()
+    return m
 end
 
 -- A checkbox with a label. value(): current state; onChange(new state).

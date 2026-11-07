@@ -272,23 +272,9 @@ local function buildDetail(host, sel)
             self.free and C.ok or C.bad, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
 
-    -- Buttons side by side in equal widths (the hidden ones leave no gap).
     local function split(list)
-        local p = vgui.Create("DPanel", host)
-        p:Dock(TOP)
-        p:SetTall(sc(34))
-        p.Paint = function() end
+        local p = UI.SplitRow(host, list, 34)
         gap(p, 8)
-        for _, b in ipairs(list) do b:SetParent(p) end
-        p.PerformLayout = function(_, w, h)
-            local shown = {}
-            for _, b in ipairs(list) do if b:IsVisible() then shown[#shown + 1] = b end end
-            local bw = (w - sc(6) * (#shown - 1)) / math.max(#shown, 1)
-            for i, b in ipairs(shown) do
-                b:SetPos(math.floor((i - 1) * (bw + sc(6))), 0)
-                b:SetSize(math.floor(bw), h)
-            end
-        end
         return p
     end
 
@@ -673,15 +659,14 @@ function Timeline.Open()
         refresh()
     end
     sortBox.DoClick = function()
-        local m = DermaMenu()
-        m:SetSkin("Rareload")
-        for _, s in ipairs(sorts) do
-            m:AddOption(s.label, function()
+        local items = {}
+        for i, s in ipairs(sorts) do
+            items[i] = { label = s.label, checked = s.id == sort, fn = function()
                 sort = s.id
                 refresh()
-            end):SetChecked(s.id == sort)
+            end }
         end
-        m:Open()
+        UI.Menu(items)
     end
 
     -- Keys, while no text box has focus.

@@ -293,10 +293,7 @@ function Store.Prune(days)
     return removed
 end
 
-local function size(bytes)
-    if bytes >= 1048576 then return string.format("%.1f MB", bytes / 1048576) end
-    return string.format("%d KB", math.max(1, math.Round(bytes / 1024)))
-end
+local size = RARELOAD.Util.FormatBytes
 
 -- Store.Overview as English lines, for the console and the server menu.
 function Store.UsageLines(u)

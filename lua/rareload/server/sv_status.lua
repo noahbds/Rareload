@@ -37,10 +37,7 @@ function Status.Detected()
     return out
 end
 
-local function size(bytes)
-    if bytes >= 1024 * 1024 then return string.format("%.1f MB", bytes / 1024 / 1024) end
-    return string.format("%d KB", math.ceil(bytes / 1024))
-end
+local size = RARELOAD.Util.FormatBytes
 
 -- The status as lines of text.
 function Status.Lines()

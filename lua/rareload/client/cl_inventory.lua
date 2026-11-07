@@ -295,16 +295,7 @@ function Manager.Open(key)
         return data, data and data.inventory
     end
 
-    local function pickMenu(items)
-        local m = DermaMenu()
-        m:SetSkin("Rareload")
-        for _, item in ipairs(items) do
-            local opt = m:AddOption(item.label, item.fn)
-            if item.icon then opt:SetIcon("icon16/" .. item.icon .. ".png") end
-            opt:SetTextColor(C.text)
-        end
-        m:Open()
-    end
+    local pickMenu = UI.Menu
 
     local edit = UI.Button(bar, L("inventory.edit"), function()
         local data, inv = current()

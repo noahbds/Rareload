@@ -25,6 +25,28 @@ RARELOAD.PLAYER_STATES = { "god", "notarget", "frozen", "noclip", "flashlight" }
 -- What the tool's reload key does; the first is the default.
 RARELOAD.RELOAD_MODES = { "set_previous", "restore_current", "restore_previous" }
 
+-- A size for people: "512 KB", "3.4 MB" (at least 1 KB).
+function Util.FormatBytes(bytes)
+    if bytes >= 1048576 then return string.format("%.1f MB", bytes / 1048576) end
+    return string.format("%d KB", math.max(1, math.Round(bytes / 1024)))
+end
+
+-- Calls another addon's function: its result, or nil when it is not a function or it errors.
+function Util.Call(fn, ...)
+    if not isfunction(fn) then return nil end
+    local ok, result = pcall(fn, ...)
+    if ok then return result end
+end
+
+-- Text someone typed, as text: GMod's JSON reads a string like "[1 2 3]" or "{1 2 3}" back as a
+-- Vector or an Angle, so a note or a player name of that shape arrives as one.
+function Util.AsText(v)
+    if isvector(v) then return string.format("[%g %g %g]", v.x, v.y, v.z) end
+    if isangle(v) then return string.format("{%g %g %g}", v.p, v.y, v.r) end
+    if v ~= nil and not isstring(v) then return tostring(v) end
+    return v
+end
+
 function Util.Finite(n)
     return isnumber(n) and n == n and n ~= math.huge and n ~= -math.huge
 end

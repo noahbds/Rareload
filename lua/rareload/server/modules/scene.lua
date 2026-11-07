@@ -128,11 +128,7 @@ RARELOAD.Module({
 
 local function stormFox() return istable(StormFox2) and istable(StormFox2.Time) and istable(StormFox2.Weather) end
 
-local function call(fn, ...)
-    if not isfunction(fn) then return nil end
-    local ok, v = pcall(fn, ...)
-    return ok and v or nil
-end
+local call = RARELOAD.Util.Call
 
 -- The sky paint (Sandbox's sky editor changes it): its networked values.
 local function skyPaint()

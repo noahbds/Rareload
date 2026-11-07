@@ -26,14 +26,7 @@ local function changed(what, key)
     hook.Run("RareloadStateChanged", what, key)
 end
 
--- Text someone typed, as text: GMod's JSON reads a string like "[1 2 3]" or "{1 2 3}" back as a
--- Vector or an Angle, so a note or a player name of that shape arrives as one.
-local function asText(v)
-    if isvector(v) then return string.format("[%g %g %g]", v.x, v.y, v.z) end
-    if isangle(v) then return string.format("{%g %g %g}", v.p, v.y, v.r) end
-    if v ~= nil and not isstring(v) then return tostring(v) end
-    return v
-end
+local asText = RARELOAD.Util.AsText
 
 -- Details are kept per player, save and object: the same object differs between two saves, and a
 -- player's respawn point (the world display feed, no save number) changes with every save.

@@ -478,20 +478,8 @@ local function buildDetail(host, entryId, sel)
     gap(D.nograv)
 
     local function row2(a, b)
-        local p = vgui.Create("DPanel", host)
-        p:Dock(TOP)
-        p:SetTall(sc(32))
-        p.Paint = function() end
+        local p = UI.SplitRow(host, { a, b }, 32)
         gap(p, 6)
-        a:SetParent(p)
-        b:SetParent(p)
-        p.PerformLayout = function(_, w, h)
-            local half = (w - sc(6)) / 2
-            a:SetPos(0, 0)
-            a:SetSize(half, h)
-            b:SetPos(half + sc(6), 0)
-            b:SetSize(half, h)
-        end
         return p
     end
     local function pos() return Util.ToVector((sel() or {}).pos) end
@@ -517,13 +505,12 @@ local function buildDetail(host, entryId, sel)
     D.copy = UI.Button(host, L("inspector.copy"), function()
         local o = sel()
         if not o then return end
-        local m = DermaMenu()
-        m:SetSkin("Rareload")
+        local items = {}
         local function add(label, value)
-            m:AddOption(label, function()
+            items[#items + 1] = { label = label, fn = function()
                 SetClipboardText(tostring(value or ""))
                 UI.Notify(L("inspector.copied", label))
-            end)
+            end }
         end
         add(L("field.id"), o.id)
         add(L("field.class"), o.class)
@@ -531,12 +518,12 @@ local function buildDetail(host, entryId, sel)
         add(L("field.position"), UI.Pos(o.pos))
         if o.maxHp then add(L("field.health"), (o.hp or 0) .. " / " .. o.maxHp) end
         if canManage() then
-            m:AddOption("JSON", function()
+            items[#items + 1] = { label = "JSON", fn = function()
                 Inspector.waitingDef, Inspector.copyJson = o.id, true
                 request("object.get", { entryId = entryId, objectId = o.id })
-            end)
+            end }
         end
-        m:Open()
+        UI.Menu(items)
     end, { icon = "page_copy" })
     D.row2 = row2(D.lookAt, D.copy)
 
