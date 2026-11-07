@@ -104,6 +104,12 @@ function Ownership.OwnerOf(ent)
     return ownerOf(ent, buildLists())
 end
 
+-- OwnerOf for many entities in one scan: the cleanup and undo lists are read once.
+function Ownership.Resolver()
+    local lists = buildLists()
+    return function(ent) return ownerOf(ent, lists) end
+end
+
 -- Every entity the player owns, except players, map-created entities, weapons someone holds (weapons
 -- on the ground are objects like any other), and objects left out of saves: marked from the context
 -- menu or of a blocked class (D1). Rareload never saves, removes or cleans those up.

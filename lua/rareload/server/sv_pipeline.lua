@@ -169,14 +169,18 @@ local lastManual = setmetatable({}, { __mode = "k" })
 function Pipeline.Save(ply, opts)
     opts = opts or {}
     if not Pipeline.Enabled() then return false, "gamemode" end
-    if not RARELOAD.Get(ply, "enabled") then return refuse(ply, opts, "disabled") end
-    if not RARELOAD.Can(ply, "rareload_save") then return refuse(ply, opts, "permission") end
-    -- A save made on death (D4) runs while the player is already dead, before the gamemode drops the weapon.
-    local living = ply:Alive() or opts.deathHealth ~= nil
-    if not living or ply:GetObserverMode() ~= OBS_MODE_NONE then return refuse(ply, opts, "state") end   -- E33
     if not RARELOAD.Util.PlayerKey(ply) then return refuse(ply, opts, "no steamid") end                      -- E24
-    local veto, rule = hook.Run("RareloadCanSave", ply, opts.reason)
-    if veto == false then return refuse(ply, opts, "hook", rule) end
+    -- A capture stores nothing (a server snapshot, the state an undo goes back to): the player's own
+    -- rules for saving don't apply, or a dead or disabled player's objects would be left out (B-13).
+    if not opts.captureOnly then
+        if not RARELOAD.Get(ply, "enabled") then return refuse(ply, opts, "disabled") end
+        if not RARELOAD.Can(ply, "rareload_save") then return refuse(ply, opts, "permission") end
+        -- A save made on death (D4) runs while the player is already dead, before the gamemode drops the weapon.
+        local living = ply:Alive() or opts.deathHealth ~= nil
+        if not living or ply:GetObserverMode() ~= OBS_MODE_NONE then return refuse(ply, opts, "state") end -- E33
+        local veto, rule = hook.Run("RareloadCanSave", ply, opts.reason)
+        if veto == false then return refuse(ply, opts, "hook", rule) end
+    end
     if not opts.silent and not opts.captureOnly then
         if CurTime() - (lastManual[ply] or -math.huge) < MANUAL_COOLDOWN then
             RARELOAD.Toast(ply, "toast.save_wait", nil, "error")

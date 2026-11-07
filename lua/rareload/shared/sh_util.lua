@@ -141,6 +141,6 @@ function Util.CheckJSON(text)
         if i <= n then fail("text after the end") end
     end)
     if ok then return true end
-    if not istable(err) then error(err, 0) end
+    if not istable(err) then return false, 1, 1, "nested too deeply" end -- stack overflow (S-04)
     return false, err.line, err.col, err.why
 end

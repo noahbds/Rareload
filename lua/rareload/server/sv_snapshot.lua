@@ -696,9 +696,15 @@ end
 -- (all at once, or in batches over several ticks for a large build, D2), and what comes after.
 
 local function prepare(snap, ply, opts)
-    local live = {}
+    -- Another player's object is never one of this save's objects, even with the same id (an edited
+    -- or imported save, S-01): it is left alone, and the saved object is created as a new one.
+    local live, sid = {}, IsValid(ply) and ply:SteamID64()
+    local ownerOf = sid and RARELOAD.Ownership.Resolver()
     for _, ent in ents.Iterator() do
-        if ent.RareloadID then live[tostring(ent.RareloadID)] = ent end
+        if ent.RareloadID then
+            local owner = ownerOf and ownerOf(ent)
+            if not owner or owner == sid then live[tostring(ent.RareloadID)] = ent end
+        end
     end
 
     local limits = RARELOAD.Get(nil, "respectSpawnLimits") and IsValid(ply)
