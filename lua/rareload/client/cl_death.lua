@@ -9,30 +9,28 @@ local DeathUI = RARELOAD.DeathUI
 RARELOAD.Net.On("death", function(p)
     DeathUI.id = tonumber(p.id)
     DeathUI.pos = RARELOAD.Util.ToVector(p.pos)
-    DeathUI.reached = false
+    DeathUI.near = false
     hook.Run("RareloadStateChanged", "death")
 end)
 
--- The marker: a red beam and "You died here", until the player gets there.
+-- The marker: a red beam and "You died here" at the last death, hidden while the player is next to it.
 local RANGE, REACHED = 4000, 120
 
 hook.Add("PostDrawTranslucentRenderables", "Rareload.Death", function(depth, sky)
     local pos = DeathUI.pos
-    if depth or sky or not pos or DeathUI.reached then return end
+    if depth or sky or not pos or DeathUI.near then return end
     render.SetColorMaterial()
     render.DrawBeam(pos, pos + Vector(0, 0, 120), 6, 0, 1, ColorAlpha(C.bad, 170))
 end)
 
 hook.Add("HUDPaint", "Rareload.Death", function()
     local pos = DeathUI.pos
-    if not pos or DeathUI.reached then return end
+    if not pos then return end
     local lp = LocalPlayer()
     if not IsValid(lp) or not lp:Alive() then return end
     local d = lp:GetPos():Distance(pos)
-    if d < REACHED then
-        DeathUI.reached = true
-        return
-    end
+    DeathUI.near = d < REACHED
+    if DeathUI.near then return end
     if d > RANGE then return end
     local p = (pos + Vector(0, 0, 128)):ToScreen()
     if not p.visible then return end

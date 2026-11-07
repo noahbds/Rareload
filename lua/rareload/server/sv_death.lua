@@ -63,6 +63,11 @@ hook.Add("PostPlayerDeath", "Rareload.Death", function(ply)
     ply.rareloadDeathSpot = not back and {
         pos = ply:GetPos(), ang = ply:EyeAngles(), crouched = ply:Crouching(),
     } or nil
+    -- The marker moves to this death, with or without a death save.
+    if RARELOAD.Get(ply, "enabled") then
+        local entry = Death.Entry(ply)
+        RARELOAD.Net.Push(ply, "death", { id = entry and entry.id, pos = RARELOAD.Util.Vec(ply:GetPos()) })
+    end
     if not RARELOAD.Can(ply, "rareload_restore") then return end
     -- "Respawn after dying" (also set by "Always choose this"): the same place every time, without
     -- asking; "map" is the old "Normal respawn after dying". "death" with no spot: the respawn point.
