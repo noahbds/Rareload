@@ -20,8 +20,10 @@ function AntiStuck.IsStuck(pos, ply, crouched)
     local mins, maxs = hull(ply, crouched)
     -- IsInWorld only checks one point (G70), so test the middle of the hull, not the feet.
     if not util.IsInWorld(pos + Vector(0, 0, maxs.z * 0.5)) then return true, "outside the map" end
-    local tr = util.TraceHull({ start = pos, endpos = pos, mins = mins, maxs = maxs, mask = MASK_PLAYERSOLID, filter =
-    ply })
+    -- With the player's collision group: what the player walks through (a dropped weapon, debris)
+    -- doesn't block the spot (B-17).
+    local tr = util.TraceHull({ start = pos, endpos = pos, mins = mins, maxs = maxs, mask = MASK_PLAYERSOLID,
+        filter = ply, collisiongroup = ply:GetCollisionGroup() })
     if tr.StartSolid or tr.AllSolid then return true, "blocked" end
     return false
 end
@@ -35,7 +37,8 @@ local function snap(point, ply, crouched)
         mins = mins,
         maxs = maxs,
         mask = MASK_PLAYERSOLID,
-        filter = ply
+        filter = ply,
+        collisiongroup = ply:GetCollisionGroup()
     })
     if tr.StartSolid or not tr.Hit then return nil end
     return tr.HitPos
@@ -71,22 +74,37 @@ function AntiStuck.Remember(pos)
     RARELOAD.Store.Save(c.rel, c.doc)
 end
 
+-- Whether a player standing at `pos` would stand on something (a few units of air are fine).
+function AntiStuck.OnFloor(pos, ply)
+    local mins, maxs = ply:GetHull()
+    local tr = util.TraceHull({ start = pos + Vector(0, 0, 2), endpos = pos - Vector(0, 0, 12), mins = mins,
+        maxs = maxs, mask = MASK_PLAYERSOLID, filter = ply, collisiongroup = ply:GetCollisionGroup() })
+    return tr.Hit and not tr.StartSolid
+end
+
 -- After a restore, a spawn position becomes "known safe" once the player walks 64 units away from
--- it within 5 seconds. One SetupMove hook for everyone (L2).
+-- it within 5 seconds. Only walking counts: a spot in the air, or leaving it by noclip, in a vehicle
+-- or by a teleport (further than TELEPORT in one move) proves nothing (B-05). One SetupMove hook for
+-- everyone (L2).
 local watching = setmetatable({}, { __mode = "k" })
+local TELEPORT = 64
 
 function AntiStuck.Watch(ply, pos)
-    watching[ply] = { pos = pos, t = CurTime() }
+    watching[ply] = { pos = pos, last = pos, t = CurTime() }
 end
 
 hook.Add("SetupMove", "Rareload.AntiStuck.Watch", function(ply, mv)
     local w = watching[ply]
     if not w then return end
-    if CurTime() - w.t > 5 then
+    local origin = mv:GetOrigin()
+    if CurTime() - w.t > 5 or ply:GetMoveType() == MOVETYPE_NOCLIP or ply:InVehicle()
+        or origin:DistToSqr(w.last) > TELEPORT * TELEPORT then
         watching[ply] = nil
-    elseif mv:GetOrigin():DistToSqr(w.pos) > 64 * 64 then
+    elseif origin:DistToSqr(w.pos) > 64 * 64 then
         watching[ply] = nil
-        AntiStuck.Remember(w.pos)
+        if AntiStuck.OnFloor(w.pos, ply) then AntiStuck.Remember(w.pos) end
+    else
+        w.last = origin
     end
 end)
 
