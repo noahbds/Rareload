@@ -737,6 +737,8 @@ end
 function UI.Empty(parent, icon, title, hint)
     local p = vgui.Create("DPanel", parent)
     p:SetMouseInputEnabled(false)
+    -- What it says can change while it is shown.
+    function p:SetEmpty(newIcon, newTitle, newHint) icon, title, hint = newIcon, newTitle, newHint end
     p.Paint = function(_, w, h)
         UI.DrawIcon(icon, w / 2 - sc(16), h / 2 - sc(46), sc(32), ColorAlpha(color_white, 90))
         draw.SimpleText(title, "Rareload.H2", w / 2, h / 2 + sc(4), C.text2, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)

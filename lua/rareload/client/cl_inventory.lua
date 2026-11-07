@@ -281,14 +281,8 @@ function Manager.Open(key)
     local scroll, canvas = buildContents(list)
     scroll:Dock(FILL)
     -- Shown instead of the list while the inventory is loading, or when the save was deleted.
-    local empty = vgui.Create("DPanel", list)
+    local empty = UI.Empty(list, "hourglass", "")
     empty:Dock(FILL)
-    empty:SetMouseInputEnabled(false)
-    empty.Paint = function(self, w, h)
-        UI.DrawIcon(self.icon or "hourglass", w / 2 - sc(16), h / 2 - sc(46), sc(32), ColorAlpha(color_white, 90))
-        draw.SimpleText(self.title or "", "Rareload.H2", w / 2, h / 2 + sc(4), C.text2, TEXT_ALIGN_CENTER,
-            TEXT_ALIGN_CENTER)
-    end
 
     local function current()
         local data = State.inventory[selected]
@@ -389,9 +383,9 @@ function Manager.Open(key)
         scroll:SetVisible(exists == true)
         empty:SetVisible(not exists)
         if not loaded then
-            empty.title, empty.icon = L("inventory.loading"), "hourglass"
+            empty:SetEmpty("hourglass", L("inventory.loading"))
         elseif not exists then
-            empty.title, empty.icon = L("inventory.gone"), "cross"
+            empty:SetEmpty("cross", L("inventory.gone"))
         end
         canvas:SetLines(contentLines(inv or emptyInventory()))
         for _, b in ipairs(buttons) do b:SetEnabled(exists == true) end
