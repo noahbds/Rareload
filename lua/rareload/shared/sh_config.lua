@@ -368,6 +368,32 @@ RARELOAD.Setting("restoreBatch", {
     category = "timing",
     help = "Objects created per tick when restoring a large build, so it doesn't freeze the server (0 = all at once)"
 })
+RARELOAD.Setting("snapshotInterval", {
+    type = "int",
+    default = 0,
+    min = 0,
+    max = 120,
+    scope = "server",
+    category = "server",
+    help = "Minutes between two server snapshots of every player's objects, for rollback (0 = off)"
+})
+RARELOAD.Setting("snapshotKeep", {
+    type = "int",
+    default = 6,
+    min = 1,
+    max = 50,
+    scope = "server",
+    category = "server",
+    help = "How many server snapshots are kept on each map"
+})
+RARELOAD.Setting("crashRecovery", {
+    type = "enum",
+    values = { "off", "ask", "auto" },
+    default = "ask",
+    scope = "server",
+    category = "server",
+    help = "After a crash, a player's objects from the last snapshot newer than their save: off, offered, or restored"
+})
 RARELOAD.Setting("pinnedMax", {
     type = "int",
     default = 20,

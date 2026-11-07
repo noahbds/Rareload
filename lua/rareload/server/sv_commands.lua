@@ -574,6 +574,63 @@ Cmd.Register("checkpoint remove", {
     end),
 })
 
+-- Server snapshots and rollback (sv_snapshots.lua) --------------------------------------------------------
+
+Cmd.Register("snapshot", {
+    priv = "rareload_rollback",
+    help = "Take a server snapshot of every player's objects now",
+    fn = function(ply, _, reply)
+        local ok = RARELOAD.Snapshots.Take(function(snap)
+            local text = "Snapshot No. " .. snap.id .. ": " .. table.Count(snap.players) .. " players."
+            if IsValid(ply) then ply:PrintMessage(HUD_PRINTCONSOLE, text) else print(text) end
+        end)
+        if not ok then reply("A snapshot is already being taken.") end
+    end,
+})
+
+Cmd.Register("snapshots", {
+    priv = "rareload_rollback",
+    help = "List the server snapshots of this map",
+    fn = function(_, _, reply)
+        local list = RARELOAD.Snapshots.List()
+        if #list == 0 then return reply("No snapshots on this map. Set sv_rareload_snapshot_interval to take them.") end
+        for _, s in ipairs(list) do
+            local names = {}
+            for _, part in pairs(s.players) do names[#names + 1] = part.nick end
+            reply(string.format("  #%d  %s  (%d min ago)  %s", s.id, os.date("%Y-%m-%d %H:%M", s.time),
+                math.floor((os.time() - s.time) / 60), table.concat(names, ", ")))
+        end
+    end,
+})
+
+Cmd.Register("rollback", {
+    priv = "rareload_rollback",
+    usage = "<minutes|#id> [player]",
+    help = "Put players' objects back as they were in a snapshot (the newest one at least that old, or #id)",
+    fn = function(ply, args, reply)
+        local snap = RARELOAD.Snapshots.Find(args[1])
+        if not snap then return reply("No such snapshot. Type 'rareload snapshots' for the list.") end
+        local only
+        if args[2] then
+            local target = Cmd.FindPlayer(table.concat(args, " ", 2))
+            if not target then return reply("That player is not in game.") end
+            only = target:SteamID64()
+        end
+        local n, skipped = RARELOAD.Snapshots.Rollback(snap, only)
+        RARELOAD.Log("admin", ply):info("%s rolled back to snapshot No. %d: %d players%s",
+            IsValid(ply) and ply:Nick() or "Console", snap.id, n,
+            #skipped > 0 and (", not: " .. table.concat(skipped, ", ")) or "")
+        reply("Rolled back " .. n .. " players to snapshot No. " .. snap.id
+            .. (#skipped > 0 and (" (not in game or dead: " .. table.concat(skipped, ", ") .. ")") or "") .. ".")
+    end,
+})
+
+Cmd.Register("recover", {
+    priv = "rareload_restore",
+    help = "After a server crash: get your objects back from the last snapshot, when it is newer than your save",
+    fn = playerOnly(function(ply, _, reply) quickResult(reply, RARELOAD.Snapshots.Recover(ply), "recover") end),
+})
+
 -- Blocked classes (sv_exclude.lua) ----------------------------------------------------------------------
 
 Cmd.Register("block list", {

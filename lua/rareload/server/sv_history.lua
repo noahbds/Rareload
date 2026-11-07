@@ -163,14 +163,22 @@ end
 -- they were saved when the player's resetObjects setting is on, or for an exact restore.
 function History.Restore(ply, id, comps, opts)
     local entry = History.Get(ply, id)
-    if not entry or not ply:Alive() then return false end
+    if not entry then return false end
+    return History.RestoreEntry(ply, entry, comps, opts)
+end
+
+-- Restores any entry (a save, or a server snapshot's part for this player, D9) the way the timeline
+-- does, with undo. opts.admin: an admin's rollback, which the player's own rules (PvP) don't refuse.
+function History.RestoreEntry(ply, entry, comps, opts)
+    if not ply:Alive() then return false end
+    opts = opts or {}
     -- Rules for the whole restore (PvP cooldowns, other addons). A rule may name its own toast.
-    local veto, why = hook.Run("RareloadCanRestore", ply, "timeline")
+    local veto, why
+    if not opts.admin then veto, why = hook.Run("RareloadCanRestore", ply, "timeline") end
     if veto == false then
         if istable(why) and why.toast then RARELOAD.Toast(ply, why.toast, why.args, "error") end
         return false
     end
-    opts = opts or {}
     local only = History.ModulesFor(comps)
 
     local undoOnly, world = {}, not comps or comps.world == true
@@ -183,7 +191,7 @@ function History.Restore(ply, id, comps, opts)
 
     local ctx = RARELOAD.Pipeline.Restore(ply, entry, {
         only = only,
-        reason = "timeline",
+        reason = opts.reason or "timeline",
         exact = opts.exact and world,
         reset = RARELOAD.Get(ply, "resetObjects"),
     })

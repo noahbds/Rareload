@@ -56,6 +56,11 @@ RARELOAD.Net.On("history.players", function(p)
     changed("players")
 end)
 
+RARELOAD.Net.On("snapshots", function(p)
+    State.snapshots = istable(p.list) and p.list or {}
+    changed("snapshots")
+end)
+
 RARELOAD.Net.On("data.usage", function(p)
     State.usage = istable(p.lines) and p.lines or {}
     changed("usage")

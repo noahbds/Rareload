@@ -134,11 +134,34 @@ function Store.BlobGet(hash)
 end
 
 -- Deletes blobs that no save of this map references any more. Runs at startup and on demand.
+-- Small flag files: data/rareload/_<name>.txt (the "server is running" flag for crash recovery, D9).
+function Store.Flag(name)
+    return file.Exists(ROOT .. "_" .. Store.Clean(name) .. ".txt", "DATA")
+end
+
+function Store.SetFlag(name, on)
+    local path = ROOT .. "_" .. Store.Clean(name) .. ".txt"
+    if on then file.Write(path, tostring(os.time())) else file.Delete(path) end
+end
+
+-- The blobs a map's server snapshots use (D9).
+local function snapshotBlobs(dir, used)
+    local doc = cache[dir .. "/_server"] or decode(file.Read(ROOT .. dir .. "/_server.json", "DATA"))
+    for _, snap in ipairs(doc and doc.snapshots or {}) do
+        for _, part in pairs(snap.players or {}) do
+            for _, value in pairs(part.data or {}) do
+                if istable(value) and value["$blob"] then used[value["$blob"]] = true end
+            end
+        end
+    end
+    return used
+end
+
 -- dir: a map's folder ("mp/gm_construct"); the current map's by default.
 function Store.GC(dir)
     Store.Flush()
     dir = dir or Store.MapDir()
-    local used = {}
+    local used = snapshotBlobs(dir, {})
     for _, name in ipairs(file.Find(ROOT .. dir .. "/*.json", "DATA") or {}) do
         local id = name:match("^(%d+)%.json$") -- saves docs are named <SteamID64>.json
         local doc = id and (cache[dir .. "/" .. id] or decode(file.Read(ROOT .. dir .. "/" .. name, "DATA")))
@@ -224,6 +247,7 @@ function Store.Overview()
                 for hash in pairs(mine) do p.bytes = p.bytes + (blobSize[hash] or 0) end
             end
         end
+        snapshotBlobs(dir, used)
         for hash, size in pairs(blobSize) do
             if not used[hash] then
                 unusedCount, unusedBytes = unusedCount + 1, unusedBytes + size

@@ -687,6 +687,29 @@ local function buildServer(panel)
         RARELOAD.Net.Request("blocked.get")
     end
 
+    if RARELOAD.Can(LocalPlayer(), "rareload_rollback") then
+        local snaps = section(panel, L("menu.snapshots"), "camera", false)
+        local function fill()
+            snaps:Clear()
+            note(snaps, L("menu.snapshots_help"))
+            button(snaps, L("menu.snapshot_take"), "camera_add", BUTTONS.green,
+                function() RARELOAD.Net.Request("snapshot.take") end)
+            local list = RARELOAD.State.snapshots or {}
+            if #list == 0 then note(snaps, L("menu.snapshots_none")) end
+            for i = #list, 1, -1 do
+                local s = list[i]
+                local label = L("menu.snapshot_rollback", s.id, os.date("%H:%M", s.time), #s.players)
+                button(snaps, label, "arrow_undo", BUTTONS.orange, function()
+                    UI.Confirm(L("menu.snapshots"), L("menu.snapshot_confirm", table.concat(s.players, ", ")),
+                        function() RARELOAD.Net.Request("snapshot.rollback", { id = s.id }) end, L("menu.snapshots"))
+                end):SetTooltip(table.concat(s.players, ", "))
+            end
+        end
+        fill()
+        hook.Add("RareloadStateChanged", snaps, function(_, what) if what == "snapshots" then fill() end end)
+        RARELOAD.Net.Request("snapshot.list")
+    end
+
     if RARELOAD.Can(LocalPlayer(), "rareload_data_cleanup") then
         local storage = section(panel, L("menu.storage"), "database", false)
         local function fill()
