@@ -166,8 +166,11 @@ function Store.GC(dir)
         local id = name:match("^(%d+)%.json$") -- saves docs are named <SteamID64>.json
         local doc = id and (cache[dir .. "/" .. id] or decode(file.Read(ROOT .. dir .. "/" .. name, "DATA")))
         for _, entry in ipairs(doc and doc.entries or {}) do
-            for _, value in pairs(entry.data or {}) do
-                if istable(value) and value["$blob"] then used[value["$blob"]] = true end
+            -- placeOnly: objects of a save imported from another map, kept to be placed (D6).
+            for _, part in ipairs({ entry.data or {}, entry.placeOnly or {} }) do
+                for _, value in pairs(part) do
+                    if istable(value) and value["$blob"] then used[value["$blob"]] = true end
+                end
             end
         end
     end
@@ -202,8 +205,10 @@ function Store.GCAll()
 end
 
 local function blobRefs(entry, out)
-    for _, value in pairs(entry.data or {}) do
-        if istable(value) and value["$blob"] then out[#out + 1] = value["$blob"] end
+    for _, part in ipairs({ entry.data or {}, entry.placeOnly or {} }) do
+        for _, value in pairs(part) do
+            if istable(value) and value["$blob"] then out[#out + 1] = value["$blob"] end
+        end
     end
     return out
 end

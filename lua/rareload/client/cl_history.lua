@@ -325,7 +325,12 @@ local function buildDetail(host, sel)
         local r = row()
         if r then RARELOAD.Share.Pick(r.id) end
     end, { style = "info", icon = "group_go" })
-    D.shareTools = split({ D.export, D.share })
+    -- Place a copy of the save's objects somewhere else (D6).
+    D.place = UI.Button(host, L("place.button"), function()
+        local r = row()
+        if r and RARELOAD.PlaceUI then RARELOAD.PlaceUI.Start(r.id) end
+    end, { style = "info", icon = "arrow_inout" })
+    D.shareTools = split({ D.place, D.export, D.share })
 
     D.banner = UI.Card(host, function(_, w, h)
         draw.SimpleText(L("timeline.is_active"), "Rareload.BodyB", w / 2, h / 2, C.ok, TEXT_ALIGN_CENTER,
@@ -452,7 +457,8 @@ local function updateDetail(D, r)
     local me = LocalPlayer()
     D.export:SetVisible(RARELOAD.Can(me, "rareload_export"))
     D.share:SetVisible(RARELOAD.Can(me, "rareload_share"))
-    D.shareTools:SetVisible(r ~= nil and (D.export:IsVisible() or D.share:IsVisible()))
+    D.place:SetVisible(RARELOAD.Can(me, "rareload_restore_entities") and Timeline.target == nil)
+    D.shareTools:SetVisible(r ~= nil and (D.place:IsVisible() or D.export:IsVisible() or D.share:IsVisible()))
     D.shareTools:InvalidateLayout()
     D.empty:SetVisible(r == nil)
     if not r then return end
