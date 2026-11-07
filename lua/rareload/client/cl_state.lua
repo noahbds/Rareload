@@ -11,8 +11,16 @@ RARELOAD.State = RARELOAD.State or {
     antistuck = {},                       -- anti-stuck methods in order, for the server page
 }
 local State = RARELOAD.State
-State.details, State.antistuck = State.details or {}, State.antistuck or {} -- after a dev reload
+-- Every topic exists from the start (an empty value until the server sends it), so readers never
+-- guard against nil; `or` keeps what a dev reload finds.
+State.details, State.antistuck = State.details or {}, State.antistuck or {}
 State.entryData = State.entryData or {}
+State.players = State.players or {}         -- admin: players with saves on this map
+State.snapshots = State.snapshots or {}     -- admin: server snapshots
+State.usage = State.usage or {}             -- admin: storage use, as lines
+State.blocked = State.blocked or {}         -- admin: classes never saved
+State.checkpoints = State.checkpoints or {} -- own checkpoints, each with .vec (D7)
+State.death = State.death or {}             -- own last death: { id = death save, pos } (D4)
 
 local function changed(what, key)
     hook.Run("RareloadStateChanged", what, key)
@@ -114,6 +122,17 @@ end)
 RARELOAD.Net.On("blocked", function(p)
     State.blocked = istable(p.classes) and p.classes or {}
     changed("blocked")
+end)
+
+RARELOAD.Net.On("checkpoints", function(p)
+    State.checkpoints = istable(p.list) and p.list or {}
+    for _, c in ipairs(State.checkpoints) do c.vec = RARELOAD.Util.ToVector(c.pos) end
+    changed("checkpoints")
+end)
+
+RARELOAD.Net.On("death", function(p)
+    State.death = { id = tonumber(p.id), pos = RARELOAD.Util.ToVector(p.pos) }
+    changed("death")
 end)
 
 RARELOAD.Net.On("autosave", function()

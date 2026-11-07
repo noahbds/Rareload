@@ -5,15 +5,9 @@ local C, sc = UI.C, UI.sc
 
 RARELOAD.CheckpointsUI = RARELOAD.CheckpointsUI or {}
 local CP = RARELOAD.CheckpointsUI
-CP.list = CP.list or {}
+local State = RARELOAD.State
 
 local function request(op, args) RARELOAD.Net.Request(op, args) end
-
-RARELOAD.Net.On("checkpoints", function(p)
-    CP.list = istable(p.list) and p.list or {}
-    for _, c in ipairs(CP.list) do c.vec = RARELOAD.Util.ToVector(c.pos) end
-    hook.Run("RareloadStateChanged", "checkpoints")
-end)
 
 function CP.Open()
     if IsValid(CP.frame) then CP.frame:Remove() end
@@ -42,13 +36,13 @@ function CP.Open()
     local function fill()
         if not IsValid(scroll) then return end
         scroll:Clear()
-        if #CP.list == 0 then
+        if #State.checkpoints == 0 then
             local e = UI.Empty(scroll, "flag_blue", L("checkpoint.none"), L("checkpoint.help"))
             e:Dock(TOP)
             e:SetTall(sc(200))
             return
         end
-        for i, c in ipairs(CP.list) do
+        for i, c in ipairs(State.checkpoints) do
             local off = c.disabled == true
             local row = vgui.Create("DPanel", scroll)
             row:Dock(TOP)
@@ -97,7 +91,7 @@ concommand.Add("rareload_checkpoints", function() CP.Open() end, nil, "Open your
 local RANGE = 3000
 
 local function shown()
-    return #CP.list > 0 and RARELOAD.Get(nil, "showCheckpoints") and RARELOAD.World.Active()
+    return #State.checkpoints > 0 and RARELOAD.Get(nil, "showCheckpoints") and RARELOAD.World.Active()
 end
 
 local function alphaAt(d) return math.Clamp((RANGE - d) / 600, 0, 1) * 255 end
@@ -106,35 +100,19 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Checkpoints", function(dept
     if depth or sky or not shown() then return end
     local eye = EyePos()
     render.SetColorMaterial()
-    for _, c in ipairs(CP.list) do
+    for _, c in ipairs(State.checkpoints) do
         local d = not c.disabled and c.vec and eye:Distance(c.vec)
-        if d and d < RANGE and d > 40 then
-            render.DrawBeam(c.vec, c.vec + Vector(0, 0, 80), 4, 0, 1, ColorAlpha(C.accent, alphaAt(d) * 0.7))
-        end
+        if d and d < RANGE and d > 40 then UI.DrawWorldBeam(c.vec, 80, 4, C.accent, alphaAt(d) * 0.7) end
     end
 end)
 
 hook.Add("HUDPaint", "Rareload.Checkpoints", function()
     if not shown() then return end
     local eye = EyePos()
-    for i, c in ipairs(CP.list) do
+    for i, c in ipairs(State.checkpoints) do
         local d = not c.disabled and c.vec and eye:Distance(c.vec)
         if d and d < RANGE and d > 40 then
-            local p = (c.vec + Vector(0, 0, 88)):ToScreen()
-            if p.visible then
-                local a = alphaAt(d)
-                local text = i .. ". " .. c.name
-                surface.SetFont("Rareload.BodyB")
-                local tw, th = surface.GetTextSize(text)
-                local w, h = tw + sc(34), th + sc(10)
-                local x, y = math.floor(p.x - w / 2), math.floor(p.y - h)
-                draw.RoundedBox(sc(6), x, y, w, h, ColorAlpha(C.surface, a * 0.85))
-                UI.DrawIcon("flag_blue", x + sc(6), y + (h - sc(16)) / 2, sc(16), ColorAlpha(color_white, a))
-                draw.SimpleText(text, "Rareload.BodyB", x + sc(28), y + h / 2, ColorAlpha(C.text, a), TEXT_ALIGN_LEFT,
-                    TEXT_ALIGN_CENTER)
-                draw.SimpleText(L("inspector.units", math.Round(d)), "Rareload.Small", p.x, y + h + sc(2),
-                    ColorAlpha(C.text3, a), TEXT_ALIGN_CENTER)
-            end
+            UI.DrawWorldTag(c.vec, 88, "flag_blue", i .. ". " .. c.name, C.text, d, alphaAt(d))
         end
     end
 end)

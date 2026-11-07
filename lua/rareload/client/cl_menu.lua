@@ -666,7 +666,7 @@ local function buildServer(panel)
                 if class ~= "" then set(true, class) end
             end
             button(blocked, L("menu.blocked_add"), "add", BUTTONS.gray, function() entry:OnEnter() end)
-            local list = RARELOAD.State.blocked or {}
+            local list = RARELOAD.State.blocked
             if #list == 0 then note(blocked, L("menu.blocked_none")) end
             for _, class in ipairs(list) do
                 button(blocked, class, "cross", BUTTONS.gray, function() set(false, class) end)
@@ -685,7 +685,7 @@ local function buildServer(panel)
             note(snaps, L("menu.snapshots_help"))
             button(snaps, L("menu.snapshot_take"), "camera_add", BUTTONS.green,
                 function() RARELOAD.Net.Request("snapshot.take") end)
-            local list = RARELOAD.State.snapshots or {}
+            local list = RARELOAD.State.snapshots
             if #list == 0 then note(snaps, L("menu.snapshots_none")) end
             for i = #list, 1, -1 do
                 local s = list[i]
@@ -706,7 +706,7 @@ local function buildServer(panel)
         local function fill()
             storage:Clear()
             note(storage, L("menu.storage_help"))
-            for _, line in ipairs(RARELOAD.State.usage or {}) do note(storage, line) end
+            for _, line in ipairs(RARELOAD.State.usage) do note(storage, line) end
             button(storage, L("menu.storage_refresh"), "arrow_refresh", BUTTONS.gray,
                 function() RARELOAD.Net.Request("data.usage") end)
             button(storage, L("menu.storage_cleanup"), "bin", BUTTONS.orange,

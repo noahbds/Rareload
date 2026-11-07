@@ -543,7 +543,7 @@ local function pickPlayer(onPick)
     hook.Add("RareloadStateChanged", frame, function(_, what)
         if what ~= "players" or not IsValid(scroll) then return end
         local me = LocalPlayer():SteamID64()
-        for _, p in ipairs(State.players or {}) do
+        for _, p in ipairs(State.players) do
             if p.sid == me then continue end
             local label = p.nick .. "  ·  " .. L("timeline.count", p.saves)
                 .. (p.online and "" or "  ·  " .. L("timeline.offline"))

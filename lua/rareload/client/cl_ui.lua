@@ -118,6 +118,42 @@ function UI.DrawIcon(name, x, y, size, col)
     surface.DrawTexturedRect(math.floor(x + (size - s) / 2 + 0.5), math.floor(y + (size - s) / 2 + 0.5), s, s)
 end
 
+-- World markers (checkpoints, the death spot): a beam standing on `pos`, and above it on screen a
+-- tag with an icon, a text and the distance. alpha 0-255 fades the whole marker. They run every frame,
+-- so they reuse these instead of making new colours and vectors.
+local markTop, markBg, markIcon, markText, markDist = Vector(), Color(0, 0, 0), Color(0, 0, 0), Color(0, 0, 0),
+    Color(0, 0, 0)
+
+local function tint(out, col, alpha)
+    out.r, out.g, out.b, out.a = col.r, col.g, col.b, alpha
+    return out
+end
+
+-- Inside PostDrawTranslucentRenderables, after render.SetColorMaterial().
+function UI.DrawWorldBeam(pos, height, width, col, alpha)
+    markTop:Set(pos)
+    markTop.z = markTop.z + height
+    render.DrawBeam(pos, markTop, width, 0, 1, tint(markBg, col, alpha))
+end
+
+-- Inside HUDPaint. `distance` is shown under the tag.
+function UI.DrawWorldTag(pos, height, icon, text, textCol, distance, alpha)
+    markTop:Set(pos)
+    markTop.z = markTop.z + height
+    local p = markTop:ToScreen()
+    if not p.visible then return end
+    surface.SetFont("Rareload.BodyB")
+    local tw, th = surface.GetTextSize(text)
+    local w, h = tw + sc(34), th + sc(10)
+    local x, y = math.floor(p.x - w / 2), math.floor(p.y - h)
+    draw.RoundedBox(sc(6), x, y, w, h, tint(markBg, C.surface, alpha * 0.86))
+    UI.DrawIcon(icon, x + sc(6), y + (h - sc(16)) / 2, sc(16), tint(markIcon, color_white, alpha))
+    draw.SimpleText(text, "Rareload.BodyB", x + sc(28), y + h / 2, tint(markText, textCol, alpha), TEXT_ALIGN_LEFT,
+        TEXT_ALIGN_CENTER)
+    draw.SimpleText(L("inspector.units", math.Round(distance)), "Rareload.Small", p.x, y + h + sc(2),
+        tint(markDist, C.text3, alpha), TEXT_ALIGN_CENTER)
+end
+
 -- A rounded label with a tinted background; returns its width.
 function UI.DrawBadge(text, x, y, col, font, alignRight)
     font = font or "Rareload.Tiny"
