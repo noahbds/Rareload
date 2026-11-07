@@ -767,6 +767,19 @@ handle("history.pin", "rareload_restore", { id = "uint", pinned = "bool" }, func
 end)
 handle("history.note", "rareload_restore", { id = "uint", note = "string:256" },
     function(ply, a) History.SetNote(ply, a.id, a.note) end)
+-- "Place here…" (D6): moves where the save respawns the player; the rest of the save stays as it is.
+handle("history.move", "rareload_save", { id = "uint", x = "number", y = "number", z = "number", yaw = "number" },
+    function(ply, a)
+        local pos = Vector(a.x, a.y, a.z)
+        if not util.IsInWorld(pos + Vector(0, 0, 16)) then return "toast.place_outside" end
+        local ok = History.Update(ply, a.id, function(e)
+            local t = istable(e.data.transform) and e.data.transform or {}
+            t.pos, t.ang = RARELOAD.Util.Vec(pos), RARELOAD.Util.Ang(Angle(0, a.yaw % 360, 0))
+            t.crouched, t.mapVersion = nil, game.GetMapVersion()
+            e.data.transform = t
+        end)
+        if ok then return "toast.placed", { a.id } end
+    end)
 handle("history.delete", "rareload_restore", { id = "uint" }, function(ply, a) History.Delete(ply, a.id) end)
 handle("history.clear", "rareload_restore", {}, function(ply) History.Clear(ply) end)
 handle("history.activate", "rareload_restore", { id = "uint" }, function(ply, a)

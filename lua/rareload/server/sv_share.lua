@@ -12,7 +12,6 @@ local EXPORTS = "exports/"
 local MAX_OBJECTS = 4096
 local OFFER_TIME = 120
 local SNAPSHOT_KINDS = { entities = true, npcs = true, vehicles = true }
-local PLACEABLE = { entities = true, npcs = true, vehicles = true, constraints = true }
 
 local function log(ply) return RARELOAD.Log("share", ply) end
 
@@ -150,18 +149,12 @@ function Share.Import(ply, doc, opts)
     end
 
     local sameMap = doc.map == game.GetMap()
-    local data, dropped, objects, placeOnly = {}, {}, 0, {}
+    local data, dropped, objects = {}, {}, 0
     for id, value in pairs(doc.entry.data) do
         local def = RARELOAD.Pipeline._defs[id]
         local ok, why = def ~= nil and def.load == nil, "unknown part"
         if ok and not sameMap and (def.phase == "world" or id == "transform") then
             ok, why = false, "made on " .. tostring(doc.map)
-            -- Objects from another map are kept to be placed somewhere on this one (D6).
-            if PLACEABLE[id] and checkModule(id, value) then
-                placeOnly[id] = value
-                if SNAPSHOT_KINDS[id] then objects = objects + table.Count(value.Entities) end
-                why = why .. ", kept for Place here"
-            end
         end
         if ok then ok, why = checkModule(id, value) end
         if ok and SNAPSHOT_KINDS[id] then objects = objects + table.Count(value.Entities) end
@@ -172,7 +165,7 @@ function Share.Import(ply, doc, opts)
         end
     end
     if objects > MAX_OBJECTS then return false, "it holds more than " .. MAX_OBJECTS .. " objects" end
-    if not next(data) and not next(placeOnly) then return false, "nothing in it can be used on this map" end
+    if not next(data) then return false, "nothing in it can be used on this map" end
 
     -- Your own export, back on the same map: the objects are still yours, so they keep their IDs and
     -- one that is still on the map is put back instead of copied. Anything else becomes a copy, and
@@ -180,18 +173,15 @@ function Share.Import(ply, doc, opts)
     local own = doc.sid64 == ply:SteamID64() and opts.reason ~= "shared"
     if not (sameMap and own) then Share.Rekey(data) end
     if not own and istable(data.weaponState) then data.weaponState.owned = nil end
-    for _, t in ipairs({ data, placeOnly }) do
-        for id, value in pairs(t) do
-            local def = RARELOAD.Pipeline._defs[id]
-            if def.heavy then t[id] = { ["$blob"] = RARELOAD.Store.BlobPut(value) } end
-        end
+    for id, value in pairs(data) do
+        local def = RARELOAD.Pipeline._defs[id]
+        if def.heavy then data[id] = { ["$blob"] = RARELOAD.Store.BlobPut(value) } end
     end
 
     local note = isstring(doc.entry.note) and string.Trim(doc.entry.note) or ""
     if opts.from then note = string.Trim("[" .. opts.from .. "] " .. note) end
     local entry = {
         time = originalTime(doc.entry.time), reason = opts.reason or "import", data = data,
-        placeOnly = next(placeOnly) and placeOnly or nil,
         note = note ~= "" and string.sub(note, 1, 256) or nil,
     }
     if not RARELOAD.History.Append(ply, entry, { keepActive = true }) then

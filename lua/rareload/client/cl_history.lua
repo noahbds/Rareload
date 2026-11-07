@@ -325,10 +325,10 @@ local function buildDetail(host, sel)
         local r = row()
         if r then RARELOAD.Share.Pick(r.id) end
     end, { style = "info", icon = "group_go" })
-    -- Place a copy of the save's objects somewhere else (D6).
+    -- Move where the save respawns the player (D6).
     D.place = UI.Button(host, L("place.button"), function()
         local r = row()
-        if r and RARELOAD.PlaceUI then RARELOAD.PlaceUI.Start(r.id) end
+        if r then RARELOAD.PlaceUI.Start(r.id, r.info.model, Timeline.target) end
     end, { style = "info", icon = "arrow_inout" })
     D.shareTools = split({ D.place, D.export, D.share })
 
@@ -457,7 +457,7 @@ local function updateDetail(D, r)
     local me = LocalPlayer()
     D.export:SetVisible(RARELOAD.Can(me, "rareload_export"))
     D.share:SetVisible(RARELOAD.Can(me, "rareload_share"))
-    D.place:SetVisible(RARELOAD.Can(me, "rareload_restore_entities") and Timeline.target == nil)
+    D.place:SetVisible(RARELOAD.Can(me, "rareload_save") and r ~= nil and r.info.pos ~= nil)
     D.shareTools:SetVisible(r ~= nil and (D.place:IsVisible() or D.export:IsVisible() or D.share:IsVisible()))
     D.shareTools:InvalidateLayout()
     D.empty:SetVisible(r == nil)
