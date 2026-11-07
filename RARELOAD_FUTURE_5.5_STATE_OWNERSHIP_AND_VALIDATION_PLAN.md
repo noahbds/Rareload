@@ -4,7 +4,7 @@
 
 Rareload 5.5 is a focused architectural, efficiency, deduplication, security-hardening, and bug-fix release across all **54 Lua files (`16,616` LOC)** of published Rareload 5.4 (`tag: 5.4`, commit `a47c1c3` / `main` `64797e3`). It preserves **100% of Rareload 5.4's features**: all 53 settings, 39 privileges, 15 state modules, 6 vehicle adapters, console commands, Derma windows, 3D2D world panels, checkpoints, death recovery, per-entity exclusions, server snapshots/crash recovery, and on-disk schema (`Store.SCHEMA = 5`).
 
-The release focuses on eight interconnected goals:
+The release focuses on nine interconnected goals:
 
 1.  **Clear state ownership (Phases 0–3):** the server (`History`, `Checkpoints`, `Death`, `Snapshots`, `Store`, `Pipeline`, `Inventory`, `Blocked`, `Exclude`, `AntiStuck`, `PvP`, `Share`, `Ownership`) and client (`State` vs UI panels and world renderers) must have single, non-overlapping ownership of every persistent document and in-memory table.
 2.  **Boundary-focused validation (Phase 4):** validate untrusted data strictly at system boundaries (`sh_net.lua` 36 client→server ops, `sv_storage.lua` JSON/blob loader, `sv_share.lua` import validator, `sv_commands.lua` CLI parser, and `pcall`-wrapped third-party addon adapters), then rely on established internal contracts instead of repeating redundant checks.
@@ -13,7 +13,8 @@ The release focuses on eight interconnected goals:
 5.  **GLua & LuaJIT 2.1 runtime efficiency (Phase 8):** eliminate per-frame table/closure/`Color`/`Matrix`/`Vector` allocations in `Paint`, `HUDPaint`, and `PostDrawTranslucentRenderables` hooks (including the new 5.4 `sh_exclude.lua` per-frame `ents.FindInSphere`, `cl_checkpoints.lua`, and `cl_death.lua` hooks), cache `UI.Rows` and `UI.Stats` display lists on state change, cache player grant sets in `sh_perms.lua`, replace expensive `util.TableToJSON` deep-copy/equality hacks with `Util.Equal` and structural copy-on-write, and use $O(1)$ lookup maps (`World.byKey`).
 6.  **Reduce code length by ~1,560+ lines with zero feature loss (Phases 9–10):** shrink the 5.4 codebase from `16,616` LOC across 54 files to `~15,050` LOC purely through declarative schemas, shared helpers, and deduplication—backed by `gmod-debug-mcp` `v0.5.0` `profile` (`bench` / `bench_frames` / `hooks`) measurements and the regression suite (Phase 5).
 7.  **Security, privilege & untrusted-input hardening — gated by live `gmod-debug-mcp` `v0.5.0` reproduction (Phase 11):** test all candidate security and validation vectors (`S-01`..`S-07`) in the live running game via `/Users/noah/gmod-debug-mcp` (`run_tests`, `run_lua`, `net_watch`, `diff`, `entity`) first; **only fix findings that actually reproduce in-game**, and drop any finding that GMod's engine or existing boundaries already block so we never add dead defensive bloat.
-8.  **Runtime bug, memory-corruption & edge-case fixes — gated by live `gmod-debug-mcp` `v0.5.0` reproduction (Phase 12):** test all 16 candidate runtime bugs (`B-01`..`B-16`, including 4 new candidates in 5.4-part-2's server snapshots, batched restore, death saves, and respawn placement) in the running game via `/Users/noah/gmod-debug-mcp` (`run_tests`, `diff`, `trace`, `entity`, `entities` with `include_csents`, `player_input`, `trace_query`, `ui`, `game`, `bots`) before touching code; **if a bug cannot be reproduced in-game, do not "fix" it**.
+8.  **Runtime bug, memory-corruption & edge-case fixes — gated by live `gmod-debug-mcp` `v0.5.0` reproduction (Phase 12):** test all 17 candidate runtime bugs (`B-01`..`B-17`, including the 4 new candidates in 5.4-part-2's server snapshots, batched restore, death saves, and respawn placement, and the anti-stuck detection false positive `B-17`) in the running game via `/Users/noah/gmod-debug-mcp` (`run_tests`, `diff`, `trace`, `entity`, `entities` with `include_csents`, `player_input`, `trace_query`, `ui`, `game`, `bots`) before touching code; **if a bug cannot be reproduced in-game, do not "fix" it**.
+9.  **Readability & naming for a new reader (Phase 10):** make the code understandable to a developer who did not write it — purpose-named locals, functions and parameters in place of shorthand (`ply`→`player`, `def`→`moduleDefinition`/`entityDefinition`, `ctx`→`save/restoreContext`, `d`→`document`/`savedData`, `p`→`payload`/`playerUsage`/`cachedPoint`, `by`→`replacingModuleId`), with the context-colliding names resolved first — **without** blanket lengthening, deleting single-use helpers that name a real step, inflating line count, or ever renaming a serialization/protocol contract (public `RARELOAD.*` API, net opcodes, hooks, save-schema keys). Driven by [`docs/architecture/READABILITY_AUDIT.md`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/docs/architecture/READABILITY_AUDIT.md).
 
 ### Core principles
 
@@ -22,7 +23,7 @@ The release focuses on eight interconnected goals:
 -   Persistent mutations go through explicit APIs owned by the relevant subsystem (`History`, `Store`, `Inventory`, `Snapshots`, `Blocked`).
 -   Validate data when it crosses a trust boundary; internal functions rely on documented contracts once validated.
 -   Keep defensive checks that protect against real runtime uncertainty, engine behavior, asynchronous execution, or third-party addons.
--   **No Reproduction = No Fix:** static analysis candidates (`S-01`..`S-07`, `B-01`..`B-16`) are **hypotheses until proven in a running Garry's Mod session** via `gmod-debug-mcp` `v0.5.0` (`/Users/noah/gmod-debug-mcp`). Most theoretical bugs cannot happen in-game or are already prevented by engine/caller behavior, and "fixing" unreproducible bugs adds dead code for nothing. Every candidate must have a failing `dbg.test` reproduction before a fix is written.
+-   **No Reproduction = No Fix:** static analysis candidates (`S-01`..`S-07`, `B-01`..`B-17`) are **hypotheses until proven in a running Garry's Mod session** via `gmod-debug-mcp` `v0.5.0` (`/Users/noah/gmod-debug-mcp`). Most theoretical bugs cannot happen in-game or are already prevented by engine/caller behavior, and "fixing" unreproducible bugs adds dead code for nothing. Every candidate must have a failing `dbg.test` reproduction before a fix is written.
 -   Never allocate temporary tables, closures, or `Color`/`Vector`/`Matrix` objects inside per-frame `Paint` or render hooks when a cached or file-local value suffices.
 -   Prefer simplifying existing architecture and declarative tables over introducing heavy abstractions.
 
@@ -158,6 +159,8 @@ Create:
 
 -   `docs/architecture/STATE_OWNERSHIP.md`
 -   `docs/architecture/VALIDATION_BOUNDARIES.md`
+-   `docs/architecture/CONVENTIONS.md` (naming scheme, realm-prefix load rules, hook/net-string namespacing, single-use-local policy — see Phase 10 §13.5)
+-   `docs/architecture/READABILITY_AUDIT.md` (the per-file current→proposed naming map and apply strategy driving Phase 10 §13.6) — **already written**
 
 **Exit criteria:**
 
@@ -850,9 +853,24 @@ Use `gmod-debug-mcp` `v0.5.0` (`profile` with `mode = "bench"`, `"bench_frames"`
 3. **Accidental-global sweep.** Run `glualint --analyse-globals` over all 54 files (glualint's default rules do **not** flag a missing `local`, §20 B-14). Every reported global that is not `RARELOAD`, a registered GMod hook table, or an intentional public symbol is a missing `local` — fix it. Record the intended public surface in `CONVENTIONS.md`.
 4. **Hardcoded version string.** [`autorun/rareload.lua:7`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/autorun/rareload.lua#L7) still reads `RARELOAD.version = "5.4"`. Bump to `"5.5"` and treat `RARELOAD.version` as the single source (any other copy, e.g. a `README` badge, references it).
 
-### 13.6 Readability Pass: Named Steps, Magic Numbers, and the Single-Use-Local Question
+### 13.6 Readability & Naming Pass for a New Reader (driven by `READABILITY_AUDIT.md`)
 
-The request to curb "overuse of single-use local functions" needs a **judgment rule, not a blanket inline** — and the evidence cuts both ways. The CFC style guide (§20 B-12) explicitly *recommends* extracting skip-logic and complex conditions **into** named local functions for readability, so a single-use local is often the *right* call. Apply this policy:
+5.5 is the big cleanup release, so making the code legible to a developer who did **not** write it is a first-class deliverable, not an afterthought. The full per-file map lives in [`docs/architecture/READABILITY_AUDIT.md`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/docs/architecture/READABILITY_AUDIT.md) (abbreviation→purpose dictionary, per-subsystem current→proposed tables with line refs, function-name fixes, and a safe apply order). This subsection is the plan's binding summary of it.
+
+**Honest baseline (from the audit):** Rareload is already better-named and better-structured than the average GMod addon — descriptive functions, `SCREAMING_SNAKE` constants, `PascalCase` methods, mostly well-chosen helpers. So this is a **targeted rename pass, not a rewrite**.
+
+**Priority order (do them in this order):**
+1. **Resolve context-colliding names first — the single highest-value change.** Three short names each mean 2–3 unrelated things across files, which is what truly forces a reader to reconstruct the author's mental model:
+   - `def` → `moduleDefinition` (pipeline/modules) vs `entityDefinition` (snapshot/history/world duplicator tables).
+   - `d` → `document` (Store/History/perms on-disk docs) vs `savedData` (a module's `restore(ply, d, ctx)` slice).
+   - `p` → `payload` (net receivers) vs `playerUsage` (`Store.Overview`) vs `cachedPoint` (anti-stuck).
+2. **Rename opaque locals** to purpose-named ones per the audit's dictionary (`ply`→`player`, `opts`→`options`/`saveOptions`, `ctx`→`save/restoreContext`, `prev`→`previousSave`, `by`→`replacingModuleId`, `may`→`isAllowed`, `why`→`refusalReason`, `r`→`moduleResult`, `out`→the thing built, `i`-as-`row.info`→`info`).
+3. **Rename vague local functions** (`run`→`runProtectedTimed`, `order`→`orderedModules`, `wants`→`shouldRestoreModule`, `check`→`hasPrivilege`, `push`→`pushGrantsToClient`, `doc`→`grantsDocument`/`methodConfig`, `size`→`formatBytes`, `asText`→`vectorAngleToLiteral`, `decode`→`decodeJson`).
+4. **Start in `sv_pipeline.lua`** (the vocabulary's source), then `sv_storage`, `sh_perms`, `sv_antistuck`, then `modules/*`, then client — one file per commit, `glualint` + `glua_check` between each (`lint_shadowing` catches a colliding rename).
+
+**Hard constraints (never violate — these overlap §16 Out of Scope):** rename only *locals, local functions and parameters*. Never rename across a serialization/protocol boundary — public `RARELOAD.*` API, net opcodes (`"rareload.sync"`, every `Net.Handle`/`Net.On` topic), hook names (`RareloadSaved`, `RareloadStateChanged`, …), `properties.Add`/command/ConVar names, and save-document keys (`entries`, `activeId`, `data`, `$blob`) are contracts. Do not lengthen already-clear names (`IsStuck`, `BlobPut`, `Append`, `snap`, `byDistance`), and do not grow line count as a side effect.
+
+**On single-use helpers and indirection** — a judgment rule, not a blanket inline, and the evidence cuts both ways. The CFC style guide (§20 B-12) explicitly *recommends* extracting skip-logic and complex conditions **into** named local functions for readability, so a single-use local is often the *right* call. Apply this policy:
 
 -   **Keep** a single-use local function (or local variable) when it *names* a non-obvious step, a magic expression, or a complex condition — e.g. `snap()`, `byDistance()`, `legacyInstalled()` each earn their name even though some are called once. Naming the step is the readability win, exactly what the guide asks for.
 -   **Inline** a single-use local only when it is a trivial pass-through that adds an indirection hop without clarifying anything (a one-liner that just forwards its args, or a wrapper whose name restates the callee).
@@ -1024,7 +1042,7 @@ Commit `1c655e7` ("Keep a player's grants inside a network string") already:
 
 ## 15. Phase 12 --- Runtime Bugs, Memory Corruption & Edge-Case Fixes (All 54 Files of 5.4)
 
-Alongside the security audit, a full line-by-line runtime correctness review across all **54 Lua files (`16,616` LOC)** of published Rareload 5.4 uncovered **16 candidate bugs** (`B-01`..`B-16`, including 4 new candidates `B-13`..`B-16` in the 5.4-part-2 server snapshots, multi-tick batched restore, respawn placement, and pre-death saves). Every candidate must pass the **§14.0 Live `gmod-debug-mcp` `v0.5.0` Reproduction Gate** before any code is modified.
+Alongside the security audit, a full line-by-line runtime correctness review across all **54 Lua files (`16,616` LOC)** of published Rareload 5.4 uncovered **17 candidate bugs** (`B-01`..`B-17`, including 4 new candidates `B-13`..`B-16` in the 5.4-part-2 server snapshots, multi-tick batched restore, respawn placement, and pre-death saves, plus the anti-stuck detection false positive `B-17` added in this revision). Every candidate must pass the **§14.0 Live `gmod-debug-mcp` `v0.5.0` Reproduction Gate** before any code is modified.
 
 ### 15.1 B-01: `Snapshot.Revive` ([`sv_snapshot.lua:201-212`](file:///Users/noah/Library/Application%20Support/Steam/steamapps/common/GarrysMod/garrysmod/addons/Rareload/lua/rareload/server/sv_snapshot.lua#L201-L212)) Shares `Vector`/`Angle` Userdata and Sub-Tables (`depth > 8`) With Cached Blobs, Causing In-Place Corruption on Restore
 
@@ -1397,9 +1415,9 @@ The goal is a leaner, faster, hardened, zero-duplication codebase with crystal-c
 ## 17. Definition of Done
 
 ### Live In-Game Reproduction & Security/Bug Triage (Phases 11 & 12 via `gmod-debug-mcp` `v0.5.0`)
-- [ ] Every candidate in Phase 11 (`S-01`..`S-07`) and Phase 12 (`B-01`..`B-16`) has been tested against the running game using `/Users/noah/gmod-debug-mcp` (`v0.5.0`: `run_tests`, `run_lua`, `diff`, `trace`, `net_watch`, `entity`, `entities` with `include_csents`, `player_input`, `trace_query`, `ui`, `game`, `bots`) **before** any fix code is written.
+- [ ] Every candidate in Phase 11 (`S-01`..`S-07`) and Phase 12 (`B-01`..`B-17`) has been tested against the running game using `/Users/noah/gmod-debug-mcp` (`v0.5.0`: `run_tests`, `run_lua`, `diff`, `trace`, `net_watch`, `entity`, `entities` with `include_csents`, `player_input`, `trace_query`, `ui`, `game`, `bots`) **before** any fix code is written.
 - [ ] Every candidate that **cannot be reproduced in-game** or is already resolved/needed (such as `S-03`, `S-07`, `B-11`, or already-mitigated sub-claims of `S-01` / `B-05` / `B-08`) is marked `FALSE_POSITIVE` in `MODLOG.md` and **dropped with 0 lines of code added**.
-- [ ] Every candidate that **is confirmed in-game** (including the 5.4 candidates `B-13`..`B-16`) has a corresponding `dbg.test` case in `tests/` that failed before the fix and passes after the fix (`run_tests` with `data/rareload` clean and `sql_guard: true`).
+- [ ] Every candidate that **is confirmed in-game** (including the 5.4 candidates `B-13`..`B-16` and the anti-stuck detection false positive `B-17`) has a corresponding `dbg.test` case in `tests/` that failed before the fix and passes after the fix (`run_tests` with `data/rareload` clean and `sql_guard: true`).
 
 ### State ownership (Phases 0–3)
 - [ ] Every persistent state structure across all 54 files has one documented authoritative owner (`docs/architecture/STATE_OWNERSHIP.md`).
@@ -1434,6 +1452,14 @@ The goal is a leaner, faster, hardened, zero-duplication codebase with crystal-c
 - [ ] `lint_unusedParameters` and `lint_unusedLoopVars` are enabled in `.glualint.json` and pass with zero warnings in both `glualint` and `gmod-debug-mcp` `check` (`glua_check`).
 - [ ] Every landed optimization records a before/after `profile` (`bench` / `bench_frames` / `hooks`) measurement via `gmod-debug-mcp` `v0.5.0`, and all 26 Phase 5 regression scenarios pass.
 
+### Readability & Naming (Phase 10 §13.5–§13.6, driven by `READABILITY_AUDIT.md`)
+- [ ] `docs/architecture/CONVENTIONS.md` and `docs/architecture/READABILITY_AUDIT.md` exist and match the shipped code.
+- [ ] The context-colliding names are resolved everywhere: no bare `def` (it is `moduleDefinition` or `entityDefinition`), no bare `d` for both a `document` and a module's `savedData`, and no bare `p` meaning payload/player-usage/point in the same codebase.
+- [ ] Opaque locals and parameters are purpose-named per the audit dictionary (`ply`→`player`, `ctx`→`save/restoreContext`, `by`→`replacingModuleId`, `may`/`why`/`r`/`out`/`i`-as-`info`), and vague local functions are renamed (`run`, `order`, `wants`, `check`, `push`, `doc`, `size`, `asText`).
+- [ ] **No serialization/protocol contract was renamed** (public `RARELOAD.*` API, net opcodes, hooks, `properties`/command/ConVar names, save-schema keys) — verified by an unchanged `net.Receivers`/hook/ConVar inventory and loadable 5.4 saves.
+- [ ] No single-use helper that names a real step was inlined at the cost of clarity, and the rename pass did not increase total line count beyond the Phase 9 target.
+- [ ] `glualint` (`lint_shadowing` on) and `glua_check` pass with zero warnings after the rename pass, one file per commit.
+
 ---
 
 ## 18. Priority and Recommended Execution Order
@@ -1441,12 +1467,13 @@ The goal is a leaner, faster, hardened, zero-duplication codebase with crystal-c
 | Priority | Phase | Work | Reason |
 | :--- | :--- | :--- | :--- |
 | **P0** | Phase 0 | Complete 54-file state ownership & boundary documentation (`STATE_OWNERSHIP.md`, `VALIDATION_BOUNDARIES.md`) | Establishes the exact mutation and boundary map before refactoring |
-| **P0** | Phase 11 & 12 (Step 1: Live Triage) | Run live reproduction probes via `gmod-debug-mcp` `v0.5.0` for `S-01`..`S-07` & `B-01`..`B-16` | Proves which bugs/exploits actually happen in-game and drops false positives (`S-03`, `S-07`, `B-11`) so zero dead code is added |
+| **P0** | Phase 11 & 12 (Step 1: Live Triage) | Run live reproduction probes via `gmod-debug-mcp` `v0.5.0` for `S-01`..`S-07` & `B-01`..`B-17` | Proves which bugs/exploits actually happen in-game and drops false positives (`S-03`, `S-07`, `B-11`) so zero dead code is added |
 | **P0** | Phase 11 & 12 (Step 2: Confirmed Fixes) + Phase 1 & 2 | Fix only `CONFIRMED` bugs/security issues (including `B-13`..`B-16`) & centralize `History`, `Store`, and `Pipeline` ownership | Fixes real verified bugs, eliminates duplicate `Store.Save` in `sv_death.lua` & `sv_checkpoints.lua`, and replaces full-snapshot JSON round-trips in `sv_history.lua` |
 | **P1** | Phase 6 | Centralize schemas & eliminate hardcoding (`sh_config`, `sh_perms`, `sh_util`) | Creates single sources of truth (`53` settings group schema, `39` privileges table, `COMPONENTS`, `WORLD_KINDS`, `PLAYER_STATES`, `unit` metadata) |
 | **P1** | Phase 3 & 7 | Client `State` unification (`checkpoints`, `deathSpot`) + UI & server deduplication | Unifies `cl_checkpoints`/`cl_death` world markers, `cl_menu`/`cl_ui` controls, `UI.Menu`/`UI.SplitRow`, `Util.FormatBytes`, and declarative `sv_commands` & `vehicle_adapters` schemas |
 | **P1** | Phase 8 | GLua & LuaJIT 2.1 performance pass (measured via `gmod-debug-mcp` `v0.5.0` `profile`) | Event-driven `UI.Rows`/`UI.Stats` caching, `sh_exclude` sphere-query removal, `sh_perms` `grantCache`, zero-allocation `Paint` hooks, `Util.Equal` diffing, and $O(1)$ `World.byKey` |
 | **P2** | Phase 4 | Validation boundary cleanup | Removes redundant internal checks once ownership and schemas are settled |
+| **P2** | Phase 10 (§13.5–§13.6) | Readability & naming pass driven by `READABILITY_AUDIT.md` (resolve `def`/`d`/`p` collisions first, then opaque locals and vague functions), plus the standards/convention audit (`CONVENTIONS.md`, accidental-global sweep, hook-name consistency) | Makes the cleaned-up code legible to a new reader; done late so renames land on already-deduplicated, final-shaped code, one file per commit |
 | **P2** | Phase 5 & 10 | 26-scenario regression suite (`run_tests` with `sql_guard`), `check` / `glualint` hygiene & final audit | Verifies 100% feature parity with 5.4, zero lint warnings, and measured performance gains |
 
 Do not combine phases merely to reduce the number of commits. Keep changes reviewable and independently testable.
