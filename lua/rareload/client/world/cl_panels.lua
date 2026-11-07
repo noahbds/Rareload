@@ -120,13 +120,17 @@ local function builder()
         cats[cat] = cats[cat] or {}
         table.insert(cats[cat], { label = tostring(label), value = tostring(value), color = color, swatch = swatch })
     end
-    return cats, add
+    -- Every key of a table, in order, as a readable label and a short value.
+    local function addAll(cat, t, indent)
+        for k, v in ordered(istable(t) and t or {}) do add(cat, (indent or "") .. humanize(k), summarize(v)) end
+    end
+    return cats, add, addAll
 end
 
 local STATE_NAMES = { [0] = "none", "idle", "alert", "combat", "script", "playdead", "prone", "dead" }
 
 local function playerCats(rec)
-    local cats, add = builder()
+    local cats, add, addAll = builder()
     local d = rec.data
     local owner = RARELOAD.World.OwnerOf(rec)
 
@@ -218,7 +222,7 @@ local function playerCats(rec)
             if fn then
                 ProtectedCall(fn, data, addOther)
             elseif istable(data) then
-                for k, v in pairs(data) do addOther(humanize(k), summarize(v)) end
+                addAll("other", data, "  ")
             else
                 addOther(label, summarize(data))
             end
@@ -235,7 +239,7 @@ local function savedObject(id)
 end
 
 local function objectCats(rec)
-    local cats, add = builder()
+    local cats, add, addAll = builder()
     local o, live = rec.obj, RARELOAD.World.LiveOf(rec)
     local detail = State.details[State.DetailKey(rec.sid, rec.entryId, o.id)]
 
@@ -300,21 +304,18 @@ local function objectCats(rec)
             end
             add("constraints", c.type, #names > 0 and table.concat(names, ", ") or L("world.constraint_self"),
                 CAT_COLORS.constraints)
-            for k, v in ordered(istable(c.set) and c.set or {}) do
-                add("constraints", "   " .. humanize(k), summarize(v))
-            end
+            addAll("constraints", c.set, "   ")
         end
-        for k, v in ordered(istable(detail.runtime) and detail.runtime.root or {}) do add("vehicle", humanize(k),
-                summarize(v)) end
-        for k, v in ordered(istable(detail.runtime) and detail.runtime.components or {}) do add("vehicle", humanize(k),
-                summarize(v)) end
+        local runtime = istable(detail.runtime) and detail.runtime or {}
+        addAll("vehicle", runtime.root)
+        addAll("vehicle", runtime.components)
         if istable(detail.ai) then
             add("ai", L("field.npc_state"), L("world.npc_state." .. (STATE_NAMES[detail.ai.state] or "none")))
             add("ai", L("field.schedule"), detail.ai.schedule)
             add("ai", L("field.squad"), detail.ai.squad)
             add("ai", L("field.enemy"), detail.ai.enemy)
         end
-        for k, v in ordered(istable(def.DT) and def.DT or {}) do add("network", humanize(k), summarize(v)) end
+        addAll("network", def.DT)
         local shown = 0
         for k, v in ordered(def) do
             if not KNOWN_KEYS[k] and shown < 60 then
