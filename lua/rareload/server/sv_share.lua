@@ -101,11 +101,33 @@ end
 -- type would break the timeline that shows it.
 local STRING_MODULES = { activeWeapon = true }
 
+-- Imported numbers a save made in game never holds (a file edited by hand, S-02): the module is
+-- left out rather than giving a player a 1e30 walk speed or the server a frozen physics clock.
+local RANGES = {
+    body = { walk = { 0, 10000 }, run = { 0, 10000 }, slowWalk = { 0, 10000 }, crouchWalk = { 0, 10000 },
+        jump = { 0, 10000 }, gravity = { -10, 10 }, scale = { 0.05, 20 }, maxHp = { 1, 1e6 },
+        maxArmor = { 0, 1e6 } },
+    worldSettings = { sv_gravity = { -10000, 10000 }, phys_timescale = { 0.01, 10 }, ai_disabled = { 0, 1 },
+        ai_ignoreplayers = { 0, 1 }, ai_keepragdolls = { 0, 1 }, host_timescale = { 0.01, 10 } },
+}
+
+local function inRange(id, value)
+    for key, range in pairs(RANGES[id] or {}) do
+        local v = value[key]
+        if v ~= nil then
+            v = tonumber(v)
+            if not v or v ~= v or v < range[1] or v > range[2] then return false end
+        end
+    end
+    return true
+end
+
 -- Checks the shape of one module's imported data. Returns false and why.
 local function checkModule(id, value)
     if isBlobRef(value) then return false, "refers to stored data" end
     if STRING_MODULES[id] and not isstring(value) then return false, "not a weapon class" end
     if not STRING_MODULES[id] and not istable(value) then return false, "not the right kind of data" end
+    if not inRange(id, value) then return false, "values out of range" end
     if id == "weapons" then
         for _, class in pairs(value) do
             if not isstring(class) then return false, "not a list of weapon classes" end
