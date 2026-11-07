@@ -11,7 +11,7 @@ local FORMAT, FORMAT_VERSION = "rareload-save", 1
 local EXPORTS = "exports/"
 local MAX_OBJECTS = 4096
 local OFFER_TIME = 120
-local SNAPSHOT_KINDS = { entities = true, npcs = true, vehicles = true }
+local SNAPSHOT_KINDS = RARELOAD.WORLD_KIND_SET
 
 local function log(ply) return RARELOAD.Log("share", ply) end
 

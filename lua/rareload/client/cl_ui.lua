@@ -184,10 +184,9 @@ function UI.TimeAgo(t)
 end
 
 -- Translated names of the states that are on.
-local STATES = { "god", "notarget", "frozen", "noclip", "flashlight" }
 function UI.States(states)
     local on = {}
-    for _, k in ipairs(STATES) do
+    for _, k in ipairs(RARELOAD.PLAYER_STATES) do
         if istable(states) and states[k] then on[#on + 1] = L("state." .. k) end
     end
     return #on > 0 and table.concat(on, ", ") or L("ui.none")

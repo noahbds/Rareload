@@ -11,7 +11,8 @@ local Snapshots = RARELOAD.Snapshots
 local Pipeline = RARELOAD.Pipeline
 
 local PRIV = "rareload_rollback"
-local WORLD = { entities = true, npcs = true, vehicles = true, constraints = true }
+local WORLD = {}
+for _, id in ipairs(RARELOAD.COMPONENTS.world) do WORLD[id] = true end
 
 local function rel() return RARELOAD.Store.MapDir() .. "/_server" end
 

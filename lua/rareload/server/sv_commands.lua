@@ -13,6 +13,28 @@ function Cmd.Register(name, def)
     Cmd.list[name] = def -- Re-registration is intentional during development reloads.
 end
 
+-- The English text of a phrase key ("toast.stuck"), for console replies: read once from the shipped
+-- en localization, so the console says what the player's toast says in English. The server has no
+-- localization API (the engine loads .properties files on the client only).
+local english
+function Cmd.Phrase(key, ...)
+    if not english then
+        english = {}
+        local text = file.Read("resource/localization/en/rareload.properties", "GAME") or ""
+        for line in string.gmatch(text, "[^\r\n]+") do
+            local k, v = string.match(line, "^rareload%.([^=%s]+)=(.*)$")
+            if k then
+                -- \uXXXX is the format's only escape.
+                english[k] = string.gsub(v, "\\u(%x%x%x%x)", function(hex) return utf8.char(tonumber(hex, 16)) end)
+            end
+        end
+    end
+    local phrase = english[key] or key
+    if select("#", ...) == 0 then return phrase end
+    local ok, out = pcall(string.format, phrase, ...)
+    return ok and out or phrase
+end
+
 local function replyTo(ply)
     return function(msg)
         msg = tostring(msg)
@@ -277,7 +299,7 @@ Cmd.Register("history", {
 
 Cmd.Register("history restore", {
     priv = "rareload_restore",
-    usage = "[player] <id> [position,health,inventory,ammo,appearance,states,world,scene] [exact]",
+    usage = "[player] <id> [" .. table.concat(RARELOAD.COMPONENT_ORDER, ",") .. "] [exact]",
     help = "Restore a save now (all components by default); exact also removes your objects not in it",
     fn = withTarget("history restore", function(ply, args, reply)
         if isstring(ply) then return reply("That player is offline: saves are restored only for players in game.") end
@@ -361,7 +383,7 @@ Cmd.Register("history clear", {
 
 Cmd.Register("history reload", {
     priv = "rareload_use_tool",
-    usage = "<set_previous|restore_current|restore_previous> [components]",
+    usage = "<" .. table.concat(RARELOAD.RELOAD_MODES, "|") .. "> [components]",
     help = "Choose what the tool's reload key does",
     fn = playerOnly(function(ply, args, reply)
         if not RARELOAD.History.SetReloadConfig(ply, args[1], RARELOAD.History.ParseComps(args[2])) then
@@ -496,7 +518,7 @@ end
 
 Cmd.Register("restore", {
     priv = "rareload_restore",
-    usage = "[position,health,inventory,ammo,appearance,states,world,scene]",
+    usage = "[" .. table.concat(RARELOAD.COMPONENT_ORDER, ",") .. "]",
     help = "Restore your respawn point now (all components by default)",
     fn = playerOnly(function(ply, args, reply)
         quickResult(reply, RARELOAD.History.RestoreActive(ply, RARELOAD.History.ParseComps(args[1])), "restore")
@@ -532,8 +554,7 @@ Cmd.Register("quickload", {
 -- Checkpoints (sv_checkpoints.lua) -----------------------------------------------------------------------
 
 local function checkpointReply(reply, ok, key, args)
-    local text = RARELOAD.Checkpoints.English[key] or key
-    reply((ok and "" or "Not done: ") .. string.format(text, unpack(args or {})))
+    reply((ok and "" or "Not done: ") .. Cmd.Phrase(key, unpack(args or {})))
 end
 
 Cmd.Register("checkpoint list", {

@@ -39,8 +39,8 @@ hook.Add("PlayerSpawnedRagdoll", "Rareload.Autosave", function(ply) mark(ply, "e
 hook.Add("PlayerSpawnedNPC", "Rareload.Autosave", function(ply) mark(ply, "npcs") end)
 hook.Add("PlayerSpawnedVehicle", "Rareload.Autosave", function(ply) mark(ply, "vehicles", "constraints") end)
 hook.Add("OnPhysgunFreeze", "Rareload.Autosave", function(_, _, _, ply) mark(ply, "entities", "vehicles") end)
-hook.Add("OnUndo", "Rareload.Autosave", function(ply) mark(ply, "entities", "npcs", "vehicles", "constraints") end)
-hook.Add("OnCleanup", "Rareload.Autosave", function(ply) mark(ply, "entities", "npcs", "vehicles", "constraints") end)
+hook.Add("OnUndo", "Rareload.Autosave", function(ply) mark(ply, unpack(RARELOAD.COMPONENTS.world)) end)
+hook.Add("OnCleanup", "Rareload.Autosave", function(ply) mark(ply, unpack(RARELOAD.COMPONENTS.world)) end)
 -- Where the vehicle was parked, even if it moved less than the movement check notices since the last save.
 hook.Add("PlayerLeaveVehicle", "Rareload.Autosave", function(ply) mark(ply, "transform", "vehicles") end)
 hook.Add("PlayerSpawn", "Rareload.Autosave", function(ply) remember(ply) end)

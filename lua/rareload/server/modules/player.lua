@@ -149,7 +149,7 @@ RARELOAD.Module({
 
     summary = function(d)
         local on = {}
-        for _, k in ipairs({ "god", "notarget", "frozen", "noclip", "flashlight" }) do
+        for _, k in ipairs(RARELOAD.PLAYER_STATES) do
             if d[k] then on[#on + 1] = k end
         end
         return #on > 0 and table.concat(on, ", ") or "none"

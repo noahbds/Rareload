@@ -3,19 +3,9 @@
 RARELOAD.History = RARELOAD.History or {}
 local History = RARELOAD.History
 
-local WORLD_KINDS = { "entities", "npcs", "vehicles" }
+local WORLD_KINDS = RARELOAD.WORLD_KINDS
 
--- Timeline components and the modules they restore (§15.4).
-History.COMPONENTS = {
-    position = { "transform" },
-    health = { "health" },
-    inventory = { "weapons", "weaponState", "activeWeapon", "globalInventory", "toolState" },
-    ammo = { "ammo" },
-    appearance = { "appearance", "pac" },
-    states = { "states", "body", "holding" },
-    world = { "entities", "npcs", "vehicles", "constraints" },
-    scene = { "mapState", "environment", "worldSettings" },
-}
+History.COMPONENTS = RARELOAD.COMPONENTS
 
 -- Returns the player's saves document (a new, unsaved one if they have none) and its storage path,
 -- or nil for players without a stable ID. `ply` can also be a SteamID64: admins manage the saves of
@@ -270,11 +260,12 @@ end
 
 -- Reload key (F28) --------------------------------------------------------------------------------
 
-History.RELOAD_MODES = { set_previous = true, restore_current = true, restore_previous = true }
+History.RELOAD_MODES = {}
+for _, mode in ipairs(RARELOAD.RELOAD_MODES) do History.RELOAD_MODES[mode] = true end
 
 function History.ReloadConfig(ply)
     local cfg = RARELOAD.Store.PData(ply, "reload")
-    if not istable(cfg) or not History.RELOAD_MODES[cfg.mode] then cfg = { mode = "set_previous" } end
+    if not istable(cfg) or not History.RELOAD_MODES[cfg.mode] then cfg = { mode = RARELOAD.RELOAD_MODES[1] } end
     return cfg
 end
 

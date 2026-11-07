@@ -8,8 +8,7 @@ local Timeline = RARELOAD.Timeline
 local L, UI, State = RARELOAD.L, RARELOAD.UI, RARELOAD.State
 local C, sc = UI.C, UI.sc
 
-local COMPONENTS = { "position", "health", "inventory", "ammo", "appearance", "states", "world", "scene" }
-local MODES = { "set_previous", "restore_current", "restore_previous" }
+local COMPONENTS, MODES = RARELOAD.COMPONENT_ORDER, RARELOAD.RELOAD_MODES
 local SORTS = { "newest", "oldest", "health", "pinned" }
 local FILTERS = { "all", "pinned", "noted", "world", "auto" }
 
@@ -429,7 +428,7 @@ local function buildDetail(host, sel)
     gap(D.reloadTitle, 4)
     local modes = {}
     for _, m in ipairs(MODES) do modes[#modes + 1] = { id = m, label = L("mode." .. m) } end
-    local function mode() return State.history.reload.mode or "set_previous" end
+    local function mode() return State.history.reload.mode or MODES[1] end
     D.mode = UI.Dropdown(host, nil, modes, mode, function(m)
         State.history.reload.mode = m
         Timeline.SendReloadConfig()
@@ -500,7 +499,7 @@ function Timeline.SendReloadConfig()
     local comps = Timeline.Comps()
     State.history.reload.comps = {}
     for comp in string.gmatch(comps, "[%w_]+") do State.history.reload.comps[comp] = true end
-    request("history.reloadMode", { mode = State.history.reload.mode or "set_previous", comps = comps })
+    request("history.reloadMode", { mode = State.history.reload.mode or MODES[1], comps = comps })
 end
 
 -- comps: the ticked parts ("position,world"), or nil for everything. An exact restore that includes

@@ -3,6 +3,28 @@
 RARELOAD.Util = RARELOAD.Util or {}
 local Util = RARELOAD.Util
 
+-- Lists both realms share, defined once (5.5 plan §9.2) ---------------------------------------------
+
+-- The modules that hold a world snapshot ({ Entities, … }), in display order.
+RARELOAD.WORLD_KINDS = { "entities", "npcs", "vehicles" }
+RARELOAD.WORLD_KIND_SET = { entities = true, npcs = true, vehicles = true }
+-- Timeline components, in display order, and the modules each one restores (§15.4).
+RARELOAD.COMPONENT_ORDER = { "position", "health", "inventory", "ammo", "appearance", "states", "world", "scene" }
+RARELOAD.COMPONENTS = {
+    position = { "transform" },
+    health = { "health" },
+    inventory = { "weapons", "weaponState", "activeWeapon", "globalInventory", "toolState" },
+    ammo = { "ammo" },
+    appearance = { "appearance", "pac" },
+    states = { "states", "body", "holding" },
+    world = { "entities", "npcs", "vehicles", "constraints" },
+    scene = { "mapState", "environment", "worldSettings" },
+}
+-- Player states the states module saves, in display order.
+RARELOAD.PLAYER_STATES = { "god", "notarget", "frozen", "noclip", "flashlight" }
+-- What the tool's reload key does; the first is the default.
+RARELOAD.RELOAD_MODES = { "set_previous", "restore_current", "restore_previous" }
+
 function Util.Finite(n)
     return isnumber(n) and n == n and n ~= math.huge and n ~= -math.huge
 end

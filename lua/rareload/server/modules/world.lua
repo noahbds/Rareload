@@ -202,7 +202,7 @@ local function eachLive(entities, fn)
     end
 end
 
-local WORLD_KINDS = { "entities", "npcs", "vehicles" }
+local WORLD_KINDS = RARELOAD.WORLD_KINDS
 
 -- Exact restore: removes constraints between this save's objects that the save doesn't hold (a weld
 -- added since). Constraints are counted from this module's list and, for saves made before it held
@@ -254,7 +254,7 @@ end
 RARELOAD.Module({
     id = "constraints",
     phase = "world",
-    after = { "entities", "npcs", "vehicles" },
+    after = RARELOAD.WORLD_KINDS,
     heavy = true,
     setting = "keepEntities",
     privSave = "rareload_save_entities",

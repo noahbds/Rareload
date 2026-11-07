@@ -151,17 +151,3 @@ hook.Add("RareloadClientReady", "Rareload.Checkpoints", function(ply)
     if RARELOAD.Can(ply, PRIV) then push(ply) end
 end)
 
--- English text of the toasts, for console replies (players see the localized toast).
-Checkpoints.English = {
-    ["toast.checkpoint_added"] = "Checkpoint \"%s\" set",
-    ["toast.checkpoint_removed"] = "Checkpoint \"%s\" deleted",
-    ["toast.checkpoint_went"] = "Went to checkpoint \"%s\"",
-    ["toast.checkpoint_full"] = "You already have %d checkpoints on this map",
-    ["toast.checkpoint_unknown"] = "No such checkpoint",
-    ["toast.checkpoint_failed"] = "Checkpoints can't be stored for you",
-    ["toast.checkpoint_denied"] = "Not allowed right now",
-    ["toast.restore_dead"] = "Respawn first",
-    ["toast.stuck"] = "No free spot found there",
-    ["toast.restore_cooldown"] = "Wait %d s before teleporting again",
-    ["toast.restore_spawn"] = "Only allowed within %d s of spawning",
-}

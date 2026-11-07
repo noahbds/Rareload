@@ -198,7 +198,7 @@ local function playerCats(rec)
         byKind[o.kind] = (byKind[o.kind] or 0) + 1
         classes[o.class or "?"] = (classes[o.class or "?"] or 0) + 1
     end
-    for _, kind in ipairs({ "entities", "npcs", "vehicles" }) do
+    for _, kind in ipairs(RARELOAD.WORLD_KINDS) do
         add("world", L("kind." .. kind), byKind[kind] or 0, UI.KIND_COLORS[kind])
     end
     local top = table.GetKeys(classes)
