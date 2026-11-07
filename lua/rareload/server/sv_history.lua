@@ -222,12 +222,7 @@ function History.RestoreEntry(ply, entry, comps, opts)
     end
     local only = History.ModulesFor(comps)
 
-    local undoOnly, world = {}, not comps or comps.world == true
-    for _, name in ipairs(table.GetKeys(History.COMPONENTS)) do
-        if not comps or comps[name] then
-            for _, m in ipairs(History.COMPONENTS[name]) do undoOnly[m] = true end
-        end
-    end
+    local undoOnly, world = History.ModulesFor(comps or History.COMPONENTS), not comps or comps.world == true
     local _, _, snapshot = RARELOAD.Pipeline.Save(ply, { only = undoOnly, captureOnly = true, silent = true })
 
     local ctx = RARELOAD.Pipeline.Restore(ply, entry, {
@@ -389,6 +384,12 @@ end)
 
 -- Objects inside saves (F29) ----------------------------------------------------------------------
 
+-- A snapshot's per-object table (ai, runtime) by object id: JSON may have turned an all-digit id key
+-- into a number.
+local function byObjectId(map, id)
+    return istable(map) and id and (map[id] or map[tonumber(id)]) or nil
+end
+
 -- What the inspector, the timeline preview and the world display show about one saved object.
 -- `snap` gives the NPC AI state and vehicle runtime kept next to the duplicator data.
 local function objectInfo(def, kind, snap)
@@ -396,8 +397,7 @@ local function objectInfo(def, kind, snap)
     local phys = istable(def.PhysicsObjects) and (def.PhysicsObjects[0] or def.PhysicsObjects["0"]) or {}
     local rl = istable(mods.rareload) and mods.rareload or {}
     local id = RARELOAD.Snapshot.DefID(def)
-    local runtime = id and istable(snap.runtime) and (snap.runtime[id] or snap.runtime[tonumber(id)]) or nil
-    local ai = id and istable(snap.ai) and (snap.ai[id] or snap.ai[tonumber(id)]) or nil
+    local runtime, ai = byObjectId(snap.runtime, id), byObjectId(snap.ai, id)
     return {
         id = id,
         num = rl.num,   -- kept for life, shown after the name when another object shares it
@@ -435,16 +435,14 @@ local function eachObject(entry, fn)
 end
 
 -- Every saved object of an entry.
-function History.Objects(ply, id)
-    local out = {}
-    eachObject(History.Get(ply, id), function(def, kind, snap) out[#out + 1] = objectInfo(def, kind, snap) end)
-    return out
-end
-
-History.ObjectsOf = function(entry)
+function History.ObjectsOf(entry)
     local out = {}
     eachObject(entry, function(def, kind, snap) out[#out + 1] = objectInfo(def, kind, snap) end)
     return out
+end
+
+function History.Objects(ply, id)
+    return History.ObjectsOf(History.Get(ply, id))
 end
 
 -- Constraint settings worth showing: plain values, without the ends (shown as names) and the type.
@@ -523,8 +521,8 @@ function History.ObjectDetail(entry, objectId)
             return {
                 def = def,
                 constraints = objectConstraints(entry, objectId),
-                ai = istable(snap.ai) and (snap.ai[objectId] or snap.ai[tonumber(objectId)]) or nil,
-                runtime = istable(snap.runtime) and (snap.runtime[objectId] or snap.runtime[tonumber(objectId)]) or nil
+                ai = byObjectId(snap.ai, objectId),
+                runtime = byObjectId(snap.runtime, objectId),
             }
         end
     end)
@@ -570,15 +568,8 @@ local function changeObject(ply, entryId, objectId, change)
     return false, "no such object"
 end
 
-function History.DeleteObject(ply, entryId, objectId)
-    return changeObject(ply, entryId, objectId, function(_, snap, index)
-        snap.Entities[index] = nil
-        return true
-    end)
-end
-
--- Deletes several objects at once: each snapshot is copied and stored once, not once per object.
-function History.DeleteObjects(ply, entryId, ids)
+-- Deletes objects (ids = { [objectId] = true }): each snapshot is copied and stored once, not once per object.
+local function deleteObjects(ply, entryId, ids)
     local d = History.Doc(ply)
     local entry = find(d, entryId)
     if not entry then return false, "no such save" end
@@ -607,6 +598,13 @@ function History.DeleteObjects(ply, entryId, ids)
     if removed == 0 then return false, "no such object" end
     save(ply, d)
     return true
+end
+
+History.DeleteObjects = deleteObjects
+
+-- One object (logged as such, so not through the logged History.DeleteObjects).
+function History.DeleteObject(ply, entryId, objectId)
+    return deleteObjects(ply, entryId, { [objectId] = true })
 end
 
 -- flag: "frozen" or "nogravity"
