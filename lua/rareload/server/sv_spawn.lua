@@ -49,8 +49,14 @@ hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
             mode == "saved" and "saved " or "")
     end
 
+    -- The respawn choice after a death (D4): the map spawn restores nothing, the death save replaces
+    -- the respawn point for this respawn only.
+    local choice = ply.rareloadSpawnChoice
+    ply.rareloadSpawnChoice = nil
+    if choice == "map" then return end
+
     -- With no save on this map, modules kept outside the saves (the global inventory) still restore.
-    local entry = RARELOAD.History.Active(ply)
+    local entry = choice == "death" and RARELOAD.Death.Entry(ply) or RARELOAD.History.Active(ply)
     if not entry and RARELOAD.Pipeline.Loads(ply, "spawn") then entry = { data = {} } end
     if entry then
         RARELOAD.Pipeline.Restore(ply, entry,

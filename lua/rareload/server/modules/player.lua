@@ -62,7 +62,10 @@ RARELOAD.Module({
     privSave = "rareload_save_health_armor",
     privRestore = "rareload_restore_health_armor",
 
-    save = function(ply)
+    -- A save made on death (D4) keeps the health from before the fatal hit.
+    save = function(ply, ctx)
+        local before = ctx and ctx.opts and ctx.opts.deathHealth
+        if before then return { hp = before.hp, armor = before.armor } end
         return { hp = ply:Health(), armor = ply:Armor() }
     end,
 

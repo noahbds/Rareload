@@ -161,7 +161,9 @@ local MANUAL_COOLDOWN = 1
 local lastManual = setmetatable({}, { __mode = "k" })
 
 -- opts = { at?: Vector, reason?: string, only?: { [moduleId] = true }, silent?: bool, captureOnly?: bool,
---          keepMissing?: bool (a module that captures nothing keeps its data from the current save) }
+--          keepMissing?: bool (a module that captures nothing keeps its data from the current save),
+--          keepActive?: bool (the save doesn't become the respawn point),
+--          deathHealth?: { hp, armor } (the health before the fatal hit, for a save made on death) }
 -- Returns true plus "saved" or "unchanged", or false plus the reason. With captureOnly the entry is
 -- returned instead of saved, with heavy data inline (used for undo, which must not depend on blobs).
 function Pipeline.Save(ply, opts)
@@ -169,7 +171,9 @@ function Pipeline.Save(ply, opts)
     if not Pipeline.Enabled() then return false, "gamemode" end
     if not RARELOAD.Get(ply, "enabled") then return refuse(ply, opts, "disabled") end
     if not RARELOAD.Can(ply, "rareload_save") then return refuse(ply, opts, "permission") end
-    if not ply:Alive() or ply:GetObserverMode() ~= OBS_MODE_NONE then return refuse(ply, opts, "state") end   -- E33
+    -- A save made on death (D4) runs while the player is already dead, before the gamemode drops the weapon.
+    local living = ply:Alive() or opts.deathHealth ~= nil
+    if not living or ply:GetObserverMode() ~= OBS_MODE_NONE then return refuse(ply, opts, "state") end   -- E33
     if not RARELOAD.Util.PlayerKey(ply) then return refuse(ply, opts, "no steamid") end                      -- E24
     local veto, rule = hook.Run("RareloadCanSave", ply, opts.reason)
     if veto == false then return refuse(ply, opts, "hook", rule) end
@@ -236,12 +240,12 @@ function Pipeline.Save(ply, opts)
         return true, "unchanged"
     end
 
-    RARELOAD.History.Append(ply, entry)
+    RARELOAD.History.Append(ply, entry, { keepActive = opts.keepActive })
     if not opts.silent then RARELOAD.Toast(ply, "toast.saved", { entry.id }, "ok") end
     info.result, info.entry = "saved", entry.id
     session:finish(info)
     hook.Run("RareloadSaved", ply, entry)
-    return true, "saved"
+    return true, "saved", entry
 end
 
 -- Restore -----------------------------------------------------------------------------------------

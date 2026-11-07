@@ -445,6 +445,14 @@ Cmd.Register("back", {
     fn = playerOnly(function(ply, _, reply) quickResult(reply, RARELOAD.History.Back(ply), "back") end),
 })
 
+Cmd.Register("death", {
+    priv = "rareload_restore",
+    help = "Go back to the save made when you last died (needs \"Save when dying\")",
+    fn = playerOnly(function(ply, _, reply)
+        quickResult(reply, RARELOAD.Death.Back(ply), "back to before you died")
+    end),
+})
+
 Cmd.Register("quicksave", {
     priv = "rareload_save",
     help = "Save into your quick slot (the quick save key does the same)",
