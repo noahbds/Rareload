@@ -427,7 +427,8 @@ end
 
 -- opts = { reason?, only?: { [moduleId] = true }, reset?: put saved objects still on the map back the
 --          way they were saved, exact?: also remove the player's objects the save doesn't hold,
---          died?: a respawn after a death }
+--          died?: a respawn after a death, deathSpot?: { pos, ang, crouched } to respawn at instead
+--          of the saved position (D4) }
 function Pipeline.Restore(ply, entry, opts)
     opts = opts or {}
     local token = (tokens[ply] or 0) + 1
@@ -437,6 +438,7 @@ function Pipeline.Restore(ply, entry, opts)
     local ctx = setmetatable({
         ply = ply, entry = entry, reason = reason, only = opts.only, token = token,
         reset = opts.reset or opts.exact or false, exact = opts.exact or false, died = opts.died or false,
+        deathSpot = opts.deathSpot,
         spawnDone = {}, shared = {}, spawned = {}, denied = {},
         session = RARELOAD.Log.Session("Restore (" .. reason .. ")", ply, "restore"),
     }, Ctx)

@@ -224,7 +224,9 @@ RARELOAD.Module({
                 ent = ent,
                 adapter = adapter,
                 runtime = snap.runtime and (snap.runtime[id] or snap.runtime[tonumber(id)]),
-                seat = snap.seat and snap.seat.vehicle == id and snap.seat.seat or nil,
+                -- Not when respawning where they died (D4): the player stays at that spot.
+                seat = not ctx.deathSpot and snap.seat and snap.seat.vehicle == id
+                    and snap.seat.seat or nil,
                 pos = def and def.Pos,
                 ang = def and def.Angle,
                 frozen = p0 and p0.Frozen,

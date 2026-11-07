@@ -52,7 +52,7 @@ hook.Add("PlayerSpawn", "Rareload.Death", function(ply)
     end
 end)
 
--- Where the player died, for "Where I died": a normal respawn there, nothing saved or restored. Not
+-- Where the player died, for "Where I died": the save is restored as usual, at that spot. Not
 -- kept when they died again within a few seconds of respawning there (a deadly spot), so "always"
 -- can't loop.
 local DEADLY = 5
@@ -75,22 +75,13 @@ hook.Add("PostPlayerDeath", "Rareload.Death", function(ply)
     RARELOAD.Net.Push(ply, "death.choice", { death = ply.rareloadDeathSpot ~= nil })
 end)
 
--- Puts the respawned player where they died (through anti-stuck). Returns true when it did.
-function Death.ToSpot(ply)
+-- The spot to respawn at for "where I died" (used once), or nil.
+function Death.TakeSpot(ply)
     local spot = ply.rareloadDeathSpot
     ply.rareloadDeathSpot = nil
-    if not spot then return false end
-    local pos = spot.pos
-    if RARELOAD.AntiStuck.IsStuck(pos, ply, spot.crouched) then
-        pos = RARELOAD.AntiStuck.Resolve(pos, ply, spot.crouched)
-        if not pos then return false end
-    end
-    if spot.crouched then ply:AddFlags(FL_DUCKING) end
-    ply:SetPos(pos)
-    ply:SetEyeAngles(Angle(spot.ang.p, spot.ang.y, 0))
-    ply:SetLocalVelocity(vector_origin)
+    if not spot then return nil end
     ply.rareloadBackAt = CurTime()
-    return true
+    return { pos = spot.pos, ang = Angle(spot.ang.p, spot.ang.y, 0), crouched = spot.crouched }
 end
 
 -- Restores the death save. Returns true, or false (the player was told why).
@@ -113,7 +104,7 @@ end
 RARELOAD.Net.Handle("death.back", { priv = "rareload_restore", rate = 1, fn = function(ply) Death.Back(ply) end })
 
 -- The respawn choice: "save" (the respawn point, as usual), "map" (the map's spawn, nothing restored)
--- or "death" (where they died, a normal respawn there).
+-- or "death" (the respawn point's save, restored where they died).
 local CHOICES = { save = true, map = true, death = true }
 RARELOAD.Net.Handle("death.respawn", {
     priv = "rareload_restore",

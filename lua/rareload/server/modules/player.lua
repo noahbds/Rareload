@@ -19,8 +19,11 @@ RARELOAD.Module({
 
     restore = function(ply, d, ctx)
         local pos, ang = Util.ToVector(d.pos), Util.ToAngle(d.ang)
-        if not pos then return end
         local crouched = d.crouched == true
+        -- Respawning "where I died" (D4): the save is restored, only the place is the death spot.
+        local at = ctx and ctx.deathSpot
+        if at then pos, ang, crouched = at.pos, at.ang, at.crouched == true end
+        if not pos then return end
 
         -- Timeline restores can happen while seated or prop-driving (E13, E33).
         if ply:InVehicle() then ply:ExitVehicle() end
