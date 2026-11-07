@@ -600,13 +600,6 @@ function Timeline.Open()
             end)
         end, { style = "info", icon = "group" })
     end
-    -- Death recovery (D4): shown while there is a save from the last death.
-    local back = frame:HeaderButton(L("death.back"), function() request("death.back") end,
-        { style = "warn", icon = "heart" })
-    back:SetVisible(RARELOAD.DeathUI and RARELOAD.DeathUI.id ~= nil or false)
-    hook.Add("RareloadStateChanged", back, function(_, what)
-        if what == "death" then back:SetVisible(RARELOAD.DeathUI.id ~= nil) back:GetParent():InvalidateLayout() end
-    end)
 
     local side = vgui.Create("DPanel", frame)
     side:Dock(LEFT)
