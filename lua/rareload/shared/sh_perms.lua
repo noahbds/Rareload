@@ -46,6 +46,7 @@ RARELOAD.Priv("rareload_manage_objects", "admin", "Edit, flag or delete objects 
 RARELOAD.Priv("rareload_manage_inventory", "admin", "Edit, copy, give and roll back saved and global inventories")
 RARELOAD.Priv("rareload_teleport", "admin", "Teleport to saved positions and objects")
 RARELOAD.Priv("rareload_anti_stuck", "admin", "Test anti-stuck and choose its methods")
+RARELOAD.Priv("rareload_manage_saves", "admin", "See and manage other players' saves, online or not")
 RARELOAD.Priv("rareload_checkpoints", "user", "Set named teleport spots and go back to them")
 RARELOAD.Priv("rareload_block_classes", "admin", "Choose object classes Rareload never saves or restores")
 RARELOAD.Priv("rareload_data_cleanup", "superadmin", "Run Rareload data cleanup commands")

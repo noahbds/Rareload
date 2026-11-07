@@ -18,9 +18,10 @@ History.COMPONENTS = {
 }
 
 -- Returns the player's saves document (a new, unsaved one if they have none) and its storage path,
--- or nil for players without a stable ID.
+-- or nil for players without a stable ID. `ply` can also be a SteamID64: admins manage the saves of
+-- players who are offline (A3). The functions below take either.
 function History.Doc(ply)
-    local key = RARELOAD.Util.PlayerKey(ply)
+    local key = isstring(ply) and (ply:match("^%d+$") and ply) or (not isstring(ply) and RARELOAD.Util.PlayerKey(ply))
     if not key then return nil end
     local rel = RARELOAD.Store.MapDir() .. "/" .. key
     local d = RARELOAD.Store.Load(rel) or { v = RARELOAD.Store.SCHEMA, sid64 = key, nextId = 1, entries = {} }
@@ -64,6 +65,7 @@ function History.Append(ply, entry, opts)
     if not d then return false end
     entry.id = d.nextId
     d.nextId = d.nextId + 1
+    if not isstring(ply) and IsValid(ply) then d.nick = ply:Nick() end
     d.entries[#d.entries + 1] = entry
     if not (opts and opts.keepActive and d.activeId) then d.activeId = entry.id end
 
@@ -80,6 +82,12 @@ function History.SetPinned(ply, id, pinned)
     local d = History.Doc(ply)
     local entry = find(d, id)
     if not entry then return false end
+    -- Pinned saves are never dropped, so their number is capped (A3).
+    if pinned and not entry.pinned then
+        local n = 0
+        for _, e in ipairs(d.entries) do if e.pinned then n = n + 1 end end
+        if n >= RARELOAD.Get(nil, "pinnedMax") then return false, "full" end
+    end
     entry.pinned = pinned or nil
     return save(ply, d)
 end
@@ -658,7 +666,16 @@ function History.Rows(ply)
     return rows
 end
 
+-- Admins looking at another player's timeline (A3): admin -> SteamID64.
+History._viewing = History._viewing or setmetatable({}, { __mode = "k" })
+local viewing = History._viewing
+
 local function pushRows(ply)
+    local key = viewing[ply]
+    if key then
+        RARELOAD.Net.Push(ply, "history", { rows = History.Rows(key), reload = {}, undo = false, target = key })
+        return
+    end
     RARELOAD.Net.Push(ply, "history", {
         rows = History.Rows(ply),
         reload = History.ReloadConfig(ply),
@@ -678,22 +695,51 @@ History.ParseComps = parseComps
 
 -- Network handlers for timeline and object operations. The client pushes a request, the server
 -- checks the player's privilege, performs the operation, and pushes back the new timeline rows.
+-- Every operation can name another player (`sid`): admins with rareload_manage_saves act on their
+-- saves (A3), online or not, and each such action is logged. fn(target, a, actor), where target is
+-- the player when online, else their SteamID64.
+local MANAGE = "rareload_manage_saves"
+
+local function targetFor(ply, sid)
+    if not sid or sid == "" or sid == ply:SteamID64() then return ply end
+    if not RARELOAD.Can(ply, MANAGE) or not sid:match("^%d+$") then return nil end
+    return player.GetBySteamID64(sid) or sid
+end
+
+local function nameOf(target)
+    if not isstring(target) then return target:Nick() end
+    local d = History.Doc(target)
+    return (d and d.nick or "?") .. " (" .. target .. ")"
+end
+
 local function handle(op, priv, args, fn)
+    args.sid = "string:20?"
     RARELOAD.Net.Handle(op, {
         priv = priv,
         rate = 0.2,
         args = args,
         fn = function(ply, a)
-            local key, targs = fn(ply, a)
+            local target = targetFor(ply, a.sid)
+            if not target then return end
+            local key, targs = fn(target, a, ply)
             if key then RARELOAD.Toast(ply, key, targs) end
+            if target ~= ply and op ~= "history.get" then
+                RARELOAD.Log("admin", ply):info("%s: %s, save No. %s of %s", ply:Nick(), op, tostring(a.id or "-"),
+                    nameOf(target))
+            end
             pushRows(ply)
         end
     })
 end
 
-handle("history.get", "rareload_restore", {}, function() end)
-handle("history.pin", "rareload_restore", { id = "uint", pinned = "bool" },
-    function(ply, a) History.SetPinned(ply, a.id, a.pinned) end)
+-- Which timeline the player looks at: their own, or (admins) another player's.
+handle("history.get", "rareload_restore", {}, function(target, _, ply)
+    viewing[ply] = target ~= ply and (isstring(target) and target or target:SteamID64()) or nil
+end)
+handle("history.pin", "rareload_restore", { id = "uint", pinned = "bool" }, function(ply, a)
+    local _, why = History.SetPinned(ply, a.id, a.pinned)
+    if why == "full" then return "toast.pin_full", { RARELOAD.Get(nil, "pinnedMax") } end
+end)
 handle("history.note", "rareload_restore", { id = "uint", note = "string:256" },
     function(ply, a) History.SetNote(ply, a.id, a.note) end)
 handle("history.delete", "rareload_restore", { id = "uint" }, function(ply, a) History.Delete(ply, a.id) end)
@@ -703,18 +749,47 @@ handle("history.activate", "rareload_restore", { id = "uint" }, function(ply, a)
 end)
 handle("history.restore", "rareload_restore", { id = "uint", comps = "string:128?", exact = "bool?" },
     function(ply, a)
+        if isstring(ply) then return "toast.admin_offline" end -- restoring needs the player in game
         if not ply:Alive() then return "toast.restore_dead" end
         if History.Restore(ply, a.id, parseComps(a.comps), { exact = a.exact }) then
             return "toast.restored", { a.id }
         end
     end)
 handle("history.undo", "rareload_restore", {}, function(ply)
+    if isstring(ply) then return "toast.nothing_to_undo" end
     return History.Undo(ply) and "toast.undone" or "toast.nothing_to_undo"
 end)
 handle("history.reloadMode", "rareload_use_tool", { mode = "string:32", comps = "string:128?" }, function(ply, a)
-    if not History.RELOAD_MODES[a.mode] then return end
+    if isstring(ply) or not History.RELOAD_MODES[a.mode] then return end
     RARELOAD.Store.PData(ply, "reload", { mode = a.mode, comps = parseComps(a.comps) })
 end)
+
+RARELOAD.Net.Handle("history.players", {
+    priv = MANAGE,
+    rate = 1,
+    fn = function(ply)
+        local list, seen = {}, {}
+        for _, p in player.Iterator() do
+            if not p:IsBot() then
+                local sid = p:SteamID64()
+                local d = History.Doc(p)
+                seen[sid] = true
+                list[#list + 1] = { sid = sid, nick = p:Nick(), online = true, saves = d and #d.entries or 0 }
+            end
+        end
+        local dir = RARELOAD.Store.MapDir()
+        for _, name in ipairs(file.Find("rareload/" .. dir .. "/*.json", "DATA") or {}) do
+            local sid = name:match("^(%d+)%.json$")
+            if sid and not seen[sid] then
+                local d = History.Doc(sid)
+                if d and #d.entries > 0 then
+                    list[#list + 1] = { sid = sid, nick = d.nick or sid, online = false, saves = #d.entries }
+                end
+            end
+        end
+        RARELOAD.Net.Push(ply, "history.players", { list = list })
+    end,
+})
 
 RARELOAD.Net.Handle("object.get", {
     priv = "rareload_manage_objects",
@@ -832,11 +907,15 @@ local function pushFeed(ply, targets)
     RARELOAD.Net.Push(targets, "saves", { sid = sid, save = feedFor(ply) }, { key = "saves:" .. sid })
 end
 
-local changed = {}
+local changed, changedKeys = {}, {}
 
--- Called on every change of a saves document; the pushes wait until the changes settle.
+-- Called on every change of a saves document (`ply` may be a SteamID64); the pushes wait until the
+-- changes settle. Admins looking at that player's timeline get it too.
 refresh = function(ply)
-    changed[ply] = true
+    local key = isstring(ply) and ply or RARELOAD.Util.PlayerKey(ply)
+    local online = isstring(ply) and player.GetBySteamID64(ply) or ply
+    if IsValid(online) then changed[online] = true end
+    if key then changedKeys[key] = true end
     if timer.Exists("Rareload.History.Push") then return end
     timer.Create("Rareload.History.Push", 0.1, 1, function()
         for p in pairs(changed) do
@@ -845,7 +924,10 @@ refresh = function(ply)
                 pushFeed(p)
             end
         end
-        changed = {}
+        for admin, sid in pairs(viewing) do
+            if IsValid(admin) and changedKeys[sid] and not changed[admin] then pushRows(admin) end
+        end
+        changed, changedKeys = {}, {}
     end)
 end
 

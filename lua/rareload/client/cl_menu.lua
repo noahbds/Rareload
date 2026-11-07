@@ -687,6 +687,21 @@ local function buildServer(panel)
         RARELOAD.Net.Request("blocked.get")
     end
 
+    if RARELOAD.Can(LocalPlayer(), "rareload_data_cleanup") then
+        local storage = section(panel, L("menu.storage"), "database", false)
+        local function fill()
+            storage:Clear()
+            note(storage, L("menu.storage_help"))
+            for _, line in ipairs(RARELOAD.State.usage or {}) do note(storage, line) end
+            button(storage, L("menu.storage_refresh"), "arrow_refresh", BUTTONS.gray,
+                function() RARELOAD.Net.Request("data.usage") end)
+            button(storage, L("menu.storage_cleanup"), "bin", BUTTONS.orange,
+                function() RunConsoleCommand("rareload", "data", "cleanup", "all") end)
+        end
+        fill()
+        hook.Add("RareloadStateChanged", storage, function(_, what) if what == "usage" then fill() end end)
+    end
+
     local reset = section(panel, L("menu.defaults_reset_title"), "arrow_undo", false)
     note(reset, L("menu.defaults_reset_help"))
     button(reset, L("menu.defaults_reset"), "arrow_undo", BUTTONS.orange, function()

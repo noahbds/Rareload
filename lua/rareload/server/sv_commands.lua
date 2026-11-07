@@ -200,15 +200,32 @@ function Cmd.FindPlayer(text)
     return nil, "Player not found: " .. text
 end
 
--- Admins can name another player as the first argument of the timeline commands.
+-- A player who is offline but has saves on this map: by SteamID64, STEAM_ ID, or the name they last
+-- saved with (A3). Returns their SteamID64.
+local function offlineTarget(text)
+    local sid = text:match("^7656119%d+$") or (text:match("^STEAM_%d:%d:%d+$") and util.SteamIDTo64(text))
+    if sid then return sid end
+    local lower, found = string.lower(text), {}
+    for _, name in ipairs(file.Find("rareload/" .. RARELOAD.Store.MapDir() .. "/*.json", "DATA") or {}) do
+        local id = name:match("^(%d+)%.json$")
+        local d = id and RARELOAD.History.Doc(id)
+        if d and d.nick and string.find(string.lower(d.nick), lower, 1, true) then found[#found + 1] = id end
+    end
+    if #found == 1 then return found[1] end
+end
+
+-- Admins (rareload_manage_saves) can name a player, online or not, as the first argument of the
+-- timeline commands. The target is the player when online, else their SteamID64.
 local function targetOf(ply, args, reply)
     if args[1] and not tonumber(args[1]) then
-        if not RARELOAD.Can(ply, "rareload_admin") then
-            reply("Only admins can act on other players.")
+        if not RARELOAD.Can(ply, "rareload_manage_saves") then
+            reply("You need the rareload_manage_saves privilege to act on other players' saves.")
             return nil
         end
-        local target, err = Cmd.FindPlayer(table.remove(args, 1))
-        if not target then reply(err) end
+        local text = table.remove(args, 1)
+        local target, err = Cmd.FindPlayer(text)
+        target = target or offlineTarget(text)
+        if not target then reply(err or ("Player not found: " .. text)) end
         return target
     end
     if not IsValid(ply) then
@@ -221,6 +238,22 @@ end
 local function saveID(value)
     local id = tonumber(value)
     return id and id >= 1 and id < math.huge and id == math.floor(id) and id or nil
+end
+
+-- A timeline command that also takes a player first (A3): the action is logged when it is someone
+-- else's saves.
+local function withTarget(name, fn)
+    return function(ply, args, reply)
+        if args[1] and not tonumber(args[1]) then
+            local target = targetOf(ply, args, reply)
+            if not target then return end
+            RARELOAD.Log("admin", ply):info("%s ran 'rareload %s' on the saves of %s", IsValid(ply) and ply:Nick()
+                or "Console", name, isstring(target) and target or target:Nick())
+            return fn(target, args, reply)
+        end
+        if not IsValid(ply) then return reply("Name a player.") end
+        return fn(ply, args, reply)
+    end
 end
 
 local function result(reply, ok, what)
@@ -244,9 +277,10 @@ Cmd.Register("history", {
 
 Cmd.Register("history restore", {
     priv = "rareload_restore",
-    usage = "<id> [position,health,inventory,ammo,appearance,states,world,scene] [exact]",
+    usage = "[player] <id> [position,health,inventory,ammo,appearance,states,world,scene] [exact]",
     help = "Restore a save now (all components by default); exact also removes your objects not in it",
-    fn = playerOnly(function(ply, args, reply)
+    fn = withTarget("history restore", function(ply, args, reply)
+        if isstring(ply) then return reply("That player is offline: saves are restored only for players in game.") end
         if not ply:Alive() then return reply("Respawn first, then restore the save.") end
         local exact = false
         for i = #args, 2, -1 do
@@ -264,9 +298,9 @@ Cmd.Register("history restore", {
 
 Cmd.Register("history activate", {
     priv = "rareload_restore",
-    usage = "<id>",
+    usage = "[player] <id>",
     help = "Make a save your respawn point",
-    fn = playerOnly(function(ply, args, reply)
+    fn = withTarget("history activate", function(ply, args, reply)
         local id = saveID(args[1])
         if not id then return reply("Usage: rareload history activate <positive save ID>") end
         result(reply, RARELOAD.History.Activate(ply, id), "activate")
@@ -281,9 +315,9 @@ Cmd.Register("history undo", {
 
 Cmd.Register("history pin", {
     priv = "rareload_restore",
-    usage = "<id> [0]",
+    usage = "[player] <id> [0]",
     help = "Pin a save so it's never pruned (0 unpins)",
-    fn = playerOnly(function(ply, args, reply)
+    fn = withTarget("history pin", function(ply, args, reply)
         local id = saveID(args[1])
         if not id or (args[2] and args[2] ~= "0") then
             return reply("Usage: rareload history pin <positive save ID> [0]")
@@ -294,9 +328,9 @@ Cmd.Register("history pin", {
 
 Cmd.Register("history note", {
     priv = "rareload_restore",
-    usage = "<id> <text>",
+    usage = "[player] <id> <text>",
     help = "Attach a note to a save",
-    fn = playerOnly(function(ply, args, reply)
+    fn = withTarget("history note", function(ply, args, reply)
         local id = saveID(table.remove(args, 1))
         local note = string.sub(table.concat(args, " "), 1, 256)
         if not id or note == "" then return reply("Usage: rareload history note <positive save ID> <text>") end
@@ -306,9 +340,9 @@ Cmd.Register("history note", {
 
 Cmd.Register("history delete", {
     priv = "rareload_restore",
-    usage = "<id>",
+    usage = "[player] <id>",
     help = "Delete a save",
-    fn = playerOnly(function(ply, args, reply)
+    fn = withTarget("history delete", function(ply, args, reply)
         local id = saveID(args[1])
         if not id then return reply("Usage: rareload history delete <positive save ID>") end
         result(reply, RARELOAD.History.Delete(ply, id), "delete")
@@ -420,8 +454,37 @@ Cmd.Register("antistuck method", {
 
 Cmd.Register("data cleanup", {
     priv = "rareload_data_cleanup",
-    help = "Delete saved world data no save uses any more",
-    fn = function(_, _, reply) reply("Removed " .. RARELOAD.Store.GC() .. " unused blobs.") end,
+    usage = "[all]",
+    help = "Delete saved world data no save uses any more, on this map (or every map with 'all')",
+    fn = function(ply, args, reply)
+        local all = args[1] == "all"
+        local n = all and RARELOAD.Store.GCAll() or RARELOAD.Store.GC()
+        RARELOAD.Log("admin", ply):info("%s cleaned up unused data%s: %d blobs", IsValid(ply) and ply:Nick() or
+            "Console", all and " on every map" or "", n)
+        reply("Removed " .. n .. " unused blobs" .. (all and " on every map." or "."))
+    end,
+})
+
+Cmd.Register("data usage", {
+    priv = "rareload_data_cleanup",
+    help = "What the saves take on disk: by map, by player, unused data and the biggest saves",
+    fn = function(_, _, reply)
+        for _, line in ipairs(RARELOAD.Store.UsageLines(RARELOAD.Store.Overview())) do reply(line) end
+    end,
+})
+
+Cmd.Register("data prune", {
+    priv = "rareload_data_cleanup",
+    usage = "<days>",
+    help = "Delete saves older than this many days on every map (pinned saves and respawn points are kept)",
+    fn = function(ply, args, reply)
+        local days = tonumber(args[1])
+        if not days or days < 1 or days ~= math.floor(days) then return reply("Usage: rareload data prune <days>") end
+        local n = RARELOAD.Store.Prune(days)
+        RARELOAD.Log("admin", ply):info("%s deleted %d saves older than %d days", IsValid(ply) and ply:Nick() or
+            "Console", n, days)
+        reply("Deleted " .. n .. " saves older than " .. days .. " days.")
+    end,
 })
 
 -- Quick commands (5.4 plan, D3): the same as the quick keys and the reload key, from the console -----------

@@ -368,6 +368,15 @@ RARELOAD.Setting("restoreBatch", {
     category = "timing",
     help = "Objects created per tick when restoring a large build, so it doesn't freeze the server (0 = all at once)"
 })
+RARELOAD.Setting("pinnedMax", {
+    type = "int",
+    default = 20,
+    min = 1,
+    max = 500,
+    scope = "server",
+    category = "timing",
+    help = "Most pinned saves each player can have on a map (pinned saves are never dropped)"
+})
 RARELOAD.Setting("checkpointMax", {
     type = "int",
     default = 20,
