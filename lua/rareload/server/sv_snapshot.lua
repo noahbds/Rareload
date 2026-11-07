@@ -960,11 +960,13 @@ function Snapshot.RestoreBatched(snap, ply, opts, ctx, onDone)
         end)
     end
 
-    -- One batch per tick, through the pipeline's tick queue. A batch runs even if this restore was
-    -- replaced since: what it started is finished and handed to the player, never left half-made.
+    -- One batch per tick, through the pipeline's tick queue. Each object takes its id at once, so a
+    -- newer restore of the same save sees it as already there. When this restore was replaced, it
+    -- creates nothing more (the newer one creates the rest) and finishes what it made, never leaving
+    -- it half-made (B-14).
     local function step()
         ticks = ticks + 1
-        for _ = 1, batch do
+        for _ = 1, ctx:isCurrent() and batch or 0 do
             local index = indexes[at]
             if not index then break end
             at = at + 1
@@ -974,10 +976,11 @@ function Snapshot.RestoreBatched(snap, ply, opts, ctx, onDone)
             if not e and not st.limits and IsValid(ply) then e = createOne(ply, def) end
             if e then
                 holdStill(e)
+                e.RareloadID = Snapshot.DefID(def)
                 created[index] = e
             end
         end
-        if indexes[at] then
+        if indexes[at] and ctx:isCurrent() then
             later(step)
         else
             complete()
