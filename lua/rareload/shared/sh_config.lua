@@ -106,13 +106,6 @@ RARELOAD.Setting("antiStuck", {
     category = "general",
     help = "Move players out of blocked saved positions"
 })
-RARELOAD.Setting("skipRestoreOnDeath", {
-    type = "bool",
-    default = false,
-    scope = "player",
-    category = "general",
-    help = "Don't restore the save when respawning after a death"
-})
 RARELOAD.Setting("keepHealth", {
     type = "bool",
     default = true,
@@ -275,8 +268,23 @@ RARELOAD.Setting("deathChoiceAlways", {
     scope = "player",
     category = "general",
     priv = "rareload_restore",
-    help = "With the respawn choice on: ask after each death, or always respawn at the same place"
+    help = "Where to respawn after dying: asked (with the respawn choice on), or always the same place"
 })
+-- The old "Normal respawn after dying" (skipRestoreOnDeath) is now "Respawn after dying: at the map's
+-- spawn". Turned on, the server or player value moves over once.
+if SERVER then
+    local old = CreateConVar("sv_rareload_skip_restore_on_death", "0", FCVAR_ARCHIVE,
+        "Replaced by sv_rareload_death_choice_always")
+    if old:GetBool() then
+        RunConsoleCommand("sv_rareload_death_choice_always", "map")
+        old:SetBool(false)
+    end
+else
+    local old = CreateClientConVar("rareload_pref_skip_restore_on_death", "-1", true, false,
+        "Replaced by rareload_pref_death_choice_always")
+    if old:GetInt() == 1 then RunConsoleCommand("rareload_pref_death_choice_always", "map") end
+    if old:GetInt() ~= -1 then RunConsoleCommand("rareload_pref_skip_restore_on_death", "-1") end
+end
 RARELOAD.Setting("autoSave", {
     type = "bool",
     default = false,

@@ -26,7 +26,6 @@ hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
 
     if transition or not RARELOAD.Pipeline.Enabled() then return end                                 -- E22
     if not RARELOAD.Get(ply, "enabled") or not RARELOAD.Can(ply, "rareload_restore") then return end -- E15
-    if died and RARELOAD.Get(ply, "skipRestoreOnDeath") then return end
 
     -- The respawn that follows a whole-map cleanup must not start another one.
     local mode = died and not cleaned and RARELOAD.Get(nil, "deathCleanupMode") or "off"

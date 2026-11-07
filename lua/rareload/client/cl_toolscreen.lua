@@ -10,7 +10,7 @@ local HEADER, TOP, ROW, BAR = 50, 100, 28, 20
 
 -- Settings shown on the screen; values are the player's effective ones.
 local FEATURES = {
-    { key = "antiStuck" }, { key = "autoSave" }, { key = "skipRestoreOnDeath" },
+    { key = "antiStuck" }, { key = "autoSave" }, { key = "deathChoiceAlways" },
     { key = "keepInventory" }, { key = "globalInventory" }, { key = "keepAmmo" }, { key = "keepHealth" },
     { key = "keepStates" }, { key = "keepAppearance" }, { key = "keepEntities" }, { key = "keepNPCs" },
     { key = "keepVehicles" }, { key = "deathCleanupMode" }, { key = "debug" },
