@@ -33,7 +33,7 @@ hook.Add("HUDPaint", "Rareload.Death", function()
 end)
 
 -- The choice of where to respawn (player setting deathChoice).
-RARELOAD.Net.On("death.choice", function(p)
+RARELOAD.Net.On("death.choice", function(payload)
     if IsValid(DeathUI.choice) then DeathUI.choice:Remove() end
     local frame = UI.Window({ title = L("death.choice_title"), subtitle = L("death.choice_help"), w = 460, h = 300 })
     DeathUI.choice = frame
@@ -50,7 +50,7 @@ RARELOAD.Net.On("death.choice", function(p)
         { "save", L("death.choice_save"), "flag_green", "success" },
         { "map", L("death.choice_map"), "world", "info" },
     }
-    if p.death then options[#options + 1] = { "death", L("death.choice_death"), "heart", "warn" } end
+    if payload.death then options[#options + 1] = { "death", L("death.choice_death"), "heart", "warn" } end
     for _, o in ipairs(options) do
         local b = UI.Button(frame, o[2], function() choose(o[1]) end, { style = o[4], icon = o[3] })
         b:Dock(TOP)

@@ -290,21 +290,21 @@ if CLIENT then
         local data = net.ReadData(net.ReadUInt(16))
 
         local now = RealTime()
-        for tid, p in pairs(partial) do
-            if now - p.t > 10 then partial[tid] = nil end
+        for tid, upload in pairs(partial) do
+            if now - upload.t > 10 then partial[tid] = nil end
         end
         Net.Request("ack", { id = id, part = index })
-        local p = partial[id] or { parts = {}, got = 0 }
-        partial[id] = p
-        p.t = now
-        if not p.parts[index] then
-            p.parts[index] = data
-            p.got = p.got + 1
+        local upload = partial[id] or { parts = {}, got = 0 }
+        partial[id] = upload
+        upload.t = now
+        if not upload.parts[index] then
+            upload.parts[index] = data
+            upload.got = upload.got + 1
         end
-        if p.got < total then return end
+        if upload.got < total then return end
 
         partial[id] = nil
-        local json = util.Decompress(table.concat(p.parts), MAX_TRANSFER)
+        local json = util.Decompress(table.concat(upload.parts), MAX_TRANSFER)
         local payload = json and util.JSONToTable(json, true)
         local fn = topics[topic]
         if payload and fn then ProtectedCall(fn, payload) end

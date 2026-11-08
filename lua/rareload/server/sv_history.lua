@@ -866,12 +866,12 @@ RARELOAD.Net.Handle("history.players", {
     rate = 1,
     fn = function(ply)
         local list, seen = {}, {}
-        for _, p in player.Iterator() do
-            if not p:IsBot() then
-                local sid = p:SteamID64()
-                local doc = History.Doc(p)
+        for _, other in player.Iterator() do
+            if not other:IsBot() then
+                local sid = other:SteamID64()
+                local doc = History.Doc(other)
                 seen[sid] = true
-                list[#list + 1] = { sid = sid, nick = p:Nick(), online = true, saves = doc and #doc.entries or 0 }
+                list[#list + 1] = { sid = sid, nick = other:Nick(), online = true, saves = doc and #doc.entries or 0 }
             end
         end
         local dir = RARELOAD.Store.MapDir()
@@ -980,8 +980,8 @@ end)
 local function subscribers()
     local out = {}
     if not RARELOAD.Get(nil, "debug") then return out end
-    for _, p in player.Iterator() do
-        if RARELOAD.Can(p, "rareload_debug") then out[#out + 1] = p end
+    for _, other in player.Iterator() do
+        if RARELOAD.Can(other, "rareload_debug") then out[#out + 1] = other end
     end
     return out
 end
@@ -1015,10 +1015,10 @@ refresh = function(ply)
     if key then changedKeys[key] = true end
     if timer.Exists("Rareload.History.Push") then return end
     timer.Create("Rareload.History.Push", 0.1, 1, function()
-        for p in pairs(changed) do
-            if IsValid(p) then
-                pushRows(p)
-                pushFeed(p)
+        for changedPly in pairs(changed) do
+            if IsValid(changedPly) then
+                pushRows(changedPly)
+                pushFeed(changedPly)
             end
         end
         for admin, sid in pairs(viewing) do
@@ -1031,7 +1031,7 @@ end
 hook.Add("RareloadClientReady", "Rareload.History", function(ply)
     pushRows(ply)
     if RARELOAD.Get(nil, "debug") and RARELOAD.Can(ply, "rareload_debug") then
-        for _, p in player.Iterator() do pushFeed(p, { ply }) end
+        for _, viewer in player.Iterator() do pushFeed(viewer, { ply }) end
     end
 end)
 
@@ -1044,7 +1044,7 @@ end)
 
 cvars.AddChangeCallback("sv_rareload_debug", function(_, _, value)
     if tonumber(value) == 1 then
-        for _, p in player.Iterator() do pushFeed(p) end
+        for _, viewer in player.Iterator() do pushFeed(viewer) end
     end
 end, "Rareload.History")
 

@@ -66,18 +66,18 @@ local function applyCosmetic(ent, t, colorSetter)
 end
 
 local function captureProps(ent, t, props)
-    for _, p in ipairs(props or {}) do
-        local v = get(ent, p[2], p[4])
-        if v ~= nil and p[5] then v = p[5](v) end
-        t[p[1]] = v
+    for _, prop in ipairs(props or {}) do
+        local v = get(ent, prop[2], prop[4])
+        if v ~= nil and prop[5] then v = prop[5](v) end
+        t[prop[1]] = v
     end
 end
 
 local function applyProps(ent, t, props)
-    for _, p in ipairs(props or {}) do
-        local v = t[p[1]]
-        if v ~= nil and p[6] then v = p[6](v) end
-        set(ent, p[3], v)
+    for _, prop in ipairs(props or {}) do
+        local v = t[prop[1]]
+        if v ~= nil and prop[6] then v = prop[6](v) end
+        set(ent, prop[3], v)
     end
 end
 

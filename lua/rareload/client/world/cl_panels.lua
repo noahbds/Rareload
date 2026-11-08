@@ -292,10 +292,11 @@ local function objectCats(rec)
         add("physics", L("field.bodies"), table.Count(physics))
         add("physics", L("field.collision_group"), entityDef.ColGroup)
         local n = 0
-        for bone, p in ordered(physics) do
+        for bone, phys in ordered(physics) do
             n = n + 1
             if n > 8 then break end
-            add("physics", L("world.bone", bone), (p.Frozen and L("field.frozen") .. "  " or "") .. summarize(p.Pos))
+            local frozen = phys.Frozen and L("field.frozen") .. "  " or ""
+            add("physics", L("world.bone", bone), frozen .. summarize(phys.Pos))
         end
         -- What the object is attached to, then that constraint's settings.
         for _, c in ipairs(istable(detail.constraints) and detail.constraints or {}) do
@@ -875,8 +876,8 @@ end
 local function screenRect(pos, ang, scale, w, h)
     local f, r = ang:Forward() * (w * scale / 2), ang:Right() * (h * scale / 2)
     local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
-    for _, p in ipairs({ pos + f + r, pos + f - r, pos - f + r, pos - f - r }) do
-        local sc = p:ToScreen()
+    for _, corner in ipairs({ pos + f + r, pos + f - r, pos - f + r, pos - f - r }) do
+        local sc = corner:ToScreen()
         if not sc.visible then return nil end
         x0, y0, x1, y1 = math.min(x0, sc.x), math.min(y0, sc.y), math.max(x1, sc.x), math.max(y1, sc.y)
     end
@@ -898,8 +899,9 @@ local function aimedModel(g, eye, aim)
         local oc = m.center - eye
         local t = oc:Dot(aim)
         if t > 0 then
-            local p = aim * t - oc
-            if math.abs(p.z) < m.half and p.x * p.x + p.y * p.y < m.radius * m.radius and (not best or t < best) then
+            local rel = aim * t - oc
+            local inCylinder = math.abs(rel.z) < m.half and rel.x * rel.x + rel.y * rel.y < m.radius * m.radius
+            if inCylinder and (not best or t < best) then
                 best = t
             end
         end

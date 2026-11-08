@@ -31,7 +31,7 @@ end
 -- phase or a dependency cycle.
 function Pipeline.Order(list)
     local phaseIndex = {}
-    for i, p in ipairs(Pipeline.PHASES) do phaseIndex[p] = i end
+    for i, phase in ipairs(Pipeline.PHASES) do phaseIndex[phase] = i end
 
     local groups = {}
     for _, moduleDef in ipairs(list) do
@@ -120,8 +120,8 @@ end)
 -- privilege first, then other addons through the RareloadCanSave / RareloadCanRestore hooks, which
 -- get (ply, reason, what) and may return false and their own explanation. Returns false and why.
 function Pipeline.Allowed(ply, saving, what, priv, reason)
-    for _, p in ipairs(istable(priv) and priv or { priv }) do
-        if not RARELOAD.Can(ply, p) then return false, "no permission" end
+    for _, privName in ipairs(istable(priv) and priv or { priv }) do
+        if not RARELOAD.Can(ply, privName) then return false, "no permission" end
     end
     local ok, why = hook.Run(saving and "RareloadCanSave" or "RareloadCanRestore", ply, reason, what)
     if ok == false then return false, isstring(why) and why or "refused by the server" end

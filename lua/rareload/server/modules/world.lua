@@ -64,7 +64,7 @@ local function captureAI(npc, others)
         ai.proficiency = npc:GetCurrentWeaponProficiency()
     end
     ai.relations = {}
-    for _, p in player.Iterator() do ai.relations["ply:" .. p:SteamID64()] = npc:Disposition(p) end
+    for _, other in player.Iterator() do ai.relations["ply:" .. other:SteamID64()] = npc:Disposition(other) end
     for _, other in ipairs(others) do
         if other ~= npc and IsValid(other) then ai.relations["npc:" .. Snapshot.ID(other)] = npc:Disposition(other) end
     end

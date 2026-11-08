@@ -221,18 +221,18 @@ Cmd.Register("perms set", {
 function Cmd.FindPlayer(text)
     if not isstring(text) or text == "" then return nil, "Name a player." end
     local lower, matches = string.lower(text), {}
-    for _, p in player.Iterator() do
-        if p:SteamID64() == text or p:SteamID() == text or string.lower(p:Nick()) == lower then
-            return p
+    for _, candidate in player.Iterator() do
+        if candidate:SteamID64() == text or candidate:SteamID() == text or string.lower(candidate:Nick()) == lower then
+            return candidate
         end
     end
-    for _, p in player.Iterator() do
-        if string.find(string.lower(p:Nick()), lower, 1, true) then matches[#matches + 1] = p end
+    for _, candidate in player.Iterator() do
+        if string.find(string.lower(candidate:Nick()), lower, 1, true) then matches[#matches + 1] = candidate end
     end
     if #matches == 1 then return matches[1] end
     if #matches > 1 then
         local names = {}
-        for _, p in ipairs(matches) do names[#names + 1] = p:Nick() end
+        for _, candidate in ipairs(matches) do names[#names + 1] = candidate:Nick() end
         return nil, "Multiple players match \"" .. text .. "\": " .. table.concat(names, ", ")
     end
     return nil, "Player not found: " .. text
@@ -436,10 +436,10 @@ Cmd.Register("antistuck test", {
         local stuck, why = AntiStuck.IsStuck(pos, target, crouched)
         local tried, started = 0, SysTime()
         local mins, maxs = target:OBBMins(), target:OBBMaxs()
-        local found, method = AntiStuck.Resolve(pos, target, crouched, function(p, free)
+        local found, method = AntiStuck.Resolve(pos, target, crouched, function(spot, free)
             tried = tried + 1
             if RARELOAD.Get(nil, "debug") and tried <= 200 then -- G83
-                debugoverlay.Box(p, mins, maxs, 8, free and Color(0, 255, 0, 30) or Color(255, 0, 0, 8))
+                debugoverlay.Box(spot, mins, maxs, 8, free and Color(0, 255, 0, 30) or Color(255, 0, 0, 8))
             end
         end)
         reply(string.format("Here: %s. Free spot: %s (%s), %d candidates, %.0f ms.",
@@ -964,7 +964,7 @@ Cmd.Register("dev reset", {
     priv = "rareload_admin",
     help = "Cancel restores in progress and write pending data to disk",
     fn = function(_, _, reply)
-        for _, p in player.Iterator() do RARELOAD.Pipeline.Cancel(p) end
+        for _, other in player.Iterator() do RARELOAD.Pipeline.Cancel(other) end
         RARELOAD.Store.Flush()
         reply("Reset done.")
     end,

@@ -314,30 +314,30 @@ end
 
 -- Wrapped help text.
 local function note(parent, text)
-    local p = vgui.Create("DPanel", parent)
-    p:Dock(TOP)
-    p:DockMargin(0, 4, 0, 6)
-    p:SetTall(16)
-    p.lines = { text }
-    p.PerformLayout = function(self, w)
+    local panel = vgui.Create("DPanel", parent)
+    panel:Dock(TOP)
+    panel:DockMargin(0, 4, 0, 6)
+    panel:SetTall(16)
+    panel.lines = { text }
+    panel.PerformLayout = function(self, w)
         self.lines = wrap(text, "Rareload.Menu.Note", w - 4)
         local h = #self.lines * 16
         if self:GetTall() ~= h then self:SetTall(h) end
     end
-    p.Paint = function(self)
+    panel.Paint = function(self)
         for i, line in ipairs(self.lines) do draw.SimpleText(line, "Rareload.Menu.Note", 2, (i - 1) * 16, TEXT2) end
     end
-    return p
+    return panel
 end
 
 -- A small caption over a group of sections.
 local function caption(parent, text)
     text = string.upper(text)
-    local p = vgui.Create("DPanel", parent)
-    p:Dock(TOP)
-    p:DockMargin(8, 12, 8, 0)
-    p:SetTall(18)
-    p.Paint = function(_, w, h)
+    local panel = vgui.Create("DPanel", parent)
+    panel:Dock(TOP)
+    panel:DockMargin(8, 12, 8, 0)
+    panel:SetTall(18)
+    panel.Paint = function(_, w, h)
         draw.SimpleText(text, "Rareload.Menu.Note", 2, h / 2, MUTED, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         surface.SetFont("Rareload.Menu.Note")
         local tw = surface.GetTextSize(text)
@@ -349,8 +349,8 @@ end
 local function arrow(x, y, size, rot, col)
     local a, poly = math.rad(rot), {}
     local c, s = math.cos(a), math.sin(a)
-    for i, p in ipairs({ { -size, -size * 0.5 }, { size, -size * 0.5 }, { 0, size * 0.6 } }) do
-        poly[i] = { x = x + p[1] * c - p[2] * s, y = y + p[1] * s + p[2] * c }
+    for i, vertex in ipairs({ { -size, -size * 0.5 }, { size, -size * 0.5 }, { 0, size * 0.6 } }) do
+        poly[i] = { x = x + vertex[1] * c - vertex[2] * s, y = y + vertex[1] * s + vertex[2] * c }
     end
     surface.SetDrawColor(col)
     draw.NoTexture()
@@ -775,13 +775,15 @@ hook.Add("AddToolMenuCategories", "Rareload.Menu", function()
 end)
 
 hook.Add("PopulateToolMenu", "Rareload.Menu", function()
-    spawnmenu.AddToolMenuOption("Utilities", "Rareload", "rareload_server", "#rareload.menu.server", "", "", function(p)
-        Menu.pages.server = p
-        buildServer(p)
+    spawnmenu.AddToolMenuOption("Utilities", "Rareload", "rareload_server", "#rareload.menu.server", "", "",
+        function(panel)
+        Menu.pages.server = panel
+        buildServer(panel)
     end)
-    spawnmenu.AddToolMenuOption("Utilities", "Rareload", "rareload_client", "#rareload.menu.client", "", "", function(p)
-        Menu.pages.client = p
-        buildClient(p)
+    spawnmenu.AddToolMenuOption("Utilities", "Rareload", "rareload_client", "#rareload.menu.client", "", "",
+        function(panel)
+        Menu.pages.client = panel
+        buildClient(panel)
     end)
 end)
 

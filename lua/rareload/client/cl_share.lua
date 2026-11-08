@@ -19,11 +19,11 @@ function Share.Export(id)
     UI.Notify(L("share.exporting"))
 end
 
-RARELOAD.Net.On("export.file", function(p)
-    if not isstring(p.name) or not istable(p.doc) then return end
+RARELOAD.Net.On("export.file", function(payload)
+    if not isstring(payload.name) or not istable(payload.doc) then return end
     file.CreateDir("rareload/exports")
-    local path = DIR .. string.gsub(string.lower(p.name), "[^a-z0-9_%-]", "_") .. ".json"
-    file.Write(path, util.TableToJSON(p.doc, true))
+    local path = DIR .. string.gsub(string.lower(payload.name), "[^a-z0-9_%-]", "_") .. ".json"
+    file.Write(path, util.TableToJSON(payload.doc, true))
     UI.Notify(L("share.exported", "data/" .. path))
     MsgC(C.accent, "[Rareload] ", color_white, "Exported to garrysmod/data/" .. path .. "\n")
 end)
@@ -95,17 +95,17 @@ end
 -- A list of the other players; picking one offers them a copy of save `id`.
 function Share.Pick(id)
     local others = {}
-    for _, p in player.Iterator() do
-        if p ~= LocalPlayer() and not p:IsBot() then others[#others + 1] = p end
+    for _, other in player.Iterator() do
+        if other ~= LocalPlayer() and not other:IsBot() then others[#others + 1] = other end
     end
     if #others == 0 then return UI.Notify(L("share.nobody"), "error") end
 
     local frame = UI.Window({ title = L("share.pick_title", id), w = 420, h = 480, overlay = true })
     local scroll = UI.Scroll(frame)
     scroll:Dock(FILL)
-    for _, p in ipairs(others) do
-        local b = UI.Button(scroll, p:Nick(), function()
-            if IsValid(p) then request("share.send", { id = id, sid = p:SteamID64() }) end
+    for _, other in ipairs(others) do
+        local b = UI.Button(scroll, other:Nick(), function()
+            if IsValid(other) then request("share.send", { id = id, sid = other:SteamID64() }) end
             frame:Close()
         end, { style = "info", icon = "user" })
         b:Dock(TOP)
@@ -114,26 +114,26 @@ function Share.Pick(id)
 end
 
 -- Another player offers a copy of one of their saves. Closing the prompt declines it.
-RARELOAD.Net.On("share.offer", function(p)
-    if not isstring(p.token) then return end
+RARELOAD.Net.On("share.offer", function(payload)
+    if not isstring(payload.token) then return end
     local parts = {}
-    if (tonumber(p.objects) or 0) > 0 then parts[#parts + 1] = L("share.objects", p.objects) end
-    if (tonumber(p.weapons) or 0) > 0 then parts[#parts + 1] = L("share.weapons", p.weapons) end
-    if isstring(p.note) and p.note ~= "" then parts[#parts + 1] = "\"" .. p.note .. "\"" end
-    local body = L("share.offer_body", tostring(p.nick), tonumber(p.id) or 0)
+    if (tonumber(payload.objects) or 0) > 0 then parts[#parts + 1] = L("share.objects", payload.objects) end
+    if (tonumber(payload.weapons) or 0) > 0 then parts[#parts + 1] = L("share.weapons", payload.weapons) end
+    if isstring(payload.note) and payload.note ~= "" then parts[#parts + 1] = "\"" .. payload.note .. "\"" end
+    local body = L("share.offer_body", tostring(payload.nick), tonumber(payload.id) or 0)
         .. (#parts > 0 and "\n" .. table.concat(parts, " · ") or "")
 
     local answered = false
     local dialog = UI.Confirm(L("share.offer_title"), body, function()
         answered = true
-        request("share.answer", { token = p.token, accept = true })
+        request("share.answer", { token = payload.token, accept = true })
     end, L("share.accept"))
     local remove = dialog.OnRemove
     dialog.OnRemove = function(self)
         if remove then remove(self) end
         -- A tick later: the prompt closes itself before running its accept button.
         timer.Simple(0, function()
-            if not answered then request("share.answer", { token = p.token, accept = false }) end
+            if not answered then request("share.answer", { token = payload.token, accept = false }) end
         end)
     end
     surface.PlaySound("garrysmod/content_downloaded.wav")

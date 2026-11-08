@@ -31,8 +31,8 @@ local function isLive(id)
 end
 
 local function distanceTo(o)
-    local p = Util.ToVector(o.pos)
-    return p and LocalPlayer():GetPos():Distance(p) or math.huge
+    local pos = Util.ToVector(o.pos)
+    return pos and LocalPlayer():GetPos():Distance(pos) or math.huge
 end
 
 -- JSON editor ---------------------------------------------------------------------------------------
@@ -334,15 +334,15 @@ local function openEditor(entryId, objectId, json)
     })
 end
 
-hook.Add("RareloadStateChanged", "Rareload.Inspector.Editor", function(what, p)
-    if what ~= "def" or Inspector.waitingDef ~= p.objectId then return end
+hook.Add("RareloadStateChanged", "Rareload.Inspector.Editor", function(what, payload)
+    if what ~= "def" or Inspector.waitingDef ~= payload.objectId then return end
     Inspector.waitingDef = nil
     if Inspector.copyJson then
         Inspector.copyJson = nil
-        SetClipboardText(p.json)
+        SetClipboardText(payload.json)
         return UI.Notify(L("inspector.copied", "JSON"))
     end
-    openEditor(p.entryId, p.objectId, p.json)
+    openEditor(payload.entryId, payload.objectId, payload.json)
 end)
 
 -- Highlight key of an object in this inspector.
@@ -386,7 +386,8 @@ local function buildCard(parent, obj, isSelected, onClick)
         end
         local dist = distanceTo(obj)
         if dist < math.huge then
-            draw.SimpleText(L("inspector.units", math.Round(dist)), "Rareload.Tiny", w / 2, y, C.text3, TEXT_ALIGN_CENTER)
+            local text = L("inspector.units", math.Round(dist))
+            draw.SimpleText(text, "Rareload.Tiny", w / 2, y, C.text3, TEXT_ALIGN_CENTER)
         end
         if isLive(obj.id) then UI.DrawIcon("world", w - sc(28), sc(12), sc(16)) end
     end
@@ -409,7 +410,7 @@ end
 
 local function buildDetail(host, entryId, sel)
     local D = {}
-    local function gap(p, b) p:DockMargin(0, 0, 0, sc(b or 8)) end
+    local function gap(panel, b) panel:DockMargin(0, 0, 0, sc(b or 8)) end
 
     D.model = UI.Model(host, "models/error.mdl", 26)
     D.model:Dock(TOP)
@@ -479,9 +480,9 @@ local function buildDetail(host, entryId, sel)
     gap(D.nograv)
 
     local function row2(a, b)
-        local p = UI.SplitRow(host, { a, b }, 32)
-        gap(p, 6)
-        return p
+        local row = UI.SplitRow(host, { a, b }, 32)
+        gap(row, 6)
+        return row
     end
     local function pos() return Util.ToVector((sel() or {}).pos) end
 
@@ -492,16 +493,16 @@ local function buildDetail(host, entryId, sel)
         UI.Notify(on and L("inspector.highlight_on") or L("inspector.highlight_off"))
     end, { style = "warn", icon = "flag_yellow" })
     D.teleport = UI.Button(host, L("inspector.teleport"), function()
-        local p = pos()
-        if not p then return end
-        RunConsoleCommand("rareload", "tp", p.x, p.y, p.z + 80)
-        timer.Simple(0.4, function() RunConsoleCommand("rareload", "lookat", p.x, p.y, p.z) end)
+        local at = pos()
+        if not at then return end
+        RunConsoleCommand("rareload", "tp", at.x, at.y, at.z + 80)
+        timer.Simple(0.4, function() RunConsoleCommand("rareload", "lookat", at.x, at.y, at.z) end)
     end, { style = "info", icon = "world_go" })
     D.row1 = row2(D.highlight, D.teleport)
 
     D.lookAt = UI.Button(host, L("inspector.look_at"), function()
-        local p = pos()
-        if p then RunConsoleCommand("rareload", "lookat", p.x, p.y, p.z) end
+        local at = pos()
+        if at then RunConsoleCommand("rareload", "lookat", at.x, at.y, at.z) end
     end, { style = "info", icon = "eye" })
     D.copy = UI.Button(host, L("inspector.copy"), function()
         local o = sel()

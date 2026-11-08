@@ -40,16 +40,18 @@ local function forgetDetails(prefix)
     end
 end
 
-RARELOAD.Net.On("history", function(p)
+RARELOAD.Net.On("history", function(payload)
     local shown = RARELOAD.Timeline and RARELOAD.Timeline.target
-    if p.target ~= shown then return end
-    for _, row in ipairs(p.rows or {}) do row.note = asText(row.note) end
-    State.history = { rows = p.rows or {}, reload = p.reload or {}, undo = p.undo == true, loaded = true }
+    if payload.target ~= shown then return end
+    for _, row in ipairs(payload.rows or {}) do row.note = asText(row.note) end
+    State.history = {
+        rows = payload.rows or {}, reload = payload.reload or {}, undo = payload.undo == true, loaded = true,
+    }
     changed("history")
 end)
 
-RARELOAD.Net.On("history.players", function(p)
-    State.players = istable(p.list) and p.list or {}
+RARELOAD.Net.On("history.players", function(payload)
+    State.players = istable(payload.list) and payload.list or {}
     table.sort(State.players, function(a, b)
         if a.online ~= b.online then return a.online end
         return string.lower(a.nick or "") < string.lower(b.nick or "")
@@ -57,22 +59,22 @@ RARELOAD.Net.On("history.players", function(p)
     changed("players")
 end)
 
-RARELOAD.Net.On("snapshots", function(p)
-    State.snapshots = istable(p.list) and p.list or {}
+RARELOAD.Net.On("snapshots", function(payload)
+    State.snapshots = istable(payload.list) and payload.list or {}
     changed("snapshots")
 end)
 
-RARELOAD.Net.On("data.usage", function(p)
-    State.usage = istable(p.lines) and p.lines or {}
+RARELOAD.Net.On("data.usage", function(payload)
+    State.usage = istable(payload.lines) and payload.lines or {}
     changed("usage")
 end)
 
-RARELOAD.Net.On("history.objects", function(p)
-    State.objects[p.id] = p.objects or {}
-    State.entryData[p.id] = p.data
-    RARELOAD.UI.LabelObjects(State.objects[p.id])
-    forgetDetails(State.DetailKey(nil, p.id, "")) -- the save's objects may have been edited
-    changed("objects", p.id)
+RARELOAD.Net.On("history.objects", function(payload)
+    State.objects[payload.id] = payload.objects or {}
+    State.entryData[payload.id] = payload.data
+    RARELOAD.UI.LabelObjects(State.objects[payload.id])
+    forgetDetails(State.DetailKey(nil, payload.id, "")) -- the save's objects may have been edited
+    changed("objects", payload.id)
 end)
 
 -- The inventory manager's targets: "global", or a save number.
@@ -80,51 +82,51 @@ State.inventory = State.inventory or {}
 
 function State.InventoryKey(save) return save or "global" end
 
-RARELOAD.Net.On("inventory", function(p)
-    local key = State.InventoryKey(p.save)
-    State.inventory[key] = p
+RARELOAD.Net.On("inventory", function(payload)
+    local key = State.InventoryKey(payload.save)
+    State.inventory[key] = payload
     changed("inventory", key)
 end)
 
-RARELOAD.Net.On("object.def", function(p)
-    changed("def", p)
+RARELOAD.Net.On("object.def", function(payload)
+    changed("def", payload)
 end)
 
-RARELOAD.Net.On("saves", function(p)
-    if p.save then
-        p.save.nick = asText(p.save.nick)
-        RARELOAD.UI.LabelObjects(p.save.objects or {})
+RARELOAD.Net.On("saves", function(payload)
+    if payload.save then
+        payload.save.nick = asText(payload.save.nick)
+        RARELOAD.UI.LabelObjects(payload.save.objects or {})
     end
-    State.saves[p.sid] = p.save
+    State.saves[payload.sid] = payload.save
     State.savesRev = State.savesRev + 1
-    forgetDetails(State.DetailKey(p.sid, nil, "")) -- that player's respawn point changed
-    changed("saves", p.sid)
+    forgetDetails(State.DetailKey(payload.sid, nil, "")) -- that player's respawn point changed
+    changed("saves", payload.sid)
 end)
 
-RARELOAD.Net.On("object.detail", function(p)
-    local key = State.DetailKey(p.sid, p.entryId, p.objectId)
-    State.details[key] = p.detail
+RARELOAD.Net.On("object.detail", function(payload)
+    local key = State.DetailKey(payload.sid, payload.entryId, payload.objectId)
+    State.details[key] = payload.detail
     changed("detail", key)
 end)
 
-RARELOAD.Net.On("antistuck", function(p)
-    State.antistuck = p.methods or {}
+RARELOAD.Net.On("antistuck", function(payload)
+    State.antistuck = payload.methods or {}
     changed("antistuck")
 end)
 
-RARELOAD.Net.On("blocked", function(p)
-    State.blocked = istable(p.classes) and p.classes or {}
+RARELOAD.Net.On("blocked", function(payload)
+    State.blocked = istable(payload.classes) and payload.classes or {}
     changed("blocked")
 end)
 
-RARELOAD.Net.On("checkpoints", function(p)
-    State.checkpoints = istable(p.list) and p.list or {}
+RARELOAD.Net.On("checkpoints", function(payload)
+    State.checkpoints = istable(payload.list) and payload.list or {}
     for _, c in ipairs(State.checkpoints) do c.vec = RARELOAD.Util.ToVector(c.pos) end
     changed("checkpoints")
 end)
 
-RARELOAD.Net.On("death", function(p)
-    State.death = { id = tonumber(p.id), pos = RARELOAD.Util.ToVector(p.pos) }
+RARELOAD.Net.On("death", function(payload)
+    State.death = { id = tonumber(payload.id), pos = RARELOAD.Util.ToVector(payload.pos) }
     changed("death")
 end)
 

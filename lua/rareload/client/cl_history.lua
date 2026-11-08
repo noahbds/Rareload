@@ -195,7 +195,7 @@ end
 local function buildDetail(host, sel)
     local D = {}
     local function row() return sel() end
-    local function gap(p, b) p:DockMargin(0, 0, 0, sc(b or 10)) end
+    local function gap(panel, b) panel:DockMargin(0, 0, 0, sc(b or 10)) end
 
     D.header = UI.Card(host, function(_, w, h)
         local r = row()
@@ -282,9 +282,9 @@ local function buildDetail(host, sel)
     end
 
     local function split(list)
-        local p = UI.SplitRow(host, list, 34)
-        gap(p, 8)
-        return p
+        local row = UI.SplitRow(host, list, 34)
+        gap(row, 8)
+        return row
     end
 
     D.preview = UI.Button(host, "", function()
@@ -362,8 +362,8 @@ local function buildDetail(host, sel)
     D.actions.Paint = function() end
     gap(D.actions, 12)
     D.teleport = UI.Button(D.actions, L("timeline.teleport"), function()
-        local p = RARELOAD.Util.ToVector((row() or {}).info.pos)
-        if p then RunConsoleCommand("rareload", "tp", p.x, p.y, p.z) end
+        local pos = RARELOAD.Util.ToVector((row() or {}).info.pos)
+        if pos then RunConsoleCommand("rareload", "tp", pos.x, pos.y, pos.z) end
     end, { style = "info", icon = "world_go" })
     D.pin = UI.Button(D.actions, "", function()
         local r = row()
@@ -538,14 +538,14 @@ local function pickPlayer(onPick)
     hook.Add("RareloadStateChanged", frame, function(_, what)
         if what ~= "players" or not IsValid(scroll) then return end
         local me = LocalPlayer():SteamID64()
-        for _, p in ipairs(State.players) do
-            if p.sid == me then continue end
-            local label = p.nick .. "  ·  " .. L("timeline.count", p.saves)
-                .. (p.online and "" or "  ·  " .. L("timeline.offline"))
+        for _, entry in ipairs(State.players) do
+            if entry.sid == me then continue end
+            local label = entry.nick .. "  ·  " .. L("timeline.count", entry.saves)
+                .. (entry.online and "" or "  ·  " .. L("timeline.offline"))
             local b = UI.Button(scroll, label, function()
-                onPick(p)
+                onPick(entry)
                 frame:Close()
-            end, { style = p.online and "info" or "ghost", icon = p.online and "user_green" or "user_gray" })
+            end, { style = entry.online and "info" or "ghost", icon = entry.online and "user_green" or "user_gray" })
             b:Dock(TOP)
             b:DockMargin(0, 0, sc(4), sc(6))
         end
@@ -586,9 +586,9 @@ function Timeline.Open()
     end
     if RARELOAD.Can(LocalPlayer(), "rareload_manage_saves") then
         frame:HeaderButton(L("timeline.players"), function()
-            pickPlayer(function(p)
-                Timeline.target = p and p.sid or nil
-                frame.subtitle = p and L("timeline.subtitle_of", p.nick, game.GetMap()) or
+            pickPlayer(function(picked)
+                Timeline.target = picked and picked.sid or nil
+                frame.subtitle = picked and L("timeline.subtitle_of", picked.nick, game.GetMap()) or
                     L("timeline.subtitle", game.GetMap())
                 RARELOAD.Net.Request("history.get", { sid = Timeline.target })
             end)

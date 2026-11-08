@@ -636,17 +636,17 @@ end
 -- Returns how many objects had moved.
 function Snapshot.Reset(targets, ply)
     local count, held = 0, {} -- held: { ent, bone, enabled } for vehicle parts
-    for _, p in ipairs(targets) do
-        p.moved = moved(p.ent, p.def)
-        if p.moved then count = count + 1 end
-        p.parts = {}
-        for _, part in ipairs(partsOf(p.ent)) do
-            local lp, la = WorldToLocal(part:GetPos(), part:GetAngles(), p.ent:GetPos(), p.ent:GetAngles())
-            p.parts[#p.parts + 1] = { ent = part, lp = lp, la = la }
+    for _, target in ipairs(targets) do
+        target.moved = moved(target.ent, target.def)
+        if target.moved then count = count + 1 end
+        target.parts = {}
+        for _, part in ipairs(partsOf(target.ent)) do
+            local lp, la = WorldToLocal(part:GetPos(), part:GetAngles(), target.ent:GetPos(), target.ent:GetAngles())
+            target.parts[#target.parts + 1] = { ent = part, lp = lp, la = la }
         end
-        p.physical = physical(p.ent, p.def)
-        if p.physical then eachPhys(p.ent, function(phys) phys:EnableMotion(false) end) end
-        for _, part in ipairs(p.parts) do
+        target.physical = physical(target.ent, target.def)
+        if target.physical then eachPhys(target.ent, function(phys) phys:EnableMotion(false) end) end
+        for _, part in ipairs(target.parts) do
             eachPhys(part.ent, function(phys, i)
                 held[#held + 1] = { ent = part.ent, bone = i, enabled = phys:IsMotionEnabled() }
                 phys:EnableMotion(false)
@@ -654,18 +654,18 @@ function Snapshot.Reset(targets, ply)
         end
     end
 
-    for _, p in ipairs(targets) do
-        local ent, entityDef = p.ent, p.def
-        if p.moved and p.physical and ent:GetPhysicsObjectCount() > 1 then
+    for _, target in ipairs(targets) do
+        local ent, entityDef = target.ent, target.def
+        if target.moved and target.physical and ent:GetPhysicsObjectCount() > 1 then
             eachPhys(ent, function(phys, i)
                 local saved = boneOf(entityDef, i)
                 if istable(saved) and isvector(saved.Pos) then phys:SetPos(saved.Pos) end
                 if istable(saved) and isangle(saved.Angle) then phys:SetAngles(saved.Angle) end
             end)
-        elseif p.moved and isvector(entityDef.Pos) then
+        elseif target.moved and isvector(entityDef.Pos) then
             ent:SetPos(entityDef.Pos)
             if isangle(entityDef.Angle) then ent:SetAngles(entityDef.Angle) end
-            for _, part in ipairs(p.parts) do
+            for _, part in ipairs(target.parts) do
                 local pos, ang = LocalToWorld(part.lp, part.la, ent:GetPos(), ent:GetAngles())
                 part.ent:SetPos(pos)
                 part.ent:SetAngles(ang)
@@ -682,14 +682,14 @@ function Snapshot.Reset(targets, ply)
         phys:EnableMotion(not frozen)
         if not frozen then phys:Wake() end
     end
-    for _, p in ipairs(targets) do
-        if p.physical then
-            eachPhys(p.ent, function(phys, i) settle(phys, boneOf(p.def, i)) end)
+    for _, target in ipairs(targets) do
+        if target.physical then
+            eachPhys(target.ent, function(phys, i) settle(phys, boneOf(target.def, i)) end)
         end
     end
     local motion = IsValid(ply) and RARELOAD.Get(ply, "keepMotion")
-    for _, p in ipairs(targets) do
-        Snapshot.ApplyExtras(p.ent, Snapshot.Rareload(p.def), motion)
+    for _, target in ipairs(targets) do
+        Snapshot.ApplyExtras(target.ent, Snapshot.Rareload(target.def), motion)
     end
     -- Vehicle parts get back the motion they had.
     for _, h in ipairs(held) do
@@ -803,8 +803,8 @@ local function finish(st)
         -- physics restore, so a frozen object would fall: its saved Frozen state is applied here.
         for index, ent in pairs(report.created) do
             local physics = IsValid(ent) and paste[index] and paste[index].PhysicsObjects
-            for bone, p in pairs(istable(physics) and physics or {}) do
-                local obj = istable(p) and p.Frozen and ent:GetPhysicsObjectNum(tonumber(bone) or 0)
+            for bone, phys in pairs(istable(physics) and physics or {}) do
+                local obj = istable(phys) and phys.Frozen and ent:GetPhysicsObjectNum(tonumber(bone) or 0)
                 if IsValid(obj) then obj:EnableMotion(false) end
             end
             -- A thruster that was running: the duplicator brings back its "on" flag at most, so it is

@@ -161,13 +161,13 @@ hook.Add("HUDPaint", "Rareload.Highlight", function()
     local cx, cy = sw / 2, sh / 2
     for i = 1, math.min(#list, MAX_LABELS) do
         local r = list[i]
-        local p = (r.to + Vector(0, 0, 8)):ToScreen()
-        if p.visible and p.x >= 0 and p.x <= sw and p.y >= 0 and p.y <= sh then
-            label(r.label, p.x, p.y - 24, r.color)
+        local screen = (r.to + Vector(0, 0, 8)):ToScreen()
+        if screen.visible and screen.x >= 0 and screen.x <= sw and screen.y >= 0 and screen.y <= sh then
+            label(r.label, screen.x, screen.y - 24, r.color)
         else
             -- An arrow on the screen edge, pointing towards the spot.
-            local dx, dy = p.x - cx, p.y - cy
-            if not p.visible then dx, dy = -dx, -dy end
+            local dx, dy = screen.x - cx, screen.y - cy
+            if not screen.visible then dx, dy = -dx, -dy end
             local len = math.max(1, math.sqrt(dx * dx + dy * dy))
             local margin = 60
             local mx = math.Clamp(cx + dx / len * (cx - margin), margin, sw - margin)

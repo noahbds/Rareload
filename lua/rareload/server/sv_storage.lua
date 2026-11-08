@@ -235,13 +235,13 @@ function Store.Overview()
             local sid = name:match("^(%d+)%.json$")
             local doc = sid and decode(file.Read(ROOT .. dir .. "/" .. name, "DATA"))
             if doc then
-                local p = players[sid] or { sid = sid, nick = doc.nick, bytes = 0, saves = 0 }
-                players[sid] = p
-                p.nick = p.nick or doc.nick
-                p.bytes = p.bytes + size
+                local usage = players[sid] or { sid = sid, nick = doc.nick, bytes = 0, saves = 0 }
+                players[sid] = usage
+                usage.nick = usage.nick or doc.nick
+                usage.bytes = usage.bytes + size
                 local mine = {}
                 for _, entry in ipairs(doc.entries or {}) do
-                    p.saves = p.saves + 1
+                    usage.saves = usage.saves + 1
                     local bytes = 0
                     for _, hash in ipairs(blobRefs(entry, {})) do
                         used[hash] = true
@@ -250,7 +250,7 @@ function Store.Overview()
                     end
                     biggest[#biggest + 1] = { map = dir, sid = sid, nick = doc.nick, id = entry.id, bytes = bytes }
                 end
-                for hash in pairs(mine) do p.bytes = p.bytes + (blobSize[hash] or 0) end
+                for hash in pairs(mine) do usage.bytes = usage.bytes + (blobSize[hash] or 0) end
             end
         end
         snapshotBlobs(dir, used)
@@ -262,7 +262,7 @@ function Store.Overview()
         maps[#maps + 1] = { dir = dir, bytes = mapBytes }
     end
     local list = {}
-    for _, p in pairs(players) do list[#list + 1] = p end
+    for _, usage in pairs(players) do list[#list + 1] = usage end
     table.sort(maps, function(a, b) return a.bytes > b.bytes end)
     table.sort(list, function(a, b) return a.bytes > b.bytes end)
     table.sort(biggest, function(a, b) return a.bytes > b.bytes end)
@@ -306,9 +306,10 @@ function Store.UsageLines(u)
         lines[#lines + 1] = "  " .. m.dir .. "  " .. size(m.bytes)
     end
     lines[#lines + 1] = "By player:"
-    for i, p in ipairs(u.players) do
+    for i, usage in ipairs(u.players) do
         if i > 8 then break end
-        lines[#lines + 1] = string.format("  %s (%s)  %s, %d saves", p.nick or "?", p.sid, size(p.bytes), p.saves)
+        lines[#lines + 1] = string.format("  %s (%s)  %s, %d saves", usage.nick or "?", usage.sid, size(usage.bytes),
+            usage.saves)
     end
     lines[#lines + 1] = "Unused data: " .. u.unusedCount .. " blobs, " .. size(u.unusedBytes)
         .. " ('rareload data cleanup all' removes it)"

@@ -143,17 +143,17 @@ end
 function UI.DrawWorldTag(pos, height, icon, text, textCol, distance, alpha)
     markTop:Set(pos)
     markTop.z = markTop.z + height
-    local p = markTop:ToScreen()
-    if not p.visible then return end
+    local screen = markTop:ToScreen()
+    if not screen.visible then return end
     surface.SetFont("Rareload.BodyB")
     local tw, th = surface.GetTextSize(text)
     local w, h = tw + sc(34), th + sc(10)
-    local x, y = math.floor(p.x - w / 2), math.floor(p.y - h)
+    local x, y = math.floor(screen.x - w / 2), math.floor(screen.y - h)
     draw.RoundedBox(sc(6), x, y, w, h, tint(markBg, C.surface, alpha * 0.86))
     UI.DrawIcon(icon, x + sc(6), y + (h - sc(16)) / 2, sc(16), tint(markIcon, color_white, alpha))
     draw.SimpleText(text, "Rareload.BodyB", x + sc(28), y + h / 2, tint(markText, textCol, alpha), TEXT_ALIGN_LEFT,
         TEXT_ALIGN_CENTER)
-    draw.SimpleText(L("inspector.units", math.Round(distance)), "Rareload.Small", p.x, y + h + sc(2),
+    draw.SimpleText(L("inspector.units", math.Round(distance)), "Rareload.Small", screen.x, y + h + sc(2),
         tint(markDist, C.text3, alpha), TEXT_ALIGN_CENTER)
 end
 
@@ -416,12 +416,12 @@ end
 
 -- A rounded card. `paint(self, w, h)` draws its content after the background.
 function UI.Card(parent, paint, col)
-    local p = vgui.Create("DPanel", parent)
-    p.Paint = function(self, w, h)
+    local panel = vgui.Create("DPanel", parent)
+    panel.Paint = function(self, w, h)
         box(sc(10), w, h, col or C.surface)
         if paint then paint(self, w, h) end
     end
-    return p
+    return panel
 end
 
 function UI.Label(parent, text, font, col)
@@ -472,28 +472,28 @@ end
 
 -- Equal-width segmented choices. items = { { id, label } }. Returns the panel; :SetSelected(id).
 function UI.Chips(parent, items, selected, onSelect)
-    local p = vgui.Create("DPanel", parent)
-    p:SetTall(sc(28))
-    p.Paint = function() end
-    p.selected = selected
+    local panel = vgui.Create("DPanel", parent)
+    panel:SetTall(sc(28))
+    panel.Paint = function() end
+    panel.selected = selected
     local buttons = {}
     for _, item in ipairs(items) do
-        local b = vgui.Create("DButton", p)
+        local b = vgui.Create("DButton", panel)
         b:SetText("")
         b.Paint = function(self, w, h)
-            local on = p.selected == item.id
+            local on = panel.selected == item.id
             local a = hoverAnim(self, self:IsHovered())
             box(sc(6), w, h, on and ColorAlpha(C.accent, 90) or UI.Mix(C.surface, C.surfaceHi, a))
             draw.SimpleText(UI.Clip(item.label, "Rareload.Small", w - sc(6)), "Rareload.Small", w / 2, h / 2,
                 on and C.text or C.text2, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
         b.DoClick = function()
-            p.selected = item.id
+            panel.selected = item.id
             onSelect(item.id)
         end
         buttons[#buttons + 1] = b
     end
-    p.PerformLayout = function(_, w, h)
+    panel.PerformLayout = function(_, w, h)
         local gap = sc(5)
         local bw = math.floor((w - gap * (#buttons - 1)) / #buttons)
         for i, b in ipairs(buttons) do
@@ -501,9 +501,9 @@ function UI.Chips(parent, items, selected, onSelect)
             b:SetSize(i == #buttons and w - (i - 1) * (bw + gap) or bw, h)
         end
     end
-    function p:SetSelected(id) self.selected = id end
+    function panel:SetSelected(id) self.selected = id end
 
-    return p
+    return panel
 end
 
 -- A button that opens a menu of options. options = { { id, label } }; get() returns the current id.
@@ -539,12 +539,12 @@ end
 
 -- Buttons side by side in equal widths, docked to the top of `parent`; hidden ones leave no gap.
 function UI.SplitRow(parent, buttons, tall)
-    local p = vgui.Create("DPanel", parent)
-    p:Dock(TOP)
-    p:SetTall(sc(tall))
-    p.Paint = function() end
-    for _, b in ipairs(buttons) do b:SetParent(p) end
-    p.PerformLayout = function(_, w, h)
+    local panel = vgui.Create("DPanel", parent)
+    panel:Dock(TOP)
+    panel:SetTall(sc(tall))
+    panel.Paint = function() end
+    for _, b in ipairs(buttons) do b:SetParent(panel) end
+    panel.PerformLayout = function(_, w, h)
         local shown = {}
         for _, b in ipairs(buttons) do if b:IsVisible() then shown[#shown + 1] = b end end
         local bw = (w - sc(6) * (#shown - 1)) / math.max(#shown, 1)
@@ -553,7 +553,7 @@ function UI.SplitRow(parent, buttons, tall)
             b:SetSize(math.floor(bw), h)
         end
     end
-    return p
+    return panel
 end
 
 -- A popup menu in Rareload's look. items = { { label, fn, icon? (silk name), checked? } }.
@@ -645,9 +645,9 @@ end
 
 -- Label/value rows with dividers. rows() returns { { label, value, color? } }; height follows the rows.
 function UI.Rows(parent, rows)
-    local p = vgui.Create("DPanel", parent)
+    local panel = vgui.Create("DPanel", parent)
     local rh = sc(24)
-    p.Paint = function(self, w, h)
+    panel.Paint = function(self, w, h)
         box(sc(10), w, h, C.surface)
         local items = rows()
         local y = sc(6)
@@ -666,14 +666,14 @@ function UI.Rows(parent, rows)
         local want = #items * rh + sc(12)
         if self:GetTall() ~= want then self:SetTall(want) end
     end
-    return p
+    return panel
 end
 
 -- A row of stat cards. cards() returns { { label, value (nil = not saved), color } }.
 function UI.Stats(parent, cards)
-    local p = vgui.Create("DPanel", parent)
-    p:SetTall(sc(64))
-    p.Paint = function(_, w, h)
+    local panel = vgui.Create("DPanel", parent)
+    panel:SetTall(sc(64))
+    panel.Paint = function(_, w, h)
         local items = cards()
         local gap = sc(7)
         local cw = (w - gap * (#items - 1)) / #items
@@ -691,16 +691,16 @@ function UI.Stats(parent, cards)
                 TEXT_ALIGN_CENTER)
         end
     end
-    return p
+    return panel
 end
 
 -- A centered icon, title and hint for empty lists and "select something" panes.
 function UI.Empty(parent, icon, title, hint)
-    local p = vgui.Create("DPanel", parent)
-    p:SetMouseInputEnabled(false)
+    local panel = vgui.Create("DPanel", parent)
+    panel:SetMouseInputEnabled(false)
     -- What it says can change while it is shown.
-    function p:SetEmpty(newIcon, newTitle, newHint) icon, title, hint = newIcon, newTitle, newHint end
-    p.Paint = function(_, w, h)
+    function panel:SetEmpty(newIcon, newTitle, newHint) icon, title, hint = newIcon, newTitle, newHint end
+    panel.Paint = function(_, w, h)
         UI.DrawIcon(icon, w / 2 - sc(16), h / 2 - sc(46), sc(32), ColorAlpha(color_white, 90))
         draw.SimpleText(title, "Rareload.H2", w / 2, h / 2 + sc(4), C.text2, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         if hint then
@@ -708,7 +708,7 @@ function UI.Empty(parent, icon, title, hint)
                 TEXT_ALIGN_CENTER)
         end
     end
-    return p
+    return panel
 end
 
 -- A model preview that frames its model and turns slowly.
@@ -880,9 +880,9 @@ function UI.Command(name, fn)
     UI.commands[name] = fn
 end
 
-RARELOAD.Net.On("cmd", function(p)
-    local fn = UI.commands[p.name]
-    if fn then fn(p.args or {}) end
+RARELOAD.Net.On("cmd", function(payload)
+    local fn = UI.commands[payload.name]
+    if fn then fn(payload.args or {}) end
 end)
 
 -- The click that respawns a player is still held when Rareload hands their weapons back, and must not

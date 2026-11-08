@@ -61,18 +61,20 @@ function Snapshots.Take(done)
     if taking then return false end
     taking = true
     local players = {}
-    for _, p in player.Iterator() do
-        if not p:IsBot() and RARELOAD.Util.PlayerKey(p) then players[#players + 1] = p end
+    for _, other in player.Iterator() do
+        if not other:IsBot() and RARELOAD.Util.PlayerKey(other) then players[#players + 1] = other end
     end
     local snap = { time = os.time(), players = {} }
     local i = 0
     local function step()
         i = i + 1
-        local p = players[i]
-        if p then
-            if IsValid(p) then
-                local data = capture(p)
-                if data then snap.players[#snap.players + 1] = { sid = p:SteamID64(), nick = p:Nick(), data = data } end
+        local target = players[i]
+        if target then
+            if IsValid(target) then
+                local data = capture(target)
+                if data then
+                    snap.players[#snap.players + 1] = { sid = target:SteamID64(), nick = target:Nick(), data = data }
+                end
             end
             Pipeline.Defer(step)
             return

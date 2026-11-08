@@ -64,8 +64,9 @@ end
 function AntiStuck.Remember(pos)
     local c = cacheDoc()
     local points = c.doc.points
-    for _, p in ipairs(points) do
-        if math.abs(p[1] - pos.x) < CELL and math.abs(p[2] - pos.y) < CELL and math.abs(p[3] - pos.z) < CELL then
+    for _, point in ipairs(points) do
+        local dx, dy, dz = math.abs(point[1] - pos.x), math.abs(point[2] - pos.y), math.abs(point[3] - pos.z)
+        if dx < CELL and dy < CELL and dz < CELL then
             return
         end
     end
@@ -112,8 +113,8 @@ end)
 
 local function cached(pos, maxDist)
     local out = {}
-    for _, p in ipairs(cacheDoc().doc.points) do
-        local v = RARELOAD.Util.ToVector(p)
+    for _, point in ipairs(cacheDoc().doc.points) do
+        local v = RARELOAD.Util.ToVector(point)
         if v and v:DistToSqr(pos) <= maxDist * maxDist then out[#out + 1] = v end
     end
     return byDistance(pos, out)
@@ -160,8 +161,8 @@ end
 -- players to stand.
 local function mapEntities(pos, maxDist)
     local out = {}
-    for _, p in ipairs(positionsOf(SPAWN_CLASSES)) do out[#out + 1] = p end
-    for _, p in ipairs(positionsOf(LANDMARK_CLASSES)) do out[#out + 1] = p end
+    for _, pos in ipairs(positionsOf(SPAWN_CLASSES)) do out[#out + 1] = pos end
+    for _, pos in ipairs(positionsOf(LANDMARK_CLASSES)) do out[#out + 1] = pos end
     for i = #out, 1, -1 do
         if out[i]:DistToSqr(pos) > maxDist * maxDist then table.remove(out, i) end
     end
@@ -267,10 +268,10 @@ end
 -- `onTry(candidate, ok)` is called for every candidate tested (the test command draws them).
 function AntiStuck.Resolve(pos, ply, crouched, onTry)
     local test = function(candidate)
-        local p = snap(candidate, ply, crouched)
-        local free = p and not AntiStuck.IsStuck(p, ply, crouched)
-        if onTry then onTry(p or candidate, free) end
-        if free then return p end
+        local snapped = snap(candidate, ply, crouched)
+        local free = snapped and not AntiStuck.IsStuck(snapped, ply, crouched)
+        if onTry then onTry(snapped or candidate, free) end
+        if free then return snapped end
     end
     local enabled = {}
     for _, m in ipairs(AntiStuck.List()) do

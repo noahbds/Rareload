@@ -81,16 +81,19 @@ end
 
 local ICON_COLORS = { check = "ok", warn = "warn", skip = "accent", lock = "warn" }
 
-local function drawIcon(kind, x, y, size, alpha, p)
+local function drawIcon(kind, x, y, size, alpha, progress)
     local C = RARELOAD.UI.C
-    if kind ~= "check" and p < 0.55 then x = x + math.sin(p / 0.55 * math.pi * 6) * size * 0.08 * (1 - p / 0.55) end
+    if kind ~= "check" and progress < 0.55 then
+        local shake = progress / 0.55
+        x = x + math.sin(shake * math.pi * 6) * size * 0.08 * (1 - shake)
+    end
     local base = C[ICON_COLORS[kind]]
-    local r = size * easeOutBack(p / 0.55)
+    local r = size * easeOutBack(progress / 0.55)
     circle(x, y, r + 4, ColorAlpha(base, alpha * 0.3))
     circle(x, y, r, ColorAlpha(base, alpha))
-    if p < 0.3 then return end
+    if progress < 0.3 then return end
 
-    local q = math.min(1, (p - 0.3) / 0.6)
+    local q = math.min(1, (progress - 0.3) / 0.6)
     local t = math.max(3, size * 0.14)
     surface.SetDrawColor(255, 255, 255, alpha)
     draw.NoTexture()
@@ -132,11 +135,11 @@ local function drawOverlay(w, h)
         state.overlay = nil
         return
     end
-    local p = elapsed / OVERLAY_TIME
-    local alpha = 255 * math.Clamp((1 - p) / 0.25, 0, 1)
+    local progress = elapsed / OVERLAY_TIME
+    local alpha = 255 * math.Clamp((1 - progress) / 0.25, 0, 1)
     surface.SetDrawColor(0, 0, 0, alpha * 0.75)
     surface.DrawRect(0, 0, w, h)
-    drawIcon(o.icon, w / 2, h / 2 - 20, 50, alpha, math.min(1, p * 2.2))
+    drawIcon(o.icon, w / 2, h / 2 - 20, 50, alpha, math.min(1, progress * 2.2))
     draw.SimpleText(L(o.text), "Rareload.Screen", w / 2, h / 2 + 55, Color(255, 255, 255, alpha), TEXT_ALIGN_CENTER,
         TEXT_ALIGN_CENTER)
 end
