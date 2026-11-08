@@ -10,7 +10,10 @@ RARELOAD.Module({
 
     save = function(ply, ctx)
         return {
-            pos = Util.Vec(ctx.opts.at or ply:GetPos()),
+            -- At an aimed point (the tool's left click): where the player would stand there, not the point
+            -- itself, which can be just inside the ground.
+            pos = Util.Vec(ctx.opts.at and (RARELOAD.AntiStuck.Settle(ctx.opts.at, ply, false) or ctx.opts.at)
+                or ply:GetPos()),
             ang = Util.Ang(ply:EyeAngles()),
             crouched = (not ctx.opts.at and ply:Crouching()) or nil,
             mapVersion = game.GetMapVersion(),
@@ -31,14 +34,14 @@ RARELOAD.Module({
 
         -- A map update can move walls, so anti-stuck always runs when the map revision changed (G53).
         local check = RARELOAD.Get(ply, "antiStuck") or saved.mapVersion ~= game.GetMapVersion()
-        if check and RARELOAD.AntiStuck.IsStuck(pos, ply, crouched) then
-            local found, method = RARELOAD.AntiStuck.Resolve(pos, ply, crouched)
-            if found then
-                pos = found
-                ctx:step("warn", "anti-stuck", "moved to a free spot (" .. method .. ")")
-            else
+        if check then
+            local found, method = RARELOAD.AntiStuck.Place(pos, ply, crouched)
+            if not found then
                 ctx:step("fail", "anti-stuck", "no free spot found")
                 RARELOAD.Toast(ply, "toast.stuck", nil, "error")
+            else
+                pos = found
+                if method then ctx:step("warn", "anti-stuck", "moved to a free spot (" .. method .. ")") end
             end
         end
 

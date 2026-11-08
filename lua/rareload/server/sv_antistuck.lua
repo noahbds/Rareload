@@ -18,6 +18,30 @@ local function hull(ply, crouched)
     return ply:GetHull()
 end
 
+-- How far above and below a spot Settle looks for the ground.
+local SETTLE_RANGE = Vector(0, 0, 18)
+
+-- Where the player would stand right at `pos`: their hull dropped from a little above it onto the ground
+-- below. A point a line trace found on a displacement (the tool's left click on grass) is a fraction of a
+-- unit inside the ground for a hull; this puts it on top. nil when there is no free spot right there.
+function AntiStuck.Settle(pos, ply, crouched)
+    local mins, maxs = hull(ply, crouched)
+    local tr = util.TraceHull({ start = pos + SETTLE_RANGE, endpos = pos - SETTLE_RANGE, mins = mins, maxs = maxs,
+        mask = MASK_PLAYERSOLID, filter = ply, collisiongroup = ply:GetCollisionGroup() })
+    if tr.StartSolid or not tr.Hit or AntiStuck.IsStuck(tr.HitPos, ply, crouched) then return nil end
+    return tr.HitPos
+end
+
+-- Where to put a player who should stand at `pos`: `pos` itself when it is free, the ground right there
+-- when `pos` is only just inside it, otherwise the first free spot the anti-stuck methods find. Returns
+-- the spot (nil when none) and the method when the player had to be moved elsewhere.
+function AntiStuck.Place(pos, ply, crouched)
+    if not AntiStuck.IsStuck(pos, ply, crouched) then return pos end
+    local settled = AntiStuck.Settle(pos, ply, crouched)
+    if settled then return settled end
+    return AntiStuck.Resolve(pos, ply, crouched)
+end
+
 function AntiStuck.IsStuck(pos, ply, crouched)
     local mins, maxs = hull(ply, crouched)
     -- IsInWorld only checks one point (G70), so test the middle of the hull, not the feet.

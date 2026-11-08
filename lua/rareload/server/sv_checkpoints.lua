@@ -94,11 +94,8 @@ function Checkpoints.Go(ply, what)
     local pos, ang = Util.ToVector(checkpoint.pos), Util.ToAngle(checkpoint.ang)
     if not pos then return false, "toast.checkpoint_unknown" end
     if ply:InVehicle() then ply:ExitVehicle() end
-    if RARELOAD.AntiStuck.IsStuck(pos, ply, checkpoint.crouched == true) then
-        local found = RARELOAD.AntiStuck.Resolve(pos, ply, checkpoint.crouched == true)
-        if not found then return false, "toast.stuck" end
-        pos = found
-    end
+    pos = RARELOAD.AntiStuck.Place(pos, ply, checkpoint.crouched == true)
+    if not pos then return false, "toast.stuck" end
     if checkpoint.crouched then ply:AddFlags(FL_DUCKING) end
     ply:SetPos(pos)
     if ang then ply:SetEyeAngles(ang) end
