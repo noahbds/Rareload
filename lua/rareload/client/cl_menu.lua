@@ -42,10 +42,10 @@ local function anim(from, to, speed) return Lerp(math.min(FrameTime() * (speed o
 -- Settings matching `filter`, grouped by category in menu order.
 local function grouped(filter)
     local groups = {}
-    for _, def in pairs(RARELOAD.Settings) do
-        if filter(def) then
-            groups[def.category] = groups[def.category] or {}
-            table.insert(groups[def.category], def)
+    for _, settingDef in pairs(RARELOAD.Settings) do
+        if filter(settingDef) then
+            groups[settingDef.category] = groups[settingDef.category] or {}
+            table.insert(groups[settingDef.category], settingDef)
         end
     end
     local out = {}
@@ -416,9 +416,9 @@ end
 
 -- A control for one setting: switch, slider or dropdown. get() is the value shown, set(text) applies.
 -- The row keeps showing get(): a value changed elsewhere (another admin, a command) shows at once.
-local function control(parent, def, get, set, opts)
-    local label = L("setting." .. def.key)
-    local help = L("setting." .. def.key .. ".help")
+local function control(parent, settingDef, get, set, opts)
+    local label = L("setting." .. settingDef.key)
+    local help = L("setting." .. settingDef.key .. ".help")
     local refresh = opts.refresh
     opts.refresh = function(o)
         o.tooltip = nil
@@ -428,13 +428,13 @@ local function control(parent, def, get, set, opts)
     opts.refresh(opts)
 
     local row
-    if def.type == "bool" then
+    if settingDef.type == "bool" then
         row = toggle(parent, label, get(), function(v) set(v and "1" or "0") end, opts)
         row.Sync = function(self) self.value = get() end
-    elseif def.type == "enum" then
+    elseif settingDef.type == "enum" then
         local options = {}
-        for _, v in ipairs(def.values) do
-            options[#options + 1] = { id = v, label = L("setting." .. def.key .. "." .. v) }
+        for _, v in ipairs(settingDef.values) do
+            options[#options + 1] = { id = v, label = L("setting." .. settingDef.key .. "." .. v) }
         end
         row = dropdown(parent, label, options, get(), set, opts)
         row.Sync = function(self)
@@ -442,7 +442,8 @@ local function control(parent, def, get, set, opts)
             self.combo:SetEnabled(not opts.disabled)
         end
     else
-        row = slider(parent, label, get(), def.min, def.max, def.type == "float" and 1 or 0, def.unit,
+        row = slider(parent, label, get(), settingDef.min, settingDef.max, settingDef.type == "float" and 1 or 0,
+            settingDef.unit,
             function(v) set(tostring(v)) end, opts)
         row.Sync = function(self) self.value = get() end
     end
@@ -524,23 +525,24 @@ function Menu.BuildToolPanel(panel)
     begin(panel, L("menu.subtitle"))
     intro(panel, L("menu.tool_help"))
 
-    for _, group in ipairs(grouped(function(def) return def.scope == "player" end)) do
+    for _, group in ipairs(grouped(function(settingDef) return settingDef.scope == "player" end)) do
         local content = section(panel, L("category." .. group.name), ICONS[group.name], group.name ~= "timing")
-        for _, def in ipairs(group.defs) do
-            local pref = GetConVar(def.pref)
-            local noPriv = def.priv and not RARELOAD.Can(lp, def.priv)
+        for _, settingDef in ipairs(group.defs) do
+            local pref = GetConVar(settingDef.pref)
+            local noPriv = settingDef.priv and not RARELOAD.Can(lp, settingDef.priv)
             -- Godmode and notarget need a privilege of their own.
-            local limited = def.key == "keepStates" and not RARELOAD.Can(lp, "rareload_restore_privileged_states")
+            local limited = settingDef.key == "keepStates"
+                and not RARELOAD.Can(lp, "rareload_restore_privileged_states")
                 and L("setting.keepStates.help") .. "\n" .. L("menu.states_limited")
-            control(content, def, function() return RARELOAD.Get(lp, def.key) end,
-                function(v) RunConsoleCommand(def.pref, v) end, {
+            control(content, settingDef, function() return RARELOAD.Get(lp, settingDef.key) end,
+                function(v) RunConsoleCommand(settingDef.pref, v) end, {
                     refresh = function(o)
-                        o.locked = RARELOAD.IsLocked(def.key)
+                        o.locked = RARELOAD.IsLocked(settingDef.key)
                         o.disabled = o.locked or noPriv
                         o.changed = not o.locked and pref ~= nil and pref:GetFloat() ~= -1
                         o.tooltip = o.locked and L("menu.locked") or noPriv and L("menu.no_priv") or limited or nil
                     end,
-                    reset = function() RunConsoleCommand(def.pref, "-1") end,
+                    reset = function() RunConsoleCommand(settingDef.pref, "-1") end,
                 })
         end
     end
@@ -556,8 +558,8 @@ function Menu.BuildToolPanel(panel)
         button(actions, L("menu.server_settings"), "cog_edit", BUTTONS.orange, function() Menu.Open("server") end)
     end
     button(actions, L("menu.reset"), "arrow_undo", BUTTONS.gray, function()
-        for _, def in pairs(RARELOAD.Settings) do
-            if def.pref then RunConsoleCommand(def.pref, "-1") end
+        for _, settingDef in pairs(RARELOAD.Settings) do
+            if settingDef.pref then RunConsoleCommand(settingDef.pref, "-1") end
         end
     end)
 
@@ -611,15 +613,16 @@ local function buildServer(panel)
         return finish(panel)
     end
     intro(panel, L("menu.server_help"))
-    local function setter(def)
-        return function(v) RARELOAD.Net.Request("settings.set", { key = def.key, value = v }) end
+    local function setter(settingDef)
+        return function(v) RARELOAD.Net.Request("settings.set", { key = settingDef.key, value = v }) end
     end
 
     caption(panel, L("menu.server_caption"))
-    for _, group in ipairs(grouped(function(def) return def.scope == "server" end)) do
+    for _, group in ipairs(grouped(function(settingDef) return settingDef.scope == "server" end)) do
         local content = section(panel, L("category." .. group.name), ICONS[group.name])
-        for _, def in ipairs(group.defs) do
-            control(content, def, function() return RARELOAD.ServerValue(def.key) end, setter(def), {})
+        for _, settingDef in ipairs(group.defs) do
+            control(content, settingDef, function() return RARELOAD.ServerValue(settingDef.key) end,
+                setter(settingDef), {})
         end
     end
 
@@ -728,17 +731,18 @@ local function buildServer(panel)
     -- Player defaults: the lock in the left column forces the server's value on every player.
     caption(panel, L("menu.defaults_caption"))
     note(panel, L("menu.defaults_help")):DockMargin(14, 4, 14, 0)
-    for _, group in ipairs(grouped(function(def) return def.scope == "player" end)) do
+    for _, group in ipairs(grouped(function(settingDef) return settingDef.scope == "player" end)) do
         local content = section(panel, L("category." .. group.name), ICONS[group.name], false)
-        for _, def in ipairs(group.defs) do
-            control(content, def, function() return RARELOAD.ServerValue(def.key) end, setter(def), {
+        for _, settingDef in ipairs(group.defs) do
+            control(content, settingDef, function() return RARELOAD.ServerValue(settingDef.key) end,
+                setter(settingDef), {
                 lock = {
                     toggle = function(locked)
                         RARELOAD.Net.Request("settings.lock",
-                            { key = def.key, locked = locked })
+                            { key = settingDef.key, locked = locked })
                     end
                 },
-                refresh = function(o) o.lock.locked = RARELOAD.IsLocked(def.key) end,
+                refresh = function(o) o.lock.locked = RARELOAD.IsLocked(settingDef.key) end,
             })
         end
     end
@@ -748,17 +752,17 @@ end
 local function buildClient(panel)
     begin(panel, L("menu.client"))
     intro(panel, L("menu.client_help"))
-    for _, group in ipairs(grouped(function(def) return def.scope == "client" end)) do
+    for _, group in ipairs(grouped(function(settingDef) return settingDef.scope == "client" end)) do
         local content = section(panel, L("category." .. group.name), ICONS[group.name])
-        for _, def in ipairs(group.defs) do
-            control(content, def, function() return RARELOAD.Get(nil, def.key) end,
-                function(v) RunConsoleCommand(def.convar, v) end, {})
+        for _, settingDef in ipairs(group.defs) do
+            control(content, settingDef, function() return RARELOAD.Get(nil, settingDef.key) end,
+                function(v) RunConsoleCommand(settingDef.convar, v) end, {})
         end
     end
     local reset = section(panel, L("menu.actions"), ICONS.actions)
     button(reset, L("menu.client_reset"), "arrow_undo", BUTTONS.gray, function()
-        for _, def in pairs(RARELOAD.Settings) do
-            if def.scope == "client" then RunConsoleCommand(def.convar, def.cv:GetDefault()) end
+        for _, settingDef in pairs(RARELOAD.Settings) do
+            if settingDef.scope == "client" then RunConsoleCommand(settingDef.convar, settingDef.cv:GetDefault()) end
         end
     end)
     finish(panel)

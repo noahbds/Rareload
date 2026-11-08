@@ -5,18 +5,18 @@ RARELOAD.Cmd = RARELOAD.Cmd or {}
 local Cmd = RARELOAD.Cmd
 Cmd.list = Cmd.list or {}
 
--- def = { priv?, usage?, help, fn(ply, args, reply), and what Cmd.Run checks before fn:
+-- cmdDef = { priv?, usage?, help, fn(ply, args, reply), and what Cmd.Run checks before fn:
 --   player? = true or the message: only a player in game may run it (not the server console);
 --   target? = true: admins (rareload_manage_saves) may name a player, online or not, first; fn then gets
 --             that player (or the SteamID64 of one who is offline) instead of the caller;
 --   alive? = true: the player fn gets must be in game and alive;
 --   id? = true: args[1] must be a save number, and fn gets it as a number }.
 -- Names may be two words ("dev reload").
-function Cmd.Register(name, def)
+function Cmd.Register(name, cmdDef)
     assert(isstring(name) and string.Trim(name) ~= "", "Invalid Rareload command name")
-    assert(istable(def) and isfunction(def.fn), "Invalid Rareload command definition: " .. name)
+    assert(istable(cmdDef) and isfunction(cmdDef.fn), "Invalid Rareload command definition: " .. name)
     name = string.lower(string.Trim(name))
-    Cmd.list[name] = def -- Re-registration is intentional during development reloads.
+    Cmd.list[name] = cmdDef -- Re-registration is intentional during development reloads.
 end
 
 -- The English text of a phrase key ("toast.stuck"), for console replies: read once from the shipped
@@ -58,34 +58,34 @@ function Cmd.Run(ply, args)
     end
     table.remove(args, 1)
 
-    local def = Cmd.list[name]
-    if not def then return reply("Unknown command. Type 'rareload help'.") end
+    local cmdDef = Cmd.list[name]
+    if not cmdDef then return reply("Unknown command. Type 'rareload help'.") end
     local who = IsValid(ply) and ply:Nick() or "Console"
     local line = "rareload " .. name .. (#args > 0 and " " .. table.concat(args, " ") or "")
-    if def.priv and not RARELOAD.Can(ply, def.priv) then
-        RARELOAD.Log("commands", ply):verbose("%s tried '%s' without %s", who, line, def.priv)
-        return reply("You need the " .. def.priv .. " privilege for this.")
+    if cmdDef.priv and not RARELOAD.Can(ply, cmdDef.priv) then
+        RARELOAD.Log("commands", ply):verbose("%s tried '%s' without %s", who, line, cmdDef.priv)
+        return reply("You need the " .. cmdDef.priv .. " privilege for this.")
     end
     RARELOAD.Log("commands", ply):verbose("%s ran '%s'", who, line)
 
     local actor = ply
-    if def.target then
+    if cmdDef.target then
         actor = Cmd.Target(ply, args, reply, name)
         if not actor then return end
-    elseif def.player and not IsValid(ply) then
-        return reply(isstring(def.player) and def.player or "Only players have saves.")
+    elseif cmdDef.player and not IsValid(ply) then
+        return reply(isstring(cmdDef.player) and cmdDef.player or "Only players have saves.")
     end
-    if def.alive then
+    if cmdDef.alive then
         if isstring(actor) then return reply("That player is offline: saves are restored only for players in game.") end
         if not actor:Alive() then return reply("Respawn first, then restore the save.") end
     end
-    if def.id then
+    if cmdDef.id then
         local id = Cmd.SaveID(args[1])
-        if not id then return reply("Usage: rareload " .. name .. " " .. (def.usage or "<save number>")) end
+        if not id then return reply("Usage: rareload " .. name .. " " .. (cmdDef.usage or "<save number>")) end
         args[1] = id
     end
 
-    local ok, err = xpcall(function() def.fn(actor, args, reply) end, debug.traceback)
+    local ok, err = xpcall(function() cmdDef.fn(actor, args, reply) end, debug.traceback)
     if not ok then
         RARELOAD.Log("commands", ply):error("'%s' (run by %s) failed: %s", line, who, tostring(err))
         reply("An internal error occurred while executing this command. Check the server log.")
@@ -112,9 +112,10 @@ Cmd.Register("help", {
         local names = table.GetKeys(Cmd.list)
         table.sort(names)
         for _, name in ipairs(names) do
-            local def = Cmd.list[name]
-            if not def.priv or RARELOAD.Can(ply, def.priv) then
-                reply(string.format("  rareload %-24s %s", name .. (def.usage and " " .. def.usage or ""), def.help))
+            local cmdDef = Cmd.list[name]
+            if not cmdDef.priv or RARELOAD.Can(ply, cmdDef.priv) then
+                local usage = cmdDef.usage and " " .. cmdDef.usage or ""
+                reply(string.format("  rareload %-24s %s", name .. usage, cmdDef.help))
             end
         end
     end,
@@ -137,11 +138,11 @@ Cmd.Register("settings", {
         local keys = table.GetKeys(RARELOAD.Settings)
         table.sort(keys)
         for _, key in ipairs(keys) do
-            local def = RARELOAD.Settings[key]
-            local names = def.convar .. (def.pref and " / " .. def.pref or "")
+            local settingDef = RARELOAD.Settings[key]
+            local names = settingDef.convar .. (settingDef.pref and " / " .. settingDef.pref or "")
             -- Client settings only exist on each client; the server can't read them.
-            local value = def.scope == "client" and "(client)" or RARELOAD.Get(ply, key)
-            if def.type == "float" and isnumber(value) then value = string.format("%g", math.Round(value, 3)) end
+            local value = settingDef.scope == "client" and "(client)" or RARELOAD.Get(ply, key)
+            if settingDef.type == "float" and isnumber(value) then value = string.format("%g", math.Round(value, 3)) end
             reply(string.format("  %-22s %-8s %s", key, tostring(value), names))
         end
     end,
@@ -798,11 +799,11 @@ local CLIENT_COMMANDS = {
     inventory = { priv = "rareload_manage_inventory", help = "Open the inventory manager" },
     checkpoints = { priv = "rareload_checkpoints", help = "Open your checkpoints" },
 }
-for name, def in pairs(CLIENT_COMMANDS) do
+for name, cmdDef in pairs(CLIENT_COMMANDS) do
     local commandName = name
-    def.player = true
-    def.fn = function(ply, args) RARELOAD.Net.Push(ply, "cmd", { name = commandName, args = args }) end
-    Cmd.Register(commandName, def)
+    cmdDef.player = true
+    cmdDef.fn = function(ply, args) RARELOAD.Net.Push(ply, "cmd", { name = commandName, args = args }) end
+    Cmd.Register(commandName, cmdDef)
 end
 
 -- Log and status (sv_log.lua, sv_status.lua) ---------------------------------------------------------

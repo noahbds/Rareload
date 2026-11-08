@@ -176,14 +176,14 @@ end
 -- Method registry (§19, §24): the order here is the default order.
 AntiStuck.methods = AntiStuck.methods or {}
 
-function AntiStuck.Method(def)
+function AntiStuck.Method(methodDef)
     for i, m in ipairs(AntiStuck.methods) do
-        if m.id == def.id then
-            AntiStuck.methods[i] = def
+        if m.id == methodDef.id then
+            AntiStuck.methods[i] = methodDef
             return
         end
     end
-    AntiStuck.methods[#AntiStuck.methods + 1] = def
+    AntiStuck.methods[#AntiStuck.methods + 1] = methodDef
 end
 
 AntiStuck.Method({ id = "cached", fn = cached })

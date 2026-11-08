@@ -2,18 +2,18 @@ RARELOAD.Settings = RARELOAD.Settings or {}
 local Settings = RARELOAD.Settings
 
 -- Turns a raw value into the setting's type, clamped to its range. Enums fall back to their default.
-local function coerce(def, n)
-    if def.type == "enum" then
-        for _, v in ipairs(def.values) do
+local function coerce(settingDef, n)
+    if settingDef.type == "enum" then
+        for _, v in ipairs(settingDef.values) do
             if v == tostring(n) then return v end
         end
-        return def.default
+        return settingDef.default
     end
     n = tonumber(n) or 0
-    if def.type == "bool" then return n ~= 0 end
-    if def.min then n = math.max(n, def.min) end
-    if def.max then n = math.min(n, def.max) end
-    if def.type == "int" then n = math.floor(n) end
+    if settingDef.type == "bool" then return n ~= 0 end
+    if settingDef.min then n = math.max(n, settingDef.min) end
+    if settingDef.max then n = math.min(n, settingDef.max) end
+    if settingDef.type == "int" then n = math.floor(n) end
     return n
 end
 
@@ -31,72 +31,77 @@ function RARELOAD.IsLocked(key)
     return lockCache.set[key] == true
 end
 
--- def = { type = "bool"|"int"|"float"|"enum", default, scope = "server"|"player"|"client", category,
+-- settingDef = { type = "bool"|"int"|"float"|"enum", default, scope = "server"|"player"|"client", category,
 --         min?, max?, values? (enum), capBy?, priv? (needed for the feature to do anything), help }
-function RARELOAD.Setting(key, def)
+function RARELOAD.Setting(key, settingDef)
     local name = RARELOAD.Util.Snake(key)
-    local lo, hi = def.min, def.max
-    local default = tostring(def.default)
-    if def.type == "bool" then
-        lo, hi, default = 0, 1, def.default and "1" or "0"
+    local lo, hi = settingDef.min, settingDef.max
+    local default = tostring(settingDef.default)
+    if settingDef.type == "bool" then
+        lo, hi, default = 0, 1, settingDef.default and "1" or "0"
     end
-    def.key = key
-    def.order = def.order or (Settings[key] and Settings[key].order) or table.Count(Settings) + 1 -- menu order
-    Settings[key] = def
+    settingDef.key = key
+    -- Menu order: kept across a reload, else after the others.
+    settingDef.order = settingDef.order or (Settings[key] and Settings[key].order) or table.Count(Settings) + 1
+    Settings[key] = settingDef
 
-    if def.scope == "client" then
-        def.convar = "cl_rareload_" .. name
-        if CLIENT then def.cv = CreateClientConVar(def.convar, default, true, false, def.help, lo, hi) end
+    if settingDef.scope == "client" then
+        settingDef.convar = "cl_rareload_" .. name
+        if CLIENT then
+            settingDef.cv = CreateClientConVar(settingDef.convar, default, true, false, settingDef.help, lo, hi)
+        end
         return
     end
 
-    def.convar = "sv_rareload_" .. name
-    def.cv = CreateConVar(def.convar, default, FCVAR_ARCHIVE + FCVAR_REPLICATED, def.help, lo, hi) -- G42
-    if def.scope == "player" then
-        def.pref = "rareload_pref_" .. name
+    settingDef.convar = "sv_rareload_" .. name
+    settingDef.cv = CreateConVar(settingDef.convar, default, FCVAR_ARCHIVE + FCVAR_REPLICATED, settingDef.help, lo,
+        hi) -- G42
+    if settingDef.scope == "player" then
+        settingDef.pref = "rareload_pref_" .. name
         if CLIENT then
-            CreateClientConVar(def.pref, "-1", true, true,
-                "Your own value for " .. def.convar .. " (-1 = use the server value)")
+            CreateClientConVar(settingDef.pref, "-1", true, true,
+                "Your own value for " .. settingDef.convar .. " (-1 = use the server value)")
         end
     end
 end
 
 -- The server's value of a server or player setting.
 function RARELOAD.ServerValue(key)
-    local def = Settings[key]
-    return coerce(def, def.type == "enum" and def.cv:GetString() or def.cv:GetFloat())
+    local settingDef = Settings[key]
+    return coerce(settingDef, settingDef.type == "enum" and settingDef.cv:GetString() or settingDef.cv:GetFloat())
 end
 
 -- The effective value of a setting. `ply` may be nil for the server value.
 function RARELOAD.Get(ply, key)
-    local def = Settings[key] or error("[Rareload] unknown setting " .. tostring(key), 2)
-    if def.scope == "client" then return coerce(def, def.cv:GetFloat()) end
+    local settingDef = Settings[key] or error("[Rareload] unknown setting " .. tostring(key), 2)
+    if settingDef.scope == "client" then return coerce(settingDef, settingDef.cv:GetFloat()) end
     local value = RARELOAD.ServerValue(key)
 
-    if def.scope == "player" and IsValid(ply) and (SERVER or ply == LocalPlayer()) and not RARELOAD.IsLocked(key) then
+    if settingDef.scope == "player" and IsValid(ply) and (SERVER or ply == LocalPlayer())
+        and not RARELOAD.IsLocked(key) then
         -- A player without the value (bots have no userinfo; GetInfoNum then returns 0, not the
         -- default) uses the server value.
         -- An enum's own value is its text.
-        local raw = SERVER and ply:GetInfo(def.pref) or GetConVar(def.pref):GetString()
-        if def.type == "enum" then
-            if raw ~= "" and raw ~= "-1" then value = coerce(def, raw) end
+        local raw = SERVER and ply:GetInfo(settingDef.pref) or GetConVar(settingDef.pref):GetString()
+        if settingDef.type == "enum" then
+            if raw ~= "" and raw ~= "-1" then value = coerce(settingDef, raw) end
         else
             local pref = tonumber(raw) or -1
-            if pref ~= -1 then value = coerce(def, pref) end
+            if pref ~= -1 then value = coerce(settingDef, pref) end
         end
     end
-    if def.capBy then
-        value = math.min(value, RARELOAD.Get(nil, def.capBy))
+    if settingDef.capBy then
+        value = math.min(value, RARELOAD.Get(nil, settingDef.capBy))
     end
     return value
 end
 
 -- Settings that share a scope and a category: { key, field = value, … } each, in menu order.
 local function group(scope, category, list)
-    for _, def in ipairs(list) do
-        local key = table.remove(def, 1)
-        def.scope, def.category = scope, category
-        RARELOAD.Setting(key, def)
+    for _, settingDef in ipairs(list) do
+        local key = table.remove(settingDef, 1)
+        settingDef.scope, settingDef.category = scope, category
+        RARELOAD.Setting(key, settingDef)
     end
 end
 
@@ -271,9 +276,9 @@ group("client", "display", {
 if SERVER then
     function RARELOAD.ResetSettings(who)
         local changed = 0
-        for _, def in pairs(Settings) do
-            if def.scope ~= "client" and def.cv:GetString() ~= def.cv:GetDefault() then
-                def.cv:SetString(def.cv:GetDefault())
+        for _, settingDef in pairs(Settings) do
+            if settingDef.scope ~= "client" and settingDef.cv:GetString() ~= settingDef.cv:GetDefault() then
+                settingDef.cv:SetString(settingDef.cv:GetDefault())
                 changed = changed + 1
             end
         end
@@ -299,10 +304,11 @@ if SERVER then
         rate = 0.1,
         args = { key = "string:64", value = "string:32" },
         fn = function(ply, a)
-            local def = Settings[a.key]
-            if not def or def.scope == "client" or (def.type ~= "enum" and not tonumber(a.value)) then return end
-            local value, before = coerce(def, a.value), RARELOAD.ServerValue(a.key)
-            def.cv:SetString(def.type == "bool" and (value and "1" or "0") or tostring(value))
+            local settingDef = Settings[a.key]
+            if not settingDef or settingDef.scope == "client" then return end
+            if settingDef.type ~= "enum" and not tonumber(a.value) then return end
+            local value, before = coerce(settingDef, a.value), RARELOAD.ServerValue(a.key)
+            settingDef.cv:SetString(settingDef.type == "bool" and (value and "1" or "0") or tostring(value))
             RARELOAD.Log("settings", ply):info("%s changed %s from %s to %s", ply:Nick(), a.key, tostring(before),
                 tostring(value))
         end,
@@ -313,8 +319,8 @@ if SERVER then
         rate = 0.1,
         args = { key = "string:64", locked = "bool" },
         fn = function(ply, a)
-            local def = Settings[a.key]
-            if not def or def.scope ~= "player" or RARELOAD.IsLocked(a.key) == a.locked then return end
+            local settingDef = Settings[a.key]
+            if not settingDef or settingDef.scope ~= "player" or RARELOAD.IsLocked(a.key) == a.locked then return end
             local keys = {}
             for k in string.gmatch(locks:GetString(), "[%w_]+") do
                 if k ~= a.key and Settings[k] then keys[#keys + 1] = k end

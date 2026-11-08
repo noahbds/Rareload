@@ -96,8 +96,9 @@ function Snapshot.IsVehiclePart(ent)
     return Snapshot.RootVehicleOf(ent) ~= nil
 end
 
-function Snapshot.IsVehicleDef(def)
-    return isRootClass(def.Class) or def.LVS == true or def.IsSimfphyscar == true or def.IsGlideVehicle == true
+function Snapshot.IsVehicleDef(entityDef)
+    return isRootClass(entityDef.Class) or entityDef.LVS == true or entityDef.IsSimfphyscar == true
+        or entityDef.IsGlideVehicle == true
 end
 
 -- IDs ---------------------------------------------------------------------------------------------
@@ -149,15 +150,15 @@ end
 -- A saved object's optional parts, or NONE (read-only) when it has none: saved or imported objects
 -- may lack them, and this is the one place that knows.
 local NONE = setmetatable({}, { __newindex = function() error("[Rareload] NONE is read-only", 2) end })
-function Snapshot.Mods(def) return istable(def.EntityMods) and def.EntityMods or NONE end
-function Snapshot.Rareload(def)
-    local rl = Snapshot.Mods(def).rareload
+function Snapshot.Mods(entityDef) return istable(entityDef.EntityMods) and entityDef.EntityMods or NONE end
+function Snapshot.Rareload(entityDef)
+    local rl = Snapshot.Mods(entityDef).rareload
     return istable(rl) and rl or NONE
 end
-function Snapshot.Bones(def) return istable(def.PhysicsObjects) and def.PhysicsObjects or NONE end
+function Snapshot.Bones(entityDef) return istable(entityDef.PhysicsObjects) and entityDef.PhysicsObjects or NONE end
 
-function Snapshot.DefID(def)
-    local mods = def.EntityMods
+function Snapshot.DefID(entityDef)
+    local mods = entityDef.EntityMods
     local id = istable(mods) and istable(mods.rareload) and mods.rareload.id
     return id ~= nil and id ~= false and tostring(id) or nil
 end
@@ -331,11 +332,12 @@ function Snapshot.Capture(targets)
                     on = ent:GetClass() == "gmod_thruster" and ent.IsOn and ent:IsOn() or nil,
                     vel = motionOf(ent), fire = ent:IsOnFire() or nil, anim = animOf(ent), state = stateOf(ent) })
             ProtectedCall(function()
-                local def = plainData(duplicator.CopyEntTable(ent), 0)
+                local entityDef = plainData(duplicator.CopyEntTable(ent), 0)
                 -- The ID, number and name live in the "rareload" modifier; a merged copy of these
                 -- fields would give a pasted object someone else's.
-                def.RareloadID, def.RareloadOwner, def.RareloadNum, def.RareloadName = nil, nil, nil, nil
-                snap.Entities[ent:EntIndex()] = def
+                entityDef.RareloadID, entityDef.RareloadOwner = nil, nil
+                entityDef.RareloadNum, entityDef.RareloadName = nil, nil
+                snap.Entities[ent:EntIndex()] = entityDef
             end)
             for _, c in pairs(constraint.GetTable(ent)) do
                 if IsValid(c.Constraint) then snap.Constraints[c.Constraint:GetCreationID()] = c end
@@ -349,12 +351,12 @@ end
 
 function Snapshot.Merge(old, fresh)
     local oldById = {}
-    for _, def in pairs(old.Entities or {}) do
-        local id = Snapshot.DefID(def)
-        if id then oldById[id] = def end
+    for _, entityDef in pairs(old.Entities or {}) do
+        local id = Snapshot.DefID(entityDef)
+        if id then oldById[id] = entityDef end
     end
-    for index, def in pairs(fresh.Entities) do
-        local id = Snapshot.DefID(def)
+    for index, entityDef in pairs(fresh.Entities) do
+        local id = Snapshot.DefID(entityDef)
         if id and oldById[id] then fresh.Entities[index] = oldById[id] end
     end
     return fresh
@@ -385,22 +387,22 @@ end
 
 function Snapshot.KeepDeleted(old, fresh)
     local have, top, excluded = {}, 0, excludedIds()
-    for index, def in pairs(fresh.Entities) do
-        local id = Snapshot.DefID(def)
+    for index, entityDef in pairs(fresh.Entities) do
+        local id = Snapshot.DefID(entityDef)
         if id then have[id] = index end
         top = math.max(top, tonumber(index) or 0)
     end
 
     local moved, kept = {}, {}
     for _, index in ipairs(sortedKeys(old.Entities)) do
-        local def = old.Entities[index]
-        local id = Snapshot.DefID(def)
+        local entityDef = old.Entities[index]
+        local id = Snapshot.DefID(entityDef)
         if id and have[id] then
             moved[tostring(index)] = have[id]
         elseif id and not excluded[tostring(id)] then
             top = top + 1
             moved[tostring(index)], kept[tostring(index)] = top, true
-            fresh.Entities[top] = def
+            fresh.Entities[top] = entityDef
             for _, field in ipairs({ "ai", "runtime" }) do
                 -- all-digit IDs come back as numbers
                 local value = istable(old[field]) and (old[field][id] or old[field][tonumber(id)])
@@ -441,8 +443,8 @@ end
 -- so only what was saved stays. Returns how many were removed.
 function Snapshot.RemoveMissing(ply, ctx, snap, pick)
     local keep = {}
-    for _, def in pairs(snap.Entities or {}) do
-        local id = Snapshot.DefID(def)
+    for _, entityDef in pairs(snap.Entities or {}) do
+        local id = Snapshot.DefID(entityDef)
         if id then keep[tostring(id)] = true end -- an all-digit ID comes back from JSON as a number
     end
     local removed = 0
@@ -484,16 +486,17 @@ end
 
 -- Restore -----------------------------------------------------------------------------------------
 
--- The Sandbox spawn permission and limit type for a def (D10, G29).
-local function spawnKind(ply, def, kind)
-    if kind == "npcs" then return "npcs", hook.Run("PlayerSpawnNPC", ply, def.Class, "") end
-    if kind == "vehicles" then return "vehicles", hook.Run("PlayerSpawnVehicle", ply, def.Model, def.Class, {}) end
-    if def.Class == "prop_ragdoll" then return "ragdolls", hook.Run("PlayerSpawnRagdoll", ply, def.Model) end
-    if string.StartsWith(def.Class or "", "prop_") then return "props", hook.Run("PlayerSpawnProp", ply, def.Model) end
+-- The Sandbox spawn permission and limit type for a saved object (D10, G29).
+local function spawnKind(ply, entityDef, kind)
+    if kind == "npcs" then return "npcs", hook.Run("PlayerSpawnNPC", ply, entityDef.Class, "") end
+    local class, model = entityDef.Class, entityDef.Model
+    if kind == "vehicles" then return "vehicles", hook.Run("PlayerSpawnVehicle", ply, model, class, {}) end
+    if class == "prop_ragdoll" then return "ragdolls", hook.Run("PlayerSpawnRagdoll", ply, model) end
+    if string.StartsWith(class or "", "prop_") then return "props", hook.Run("PlayerSpawnProp", ply, model) end
     -- A weapon on the ground (C5): Sandbox has no limit for them, only the permission.
-    local swep = weapons.Get(def.Class or "")
-    if swep then return "weapons", hook.Run("PlayerSpawnSWEP", ply, def.Class, swep) end
-    return "sents", hook.Run("PlayerSpawnSENT", ply, def.Class)
+    local swep = weapons.Get(entityDef.Class or "")
+    if swep then return "weapons", hook.Run("PlayerSpawnSWEP", ply, entityDef.Class, swep) end
+    return "sents", hook.Run("PlayerSpawnSENT", ply, entityDef.Class)
 end
 
 -- Sandbox's own factories (props, ragdolls, vehicles, NPCs) already count what they create when the
@@ -519,8 +522,8 @@ Snapshot.SKIP_REASONS = {
 
 local bonesOf = Snapshot.Bones
 
-local function boneOf(def, i)
-    local bones = bonesOf(def)
+local function boneOf(entityDef, i)
+    local bones = bonesOf(entityDef)
     return bones[i] or bones[tostring(i)]
 end
 
@@ -531,19 +534,19 @@ end
 
 -- Objects moved and frozen through their physics objects. NPCs only have a physics shadow that
 -- follows them, so they are moved as entities and their physics is left alone.
-local function physical(ent, def)
-    return not ent:IsNPC() and ent:GetPhysicsObjectCount() > 0 and next(bonesOf(def)) ~= nil
+local function physical(ent, entityDef)
+    return not ent:IsNPC() and ent:GetPhysicsObjectCount() > 0 and next(bonesOf(entityDef)) ~= nil
 end
 
 -- Whether the object is somewhere else, or frozen differently, than in its saved definition.
-local function moved(ent, def)
+local function moved(ent, entityDef)
     if IsValid(ent:GetParent()) then return false end
-    if not physical(ent, def) then
-        return isvector(def.Pos) and (ent:GetPos():DistToSqr(def.Pos) > 1
-            or isangle(def.Angle) and not sameAngle(ent:GetAngles(), def.Angle))
+    if not physical(ent, entityDef) then
+        return isvector(entityDef.Pos) and (ent:GetPos():DistToSqr(entityDef.Pos) > 1
+            or isangle(entityDef.Angle) and not sameAngle(ent:GetAngles(), entityDef.Angle))
     end
     for i = 0, ent:GetPhysicsObjectCount() - 1 do
-        local phys, saved = ent:GetPhysicsObjectNum(i), boneOf(def, i)
+        local phys, saved = ent:GetPhysicsObjectNum(i), boneOf(entityDef, i)
         if IsValid(phys) and istable(saved) then
             if isvector(saved.Pos) and phys:GetPos():DistToSqr(saved.Pos) > 1 then return true end
             if isangle(saved.Angle) and not sameAngle(phys:GetAngles(), saved.Angle) then return true end
@@ -581,44 +584,44 @@ local PLAIN = {
 -- Faceposer expressions, Finger Poser / Inflator / Ragdoll Mover bone changes and sub-materials:
 -- the duplicator keeps them, so a pasted object has them; one still on the map is set back here,
 -- and loses changes made since (C4).
-local function poses(ply, ent, def)
+local function poses(ply, ent, entityDef)
     if ent:GetFlexNum() > 0 then
         for i = 0, ent:GetFlexNum() - 1 do ent:SetFlexWeight(i, 0) end
-        if istable(def.Flex) then duplicator.DoFlex(ent, def.Flex, def.FlexScale) end
+        if istable(entityDef.Flex) then duplicator.DoFlex(ent, entityDef.Flex, entityDef.FlexScale) end
     end
-    if ent:HasBoneManipulations() or istable(def.BoneManip) then
+    if ent:HasBoneManipulations() or istable(entityDef.BoneManip) then
         for i = 0, ent:GetBoneCount() - 1 do
             ent:ManipulateBoneScale(i, Vector(1, 1, 1))
             ent:ManipulateBoneAngles(i, angle_zero)
             ent:ManipulateBonePosition(i, vector_origin)
         end
-        if istable(def.BoneManip) then duplicator.DoBoneManipulator(ent, def.BoneManip) end
+        if istable(entityDef.BoneManip) then duplicator.DoBoneManipulator(ent, entityDef.BoneManip) end
     end
     ent:SetSubMaterial()
-    for i, mat in pairs(istable(def._DuplicatedSubMaterials) and def._DuplicatedSubMaterials or {}) do
+    for i, mat in pairs(istable(entityDef._DuplicatedSubMaterials) and entityDef._DuplicatedSubMaterials or {}) do
         if tonumber(i) and isstring(mat) then ent:SetSubMaterial(tonumber(i), mat) end
     end
-    local eyes = Snapshot.Mods(def).eyetarget
+    local eyes = Snapshot.Mods(entityDef).eyetarget
     local fn = duplicator.EntityModifiers.eyetarget
     if eyes and fn then ProtectedCall(fn, ply, ent, eyes) end
 end
 
-local function cosmetics(ply, ent, def)
-    poses(ply, ent, def)
-    if isnumber(def.Skin) then ent:SetSkin(def.Skin) end
-    for group, value in pairs(istable(def.BodyG) and def.BodyG or {}) do
+local function cosmetics(ply, ent, entityDef)
+    poses(ply, ent, entityDef)
+    if isnumber(entityDef.Skin) then ent:SetSkin(entityDef.Skin) end
+    for group, value in pairs(istable(entityDef.BodyG) and entityDef.BodyG or {}) do
         if tonumber(group) and isnumber(value) then ent:SetBodygroup(tonumber(group), value) end
     end
-    local mods = Snapshot.Mods(def)
+    local mods = Snapshot.Mods(entityDef)
     for name, plain in pairs(PLAIN) do
         local fn = duplicator.EntityModifiers[name]
         local data = mods[name] or (istable(ent.EntityMods) and ent.EntityMods[name] and plain)
         if fn and data then ProtectedCall(fn, ply, ent, data) end
     end
     -- Colour and material set without the Sandbox tools (the duplicator keeps them as these fields).
-    if IsColor(def._DuplicatedColor) then ent:SetColor(def._DuplicatedColor) end
-    if isstring(def._DuplicatedMaterial) then ent:SetMaterial(def._DuplicatedMaterial) end
-    local rl = Snapshot.Rareload(def)
+    if IsColor(entityDef._DuplicatedColor) then ent:SetColor(entityDef._DuplicatedColor) end
+    if isstring(entityDef._DuplicatedMaterial) then ent:SetMaterial(entityDef._DuplicatedMaterial) end
+    local rl = Snapshot.Rareload(entityDef)
     if (tonumber(rl.maxHp) or 0) > 0 then
         ent:SetMaxHealth(rl.maxHp)
         ent:SetHealth(rl.hp or rl.maxHp)
@@ -652,23 +655,23 @@ function Snapshot.Reset(targets, ply)
     end
 
     for _, p in ipairs(targets) do
-        local ent, def = p.ent, p.def
+        local ent, entityDef = p.ent, p.def
         if p.moved and p.physical and ent:GetPhysicsObjectCount() > 1 then
             eachPhys(ent, function(phys, i)
-                local saved = boneOf(def, i)
+                local saved = boneOf(entityDef, i)
                 if istable(saved) and isvector(saved.Pos) then phys:SetPos(saved.Pos) end
                 if istable(saved) and isangle(saved.Angle) then phys:SetAngles(saved.Angle) end
             end)
-        elseif p.moved and isvector(def.Pos) then
-            ent:SetPos(def.Pos)
-            if isangle(def.Angle) then ent:SetAngles(def.Angle) end
+        elseif p.moved and isvector(entityDef.Pos) then
+            ent:SetPos(entityDef.Pos)
+            if isangle(entityDef.Angle) then ent:SetAngles(entityDef.Angle) end
             for _, part in ipairs(p.parts) do
                 local pos, ang = LocalToWorld(part.lp, part.la, ent:GetPos(), ent:GetAngles())
                 part.ent:SetPos(pos)
                 part.ent:SetAngles(ang)
             end
         end
-        cosmetics(ply, ent, def)
+        cosmetics(ply, ent, entityDef)
     end
 
     local function settle(phys, saved)
@@ -721,28 +724,28 @@ local function prepare(snap, ply, opts)
     local report = { created = {}, existing = {}, defs = {}, total = 0, skipped = {}, reset = 0 }
     local paste, resets = {}, {}
 
-    for index, def in pairs(snap.Entities) do
+    for index, entityDef in pairs(snap.Entities) do
         report.total = report.total + 1
-        local id, model, class = Snapshot.DefID(def), def.Model, def.Class
+        local id, model, class = Snapshot.DefID(entityDef), entityDef.Model, entityDef.Class
         local why, what = nil, class
         if id and IsValid(live[id]) then
             report.existing[#report.existing + 1] = live[id] -- already on the map (F15, L13)
-            report.defs[live[id]] = def
+            report.defs[live[id]] = entityDef
             -- An object left out of saves since (D1) stays as it is.
             if opts.reset and not RARELOAD.Exclude.Is(live[id]) then
-                resets[#resets + 1] = { ent = live[id], def = revive(def, 0) }
+                resets[#resets + 1] = { ent = live[id], def = revive(entityDef, 0) }
             end
         elseif opts.given and isstring(class) and opts.given[class] then
             why = "given" -- the weapon was picked up since the save, and this restore gave it back
         elseif not isstring(class) or not duplicator.IsAllowed(class) and not scripted_ents.GetStored(class) then
             why = "addon"
         elseif DENIED[class] or RARELOAD.Blocked.Has(class) or not duplicator.IsAllowed(class)
-            or (opts.filter and not opts.filter(def)) then
+            or (opts.filter and not opts.filter(entityDef)) then
             why = "denied"
         elseif isstring(model) and string.StartsWith(model, "models/") and not util.IsValidModel(model) then
             why, what = "model", model
         elseif limits then
-            local kind, allowed = spawnKind(ply, def, opts.kind)
+            local kind, allowed = spawnKind(ply, entityDef, opts.kind)
             kinds[index] = kind
             counts[kind] = (counts[kind] or 0) + 1
             local max = GetConVar("sbox_max" .. kind)
@@ -758,7 +761,7 @@ local function prepare(snap, ply, opts)
             elseif room <= 0 then
                 why = "room"
             else
-                paste[index] = revive(def, 0)
+                paste[index] = revive(entityDef, 0)
                 room = room - 1
             end
         end
@@ -783,8 +786,8 @@ local function pasteAll(st)
     -- has no constraints: the ones between objects that already exist must not be made twice.
     if not limits and IsValid(ply) then
         local retry = {}
-        for index, def in pairs(paste) do
-            if not IsValid(report.created[index]) then retry[index] = def end
+        for index, entityDef in pairs(paste) do
+            if not IsValid(report.created[index]) then retry[index] = entityDef end
         end
         if next(retry) then
             for index, ent in pairs(duplicator.Paste(ply, retry, {})) do report.created[index] = ent end
@@ -806,17 +809,17 @@ local function finish(st)
             end
             -- A thruster that was running: the duplicator brings back its "on" flag at most, so it is
             -- switched on again the way its key does it, which also starts its sound.
-            local def = paste[index]
-            if IsValid(ent) and def and def.Class == "gmod_thruster" and ent.Switch then
-                if Snapshot.Rareload(def).on or (istable(def.DT) and def.DT.On) then
+            local entityDef = paste[index]
+            if IsValid(ent) and entityDef and entityDef.Class == "gmod_thruster" and ent.Switch then
+                if Snapshot.Rareload(entityDef).on or (istable(entityDef.DT) and entityDef.DT.On) then
                     ProtectedCall(function() ent:Switch(true) end)
                 end
             end
-            if IsValid(ent) and def then Snapshot.ApplyExtras(ent, Snapshot.Rareload(def), motion) end
+            if IsValid(ent) and entityDef then Snapshot.ApplyExtras(ent, Snapshot.Rareload(entityDef), motion) end
         end
-        for index, def in pairs(paste) do
+        for index, entityDef in pairs(paste) do
             if not IsValid(report.created[index]) then
-                report.skipped[#report.skipped + 1] = { reason = "failed", what = tostring(def.Class) }
+                report.skipped[#report.skipped + 1] = { reason = "failed", what = tostring(entityDef.Class) }
             end
         end
     end
@@ -858,16 +861,16 @@ end
 -- modifiers and PostEntityPaste (which wiring relinks from), then the constraints.
 
 -- duplicator.Paste's creation step for one entity. Returns the entity or nil.
-local function createOne(owner, def)
-    def = table.Copy(def) -- CreateEntityFromTable changes the table it is given
+local function createOne(owner, entityDef)
+    entityDef = table.Copy(entityDef) -- CreateEntityFromTable changes the table it is given
     local e
-    if not ProtectedCall(function() e = duplicator.CreateEntityFromTable(owner, def) end) then return nil end
+    if not ProtectedCall(function() e = duplicator.CreateEntityFromTable(owner, entityDef) end) then return nil end
     if not IsValid(e) then return nil end
-    if e.RestoreNetworkVars then e:RestoreNetworkVars(def.DT) end
-    if e.OnDuplicated then e:OnDuplicated(def) end
-    e.BoneMods = table.Copy(def.BoneMods)
-    e.EntityMods = table.Copy(def.EntityMods)
-    e.PhysicsObjects = table.Copy(def.PhysicsObjects)
+    if e.RestoreNetworkVars then e:RestoreNetworkVars(entityDef.DT) end
+    if e.OnDuplicated then e:OnDuplicated(entityDef) end
+    e.BoneMods = table.Copy(entityDef.BoneMods)
+    e.EntityMods = table.Copy(entityDef.EntityMods)
+    e.PhysicsObjects = table.Copy(entityDef.PhysicsObjects)
     return e
 end
 
@@ -879,8 +882,8 @@ local function holdStill(ent)
 end
 
 -- The saved frozen state, once everything exists: unfrozen objects move again.
-local function letGo(ent, def)
-    local physics = Snapshot.Bones(def)
+local function letGo(ent, entityDef)
+    local physics = Snapshot.Bones(entityDef)
     for i = 0, ent:GetPhysicsObjectCount() - 1 do
         local phys, saved = ent:GetPhysicsObjectNum(i), physics[i] or physics[tostring(i)]
         if IsValid(phys) and not (istable(saved) and saved.Frozen) then
@@ -969,13 +972,13 @@ function Snapshot.RestoreBatched(snap, ply, opts, ctx, onDone)
             local index = indexes[at]
             if not index then break end
             at = at + 1
-            local def = st.paste[index]
-            local e = createOne(owner, def)
+            local entityDef = st.paste[index]
+            local e = createOne(owner, entityDef)
             -- Some factories create nothing without a player (Glide), as in pasteAll.
-            if not e and not st.limits and IsValid(ply) then e = createOne(ply, def) end
+            if not e and not st.limits and IsValid(ply) then e = createOne(ply, entityDef) end
             if e then
                 holdStill(e)
-                e.RareloadID = Snapshot.DefID(def)
+                e.RareloadID = Snapshot.DefID(entityDef)
                 created[index] = e
             end
         end
@@ -1057,8 +1060,8 @@ end
 
 function Snapshot.Summary(snap, noun)
     local counts, total = {}, 0
-    for _, def in pairs(snap.Entities or {}) do
-        counts[def.Class or "?"] = (counts[def.Class or "?"] or 0) + 1
+    for _, entityDef in pairs(snap.Entities or {}) do
+        counts[entityDef.Class or "?"] = (counts[entityDef.Class or "?"] or 0) + 1
         total = total + 1
     end
     local classes = table.GetKeys(counts)

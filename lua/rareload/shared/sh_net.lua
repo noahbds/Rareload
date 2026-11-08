@@ -70,15 +70,15 @@ if SERVER then
     local lastCall = Net._state.lastCall -- ply -> op -> CurTime of last accepted call
     local nextId = Net._state.nextId or 0
 
-    -- `def` = { priv?, rate?, args? (schema), fn(ply, args) }.
+    -- `handlerDef` = { priv?, rate?, args? (schema), fn(ply, args) }.
     -- The same file registering again is a Lua auto-refresh of that file, not a duplicate.
-    function Net.Handle(op, def)
+    function Net.Handle(op, handlerDef)
         local prev = handlers[op]
-        def.gen, def.src = RARELOAD.loadGen, debug.getinfo(2, "S").short_src
-        if prev and prev.gen == def.gen and prev.src ~= def.src then
+        handlerDef.gen, handlerDef.src = RARELOAD.loadGen, debug.getinfo(2, "S").short_src
+        if prev and prev.gen == handlerDef.gen and prev.src ~= handlerDef.src then
             error("[Rareload] net opcode registered twice: " .. op, 2) -- L31
         end
-        handlers[op] = def
+        handlers[op] = handlerDef
     end
 
     local function enqueue(ply, topic, key, chunks, urgent)
@@ -194,13 +194,13 @@ if SERVER then
 
     -- Uploads: a client sends a payload too big for one request (an exported save) as compressed
     -- parts. One upload per player at a time; a new one replaces an unfinished one.
-    -- def = { priv?, maxBytes() -> compressed bytes allowed, fn(ply, text) }
+    -- handlerDef = { priv?, maxBytes() -> compressed bytes allowed, fn(ply, text) }
     Net._uploadHandlers = Net._uploadHandlers or {}
     local uploadHandlers = Net._uploadHandlers
     local uploads = weak()
 
-    function Net.HandleUpload(op, def)
-        uploadHandlers[op] = def
+    function Net.HandleUpload(op, handlerDef)
+        uploadHandlers[op] = handlerDef
     end
 
     local function refuseUpload(ply, why)

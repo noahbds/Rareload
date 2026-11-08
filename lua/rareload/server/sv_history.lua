@@ -406,28 +406,28 @@ end
 
 -- What the inspector, the timeline preview and the world display show about one saved object.
 -- `snap` gives the NPC AI state and vehicle runtime kept next to the duplicator data.
-local function objectInfo(def, kind, snap)
+local function objectInfo(entityDef, kind, snap)
     local Snapshot = RARELOAD.Snapshot
-    local mods, rl, bones = Snapshot.Mods(def), Snapshot.Rareload(def), Snapshot.Bones(def)
+    local mods, rl, bones = Snapshot.Mods(entityDef), Snapshot.Rareload(entityDef), Snapshot.Bones(entityDef)
     local phys = bones[0] or bones["0"] or {}
-    local id = RARELOAD.Snapshot.DefID(def)
+    local id = RARELOAD.Snapshot.DefID(entityDef)
     local runtime, ai = byObjectId(snap.runtime, id), byObjectId(snap.ai, id)
     return {
         id = id,
         num = rl.num,   -- kept for life, shown after the name when another object shares it
         name = rl.name, -- the player's own name for it
         kind = kind,
-        class = def.Class,
-        model = def.Model,
-        skin = def.Skin,
-        pos = isvector(def.Pos) and RARELOAD.Util.Vec(def.Pos) or nil,
-        ang = isangle(def.Angle) and RARELOAD.Util.Ang(def.Angle) or nil,
+        class = entityDef.Class,
+        model = entityDef.Model,
+        skin = entityDef.Skin,
+        pos = isvector(entityDef.Pos) and RARELOAD.Util.Vec(entityDef.Pos) or nil,
+        ang = isangle(entityDef.Angle) and RARELOAD.Util.Ang(entityDef.Angle) or nil,
         frozen = phys.Frozen or nil,
         nograv = phys.NoGrav or nil,
         hp = rl.hp,
         maxHp = (tonumber(rl.hp) or 0) > 0 and rl.maxHp or nil,
-        scale = def.ModelScale,
-        bodygroups = def.BodyG,
+        scale = entityDef.ModelScale,
+        bodygroups = entityDef.BodyG,
         material = istable(mods.material) and mods.material.MaterialOverride or nil,
         color = istable(mods.colour) and mods.colour.Color or nil, -- tagged { __color = { r, g, b, a } }
         base = runtime and runtime.adapter,
@@ -437,12 +437,12 @@ local function objectInfo(def, kind, snap)
     }
 end
 
--- Calls fn(def, kind, snap) for every saved object of an entry until fn returns a value.
+-- Calls fn(entityDef, kind, snap) for every saved object of an entry until fn returns a value.
 local function eachObject(entry, fn)
     for _, kind in ipairs(WORLD_KINDS) do
         local snap = entry and RARELOAD.Pipeline.Payload(entry.data[kind])
-        for _, def in pairs(snap and snap.Entities or {}) do
-            local r = fn(def, kind, snap)
+        for _, entityDef in pairs(snap and snap.Entities or {}) do
+            local r = fn(entityDef, kind, snap)
             if r ~= nil then return r end
         end
     end
@@ -451,7 +451,7 @@ end
 -- Every saved object of an entry.
 function History.ObjectsOf(entry)
     local out = {}
-    eachObject(entry, function(def, kind, snap) out[#out + 1] = objectInfo(def, kind, snap) end)
+    eachObject(entry, function(entityDef, kind, snap) out[#out + 1] = objectInfo(entityDef, kind, snap) end)
     return out
 end
 
@@ -477,11 +477,12 @@ end
 local function objectConstraints(entry, objectId)
     local DefID = RARELOAD.Snapshot.DefID
     local me, objects = tostring(objectId), {}
-    eachObject(entry, function(def)
-        local id = DefID(def)
+    eachObject(entry, function(entityDef)
+        local id = DefID(entityDef)
         if id then
-            local rl = def.EntityMods.rareload
-            objects[tostring(id)] = { id = id, class = def.Class, model = def.Model, num = rl.num, name = rl.name }
+            local rl = entityDef.EntityMods.rareload
+            objects[tostring(id)] = { id = id, class = entityDef.Class, model = entityDef.Model, num = rl.num,
+                name = rl.name }
         end
     end)
 
@@ -516,8 +517,8 @@ local function objectConstraints(entry, objectId)
             if istable(c) and c.Type and istable(c.Entity) then
                 local ids, known = {}, true
                 for i, e in pairs(c.Entity) do
-                    local def = snap.Entities[e.Index] or snap.Entities[tostring(e.Index)]
-                    ids[i] = e.World and "world" or def and DefID(def)
+                    local entityDef = snap.Entities[e.Index] or snap.Entities[tostring(e.Index)]
+                    ids[i] = e.World and "world" or entityDef and DefID(entityDef)
                     known = known and ids[i] ~= nil
                 end
                 if known then add(c, ids) end
@@ -530,10 +531,10 @@ end
 
 -- The full saved definition of one object, with its NPC AI state and vehicle runtime, or nil.
 function History.ObjectDetail(entry, objectId)
-    return eachObject(entry, function(def, _, snap)
-        if RARELOAD.Snapshot.DefID(def) == objectId then
+    return eachObject(entry, function(entityDef, _, snap)
+        if RARELOAD.Snapshot.DefID(entityDef) == objectId then
             return {
-                def = def,
+                def = entityDef,
                 constraints = objectConstraints(entry, objectId),
                 ai = byObjectId(snap.ai, objectId),
                 runtime = byObjectId(snap.runtime, objectId),
@@ -549,17 +550,17 @@ end
 
 -- Pure (unit-tested): an edit may only change keys the object already has, to a value of the same
 -- type, and never its class or model unless the editor is a full admin (S6).
-function History.ValidateEdit(def, edit, isAdmin)
+function History.ValidateEdit(entityDef, edit, isAdmin)
     if not istable(edit) then return false, "the edit is not a table" end
     for k, v in pairs(edit) do
-        if def[k] == nil then return false, "unknown key " .. tostring(k) end
-        if type(def[k]) ~= type(v) then return false, "wrong type for " .. tostring(k) end
+        if entityDef[k] == nil then return false, "unknown key " .. tostring(k) end
+        if type(entityDef[k]) ~= type(v) then return false, "wrong type for " .. tostring(k) end
         if (k == "Class" or k == "Model") and not isAdmin then return false, k .. " needs rareload_admin" end
     end
     return true
 end
 
--- Applies `change(def, snap, index)` to one object of an entry. Saved data is never modified in
+-- Applies `change(entityDef, snap, index)` to one object of an entry. Saved data is never modified in
 -- place: the snapshot is copied, changed, and stored as a new blob (§16.3).
 local function changeObject(ply, entryId, objectId, change)
     local d = History.Doc(ply)
@@ -567,8 +568,8 @@ local function changeObject(ply, entryId, objectId, change)
     if not entry then return false, "no such save" end
     for _, kind in ipairs(WORLD_KINDS) do
         local snap = RARELOAD.Pipeline.Payload(entry.data[kind])
-        for index, def in pairs(snap and snap.Entities or {}) do
-            if RARELOAD.Snapshot.DefID(def) == objectId then
+        for index, entityDef in pairs(snap and snap.Entities or {}) do
+            if RARELOAD.Snapshot.DefID(entityDef) == objectId then
                 local copy = util.JSONToTable(util.TableToJSON(snap), true)
                 local ok, err = change(copy.Entities[index], copy, index)
                 if not ok then return false, err end
@@ -591,16 +592,16 @@ local function deleteObjects(ply, entryId, ids)
     for _, kind in ipairs(WORLD_KINDS) do
         local snap = RARELOAD.Pipeline.Payload(entry.data[kind])
         local hit = false
-        for _, def in pairs(snap and snap.Entities or {}) do
-            if ids[RARELOAD.Snapshot.DefID(def)] then
+        for _, entityDef in pairs(snap and snap.Entities or {}) do
+            if ids[RARELOAD.Snapshot.DefID(entityDef)] then
                 hit = true
                 break
             end
         end
         if hit then
             local copy = util.JSONToTable(util.TableToJSON(snap), true)
-            for index, def in pairs(copy.Entities) do
-                if ids[RARELOAD.Snapshot.DefID(def)] then
+            for index, entityDef in pairs(copy.Entities) do
+                if ids[RARELOAD.Snapshot.DefID(entityDef)] then
                     copy.Entities[index] = nil
                     removed = removed + 1
                 end
@@ -625,8 +626,8 @@ end
 function History.FlagObject(ply, entryId, objectId, flag, value)
     local field = ({ frozen = "Frozen", nogravity = "NoGrav" })[flag]
     if not field then return false, "unknown flag" end
-    return changeObject(ply, entryId, objectId, function(def)
-        for _, phys in pairs(RARELOAD.Snapshot.Bones(def)) do phys[field] = value or nil end
+    return changeObject(ply, entryId, objectId, function(entityDef)
+        for _, phys in pairs(RARELOAD.Snapshot.Bones(entityDef)) do phys[field] = value or nil end
         return true
     end)
 end
@@ -636,8 +637,8 @@ end
 function History.RenameObject(ply, entryId, objectId, name)
     name = string.Trim(name)
     name = name ~= "" and name or nil
-    local ok, err = changeObject(ply, entryId, objectId, function(def)
-        def.EntityMods.rareload.name = name
+    local ok, err = changeObject(ply, entryId, objectId, function(entityDef)
+        entityDef.EntityMods.rareload.name = name
         return true
     end)
     if not ok then return false, err end
@@ -648,10 +649,10 @@ function History.RenameObject(ply, entryId, objectId, name)
 end
 
 function History.EditObject(ply, entryId, objectId, edit)
-    return changeObject(ply, entryId, objectId, function(def)
-        local ok, err = History.ValidateEdit(def, edit, RARELOAD.Can(ply, "rareload_admin"))
+    return changeObject(ply, entryId, objectId, function(entityDef)
+        local ok, err = History.ValidateEdit(entityDef, edit, RARELOAD.Can(ply, "rareload_admin"))
         if not ok then return false, err end
-        for k, v in pairs(edit) do def[k] = v end
+        for k, v in pairs(edit) do entityDef[k] = v end
         return true
     end)
 end
@@ -670,8 +671,8 @@ local function factsOf(value)
     if istable(snap) then
         facts.count = table.Count(snap.Entities or {})
         local seatId = istable(snap.seat) and snap.seat.vehicle
-        for _, def in pairs(seatId and snap.Entities or {}) do
-            if RARELOAD.Snapshot.DefID(def) == seatId then facts.seatClass = def.Class end
+        for _, entityDef in pairs(seatId and snap.Entities or {}) do
+            if RARELOAD.Snapshot.DefID(entityDef) == seatId then facts.seatClass = entityDef.Class end
         end
     end
     if hash then snapFacts[hash] = facts end
@@ -714,8 +715,8 @@ end
 function History.LightData(entry)
     local light = {}
     for id, value in pairs(entry and entry.data or {}) do
-        local def = RARELOAD.Pipeline.Def(id)
-        if def and not def.heavy and def.phase ~= "world" then light[id] = value end
+        local moduleDef = RARELOAD.Pipeline.Def(id)
+        if moduleDef and not moduleDef.heavy and moduleDef.phase ~= "world" then light[id] = value end
     end
     return light
 end
@@ -892,10 +893,10 @@ RARELOAD.Net.Handle("object.get", {
     rate = 0.3,
     args = { entryId = "uint", objectId = "string:32" },
     fn = function(ply, a)
-        local def = History.ObjectDef(ply, a.entryId, a.objectId)
-        if def then
+        local entityDef = History.ObjectDef(ply, a.entryId, a.objectId)
+        if entityDef then
             RARELOAD.Net.Push(ply, "object.def",
-                { entryId = a.entryId, objectId = a.objectId, json = util.TableToJSON(def, true) })
+                { entryId = a.entryId, objectId = a.objectId, json = util.TableToJSON(entityDef, true) })
         end
     end,
 })

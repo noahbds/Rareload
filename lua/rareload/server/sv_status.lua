@@ -60,8 +60,9 @@ function Status.Lines()
     add("  Navmesh: %s", navmesh.IsLoaded() and "loaded" or "missing (the anti-stuck navmesh method can't run)")
 
     local changed, locked = 0, 0
-    for key, def in pairs(RARELOAD.Settings) do
-        if def.scope ~= "client" and def.cv:GetString() ~= def.cv:GetDefault() then changed = changed + 1 end
+    for key, settingDef in pairs(RARELOAD.Settings) do
+        local cv = settingDef.cv
+        if settingDef.scope ~= "client" and cv:GetString() ~= cv:GetDefault() then changed = changed + 1 end
         if RARELOAD.IsLocked(key) then locked = locked + 1 end
     end
     add("  Settings: %d changed from the default, %d player settings locked", changed, locked)

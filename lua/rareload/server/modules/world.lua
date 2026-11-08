@@ -216,15 +216,15 @@ local function removeExtra(entry, list, entities)
     end
     for _, kind in ipairs(WORLD_KINDS) do
         local snap = Payload(entry.data[kind])
-        for _, def in pairs(istable(snap) and snap.Entities or {}) do
-            local id = DefID(def)
+        for _, constraintDef in pairs(istable(snap) and snap.Entities or {}) do
+            local id = DefID(constraintDef)
             if id then mine[tostring(id)] = true end
         end
         for _, c in pairs(istable(snap) and snap.Constraints or {}) do
             local ids, known = {}, istable(c) and c.Type and istable(c.Entity)
             for i, e in pairs(known and c.Entity or {}) do
-                local def = snap.Entities[e.Index] or snap.Entities[tostring(e.Index)]
-                ids[i] = e.World and "world" or def and DefID(def)
+                local constraintDef = snap.Entities[e.Index] or snap.Entities[tostring(e.Index)]
+                ids[i] = e.World and "world" or constraintDef and DefID(constraintDef)
                 known = known and ids[i] ~= nil
             end
             if known then

@@ -74,9 +74,9 @@ function Share.Rekey(data)
     for kind in pairs(SNAPSHOT_KINDS) do
         local snap = data[kind]
         if istable(snap) then
-            for _, def in pairs(snap.Entities) do
-                local id = DefID(def)
-                if id then def.EntityMods.rareload.id = remap(id) end
+            for _, entityDef in pairs(snap.Entities) do
+                local id = DefID(entityDef)
+                if id then entityDef.EntityMods.rareload.id = remap(id) end
             end
             for _, field in ipairs({ "ai", "runtime" }) do
                 if istable(snap[field]) then
@@ -135,8 +135,8 @@ local function checkModule(id, value)
     end
     if SNAPSHOT_KINDS[id] then
         if not istable(value) or not istable(value.Entities) then return false, "not a snapshot" end
-        for _, def in pairs(value.Entities) do
-            if not istable(def) or not isstring(def.Class) then return false, "an object has no class" end
+        for _, entityDef in pairs(value.Entities) do
+            if not istable(entityDef) or not isstring(entityDef.Class) then return false, "an object has no class" end
         end
     elseif id == "constraints" then
         if not istable(value) then return false, "not a list" end
@@ -173,9 +173,9 @@ function Share.Import(ply, doc, opts)
     local sameMap = doc.map == game.GetMap()
     local data, dropped, objects = {}, {}, 0
     for id, value in pairs(doc.entry.data) do
-        local def = RARELOAD.Pipeline.Def(id)
-        local ok, why = def ~= nil and def.load == nil, "unknown part"
-        if ok and not sameMap and (def.phase == "world" or id == "transform") then
+        local moduleDef = RARELOAD.Pipeline.Def(id)
+        local ok, why = moduleDef ~= nil and moduleDef.load == nil, "unknown part"
+        if ok and not sameMap and (moduleDef.phase == "world" or id == "transform") then
             ok, why = false, "made on " .. tostring(doc.map)
         end
         if ok then ok, why = checkModule(id, value) end
@@ -196,8 +196,8 @@ function Share.Import(ply, doc, opts)
     if not (sameMap and own) then Share.Rekey(data) end
     if not own and istable(data.weaponState) then data.weaponState.owned = nil end
     for id, value in pairs(data) do
-        local def = RARELOAD.Pipeline.Def(id)
-        if def.heavy then data[id] = { ["$blob"] = RARELOAD.Store.BlobPut(value) } end
+        local moduleDef = RARELOAD.Pipeline.Def(id)
+        if moduleDef.heavy then data[id] = { ["$blob"] = RARELOAD.Store.BlobPut(value) } end
     end
 
     local note = isstring(doc.entry.note) and string.Trim(doc.entry.note) or ""

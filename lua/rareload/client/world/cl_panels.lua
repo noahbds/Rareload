@@ -285,10 +285,10 @@ local function objectCats(rec)
     if o.parts then add("visual", L("field.parts"), #o.parts) end
 
     if detail then
-        local def = detail.def or {}
-        local physics = istable(def.PhysicsObjects) and def.PhysicsObjects or {}
+        local entityDef = detail.def or {}
+        local physics = istable(entityDef.PhysicsObjects) and entityDef.PhysicsObjects or {}
         add("physics", L("field.bodies"), table.Count(physics))
-        add("physics", L("field.collision_group"), def.ColGroup)
+        add("physics", L("field.collision_group"), entityDef.ColGroup)
         local n = 0
         for bone, p in ordered(physics) do
             n = n + 1
@@ -315,15 +315,15 @@ local function objectCats(rec)
             add("ai", L("field.squad"), detail.ai.squad)
             add("ai", L("field.enemy"), detail.ai.enemy)
         end
-        addAll("network", def.DT)
+        addAll("network", entityDef.DT)
         local shown = 0
-        for k, v in ordered(def) do
+        for k, v in ordered(entityDef) do
             if not KNOWN_KEYS[k] and shown < 60 then
                 add("data", humanize(k), summarize(v))
                 shown = shown + 1
             end
         end
-        for name, data in ordered(istable(def.EntityMods) and def.EntityMods or {}) do
+        for name, data in ordered(istable(entityDef.EntityMods) and entityDef.EntityMods or {}) do
             add("mods", name, summarize(data))
         end
     elseif not rec.detailFailed then

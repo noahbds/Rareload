@@ -37,8 +37,8 @@ local function capture(ply)
     if not ok or not entry then return nil end
     local data = {}
     for id, value in pairs(entry.data) do
-        local def = Pipeline.Def(id)
-        data[id] = def and def.heavy and { ["$blob"] = RARELOAD.Store.BlobPut(value) } or value
+        local moduleDef = Pipeline.Def(id)
+        data[id] = moduleDef and moduleDef.heavy and { ["$blob"] = RARELOAD.Store.BlobPut(value) } or value
     end
     return next(data) and data or nil
 end

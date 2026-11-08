@@ -214,11 +214,12 @@ RARELOAD.Module({
 
         -- Vehicles still on the map (a respawn on the same map) are reseated too (L13).
         local list = {}
-        local function add(ent, def)
+        local function add(ent, entityDef)
             local adapter = Vehicles.AdapterFor(ent)
             if not adapter then return end
             local id = ent.RareloadID
-            local p0 = def and def.PhysicsObjects and (def.PhysicsObjects[0] or def.PhysicsObjects["0"])
+            local bones = entityDef and entityDef.PhysicsObjects
+            local p0 = bones and (bones[0] or bones["0"])
             list[#list + 1] = {
                 -- An all-digit ID comes back from JSON as a number key.
                 ent = ent,
@@ -227,11 +228,11 @@ RARELOAD.Module({
                 -- Not when respawning where they died (D4): the player stays at that spot.
                 seat = not ctx.deathSpot and snap.seat and snap.seat.vehicle == id
                     and snap.seat.seat or nil,
-                pos = def and def.Pos,
-                ang = def and def.Angle,
+                pos = entityDef and entityDef.Pos,
+                ang = entityDef and entityDef.Angle,
                 frozen = p0 and p0.Frozen,
-                rl = def and istable(def.EntityMods) and def.EntityMods.rareload or nil,
-                dt = def and def.DT,
+                rl = entityDef and istable(entityDef.EntityMods) and entityDef.EntityMods.rareload or nil,
+                dt = entityDef and entityDef.DT,
                 motion = RARELOAD.Get(ply, "keepMotion"),
             }
         end

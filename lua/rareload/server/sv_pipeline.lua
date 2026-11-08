@@ -10,7 +10,7 @@ Pipeline._queue = Pipeline._queue or {}
 local defs = Pipeline._defs
 local ordered
 
--- def = { id, phase, after?, setting?, privSave?, privRestore?, heavy?, save(ply, ctx), restore(ply, data, ctx),
+-- moduleDef = { id, phase, after?, setting?, privSave?, privRestore?, heavy?, save(ply, ctx), restore(ply, data, ctx),
 --         spawn? = { hook, fn(ply, data, ctx) -> true when handled }, summary?(data) -> string,
 --         load?(ply) -> data, replaces? = { moduleId, … } }
 -- setting and the privileges may be one name or a list (all of them are needed).
@@ -22,8 +22,8 @@ local ordered
 -- skipOnDeath: not restored on a respawn after a death (the scene: map, time, weather, world settings).
 -- empty: what an exact restore uses when the save has no data for this module (a world module whose
 --   objects must all be removed).
-function RARELOAD.Module(def)
-    defs[def.id] = def
+function RARELOAD.Module(moduleDef)
+    defs[moduleDef.id] = moduleDef
     ordered = nil
 end
 
@@ -34,11 +34,11 @@ function Pipeline.Order(list)
     for i, p in ipairs(Pipeline.PHASES) do phaseIndex[p] = i end
 
     local groups = {}
-    for _, def in ipairs(list) do
-        local i = phaseIndex[def.phase]
-            or error("[Rareload] module " .. def.id .. " has unknown phase " .. tostring(def.phase))
+    for _, moduleDef in ipairs(list) do
+        local i = phaseIndex[moduleDef.phase]
+            or error("[Rareload] module " .. moduleDef.id .. " has unknown phase " .. tostring(moduleDef.phase))
         groups[i] = groups[i] or {}
-        table.insert(groups[i], def)
+        table.insert(groups[i], moduleDef)
     end
 
     local out = {}
@@ -46,19 +46,21 @@ function Pipeline.Order(list)
         local group = groups[i] or {}
         table.sort(group, function(a, b) return a.id < b.id end)
         local byId, state = {}, {}
-        for _, def in ipairs(group) do byId[def.id] = def end
+        for _, moduleDef in ipairs(group) do byId[moduleDef.id] = moduleDef end
 
-        local function visit(def)
-            if state[def.id] == "done" then return end
-            if state[def.id] == "visiting" then error("[Rareload] module dependency cycle at " .. def.id) end
-            state[def.id] = "visiting"
-            for _, dep in ipairs(def.after or {}) do
+        local function visit(moduleDef)
+            if state[moduleDef.id] == "done" then return end
+            if state[moduleDef.id] == "visiting" then
+                error("[Rareload] module dependency cycle at " .. moduleDef.id)
+            end
+            state[moduleDef.id] = "visiting"
+            for _, dep in ipairs(moduleDef.after or {}) do
                 if byId[dep] then visit(byId[dep]) end
             end
-            state[def.id] = "done"
-            out[#out + 1] = def
+            state[moduleDef.id] = "done"
+            out[#out + 1] = moduleDef
         end
-        for _, def in ipairs(group) do visit(def) end
+        for _, moduleDef in ipairs(group) do visit(moduleDef) end
     end
     return out
 end
@@ -66,7 +68,7 @@ end
 local function order()
     if not ordered then
         local list = {}
-        for _, def in pairs(defs) do list[#list + 1] = def end
+        for _, moduleDef in pairs(defs) do list[#list + 1] = moduleDef end
         ordered = Pipeline.Order(list)
     end
     return ordered
@@ -127,11 +129,11 @@ function Pipeline.Allowed(ply, saving, what, priv, reason)
 end
 
 -- A module the player turned off is skipped without a reason; one they may not use comes with one.
-local function allowed(def, ply, saving, reason)
-    for _, s in ipairs(istable(def.setting) and def.setting or { def.setting }) do
+local function allowed(moduleDef, ply, saving, reason)
+    for _, s in ipairs(istable(moduleDef.setting) and moduleDef.setting or { moduleDef.setting }) do
         if not RARELOAD.Get(ply, s) then return false end
     end
-    return Pipeline.Allowed(ply, saving, def.id, saving and def.privSave or def.privRestore, reason)
+    return Pipeline.Allowed(ply, saving, moduleDef.id, saving and moduleDef.privSave or moduleDef.privRestore, reason)
 end
 
 -- Heavy data is stored as { ["$blob"] = hash } (§16.2); this returns the real data either way.
@@ -210,26 +212,26 @@ function Pipeline.Save(ply, opts)
         for id, value in pairs(prev.data) do data[id] = value end
     end
 
-    for _, def in ipairs(order()) do
-        if not opts.only or opts.only[def.id] then
-            local kept = opts.keepMissing and prev and prev.data[def.id] or nil
-            data[def.id] = nil
-            local may, why = allowed(def, ply, true, opts.reason)
-            if why then session:step("warn", def.id, "not saved: " .. why) end
+    for _, moduleDef in ipairs(order()) do
+        if not opts.only or opts.only[moduleDef.id] then
+            local kept = opts.keepMissing and prev and prev.data[moduleDef.id] or nil
+            data[moduleDef.id] = nil
+            local may, why = allowed(moduleDef, ply, true, opts.reason)
+            if why then session:step("warn", moduleDef.id, "not saved: " .. why) end
             if may then
                 local out
-                local ok, err, ms = run(function() out = def.save(ply, ctx) end)
+                local ok, err, ms = run(function() out = moduleDef.save(ply, ctx) end)
                 if not ok then
-                    out = prev and Pipeline.Payload(prev.data[def.id])   -- fail soft: keep the last good value
+                    out = prev and Pipeline.Payload(prev.data[moduleDef.id])   -- fail soft: keep the last good value
                 end
                 local detail = not ok and err or out == nil and "nothing to save"
-                    or def.summary and def.summary(out) or ""
-                session:step(ok and "ok" or "fail", def.id, detail, ms)
-                if out ~= nil and def.heavy and not opts.captureOnly then
+                    or moduleDef.summary and moduleDef.summary(out) or ""
+                session:step(ok and "ok" or "fail", moduleDef.id, detail, ms)
+                if out ~= nil and moduleDef.heavy and not opts.captureOnly then
                     out = { ["$blob"] = RARELOAD.Store.BlobPut(out) }
                 end
                 if out == nil then out = kept end
-                data[def.id] = out
+                data[moduleDef.id] = out
             end
         end
     end
@@ -344,42 +346,42 @@ function Ctx:async(label)
 end
 
 -- What a `load` module restores from, read once per restore.
-local function loaded(ctx, def)
+local function loaded(ctx, moduleDef)
     ctx.loaded = ctx.loaded or {}
-    if ctx.loaded[def.id] == nil then ctx.loaded[def.id] = def.load(ctx.ply) or false end
-    return ctx.loaded[def.id] or nil
+    if ctx.loaded[moduleDef.id] == nil then ctx.loaded[moduleDef.id] = moduleDef.load(ctx.ply) or false end
+    return ctx.loaded[moduleDef.id] or nil
 end
 
-local function external(ctx, def)
-    return def.load ~= nil and not istable(ctx.entry.data[def.id])
+local function external(ctx, moduleDef)
+    return moduleDef.load ~= nil and not istable(ctx.entry.data[moduleDef.id])
 end
 
 -- An exact restore runs a world module that the save has nothing for, so it removes those objects.
-local function emptied(ctx, def)
-    return ctx.exact and def.empty ~= nil and ctx.entry.data[def.id] == nil
+local function emptied(ctx, moduleDef)
+    return ctx.exact and moduleDef.empty ~= nil and ctx.entry.data[moduleDef.id] == nil
 end
 
-local function dataOf(ctx, def)
-    if external(ctx, def) then return loaded(ctx, def) end
-    if emptied(ctx, def) then return def.empty() end
-    return Pipeline.Payload(ctx.entry.data[def.id])
+local function dataOf(ctx, moduleDef)
+    if external(ctx, moduleDef) then return loaded(ctx, moduleDef) end
+    if emptied(ctx, moduleDef) then return moduleDef.empty() end
+    return Pipeline.Payload(ctx.entry.data[moduleDef.id])
 end
 
 -- Returns false, plus why when the module is in the save but the player may not get it back.
-local function wants(ctx, def)
-    if ctx.skipWorld and def.phase == "world" then return false end
-    if ctx.died and def.skipOnDeath then return false end
-    if ctx.only and not ctx.only[def.id] then return false end
-    if external(ctx, def) then
+local function wants(ctx, moduleDef)
+    if ctx.skipWorld and moduleDef.phase == "world" then return false end
+    if ctx.died and moduleDef.skipOnDeath then return false end
+    if ctx.only and not ctx.only[moduleDef.id] then return false end
+    if external(ctx, moduleDef) then
         -- Not part of this save: a player who may not use it simply doesn't get it, without a warning.
-        return (allowed(def, ctx.ply, false, ctx.reason)) and loaded(ctx, def) ~= nil
+        return (allowed(moduleDef, ctx.ply, false, ctx.reason)) and loaded(ctx, moduleDef) ~= nil
     end
-    if ctx.entry.data[def.id] == nil and not emptied(ctx, def) then return false end
-    return allowed(def, ctx.ply, false, ctx.reason)
+    if ctx.entry.data[moduleDef.id] == nil and not emptied(ctx, moduleDef) then return false end
+    return allowed(moduleDef, ctx.ply, false, ctx.reason)
 end
 
--- The id of the module that takes the place of `def` in this restore, if any (def.replaces).
-local function replacedBy(ctx, def)
+-- The id of the module that takes the place of `moduleDef` in this restore, if any (moduleDef.replaces).
+local function replacedBy(ctx, moduleDef)
     if not ctx.replaced then
         ctx.replaced = {}
         for _, other in ipairs(order()) do
@@ -388,14 +390,16 @@ local function replacedBy(ctx, def)
             end
         end
     end
-    return ctx.replaced[def.id]
+    return ctx.replaced[moduleDef.id]
 end
 
 -- Whether a `load` module would restore something for this player (used when they have no save on
 -- this map, so a spawn still gets e.g. their global inventory).
 function Pipeline.Loads(ply, reason)
-    for _, def in ipairs(order()) do
-        if def.load and (allowed(def, ply, false, reason)) and def.load(ply) ~= nil then return true end
+    for _, moduleDef in ipairs(order()) do
+        if moduleDef.load and (allowed(moduleDef, ply, false, reason)) and moduleDef.load(ply) ~= nil then
+            return true
+        end
     end
     return false
 end
@@ -405,28 +409,28 @@ runFrom = function(ctx, i)
     local list = order()
     while i <= #list do
         if not ctx:isCurrent() then return end
-        local def = list[i]
+        local moduleDef = list[i]
         i = i + 1
         local may, why = false, nil
-        local by = replacedBy(ctx, def)
+        local by = replacedBy(ctx, moduleDef)
         if by then
-            if ctx.entry.data[def.id] ~= nil then ctx:step("ok", def.id, "replaced by " .. by) end
+            if ctx.entry.data[moduleDef.id] ~= nil then ctx:step("ok", moduleDef.id, "replaced by " .. by) end
         else
-            may, why = wants(ctx, def)
+            may, why = wants(ctx, moduleDef)
         end
-        if why then ctx:deny(def.id, why) end
+        if why then ctx:deny(moduleDef.id, why) end
         if may then
-            local data = dataOf(ctx, def)
+            local data = dataOf(ctx, moduleDef)
             if data == nil then
-                ctx:step("fail", def.id, "saved data is missing")
+                ctx:step("fail", moduleDef.id, "saved data is missing")
             else
                 ctx._waiting, ctx._resumeAt = false, i
-                ctx._current, ctx._result = def.id, nil
-                local ok, err, ms = run(def.restore, ctx.ply, data, ctx)
+                ctx._current, ctx._result = moduleDef.id, nil
+                local ok, err, ms = run(moduleDef.restore, ctx.ply, data, ctx)
                 ctx._current = nil
                 local r = ctx._result
-                local detail = not ok and err or r and r.detail or def.summary and def.summary(data) or ""
-                ctx:step(not ok and "fail" or r and r.status or "ok", def.id, detail, ms)
+                local detail = not ok and err or r and r.detail or moduleDef.summary and moduleDef.summary(data) or ""
+                ctx:step(not ok and "fail" or r and r.status or "ok", moduleDef.id, detail, ms)
                 if ok and ctx._waiting then return end
             end
         end
@@ -475,12 +479,13 @@ function Pipeline.SpawnHook(ply, hookName)
     if not ctx or not ctx:isCurrent() then return false end
 
     local handled = false
-    for _, def in ipairs(order()) do
-        if def.spawn and def.spawn.hook == hookName and not replacedBy(ctx, def) and (wants(ctx, def)) then
+    for _, moduleDef in ipairs(order()) do
+        if moduleDef.spawn and moduleDef.spawn.hook == hookName and not replacedBy(ctx, moduleDef)
+            and (wants(ctx, moduleDef)) then
             local result
-            ProtectedCall(function() result = def.spawn.fn(ply, dataOf(ctx, def), ctx) end)
+            ProtectedCall(function() result = moduleDef.spawn.fn(ply, dataOf(ctx, moduleDef), ctx) end)
             if result then
-                ctx.spawnDone[def.id] = true
+                ctx.spawnDone[moduleDef.id] = true
                 handled = true
             end
         end

@@ -142,11 +142,11 @@ local function drawOverlay(w, h)
 end
 
 local function valueText(f)
-    local def = RARELOAD.Settings[f.key]
+    local settingDef = RARELOAD.Settings[f.key]
     local v = RARELOAD.Get(LocalPlayer(), f.key)
-    if def.type == "bool" then return v and L("ui.on") or L("ui.off"), v end
-    if def.type == "enum" then return L("setting." .. f.key .. "." .. v), v ~= def.values[1] end
-    return string.format(def.type == "float" and "%.1f" or "%d", v) .. (def.unit or ""), nil
+    if settingDef.type == "bool" then return v and L("ui.on") or L("ui.off"), v end
+    if settingDef.type == "enum" then return L("setting." .. f.key .. "." .. v), v ~= settingDef.values[1] end
+    return string.format(settingDef.type == "float" and "%.1f" or "%d", v) .. (settingDef.unit or ""), nil
 end
 
 -- The autosave bar: time since the last autosave against the interval, then "waiting for a change".
