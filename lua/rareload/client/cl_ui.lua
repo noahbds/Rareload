@@ -597,6 +597,14 @@ function UI.Check(parent, label, value, onChange)
 end
 
 -- A setting row with a toggle switch. opts = { tooltip, disabled, note } (note: small right text).
+-- A switch's track and knob (knob 0 = off .. 1 = on), for the windows' and the spawn menu's switches.
+function UI.DrawSwitch(x, y, w, h, knob, trackCol, knobCol)
+    local inset = h / 9
+    draw.RoundedBox(h / 2, x, y, w, h, trackCol)
+    draw.RoundedBox(h / 2 - inset, math.floor(x + inset + (w - h) * knob), y + inset, h - 2 * inset, h - 2 * inset,
+        knobCol)
+end
+
 function UI.Switch(parent, label, value, onChange, opts)
     opts = opts or {}
     local b = vgui.Create("DButton", parent)
@@ -613,8 +621,7 @@ function UI.Switch(parent, label, value, onChange, opts)
         local sw, sh = sc(34), sc(18)
         local sx, sy = w - sw - sc(8), (h - sh) / 2
         local on = self:IsEnabled() and C.ok or C.textOff
-        draw.RoundedBox(sh / 2, sx, sy, sw, sh, UI.Mix(C.line, on, self.knob))
-        draw.RoundedBox(sh / 2, sx + sc(2) + (sw - sh) * self.knob, sy + sc(2), sh - sc(4), sh - sc(4), color_white)
+        UI.DrawSwitch(sx, sy, sw, sh, self.knob, UI.Mix(C.line, on, self.knob), color_white)
         local textCol = self:IsEnabled() and C.text or C.textOff
         local right = sx - sc(8)
         if opts.note then
@@ -631,55 +638,6 @@ function UI.Switch(parent, label, value, onChange, opts)
         onChange(self.value)
     end
     return b
-end
-
--- A compact slider row. Sends the value once dragging stops.
-function UI.Slider(parent, label, value, min, max, decimals, suffix, onChange, opts)
-    opts = opts or {}
-    local p = vgui.Create("DButton", parent)
-    p:SetText("")
-    p:SetTall(sc(44))
-    p.value = value
-    if opts.tooltip then p:SetTooltip(opts.tooltip) end
-    p:SetEnabled(not opts.disabled)
-    local function fmt(v) return string.format("%." .. decimals .. "f", v) .. (suffix or "") end
-    local function track(w) return sc(8), w - sc(16) end
-    p.Paint = function(self, w, h)
-        local textCol = self:IsEnabled() and C.text or C.textOff
-        draw.SimpleText(UI.Clip(label, "Rareload.Body", w - sc(90)), "Rareload.Body", sc(8), sc(12), textCol,
-            TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText(fmt(self.value) .. (opts.note and "  " .. opts.note or ""), "Rareload.Small", w - sc(8), sc(12),
-            self.dragging and C.accentHi or C.text2, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
-        local x, tw = track(w)
-        local f = (self.value - min) / (max - min)
-        local y = h - sc(13)
-        draw.RoundedBox(sc(3), x, y - sc(3), tw, sc(6), C.line)
-        draw.RoundedBox(sc(3), x, y - sc(3), tw * f, sc(6), self:IsEnabled() and C.accent or C.textOff)
-        draw.RoundedBox(sc(7), x + tw * f - sc(7), y - sc(7), sc(14), sc(14), color_white)
-    end
-    local function setFromMouse(self)
-        local x, tw = track(self:GetWide())
-        local mx = self:ScreenToLocal(gui.MouseX(), 0)
-        local v = min + math.Clamp((mx - x) / tw, 0, 1) * (max - min)
-        self.value = math.Round(v, decimals)
-    end
-    p.OnMousePressed = function(self, code)
-        if code == MOUSE_RIGHT and self.DoRightClick then return self:DoRightClick() end
-        if code ~= MOUSE_LEFT or not self:IsEnabled() then return end
-        self.dragging = true
-        self:MouseCapture(true)
-        setFromMouse(self)
-    end
-    p.OnMouseReleased = function(self)
-        if not self.dragging then return end
-        self.dragging = false
-        self:MouseCapture(false)
-        onChange(self.value)
-    end
-    p.Think = function(self)
-        if self.dragging then setFromMouse(self) end
-    end
-    return p
 end
 
 -- Label/value rows with dividers. rows() returns { { label, value, color? } }; height follows the rows.

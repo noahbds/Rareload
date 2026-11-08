@@ -189,8 +189,7 @@ local function toggle(parent, label, value, onChange, opts)
         self.knob = anim(self.knob, self.value and 1 or 0)
         local sw, sh = 36, 18
         local sx, sy = w - sw - PAD, math.floor(6 + self.labelH / 2 - sh / 2)
-        draw.RoundedBox(sh / 2, sx, sy, sw, sh, UI.Mix(SWITCH_OFF, opts.disabled and SWITCH_OFF or ACCENT, self.knob))
-        draw.RoundedBox((sh - 4) / 2, math.floor(sx + 2 + (sw - sh) * self.knob), sy + 2, sh - 4, sh - 4,
+        UI.DrawSwitch(sx, sy, sw, sh, self.knob, UI.Mix(SWITCH_OFF, opts.disabled and SWITCH_OFF or ACCENT, self.knob),
             opts.disabled and TEXT2 or color_white)
     end
     row.Press = function(self)
