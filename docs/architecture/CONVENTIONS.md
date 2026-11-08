@@ -24,7 +24,9 @@ The rules the code already follows, written down so they stop drifting. When cod
 ## 3. Naming
 
 - `camelCase` locals and local functions, `PascalCase` public functions (`History.Append`), `SCREAMING_SNAKE` constants (`MAX_REQUEST`).
-- Names say what a thing is, not its type. A parameter that is not used is dropped, or named `_` when a later one is (engine callbacks such as `Paint(self, w, h)` keep their signature). Short names only in a 1–3 line scope (`tr`, `mv`, loop `i`). One short name must not mean two things across the codebase — see `READABILITY_AUDIT.md` §3 (`def`, `d`, `p`).
+- Names say what a thing is, not its type. A parameter that is not used is dropped, or named `_` when a later one is (engine callbacks keep their parameter order: `Paint(self, width, height)`).
+- **No single-letter names**, with exactly these exceptions: `i` / `j` as loop counters, the aliases `L` (translate), `C` (colors) and `D` (the inspector's and timeline's panel table), and `_` for an unused value. That includes `k, v` (`key, value`, or what they are), sort comparators (`left, right`), engine callbacks (`width, height`) and draw coordinates (`posX, posY`). A new name must not shadow a variable of the same name still in use around it.
+- One name must not mean two things across the codebase — see `READABILITY_AUDIT.md` §3 (`def`, `d`, `p`).
 - Keep a single-use local function when it names a real step or a complex condition; inline it only when it just forwards its arguments.
 - Lua operators only: `~=`, `and`, `or`, `not` (no `!=`, `&&`, `//` comments).
 
