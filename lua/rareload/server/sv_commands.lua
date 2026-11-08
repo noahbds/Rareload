@@ -246,8 +246,8 @@ local function offlineTarget(text)
     local lower, found = string.lower(text), {}
     for _, name in ipairs(file.Find("rareload/" .. RARELOAD.Store.MapDir() .. "/*.json", "DATA") or {}) do
         local id = name:match("^(%d+)%.json$")
-        local d = id and RARELOAD.History.Doc(id)
-        if d and d.nick and string.find(string.lower(d.nick), lower, 1, true) then found[#found + 1] = id end
+        local doc = id and RARELOAD.History.Doc(id)
+        if doc and doc.nick and string.find(string.lower(doc.nick), lower, 1, true) then found[#found + 1] = id end
     end
     if #found == 1 then return found[1] end
 end
@@ -818,10 +818,10 @@ local function printLog(reply, count, filter)
     end
     local day
     for _, e in ipairs(events) do
-        local d = os.date("%Y-%m-%d", e.t)
-        if d ~= day then
-            day = d
-            reply("-- " .. d)
+        local date = os.date("%Y-%m-%d", e.t)
+        if date ~= day then
+            day = date
+            reply("-- " .. date)
         end
         reply(string.format("%s %-5s %-9s %s", os.date("%H:%M:%S", e.t), LEVEL_TAGS[e.level] or e.level,
             tostring(e.category), e.text))

@@ -11,8 +11,8 @@ local MAX_NAME = 48
 local cursor = setmetatable({}, { __mode = "k" })
 
 function Checkpoints.List(ply)
-    local d = RARELOAD.History.Doc(ply)
-    return d and d.checkpoints or {}
+    local doc = RARELOAD.History.Doc(ply)
+    return doc and doc.checkpoints or {}
 end
 
 local function push(ply)

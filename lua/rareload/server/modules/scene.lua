@@ -90,17 +90,17 @@ RARELOAD.Module({
         return { mapVersion = game.GetMapVersion(), entities = list }
     end,
 
-    restore = function(_, d, ctx)
-        if d.mapVersion ~= game.GetMapVersion() then
+    restore = function(_, saved, ctx)
+        if saved.mapVersion ~= game.GetMapVersion() then
             return ctx:result("warn", "mapState", "the map was updated since the save; left as it is")
         end
         local live, set, removed, gone = mapEntities(), 0, 0, 0
-        local saved = {}
-        for _, rec in ipairs(istable(d.entities) and d.entities or {}) do
+        local savedById = {}
+        for _, rec in ipairs(istable(saved.entities) and saved.entities or {}) do
             local id = tonumber(rec.id)
-            if id then saved[id] = rec end
+            if id then savedById[id] = rec end
         end
-        for id, rec in pairs(saved) do
+        for id, rec in pairs(savedById) do
             local ent = live[id]
             if IsValid(ent) then
                 applyMapEntity(ent, rec)
@@ -112,7 +112,7 @@ RARELOAD.Module({
         -- Broken or removed in the save, still here now: removed again.
         for id, ent in pairs(live) do
             local class = ent:GetClass()
-            if not saved[id] and (BREAKABLE[class] or PROPS[class]) then
+            if not savedById[id] and (BREAKABLE[class] or PROPS[class]) then
                 ent:Remove()
                 removed = removed + 1
             end
@@ -121,7 +121,7 @@ RARELOAD.Module({
             .. (gone > 0 and ", " .. gone .. " broken since the save can only come back with a map cleanup" or ""))
     end,
 
-    summary = function(d) return #(istable(d.entities) and d.entities or {}) .. " map objects" end,
+    summary = function(saved) return #(istable(saved.entities) and saved.entities or {}) .. " map objects" end,
 })
 
 -- Environment (C10) ----------------------------------------------------------------------------------
@@ -144,11 +144,11 @@ RARELOAD.Module({
     privRestore = "rareload_restore_scene",
 
     save = function()
-        local d = {}
+        local data = {}
         if stormFox() then
             local SF = StormFox2
             local weather = call(SF.Weather.GetCurrent)
-            d.stormfox = {
+            data.stormfox = {
                 time = round(call(SF.Time.Get, true)),
                 paused = call(SF.Time.IsPaused) == true,
                 weather = istable(weather) and weather.Name or nil,
@@ -160,18 +160,18 @@ RARELOAD.Module({
         end
         local sky = skyPaint()
         if IsValid(sky) and isfunction(sky.GetNetworkVars) then
-            d.sky = RARELOAD.Snapshot.Plain(sky:GetNetworkVars())
+            data.sky = RARELOAD.Snapshot.Plain(sky:GetNetworkVars())
         end
-        return next(d) and d or nil
+        return next(data) and data or nil
     end,
 
-    restore = function(_, d, ctx)
+    restore = function(_, saved, ctx)
         local done = {}
-        if istable(d.stormfox) then
+        if istable(saved.stormfox) then
             if not stormFox() then
                 ctx:step("warn", "environment", "StormFox2 is not installed; time and weather left as they are")
             else
-                local SF, s = StormFox2, d.stormfox
+                local SF, s = StormFox2, saved.stormfox
                 if isnumber(s.time) then call(SF.Time.Set, s.time) end
                 if s.paused then call(SF.Time.Pause) else call(SF.Time.Resume) end
                 if isstring(s.weather) then call(SF.Weather.Set, s.weather, s.percent or 1, 0) end
@@ -184,19 +184,19 @@ RARELOAD.Module({
             end
         end
         local sky = skyPaint()
-        if istable(d.sky) and IsValid(sky) and isfunction(sky.RestoreNetworkVars) then
-            pcall(sky.RestoreNetworkVars, sky, RARELOAD.Snapshot.Revive(d.sky))
+        if istable(saved.sky) and IsValid(sky) and isfunction(sky.RestoreNetworkVars) then
+            pcall(sky.RestoreNetworkVars, sky, RARELOAD.Snapshot.Revive(saved.sky))
             done[#done + 1] = "sky"
         end
         if #done > 0 then ctx:result("ok", "environment", table.concat(done, ", ")) end
     end,
 
-    summary = function(d)
-        local s = istable(d.stormfox) and d.stormfox
+    summary = function(saved)
+        local s = istable(saved.stormfox) and saved.stormfox
         if s and s.time then
             return string.format("%02d:%02d, %s", math.floor(s.time / 60), s.time % 60, tostring(s.weather))
         end
-        return d.sky and "sky" or "nothing"
+        return saved.sky and "sky" or "nothing"
     end,
 })
 
@@ -214,18 +214,18 @@ RARELOAD.Module({
     privRestore = "rareload_restore_scene",
 
     save = function()
-        local d = {}
+        local data = {}
         for _, name in ipairs(WORLD_CONVARS) do
             local cv = GetConVar(name)
-            if cv then d[name] = cv:GetString() end
+            if cv then data[name] = cv:GetString() end
         end
-        return d
+        return data
     end,
 
-    restore = function(_, d, ctx)
+    restore = function(_, saved, ctx)
         local changed = {}
         for _, name in ipairs(WORLD_CONVARS) do
-            local cv, value = GetConVar(name), d[name]
+            local cv, value = GetConVar(name), saved[name]
             -- host_timescale only works with cheats on.
             local allowed = name ~= "host_timescale" or GetConVar("sv_cheats"):GetBool()
             if cv and value ~= nil and tostring(value) ~= cv:GetString() and allowed then
@@ -236,5 +236,7 @@ RARELOAD.Module({
         if #changed > 0 then ctx:result("ok", "worldSettings", table.concat(changed, ", ")) end
     end,
 
-    summary = function(d) return "gravity " .. tostring(d.sv_gravity) .. ", physics " .. tostring(d.phys_timescale) end,
+    summary = function(saved)
+        return "gravity " .. tostring(saved.sv_gravity) .. ", physics " .. tostring(saved.phys_timescale)
+    end,
 })

@@ -199,11 +199,11 @@ end
 
 -- os.date only knows the C locale, so month and weekday names come from the translation files (G80).
 local function fillDate(t, template)
-    local d = os.date("*t", t)
+    local date = os.date("*t", t)
     return (template:gsub("{(%w+)}", {
-        wday = L("date.weekday." .. d.wday), month = L("date.month." .. d.month),
-        mon = L("date.month_short." .. d.month),
-        day = tostring(d.day), year = tostring(d.year), time = os.date("%H:%M:%S", t), hm = os.date("%H:%M", t),
+        wday = L("date.weekday." .. date.wday), month = L("date.month." .. date.month),
+        mon = L("date.month_short." .. date.month),
+        day = tostring(date.day), year = tostring(date.year), time = os.date("%H:%M:%S", t), hm = os.date("%H:%M", t),
     }))
 end
 
@@ -214,11 +214,11 @@ function UI.Date(t, style)
 end
 
 function UI.TimeAgo(t)
-    local d = os.time() - (tonumber(t) or 0)
-    if d < 45 then return L("time.just_now") end
-    if d < 3600 then return L("time.minutes", math.floor(d / 60)) end
-    if d < 86400 then return L("time.hours", math.floor(d / 3600)) end
-    return L("time.days", math.floor(d / 86400))
+    local age = os.time() - (tonumber(t) or 0)
+    if age < 45 then return L("time.just_now") end
+    if age < 3600 then return L("time.minutes", math.floor(age / 60)) end
+    if age < 86400 then return L("time.hours", math.floor(age / 3600)) end
+    return L("time.days", math.floor(age / 86400))
 end
 
 -- Translated names of the states that are on.
@@ -832,27 +832,27 @@ end
 
 -- A themed yes/no dialog above everything else.
 function UI.Confirm(title, body, onYes, yesLabel)
-    local d = UI.Window({ title = title, w = 460, h = 190, overlay = true })
-    d:SetSizable(false)
-    local text = UI.Label(d, body, "Rareload.Body", C.text2)
+    local dialog = UI.Window({ title = title, w = 460, h = 190, overlay = true })
+    dialog:SetSizable(false)
+    local text = UI.Label(dialog, body, "Rareload.Body", C.text2)
     text:Dock(TOP)
     text:SetWrap(true)
     text:SetAutoStretchVertical(true)
-    local row = vgui.Create("DPanel", d)
+    local row = vgui.Create("DPanel", dialog)
     row:Dock(BOTTOM)
     row:SetTall(sc(34))
     row.Paint = function() end
-    local no = UI.Button(row, L("ui.cancel"), function() d:Close() end, { style = "ghost" })
+    local no = UI.Button(row, L("ui.cancel"), function() dialog:Close() end, { style = "ghost" })
     no:Dock(RIGHT)
     no:SizeToLabel()
     local yes = UI.Button(row, yesLabel or L("ui.confirm"), function()
-        d:Close()
+        dialog:Close()
         onYes()
     end, { style = "danger", solid = true })
     yes:Dock(RIGHT)
     yes:DockMargin(0, 0, sc(8), 0)
     yes:SizeToLabel()
-    return d
+    return dialog
 end
 
 function UI.Notify(text, kind)

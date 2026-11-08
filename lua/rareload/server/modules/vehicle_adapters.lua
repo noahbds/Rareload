@@ -158,8 +158,10 @@ function Seats.Find(veh, desc)
     local target = RARELOAD.Util.ToVector(desc.pos)
     local best, bestDist
     for _, s in ipairs(seats) do
-        local d = target and veh:WorldToLocal(s:GetPos()):DistToSqr(target) or math.huge
-        if not bestDist or d < bestDist or (d == bestDist and s:GetClass() == desc.class) then best, bestDist = s, d end
+        local dist = target and veh:WorldToLocal(s:GetPos()):DistToSqr(target) or math.huge
+        if not bestDist or dist < bestDist or (dist == bestDist and s:GetClass() == desc.class) then
+            best, bestDist = s, dist
+        end
     end
     return best
 end
@@ -244,8 +246,8 @@ Vehicles.Adapter(rootFromProps({
             local target, best, bestDist = RARELOAD.Util.ToVector(saved.pos), nil, nil
             for _, c in ipairs(live) do
                 if not used[c] and c:GetClass() == saved.class and target then
-                    local d = ent:WorldToLocal(c:GetPos()):DistToSqr(target)
-                    if not bestDist or d < bestDist then best, bestDist = c, d end
+                    local dist = ent:WorldToLocal(c:GetPos()):DistToSqr(target)
+                    if not bestDist or dist < bestDist then best, bestDist = c, dist end
                 end
             end
             if best then

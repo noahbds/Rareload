@@ -194,7 +194,7 @@ function Store.MapDirs()
     local out = {}
     for _, mode in ipairs({ "sp", "mp" }) do
         local _, dirs = file.Find(ROOT .. mode .. "/*", "DATA")
-        for _, d in ipairs(dirs or {}) do out[#out + 1] = mode .. "/" .. d end
+        for _, dirName in ipairs(dirs or {}) do out[#out + 1] = mode .. "/" .. dirName end
     end
     table.sort(out)
     return out

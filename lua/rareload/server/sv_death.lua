@@ -29,8 +29,8 @@ end)
 
 -- The player's death save on this map, or nil.
 function Death.Entry(ply)
-    local d = RARELOAD.History.Doc(ply)
-    return d and d.deathId and RARELOAD.History.Get(ply, d.deathId) or nil
+    local doc = RARELOAD.History.Doc(ply)
+    return doc and doc.deathId and RARELOAD.History.Get(ply, doc.deathId) or nil
 end
 
 local function tell(ply)

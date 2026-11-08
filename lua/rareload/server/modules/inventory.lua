@@ -59,16 +59,16 @@ function Inventory.Held(ply)
     return IsValid(w) and w:GetClass() or nil
 end
 
-function Inventory.SetAmmo(ply, d)
+function Inventory.SetAmmo(ply, ammo)
     ply:RemoveAllAmmo()
-    for name, count in pairs(d.reserve or {}) do
+    for name, count in pairs(ammo.reserve or {}) do
         local id = game.GetAmmoID(tostring(name)) -- JSON turns the ammo name into a number
         if id and id >= 0 then
             local max = game.GetAmmoMax(id)
             ply:SetAmmo(max > 0 and math.min(count, max) or count, id)
         end
     end
-    for class, clip in pairs(d.clips or {}) do
+    for class, clip in pairs(ammo.clips or {}) do
         local w = ply:GetWeapon(class)
         if IsValid(w) then
             if clip[1] >= 0 then w:SetClip1(clip[1]) end
@@ -131,20 +131,20 @@ RARELOAD.Module({
     -- so nothing has to be stripped (G17).
     spawn = {
         hook = "PlayerLoadout",
-        fn = function(ply, d, ctx)
-            give(ply, d, ctx)
+        fn = function(ply, saved, ctx)
+            give(ply, saved, ctx)
             return true
         end,
     },
 
-    restore = function(ply, d, ctx)
-        Inventory.NoteGiven(ctx, d)
+    restore = function(ply, saved, ctx)
+        Inventory.NoteGiven(ctx, saved)
         if ctx.spawnDone.weapons then return end
         ply:StripWeapons()
-        give(ply, d, ctx)
+        give(ply, saved, ctx)
     end,
 
-    summary = function(d) return #d .. " weapons" end,
+    summary = function(saved) return #saved .. " weapons" end,
 })
 
 RARELOAD.Module({
@@ -156,8 +156,8 @@ RARELOAD.Module({
     privRestore = "rareload_restore_ammo",
 
     save = function(ply) return Inventory.Ammo(ply) end,
-    restore = function(ply, d) Inventory.SetAmmo(ply, d) end,
-    summary = function(d) return table.Count(d.reserve or {}) .. " ammo types" end,
+    restore = function(ply, saved) Inventory.SetAmmo(ply, saved) end,
+    summary = function(saved) return table.Count(saved.reserve or {}) .. " ammo types" end,
 })
 
 RARELOAD.Module({

@@ -9,9 +9,9 @@ local base = setmetatable({}, { __mode = "k" })     -- ply -> { pos, yaw } at th
 
 local function mark(ply, ...)
     if not IsValid(ply) or not ply:IsPlayer() then return end
-    local d = dirty[ply] or {}
-    for _, id in ipairs({ ... }) do d[id] = true end
-    dirty[ply] = d
+    local dirtyIds = dirty[ply] or {}
+    for _, id in ipairs({ ... }) do dirtyIds[id] = true end
+    dirty[ply] = dirtyIds
 end
 
 RARELOAD.Autosave = RARELOAD.Autosave or {}
@@ -71,12 +71,12 @@ timer.Create("Rareload.Autosave", 1, 0, function()
     for _, ply in player.Iterator() do
         if RARELOAD.Get(ply, "autoSave") then
             checkMovement(ply)
-            local d = dirty[ply]
-            if d and now - (lastSave[ply] or 0) >= RARELOAD.Get(ply, "autoSaveInterval") and safeToSave(ply) then
+            local dirtyIds = dirty[ply]
+            if dirtyIds and now - (lastSave[ply] or 0) >= RARELOAD.Get(ply, "autoSaveInterval") and safeToSave(ply) then
                 dirty[ply], lastSave[ply] = nil, now
                 -- Only the changed modules are saved over the current save; without one, everything is,
                 -- or the first autosave (just the spawn loadout) would have no position.
-                local only = RARELOAD.History.Active(ply) and d or nil
+                local only = RARELOAD.History.Active(ply) and dirtyIds or nil
                 local _, result = RARELOAD.Pipeline.Save(ply, { only = only, reason = "auto", silent = true })
                 if result == "saved" then RARELOAD.Net.Push(ply, "autosave", {}) end -- the tool screen's bar
             end

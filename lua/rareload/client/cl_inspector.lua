@@ -384,9 +384,10 @@ local function buildCard(parent, obj, isSelected, onClick)
                 UI.HealthColor(obj.hp, obj.maxHp))
             y = y + sc(12)
         end
-        local d = distanceTo(obj)
-        if d < math.huge then draw.SimpleText(L("inspector.units", math.Round(d)), "Rareload.Tiny", w / 2, y, C.text3,
-                TEXT_ALIGN_CENTER) end
+        local dist = distanceTo(obj)
+        if dist < math.huge then
+            draw.SimpleText(L("inspector.units", math.Round(dist)), "Rareload.Tiny", w / 2, y, C.text3, TEXT_ALIGN_CENTER)
+        end
         if isLive(obj.id) then UI.DrawIcon("world", w - sc(28), sc(12), sc(16)) end
     end
     if UI.IsModel(obj.model) then

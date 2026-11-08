@@ -13,52 +13,52 @@ History.COMPONENTS = RARELOAD.COMPONENTS
 -- A document read from disk is given its parts once (a hand-edited or old file may lack them), so the
 -- code below never checks for them: entries and checkpoints are lists, every entry has its data.
 local normalized = setmetatable({}, { __mode = "k" })
-local function normalize(d)
-    if normalized[d] then return d end
-    d.entries = istable(d.entries) and d.entries or {}
-    d.checkpoints = istable(d.checkpoints) and d.checkpoints or {}
-    for _, entry in ipairs(d.entries) do
+local function normalize(doc)
+    if normalized[doc] then return doc end
+    doc.entries = istable(doc.entries) and doc.entries or {}
+    doc.checkpoints = istable(doc.checkpoints) and doc.checkpoints or {}
+    for _, entry in ipairs(doc.entries) do
         if not istable(entry.data) then entry.data = {} end
     end
-    normalized[d] = true
-    return d
+    normalized[doc] = true
+    return doc
 end
 
 function History.Doc(ply)
     local key = isstring(ply) and (ply:match("^%d+$") and ply) or (not isstring(ply) and RARELOAD.Util.PlayerKey(ply))
     if not key then return nil end
     local rel = RARELOAD.Store.MapDir() .. "/" .. key
-    local d = RARELOAD.Store.Load(rel)
-    d = d and normalize(d) or normalize({ v = RARELOAD.Store.SCHEMA, sid64 = key, nextId = 1 })
-    return d, rel
+    local doc = RARELOAD.Store.Load(rel)
+    doc = doc and normalize(doc) or normalize({ v = RARELOAD.Store.SCHEMA, sid64 = key, nextId = 1 })
+    return doc, rel
 end
 
 local refresh -- pushes the new timeline and world display data, defined below
 
 -- The only writer of a player's saves document. `quiet`: nothing the timeline shows changed
 -- (checkpoints), so the timeline and world display aren't pushed again.
-local function save(ply, d, quiet)
+local function save(ply, doc, quiet)
     local _, rel = History.Doc(ply)
     if not quiet then refresh(ply) end
-    return RARELOAD.Store.Save(rel, d)
+    return RARELOAD.Store.Save(rel, doc)
 end
 
-local function find(d, id)
-    for i, entry in ipairs(d and d.entries or {}) do
+local function find(doc, id)
+    for i, entry in ipairs(doc and doc.entries or {}) do
         if entry.id == id then return entry, i end
     end
 end
 
 -- Entries never dropped to make room or by age: pinned ones, the respawn point and the quick slot.
 -- (A death save may go; its id is then forgotten.)
-local function kept(d, e)
-    return e.pinned or e.id == d.activeId or e.id == d.quickId
+local function kept(doc, e)
+    return e.pinned or e.id == doc.activeId or e.id == doc.quickId
 end
 
 -- After entries were removed: the quick slot and the death save point at an entry, or at nothing.
-local function forgetMissing(d)
-    if d.quickId and not find(d, d.quickId) then d.quickId = nil end
-    if d.deathId and not find(d, d.deathId) then d.deathId = nil end
+local function forgetMissing(doc)
+    if doc.quickId and not find(doc, doc.quickId) then doc.quickId = nil end
+    if doc.deathId and not find(doc, doc.deathId) then doc.deathId = nil end
 end
 
 function History.Get(ply, id)
@@ -66,136 +66,136 @@ function History.Get(ply, id)
 end
 
 function History.Active(ply)
-    local d = History.Doc(ply)
-    return d and d.activeId and (find(d, d.activeId)) or nil
+    local doc = History.Doc(ply)
+    return doc and doc.activeId and (find(doc, doc.activeId)) or nil
 end
 
 -- The entry saved just before the active one (for the reload key).
 function History.Previous(ply)
-    local d = History.Doc(ply)
-    local _, i = find(d, d and d.activeId)
-    return i and d.entries[i - 1] or nil
+    local doc = History.Doc(ply)
+    local _, i = find(doc, doc and doc.activeId)
+    return i and doc.entries[i - 1] or nil
 end
 
 -- Adds a save and makes it active (unless opts.keepActive: an imported or shared save). The oldest
 -- entries beyond `historySize` are dropped, except pinned ones and the active one.
 -- opts = { keepActive? (not the respawn point), death? (the player's death save, D4) }
 function History.Append(ply, entry, opts)
-    local d = History.Doc(ply)
-    if not d then return false end
+    local doc = History.Doc(ply)
+    if not doc then return false end
     opts = opts or {}
-    entry.id = d.nextId
-    d.nextId = d.nextId + 1
-    if not isstring(ply) and IsValid(ply) then d.nick = ply:Nick() end
-    d.entries[#d.entries + 1] = entry
-    if not (opts.keepActive and d.activeId) then d.activeId = entry.id end
-    if opts.death then d.deathId = entry.id end
+    entry.id = doc.nextId
+    doc.nextId = doc.nextId + 1
+    if not isstring(ply) and IsValid(ply) then doc.nick = ply:Nick() end
+    doc.entries[#doc.entries + 1] = entry
+    if not (opts.keepActive and doc.activeId) then doc.activeId = entry.id end
+    if opts.death then doc.deathId = entry.id end
 
     local cap, i = RARELOAD.Get(ply, "historySize"), 1
-    while #d.entries > cap and i <= #d.entries do
-        local e = d.entries[i]
-        if kept(d, e) or e.id == d.deathId then i = i + 1 else table.remove(d.entries, i) end
+    while #doc.entries > cap and i <= #doc.entries do
+        local e = doc.entries[i]
+        if kept(doc, e) or e.id == doc.deathId then i = i + 1 else table.remove(doc.entries, i) end
     end
-    forgetMissing(d)
-    return save(ply, d)
+    forgetMissing(doc)
+    return save(ply, doc)
 end
 
 -- Makes an existing entry the player's death save (a death that changed nothing since a save).
 function History.SetDeath(ply, id)
-    local d = History.Doc(ply)
-    if not d or not find(d, id) then return false end
-    d.deathId = id
-    return save(ply, d)
+    local doc = History.Doc(ply)
+    if not doc or not find(doc, id) then return false end
+    doc.deathId = id
+    return save(ply, doc)
 end
 
 -- Deletes the entries older than `cutoff` (os.time) that History may drop; for Store.Prune. Returns
 -- how many were deleted. The caller stores the document.
-function History.PruneDoc(d, cutoff)
-    local before = #d.entries
-    for i = #d.entries, 1, -1 do
-        local e = d.entries[i]
-        if (tonumber(e.time) or 0) < cutoff and not kept(d, e) then table.remove(d.entries, i) end
+function History.PruneDoc(doc, cutoff)
+    local before = #doc.entries
+    for i = #doc.entries, 1, -1 do
+        local e = doc.entries[i]
+        if (tonumber(e.time) or 0) < cutoff and not kept(doc, e) then table.remove(doc.entries, i) end
     end
-    forgetMissing(d)
-    return before - #d.entries
+    forgetMissing(doc)
+    return before - #doc.entries
 end
 
 -- The player's checkpoints (D7) are kept in the same document: fn(list) changes the list and
 -- returns ok, ...; the document is stored when ok. Returns what fn returned.
 function History.UpdateCheckpoints(ply, fn)
-    local d = History.Doc(ply)
-    if not d then return false end
-    local result = table.Pack(fn(d.checkpoints))
-    if result[1] then save(ply, d, true) end
+    local doc = History.Doc(ply)
+    if not doc then return false end
+    local result = table.Pack(fn(doc.checkpoints))
+    if result[1] then save(ply, doc, true) end
     return unpack(result, 1, result.n)
 end
 
 -- A pinned save is never dropped when the timeline is full (History.Append); it can still be deleted by hand.
 function History.SetPinned(ply, id, pinned)
-    local d = History.Doc(ply)
-    local entry = find(d, id)
+    local doc = History.Doc(ply)
+    local entry = find(doc, id)
     if not entry then return false end
     -- Pinned saves are never dropped, so their number is capped (A3).
     if pinned and not entry.pinned then
         local n = 0
-        for _, e in ipairs(d.entries) do if e.pinned then n = n + 1 end end
+        for _, e in ipairs(doc.entries) do if e.pinned then n = n + 1 end end
         if n >= RARELOAD.Get(nil, "pinnedMax") then return false, "full" end
     end
     entry.pinned = pinned or nil
-    return save(ply, d)
+    return save(ply, doc)
 end
 
 -- Give the ability to set a note to a save, so the player can remember what was saved in that save.
 -- Not really useful in a sense but it's there.
 function History.SetNote(ply, id, note)
-    local d = History.Doc(ply)
-    local entry = find(d, id)
+    local doc = History.Doc(ply)
+    local entry = find(doc, id)
     if not entry then return false end
     entry.note = note ~= "" and note or nil
-    return save(ply, d)
+    return save(ply, doc)
 end
 
 -- Changes one entry: fn(entry) edits it in place, or returns false and why to leave it as it was.
 function History.Update(ply, id, fn)
-    local d = History.Doc(ply)
-    local entry = find(d, id)
+    local doc = History.Doc(ply)
+    local entry = find(doc, id)
     if not entry then return false, "no such save" end
     local ok, err = fn(entry)
     if ok == false then return false, err end
-    save(ply, d)
+    save(ply, doc)
     return true
 end
 
 -- Deleting the active entry makes the newest remaining one active.
 function History.Delete(ply, id)
-    local d = History.Doc(ply)
-    local _, i = find(d, id)
+    local doc = History.Doc(ply)
+    local _, i = find(doc, id)
     if not i then return false end
-    table.remove(d.entries, i)
-    if d.activeId == id then d.activeId = d.entries[#d.entries] and d.entries[#d.entries].id or nil end
-    forgetMissing(d)
-    return save(ply, d)
+    table.remove(doc.entries, i)
+    if doc.activeId == id then doc.activeId = doc.entries[#doc.entries] and doc.entries[#doc.entries].id or nil end
+    forgetMissing(doc)
+    return save(ply, doc)
 end
 
 -- Removes every entry except pinned ones, the active one and the quick slot.
 function History.Clear(ply)
-    local d = History.Doc(ply)
-    if not d then return false end
+    local doc = History.Doc(ply)
+    if not doc then return false end
     local left = {}
-    for _, e in ipairs(d.entries) do
-        if kept(d, e) then left[#left + 1] = e end
+    for _, e in ipairs(doc.entries) do
+        if kept(doc, e) then left[#left + 1] = e end
     end
-    d.entries = left
-    forgetMissing(d)
-    return save(ply, d)
+    doc.entries = left
+    forgetMissing(doc)
+    return save(ply, doc)
 end
 
 -- Makes an entry the respawn point (F24).
 function History.Activate(ply, id)
-    local d = History.Doc(ply)
-    if not find(d, id) then return false end
-    d.activeId = id
-    return save(ply, d)
+    local doc = History.Doc(ply)
+    if not find(doc, id) then return false end
+    doc.activeId = id
+    return save(ply, doc)
 end
 
 -- Restore and undo -------------------------------------------------------------------------------
@@ -309,16 +309,16 @@ end
 -- player how it went and returns whether it did something.
 
 function History.Quick(ply)
-    local d = History.Doc(ply)
-    return d and d.quickId and (find(d, d.quickId)) or nil
+    local doc = History.Doc(ply)
+    return doc and doc.quickId and (find(doc, doc.quickId)) or nil
 end
 
 function History.QuickSave(ply)
     if not RARELOAD.Pipeline.Save(ply, { reason = "quick" }) then return false end
-    local d, active = History.Doc(ply), History.Active(ply)
-    if not d or not active then return false end
-    d.quickId = active.id
-    save(ply, d)
+    local doc, active = History.Doc(ply), History.Active(ply)
+    if not doc or not active then return false end
+    doc.quickId = active.id
+    save(ply, doc)
     return true
 end
 
@@ -563,8 +563,8 @@ end
 -- Applies `change(entityDef, snap, index)` to one object of an entry. Saved data is never modified in
 -- place: the snapshot is copied, changed, and stored as a new blob (§16.3).
 local function changeObject(ply, entryId, objectId, change)
-    local d = History.Doc(ply)
-    local entry = find(d, entryId)
+    local doc = History.Doc(ply)
+    local entry = find(doc, entryId)
     if not entry then return false, "no such save" end
     for _, kind in ipairs(WORLD_KINDS) do
         local snap = RARELOAD.Pipeline.Payload(entry.data[kind])
@@ -575,7 +575,7 @@ local function changeObject(ply, entryId, objectId, change)
                 if not ok then return false, err end
                 RARELOAD.Snapshot.PruneConstraints(copy)
                 entry.data[kind] = { ["$blob"] = RARELOAD.Store.BlobPut(copy) }
-                save(ply, d)
+                save(ply, doc)
                 return true
             end
         end
@@ -585,8 +585,8 @@ end
 
 -- Deletes objects (ids = { [objectId] = true }): each snapshot is copied and stored once, not once per object.
 local function deleteObjects(ply, entryId, ids)
-    local d = History.Doc(ply)
-    local entry = find(d, entryId)
+    local doc = History.Doc(ply)
+    local entry = find(doc, entryId)
     if not entry then return false, "no such save" end
     local removed = 0
     for _, kind in ipairs(WORLD_KINDS) do
@@ -611,7 +611,7 @@ local function deleteObjects(ply, entryId, ids)
         end
     end
     if removed == 0 then return false, "no such object" end
-    save(ply, d)
+    save(ply, doc)
     return true
 end
 
@@ -730,8 +730,8 @@ end
 
 -- One row per entry.
 function History.Rows(ply)
-    local d, rows = History.Doc(ply), {}
-    for _, e in ipairs(d and d.entries or {}) do
+    local doc, rows = History.Doc(ply), {}
+    for _, e in ipairs(doc and doc.entries or {}) do
         e.note = noteText(e.note)
         local modules = {}
         for id in pairs(e.data) do modules[#modules + 1] = id end
@@ -742,7 +742,7 @@ function History.Rows(ply)
             reason = e.reason,
             pinned = e.pinned,
             note = e.note,
-            active = e.id == d.activeId,
+            active = e.id == doc.activeId,
             modules = modules,
             info = History.Info(e.data)
         }
@@ -792,8 +792,8 @@ end
 
 local function nameOf(target)
     if not isstring(target) then return target:Nick() end
-    local d = History.Doc(target)
-    return (d and d.nick or "?") .. " (" .. target .. ")"
+    local doc = History.Doc(target)
+    return (doc and doc.nick or "?") .. " (" .. target .. ")"
 end
 
 local function handle(op, priv, args, fn)
@@ -869,18 +869,18 @@ RARELOAD.Net.Handle("history.players", {
         for _, p in player.Iterator() do
             if not p:IsBot() then
                 local sid = p:SteamID64()
-                local d = History.Doc(p)
+                local doc = History.Doc(p)
                 seen[sid] = true
-                list[#list + 1] = { sid = sid, nick = p:Nick(), online = true, saves = d and #d.entries or 0 }
+                list[#list + 1] = { sid = sid, nick = p:Nick(), online = true, saves = doc and #doc.entries or 0 }
             end
         end
         local dir = RARELOAD.Store.MapDir()
         for _, name in ipairs(file.Find("rareload/" .. dir .. "/*.json", "DATA") or {}) do
             local sid = name:match("^(%d+)%.json$")
             if sid and not seen[sid] then
-                local d = History.Doc(sid)
-                if d and #d.entries > 0 then
-                    list[#list + 1] = { sid = sid, nick = d.nick or sid, online = false, saves = #d.entries }
+                local doc = History.Doc(sid)
+                if doc and #doc.entries > 0 then
+                    list[#list + 1] = { sid = sid, nick = doc.nick or sid, online = false, saves = #doc.entries }
                 end
             end
         end

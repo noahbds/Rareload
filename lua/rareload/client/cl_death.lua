@@ -26,10 +26,10 @@ hook.Add("HUDPaint", "Rareload.Death", function()
     if not pos then return end
     local lp = LocalPlayer()
     if not IsValid(lp) or not lp:Alive() then return end
-    local d = lp:GetPos():Distance(pos)
-    near = d < REACHED
-    if near or d > RANGE then return end
-    UI.DrawWorldTag(pos, 128, "heart_delete", L("death.marker"), C.bad, d, 255)
+    local dist = lp:GetPos():Distance(pos)
+    near = dist < REACHED
+    if near or dist > RANGE then return end
+    UI.DrawWorldTag(pos, 128, "heart_delete", L("death.marker"), C.bad, dist, 255)
 end)
 
 -- The choice of where to respawn (player setting deathChoice).

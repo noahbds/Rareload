@@ -124,12 +124,12 @@ RARELOAD.Net.On("share.offer", function(p)
         .. (#parts > 0 and "\n" .. table.concat(parts, " · ") or "")
 
     local answered = false
-    local d = UI.Confirm(L("share.offer_title"), body, function()
+    local dialog = UI.Confirm(L("share.offer_title"), body, function()
         answered = true
         request("share.answer", { token = p.token, accept = true })
     end, L("share.accept"))
-    local remove = d.OnRemove
-    d.OnRemove = function(self)
+    local remove = dialog.OnRemove
+    dialog.OnRemove = function(self)
         if remove then remove(self) end
         -- A tick later: the prompt closes itself before running its accept button.
         timer.Simple(0, function()

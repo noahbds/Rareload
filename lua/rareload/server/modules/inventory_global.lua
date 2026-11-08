@@ -21,11 +21,12 @@ end
 -- The player's global inventory, or nil when none was stored yet. Rareload 5.2 stored only the
 -- weapon classes, as a list.
 function Inventory.GlobalGet(ply)
-    local d = RARELOAD.Store.PData(ply, "global_inventory")
-    if not istable(d) then return nil end
-    if d[1] ~= nil then return { weapons = d, ammo = emptyAmmo() } end
-    d.weapons, d.ammo = istable(d.weapons) and d.weapons or {}, istable(d.ammo) and d.ammo or emptyAmmo()
-    return d
+    local stored = RARELOAD.Store.PData(ply, "global_inventory")
+    if not istable(stored) then return nil end
+    if stored[1] ~= nil then return { weapons = stored, ammo = emptyAmmo() } end
+    stored.weapons = istable(stored.weapons) and stored.weapons or {}
+    stored.ammo = istable(stored.ammo) and stored.ammo or emptyAmmo()
+    return stored
 end
 
 function Inventory.GlobalSet(ply, inv)
@@ -100,9 +101,9 @@ RARELOAD.Module({
         end
     end,
 
-    summary = function(d)
-        if not istable(d) then return "stored for every map" end
-        local reserve = istable(d.ammo) and d.ammo.reserve or {}
-        return #(d.weapons or {}) .. " weapons, " .. table.Count(reserve) .. " ammo types"
+    summary = function(saved)
+        if not istable(saved) then return "stored for every map" end
+        local reserve = istable(saved.ammo) and saved.ammo.reserve or {}
+        return #(saved.weapons or {}) .. " weapons, " .. table.Count(reserve) .. " ammo types"
     end,
 })

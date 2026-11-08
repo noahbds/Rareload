@@ -94,15 +94,15 @@ local function shown()
     return #State.checkpoints > 0 and RARELOAD.Get(nil, "showCheckpoints") and RARELOAD.World.Active()
 end
 
-local function alphaAt(d) return math.Clamp((RANGE - d) / 600, 0, 1) * 255 end
+local function alphaAt(dist) return math.Clamp((RANGE - dist) / 600, 0, 1) * 255 end
 
 hook.Add("PostDrawTranslucentRenderables", "Rareload.Checkpoints", function(depth, sky)
     if depth or sky or not shown() then return end
     local eye = EyePos()
     render.SetColorMaterial()
     for _, c in ipairs(State.checkpoints) do
-        local d = not c.disabled and c.vec and eye:Distance(c.vec)
-        if d and d < RANGE and d > 40 then UI.DrawWorldBeam(c.vec, 80, 4, C.accent, alphaAt(d) * 0.7) end
+        local dist = not c.disabled and c.vec and eye:Distance(c.vec)
+        if dist and dist < RANGE and dist > 40 then UI.DrawWorldBeam(c.vec, 80, 4, C.accent, alphaAt(dist) * 0.7) end
     end
 end)
 
@@ -110,9 +110,9 @@ hook.Add("HUDPaint", "Rareload.Checkpoints", function()
     if not shown() then return end
     local eye = EyePos()
     for i, c in ipairs(State.checkpoints) do
-        local d = not c.disabled and c.vec and eye:Distance(c.vec)
-        if d and d < RANGE and d > 40 then
-            UI.DrawWorldTag(c.vec, 88, "flag_blue", i .. ". " .. c.name, C.text, d, alphaAt(d))
+        local dist = not c.disabled and c.vec and eye:Distance(c.vec)
+        if dist and dist < RANGE and dist > 40 then
+            UI.DrawWorldTag(c.vec, 88, "flag_blue", i .. ". " .. c.name, C.text, dist, alphaAt(dist))
         end
     end
 end)

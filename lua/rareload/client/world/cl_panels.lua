@@ -131,7 +131,7 @@ local STATE_NAMES = { [0] = "none", "idle", "alert", "combat", "script", "playde
 
 local function playerCats(rec)
     local cats, add, addAll = builder()
-    local d = rec.data
+    local modules = rec.data
     local owner = RARELOAD.World.OwnerOf(rec)
 
     add("basic", L("field.player"), rec.title)
@@ -141,10 +141,10 @@ local function playerCats(rec)
         add("basic", L("field.online"), yesNo(IsValid(owner)), IsValid(owner) and C.ok or C.text3)
     end
     local saved = {}
-    for id in ordered(d) do saved[#saved + 1] = L("module." .. id) end
+    for id in ordered(modules) do saved[#saved + 1] = L("module." .. id) end
     add("basic", L("field.saved"), table.concat(saved, ", "), C.ok)
 
-    local t = d.transform or {}
+    local t = modules.transform or {}
     local a = Util.ToAngle(t.ang)
     add("position", L("field.position"), UI.Pos(t.pos))
     add("position", L("field.angle"), a and string.format("%.0f, %.0f", a.p, a.y))
@@ -152,8 +152,10 @@ local function playerCats(rec)
     if rec.seated then add("position", L("field.vehicle"), L("ui.yes"), C.vehicle) end
     add("position", L("field.distance"), L("inspector.units", math.Round(LocalPlayer():GetPos():Distance(rec.pos))))
 
-    local weapons, ammo = d.weapons, d.ammo or {}
-    if d.activeWeapon then add("equipment", L("field.active_weapon"), UI.WeaponName(d.activeWeapon), C.warn) end
+    local weapons, ammo = modules.weapons, modules.ammo or {}
+    if modules.activeWeapon then
+        add("equipment", L("field.active_weapon"), UI.WeaponName(modules.activeWeapon), C.warn)
+    end
     if istable(weapons) then
         add("equipment", L("field.weapons"), tostring(#weapons))
         for _, class in ipairs(weapons) do
@@ -161,8 +163,8 @@ local function playerCats(rec)
             local text = clip and
             ((clip[1] or -1) >= 0 and L("world.clip", clip[1]) or "") ..
             ((clip[2] or -1) >= 0 and "  " .. L("world.clip2", clip[2]) or "") or ""
-            add("equipment", (class == d.activeWeapon and "» " or "  ") .. UI.WeaponName(class), text,
-                class == d.activeWeapon and C.warn or nil)
+            add("equipment", (class == modules.activeWeapon and "» " or "  ") .. UI.WeaponName(class), text,
+                class == modules.activeWeapon and C.warn or nil)
         end
     end
     local names = {}
@@ -172,7 +174,7 @@ local function playerCats(rec)
         add("equipment", L("world.ammo", name), tostring(ammo.reserve[name] or ammo.reserve[tonumber(name)]), C.info)
     end
 
-    local look = d.appearance
+    local look = modules.appearance
     if istable(look) then
         add("appearance", L("field.model"), look.model and string.GetFileFromFilename(look.model))
         add("appearance", L("field.skin"), look.skin)
@@ -190,12 +192,12 @@ local function playerCats(rec)
         end
     end
 
-    local h = d.health
+    local h = modules.health
     if h then
         add("stats", L("field.health"), h.hp, UI.HealthColor(h.hp, 100))
         add("stats", L("field.armor"), h.armor, C.info)
     end
-    if d.states then add("stats", L("field.states"), UI.States(d.states), C.warn) end
+    if modules.states then add("stats", L("field.states"), UI.States(modules.states), C.warn) end
 
     local byKind, classes = {}, {}
     for _, o in ipairs(rec.objects or {}) do
@@ -213,7 +215,7 @@ local function playerCats(rec)
         transform = true, health = true, states = true, appearance = true, weapons = true, activeWeapon = true,
         ammo = true
     }
-    for id, data in ordered(d) do
+    for id, data in ordered(modules) do
         if not builtIn[id] then
             local label = L("module." .. id)
             add("other", label == "rareload.module." .. id and id or label, "", C.accent)
@@ -586,11 +588,11 @@ local function placement(mn, mx, size, eye)
     local hx, hy = (mx.x - mn.x) / 2, (mx.y - mn.y) / 2
     local cx, cy = mn.x + hx, mn.y + hy
     local dx, dy = cx - eye.x, cy - eye.y
-    local d = math.sqrt(dx * dx + dy * dy)
-    local ux, uy = d > 1 and dx / d or 1, d > 1 and dy / d or 0
-    local near = d - (math.abs(ux) * hx + math.abs(uy) * hy) - 6 -- from the viewer to the box's near side
+    local dist = math.sqrt(dx * dx + dy * dy)
+    local ux, uy = dist > 1 and dx / dist or 1, dist > 1 and dy / dist or 0
+    local near = dist - (math.abs(ux) * hx + math.abs(uy) * hy) - 6 -- from the viewer to the box's near side
     local inside = near < 32
-    if inside then near = math.min(32, d) end                    -- standing at the model: just in front
+    if inside then near = math.min(32, dist) end                    -- standing at the model: just in front
 
     local pos = Vector(eye.x + ux * near, eye.y + uy * near, eye.z)
     local ang = Angle(0, math.deg(math.atan2(uy, ux)) - 90, 90)
@@ -815,10 +817,10 @@ local function tagPlacement(g, eye)
     local mn, mx = g.mn, g.mx
     local hx, hy = (mx.x - mn.x) / 2, (mx.y - mn.y) / 2
     local dx, dy = mn.x + hx - eye.x, mn.y + hy - eye.y
-    local d = math.sqrt(dx * dx + dy * dy)
-    local ux, uy = d > 1 and dx / d or 1, d > 1 and dy / d or 0
+    local dist = math.sqrt(dx * dx + dy * dy)
+    local ux, uy = dist > 1 and dx / dist or 1, dist > 1 and dy / dist or 0
     -- Like the card: on the near side of the models, at eye level, so it is never inside a tall one.
-    local near = math.max(d - (math.abs(ux) * hx + math.abs(uy) * hy) - 4, 16)
+    local near = math.max(dist - (math.abs(ux) * hx + math.abs(uy) * hy) - 4, 16)
     local pos = Vector(eye.x + ux * near, eye.y + uy * near, eye.z)
     local ang = Angle(0, math.deg(math.atan2(uy, ux)) - 90, 90)
     return pos, ang, math.min(unitsPerPixel(pos, ang), 1)

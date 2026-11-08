@@ -31,10 +31,13 @@ RARELOAD.Module({
         return { mode = mode, convars = convars }
     end,
 
-    restore = function(ply, d)
-        if not isstring(d.mode) then return end
-        RARELOAD.Net.Push(ply, "tool.apply", { mode = d.mode, convars = istable(d.convars) and d.convars or {} })
+    restore = function(ply, saved)
+        if not isstring(saved.mode) then return end
+        local convars = istable(saved.convars) and saved.convars or {}
+        RARELOAD.Net.Push(ply, "tool.apply", { mode = saved.mode, convars = convars })
     end,
 
-    summary = function(d) return tostring(d.mode) .. ", " .. table.Count(d.convars or {}) .. " settings" end,
+    summary = function(saved)
+        return tostring(saved.mode) .. ", " .. table.Count(saved.convars or {}) .. " settings"
+    end,
 })

@@ -17,9 +17,9 @@ RARELOAD.Module({
         }
     end,
 
-    restore = function(ply, d, ctx)
-        local pos, ang = Util.ToVector(d.pos), Util.ToAngle(d.ang)
-        local crouched = d.crouched == true
+    restore = function(ply, saved, ctx)
+        local pos, ang = Util.ToVector(saved.pos), Util.ToAngle(saved.ang)
+        local crouched = saved.crouched == true
         -- Respawning "where I died" (D4): the save is restored, only the place is the death spot.
         local at = ctx and ctx.deathSpot
         if at then pos, ang, crouched = at.pos, at.ang, at.crouched == true end
@@ -30,7 +30,7 @@ RARELOAD.Module({
         if IsValid(ply:GetDrivingEntity()) then drive.PlayerStopDriving(ply) end
 
         -- A map update can move walls, so anti-stuck always runs when the map revision changed (G53).
-        local check = RARELOAD.Get(ply, "antiStuck") or d.mapVersion ~= game.GetMapVersion()
+        local check = RARELOAD.Get(ply, "antiStuck") or saved.mapVersion ~= game.GetMapVersion()
         if check and RARELOAD.AntiStuck.IsStuck(pos, ply, crouched) then
             local found, method = RARELOAD.AntiStuck.Resolve(pos, ply, crouched)
             if found then
@@ -51,8 +51,8 @@ RARELOAD.Module({
     end,
 
     -- Not "[x y z]": GMod's JSON reads a string of that shape back as a Vector.
-    summary = function(d)
-        return fmt(d.pos[1]) .. ", " .. fmt(d.pos[2]) .. ", " .. fmt(d.pos[3])
+    summary = function(saved)
+        return fmt(saved.pos[1]) .. ", " .. fmt(saved.pos[2]) .. ", " .. fmt(saved.pos[3])
     end,
 })
 
@@ -72,12 +72,12 @@ RARELOAD.Module({
         return { hp = ply:Health(), armor = ply:Armor() }
     end,
 
-    restore = function(ply, d)
-        ply:SetHealth(math.Clamp(d.hp or 1, 1, ply:GetMaxHealth()))
-        ply:SetArmor(math.Clamp(d.armor or 0, 0, ply:GetMaxArmor()))
+    restore = function(ply, saved)
+        ply:SetHealth(math.Clamp(saved.hp or 1, 1, ply:GetMaxHealth()))
+        ply:SetArmor(math.Clamp(saved.armor or 0, 0, ply:GetMaxArmor()))
     end,
 
-    summary = function(d) return "HP " .. d.hp .. ", armor " .. d.armor end,
+    summary = function(saved) return "HP " .. saved.hp .. ", armor " .. saved.armor end,
 })
 
 -- Symmetric: every state is set or cleared (B4). Each grant is checked against what the player may
@@ -112,26 +112,26 @@ RARELOAD.Module({
         }
     end,
 
-    restore = function(ply, d, ctx)
+    restore = function(ply, saved, ctx)
         local function mayGet(what)
             local ok, why = RARELOAD.Pipeline.Allowed(ply, false, what, PRIVILEGED, ctx.reason)
             if not ok then ctx:deny(what, why) end
             return ok
         end
-        if not d.god then
+        if not saved.god then
             ply:GodDisable()
         elseif not ply:HasGodMode() and mayGet("godmode") then
             ply:GodEnable()
         end
-        if not d.notarget then
+        if not saved.notarget then
             ply:SetNoTarget(false)
         elseif not ply:IsFlagSet(FL_NOTARGET) and mayGet("notarget") then
             ply:SetNoTarget(true)
         end
-        ply:Freeze(d.frozen == true)
+        ply:Freeze(saved.frozen == true)
 
         local flying = ply:GetMoveType() == MOVETYPE_NOCLIP
-        if not d.noclip then
+        if not saved.noclip then
             if flying then ply:SetMoveType(MOVETYPE_WALK) end
         elseif not flying then
             if hook.Run("PlayerNoClip", ply, true) == true then
@@ -141,24 +141,24 @@ RARELOAD.Module({
             end
         end
 
-        if d.flashlight ~= ply:FlashlightIsOn() and ply:CanUseFlashlight() then ply:Flashlight(d.flashlight) end
+        if saved.flashlight ~= ply:FlashlightIsOn() and ply:CanUseFlashlight() then ply:Flashlight(saved.flashlight) end
 
-        local vel = Util.ToVector(d.vel)
+        local vel = Util.ToVector(saved.vel)
         if vel then ply:SetLocalVelocity(vel) end
     end,
 
-    summary = function(d)
+    summary = function(saved)
         local on = {}
         for _, k in ipairs(RARELOAD.PLAYER_STATES) do
-            if d[k] then on[#on + 1] = k end
+            if saved[k] then on[#on + 1] = k end
         end
         return #on > 0 and table.concat(on, ", ") or "none"
     end,
 })
 
-local function setModel(ply, d)
-    if isstring(d.model) and util.IsValidModel(d.model) then
-        ply:SetModel(d.model)
+local function setModel(ply, saved)
+    if isstring(saved.model) and util.IsValidModel(saved.model) then
+        ply:SetModel(saved.model)
         return true
     end
 end
@@ -205,19 +205,20 @@ RARELOAD.Module({
     spawn = { hook = "PlayerSetModel", fn = setModel },
 
     -- Everything but the model runs after the sandbox player class has set its own colors.
-    restore = function(ply, d, ctx)
-        if not ctx.spawnDone.appearance and setModel(ply, d) then ply:SetupHands() end
-        if isstring(d.model) and util.IsValidModel(d.model) then watchModel(ply, d.model, ctx) end
-        ply:SetSkin(d.skin or 0)
-        for i, value in ipairs(d.bodygroups or {}) do ply:SetBodygroup(i - 1, value) end
-        local pc, wc = Util.ToVector(d.playerColor), Util.ToVector(d.weaponColor)
+    restore = function(ply, saved, ctx)
+        if not ctx.spawnDone.appearance and setModel(ply, saved) then ply:SetupHands() end
+        if isstring(saved.model) and util.IsValidModel(saved.model) then watchModel(ply, saved.model, ctx) end
+        ply:SetSkin(saved.skin or 0)
+        for i, value in ipairs(saved.bodygroups or {}) do ply:SetBodygroup(i - 1, value) end
+        local pc, wc = Util.ToVector(saved.playerColor), Util.ToVector(saved.weaponColor)
         if pc then ply:SetPlayerColor(pc) end
         if wc then ply:SetWeaponColor(wc) end
-        ply:SetMaterial(d.material or "")
-        if istable(d.color) then ply:SetColor(Color(d.color[1], d.color[2], d.color[3], d.color[4])) end
+        ply:SetMaterial(saved.material or "")
+        local c = saved.color
+        if istable(c) then ply:SetColor(Color(c[1], c[2], c[3], c[4])) end
     end,
 
-    summary = function(d) return string.GetFileFromFilename(d.model or "?") end,
+    summary = function(saved) return string.GetFileFromFilename(saved.model or "?") end,
 })
 
 -- Movement and body (5.4 plan, B2): speeds, jump power, gravity, size, max health and armor, plus
@@ -252,16 +253,16 @@ local function differs(saved, now)
     return isnumber(saved) and isnumber(now) and math.abs(saved - now) > 0.01
 end
 
-local function setSize(ply, d)
-    ply:SetModelScale(d.scale, 0)
-    local view, ducked = Util.ToVector(d.view), Util.ToVector(d.viewDucked)
+local function setSize(ply, saved)
+    ply:SetModelScale(saved.scale, 0)
+    local view, ducked = Util.ToVector(saved.view), Util.ToVector(saved.viewDucked)
     if view then ply:SetViewOffset(view) end
     if ducked then ply:SetViewOffsetDucked(ducked) end
-    if istable(d.hull) and Util.ToVector(d.hull[1]) and Util.ToVector(d.hull[2]) then
-        ply:SetHull(Util.ToVector(d.hull[1]), Util.ToVector(d.hull[2]))
+    if istable(saved.hull) and Util.ToVector(saved.hull[1]) and Util.ToVector(saved.hull[2]) then
+        ply:SetHull(Util.ToVector(saved.hull[1]), Util.ToVector(saved.hull[2]))
     end
-    if istable(d.hullDuck) and Util.ToVector(d.hullDuck[1]) and Util.ToVector(d.hullDuck[2]) then
-        ply:SetHullDuck(Util.ToVector(d.hullDuck[1]), Util.ToVector(d.hullDuck[2]))
+    if istable(saved.hullDuck) and Util.ToVector(saved.hullDuck[1]) and Util.ToVector(saved.hullDuck[2]) then
+        ply:SetHullDuck(Util.ToVector(saved.hullDuck[1]), Util.ToVector(saved.hullDuck[2]))
     end
 end
 
@@ -274,54 +275,56 @@ RARELOAD.Module({
     privRestore = "rareload_restore_states",
 
     save = function(ply)
-        local d = {}
+        local data = {}
         for _, group in ipairs(BODY_GROUPS) do
-            for _, f in ipairs(group.fields) do d[f[1]] = round(get(ply, f[2])) end
+            for _, f in ipairs(group.fields) do data[f[1]] = round(get(ply, f[2])) end
         end
-        d.view, d.viewDucked = Util.Vec(ply:GetViewOffset()), Util.Vec(ply:GetViewOffsetDucked())
-        d.hull, d.hullDuck = hullOf(ply:GetHull()), hullOf(ply:GetHullDuck())
+        data.view, data.viewDucked = Util.Vec(ply:GetViewOffset()), Util.Vec(ply:GetViewOffsetDucked())
+        data.hull, data.hullDuck = hullOf(ply:GetHull()), hullOf(ply:GetHullDuck())
         -- Only a FOV an addon set, not the suit zoom or the player's own fov_desired.
         local fov, wanted = ply:GetFOV(), ply:GetInfoNum("fov_desired", 75)
         if isnumber(fov) and fov > 0 and math.abs(fov - wanted) > 0.5 and not ply:KeyDown(IN_ZOOM) then
-            d.fov = round(fov)
+            data.fov = round(fov)
         end
-        d.suit = round(get(ply, "GetSuitPower"))
-        d.fire = ply:IsOnFire() or nil
-        return d
+        data.suit = round(get(ply, "GetSuitPower"))
+        data.fire = ply:IsOnFire() or nil
+        return data
     end,
 
-    restore = function(ply, d, ctx)
+    restore = function(ply, saved, ctx)
         for _, group in ipairs(BODY_GROUPS) do
             local changed = false
             for _, f in ipairs(group.fields) do
-                changed = changed or differs(d[f[1]], get(ply, f[2]))
+                changed = changed or differs(saved[f[1]], get(ply, f[2]))
             end
             if changed then
                 local ok, why = RARELOAD.Pipeline.Allowed(ply, false, group.name, BODY_PRIV, ctx.reason)
                 if not ok then
                     ctx:deny(group.name, why)
                 elseif group.name == "size" then
-                    setSize(ply, d)
+                    setSize(ply, saved)
                 else
                     for _, f in ipairs(group.fields) do
-                        if isnumber(d[f[1]]) then ply[f[3]](ply, d[f[1]]) end
+                        if isnumber(saved[f[1]]) then ply[f[3]](ply, saved[f[1]]) end
                     end
                 end
             end
         end
-        if isnumber(d.fov) then ply:SetFOV(d.fov, 0) end
-        if isnumber(d.suit) then ply:SetSuitPower(d.suit) end
-        if d.fire then
+        if isnumber(saved.fov) then ply:SetFOV(saved.fov, 0) end
+        if isnumber(saved.suit) then ply:SetSuitPower(saved.suit) end
+        if saved.fire then
             ply:Ignite(RARELOAD.Get(nil, "fireDuration"))
         elseif ply:IsOnFire() then
             ply:Extinguish()
         end
     end,
 
-    summary = function(d)
-        local parts = { "walk " .. tostring(d.walk), "run " .. tostring(d.run), "jump " .. tostring(d.jump) }
-        if d.scale and d.scale ~= 1 then parts[#parts + 1] = "scale " .. d.scale end
-        if d.fire then parts[#parts + 1] = "on fire" end
+    summary = function(saved)
+        local parts = {
+            "walk " .. tostring(saved.walk), "run " .. tostring(saved.run), "jump " .. tostring(saved.jump),
+        }
+        if saved.scale and saved.scale ~= 1 then parts[#parts + 1] = "scale " .. saved.scale end
+        if saved.fire then parts[#parts + 1] = "on fire" end
         return table.concat(parts, ", ")
     end,
 })
@@ -363,10 +366,10 @@ RARELOAD.Module({
         return { outfits = util.JSONToTable(util.TableToJSON(wornOutfits(ply))) or {} }
     end,
 
-    restore = function(ply, d, ctx)
+    restore = function(ply, saved, ctx)
         if not pacReady() then return ctx:result("warn", "pac", "PAC3 is not installed") end
-        local saved = istable(d.outfits) and d.outfits or {}
-        if outfitIds(saved) == outfitIds(wornOutfits(ply)) then return end -- already wearing them
+        local savedOutfits = istable(saved.outfits) and saved.outfits or {}
+        if outfitIds(savedOutfits) == outfitIds(wornOutfits(ply)) then return end -- already wearing them
         -- PAC3 asks this when an outfit arrives from the player; servers use it to restrict PAC3.
         if isfunction(pac.CallHook) and pac.CallHook("CanWearParts", ply) == false then
             return ctx:deny("pac", "PAC3 is not allowed for you here")
@@ -375,22 +378,22 @@ RARELOAD.Module({
         -- so a full clear queued before the saved outfits would run after them and take them off too.
         -- A saved outfit already worn is simply replaced when it is worn again.
         local keep = {}
-        for _, part in ipairs(saved) do
+        for _, part in ipairs(savedOutfits) do
             if istable(part) and istable(part.self) then keep[tostring(part.self.UniqueID)] = true end
         end
         for _, part in ipairs(wornOutfits(ply)) do
             local id = tostring(part.self.UniqueID)
             if not keep[id] then pace.RemovePart({ part = id, uid = pac.Hash(ply), owner = ply }) end
         end
-        for _, part in ipairs(saved) do
+        for _, part in ipairs(savedOutfits) do
             if istable(part) and istable(part.self) then
                 pace.HandleReceivedData(ply, { part = util.JSONToTable(util.TableToJSON(part)) })
             end
         end
-        ctx:result("ok", "pac", #saved .. " outfits worn again")
+        ctx:result("ok", "pac", #savedOutfits .. " outfits worn again")
     end,
 
-    summary = function(d) return #(istable(d.outfits) and d.outfits or {}) .. " PAC3 outfits" end,
+    summary = function(saved) return #(istable(saved.outfits) and saved.outfits or {}) .. " PAC3 outfits" end,
 })
 
 -- An object held with the use key (5.4 plan, B5). It is saved with the world like any other object;
@@ -420,10 +423,10 @@ RARELOAD.Module({
         return nil
     end,
 
-    restore = function(ply, d, ctx)
+    restore = function(ply, saved, ctx)
         ctx:nextTick(function()
             for _, ent in ents.Iterator() do
-                if ent.RareloadID and tostring(ent.RareloadID) == tostring(d.id) then
+                if ent.RareloadID and tostring(ent.RareloadID) == tostring(saved.id) then
                     if ent:GetPos():DistToSqr(ply:GetShootPos()) < PICKUP_REACH ^ 2 and not ent:IsPlayerHolding() then
                         ply:PickupObject(ent)
                     end
@@ -433,5 +436,5 @@ RARELOAD.Module({
         end)
     end,
 
-    summary = function(d) return "holding " .. tostring(d.id) end,
+    summary = function(saved) return "holding " .. tostring(saved.id) end,
 })

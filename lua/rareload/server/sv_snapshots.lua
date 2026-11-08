@@ -16,19 +16,21 @@ for _, id in ipairs(RARELOAD.COMPONENTS.world) do WORLD[id] = true end
 
 local function rel() return RARELOAD.Store.MapDir() .. "/_server" end
 
-local function doc()
-    local d = RARELOAD.Store.Load(rel())
-    if not istable(d) or not istable(d.snapshots) then d = { v = RARELOAD.Store.SCHEMA, nextId = 1, snapshots = {} } end
-    -- Snapshots from before the players became a list (keyed by SteamID64, unreadable) are dropped.
-    for i = #d.snapshots, 1, -1 do
-        local players = d.snapshots[i].players
-        if not istable(players) or (players[1] == nil and next(players) ~= nil) then table.remove(d.snapshots, i) end
+local function loadDoc()
+    local doc = RARELOAD.Store.Load(rel())
+    if not istable(doc) or not istable(doc.snapshots) then
+        doc = { v = RARELOAD.Store.SCHEMA, nextId = 1, snapshots = {} }
     end
-    return d
+    -- Snapshots from before the players became a list (keyed by SteamID64, unreadable) are dropped.
+    for i = #doc.snapshots, 1, -1 do
+        local players = doc.snapshots[i].players
+        if not istable(players) or (players[1] == nil and next(players) ~= nil) then table.remove(doc.snapshots, i) end
+    end
+    return doc
 end
 
 function Snapshots.List()
-    return doc().snapshots
+    return loadDoc().snapshots
 end
 
 -- One player's objects, as a save entry's data (heavy modules as blobs).
@@ -75,12 +77,12 @@ function Snapshots.Take(done)
             Pipeline.Defer(step)
             return
         end
-        local d = doc()
-        snap.id = d.nextId
-        d.nextId = d.nextId + 1
-        d.snapshots[#d.snapshots + 1] = snap
-        while #d.snapshots > RARELOAD.Get(nil, "snapshotKeep") do table.remove(d.snapshots, 1) end
-        RARELOAD.Store.Save(rel(), d)
+        local doc = loadDoc()
+        snap.id = doc.nextId
+        doc.nextId = doc.nextId + 1
+        doc.snapshots[#doc.snapshots + 1] = snap
+        while #doc.snapshots > RARELOAD.Get(nil, "snapshotKeep") do table.remove(doc.snapshots, 1) end
+        RARELOAD.Store.Save(rel(), doc)
         taking = false
         RARELOAD.Log("snapshots", nil):verbose("snapshot No. %d: %d players", snap.id, #snap.players)
         if done then done(snap) end

@@ -87,8 +87,8 @@ end)
 
 -- A player who joins: how many saves they have here (debug level).
 hook.Add("RareloadClientReady", "Rareload.Status", function(ply)
-    local d = RARELOAD.History.Doc(ply)
-    local n = d and #d.entries or 0
+    local doc = RARELOAD.History.Doc(ply)
+    local n = doc and #doc.entries or 0
     RARELOAD.Log("player", ply):verbose("%s joined: %d saves on this map%s", ply:Nick(), n,
-        d and d.activeId and (", respawn point No. " .. d.activeId) or "")
+        doc and doc.activeId and (", respawn point No. " .. doc.activeId) or "")
 end)

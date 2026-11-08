@@ -8,19 +8,19 @@ local Blocked = RARELOAD.Blocked
 local DOC = "blocked"
 local MAX_CLASSES = 256
 
-local function doc()
-    local d = RARELOAD.Store.Load(DOC)
-    if not istable(d) or not istable(d.classes) then
-        d = { v = RARELOAD.Store.SCHEMA, classes = {} }
+local function loadDoc()
+    local doc = RARELOAD.Store.Load(DOC)
+    if not istable(doc) or not istable(doc.classes) then
+        doc = { v = RARELOAD.Store.SCHEMA, classes = {} }
     end
-    return d
+    return doc
 end
 
 -- The set is rebuilt only when the list changes; Has is asked for every object of every save.
 local set
 local function rebuild()
     set = {}
-    for _, class in ipairs(doc().classes) do
+    for _, class in ipairs(loadDoc().classes) do
         if isstring(class) then set[string.lower(class)] = true end
     end
 end
@@ -31,7 +31,7 @@ function Blocked.Has(class)
 end
 
 function Blocked.List()
-    local list = table.Copy(doc().classes)
+    local list = table.Copy(loadDoc().classes)
     table.sort(list)
     return list
 end
@@ -48,11 +48,11 @@ function Blocked.Add(class)
     class = clean(class)
     if not class then return false, "not a valid class name" end
     if Blocked.Has(class) then return false, class .. " is already blocked" end
-    local d = doc()
-    if #d.classes >= MAX_CLASSES then return false, "the list is full (" .. MAX_CLASSES .. " classes)" end
-    d.classes[#d.classes + 1] = class
-    table.sort(d.classes)
-    RARELOAD.Store.Save(DOC, d)
+    local doc = loadDoc()
+    if #doc.classes >= MAX_CLASSES then return false, "the list is full (" .. MAX_CLASSES .. " classes)" end
+    doc.classes[#doc.classes + 1] = class
+    table.sort(doc.classes)
+    RARELOAD.Store.Save(DOC, doc)
     rebuild()
     return true, class
 end
@@ -60,11 +60,11 @@ end
 function Blocked.Remove(class)
     class = clean(class)
     if not class or not Blocked.Has(class) then return false, tostring(class) .. " is not blocked" end
-    local d = doc()
-    for i = #d.classes, 1, -1 do
-        if string.lower(d.classes[i]) == class then table.remove(d.classes, i) end
+    local doc = loadDoc()
+    for i = #doc.classes, 1, -1 do
+        if string.lower(doc.classes[i]) == class then table.remove(doc.classes, i) end
     end
-    RARELOAD.Store.Save(DOC, d)
+    RARELOAD.Store.Save(DOC, doc)
     rebuild()
     return true, class
 end

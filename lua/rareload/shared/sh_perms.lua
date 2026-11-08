@@ -160,7 +160,7 @@ end
 if SERVER then
     local MAX_NW = 500
 
-    local function doc()
+    local function loadGrants()
         return RARELOAD.Store.Load("perms") or {
             v = RARELOAD.Store.SCHEMA,
             grants = {}
@@ -168,7 +168,7 @@ if SERVER then
     end
 
     local function listOf(sid64)
-        local names = table.GetKeys(doc().grants["id" .. sid64] or {})
+        local names = table.GetKeys(loadGrants().grants["id" .. sid64] or {})
         table.sort(names)
         return table.concat(names, ",")
     end
@@ -184,9 +184,9 @@ if SERVER then
             return false, "Unknown Rareload privilege."
         end
 
-        local d = doc()
+        local doc = loadGrants()
         local key = "id" .. sid64
-        local set = d.grants[key] or {}
+        local set = doc.grants[key] or {}
         local short = string.gsub(name, "^rareload_", "")
 
         set[short] = on and true or nil
@@ -196,9 +196,9 @@ if SERVER then
             return false, "Too many privileges for one player; give them rareload_admin instead."
         end
 
-        d.grants[key] = next(set) and set or nil
+        doc.grants[key] = next(set) and set or nil
 
-        RARELOAD.Store.Save("perms", d)
+        RARELOAD.Store.Save("perms", doc)
 
         local ply = player.GetBySteamID64(sid64)
         if IsValid(ply) then
@@ -211,7 +211,7 @@ if SERVER then
     function RARELOAD.Grants()
         local out = {}
 
-        for key in pairs(doc().grants) do
+        for key in pairs(loadGrants().grants) do
             local sid64 = string.sub(key, 3)
             out[sid64] = listOf(sid64)
         end
