@@ -1,76 +1,170 @@
--- The Rareload tool's screen: status, a scrolling list of the player's
--- settings, the autosave bar, and an animated icon after the reload key or a denied use. Same look as v4.
+-- The Rareload tool's screen (5.5): where the player will come back. A compass to the respawn point with its
+-- distance, that save's number, age and contents, the latest saves, the autosave countdown, and how far the
+-- last death and the nearest checkpoint are. Saves, restores and refused uses play a short animation over it.
+-- (What each key does is already in GMod's tool help, top left, so the screen doesn't repeat it.)
 
 RARELOAD.ToolScreen = RARELOAD.ToolScreen or {}
 local Screen = RARELOAD.ToolScreen
 local L = RARELOAD.L
+local UI, Util = RARELOAD.UI, RARELOAD.Util
 
-local GRADIENT = Material("vgui/gradient-u")
-local HEADER, TOP, ROW, BAR = 50, 100, 28, 20
+local HEAD_H = 32
+local COMPASS_X, COMPASS_Y, COMPASS_R = 54, 86, 38
+local TEXT_X = 104
+local STATS_Y = 146
+local STRIP_Y, STRIP_MAX = 188, 8
+local PLACES_Y = 236
+local UNITS_TO_METERS = 0.01905
+local HERE_DIST = 80 -- closer than this (units) counts as standing on the respawn point
+local OVERLAY_TIME = 1.5
 
--- Settings shown on the screen; values are the player's effective ones.
-local FEATURES = {
-    { key = "antiStuck" }, { key = "autoSave" }, { key = "deathChoiceAlways" },
-    { key = "keepInventory" }, { key = "globalInventory" }, { key = "keepAmmo" }, { key = "keepHealth" },
-    { key = "keepStates" }, { key = "keepAppearance" }, { key = "keepEntities" }, { key = "keepNPCs" },
-    { key = "keepVehicles" }, { key = "deathCleanupMode" }, { key = "debug" },
-    { key = "autoSaveInterval" }, { key = "autoSaveAngleThreshold" }, { key = "historySize" },
-}
-
--- Overlay per toast: icon kind and its text.
+-- What the screen shows after a toast: an icon and its text (the toast's own arguments fill it in), and
+-- with `number` the save it is about on a second line.
 local OVERLAYS = {
-    ["toast.reload.restored"] = { icon = "check", text = "screen.restored" },
-    ["toast.reload.previous"] = { icon = "check", text = "screen.previous" },
+    ["toast.saved"] = { icon = "check", text = "screen.saved" },
+    ["toast.unchanged"] = { icon = "skip", text = "screen.unchanged" },
+    ["toast.aim_ground"] = { icon = "warn", text = "screen.aim_ground" },
+    ["toast.save_wait"] = { icon = "warn", text = "screen.wait" },
+    ["toast.reload.restored"] = { icon = "check", text = "screen.restored", number = true },
+    ["toast.reload.previous"] = { icon = "check", text = "screen.previous", number = true },
     ["toast.reload.empty"] = { icon = "warn", text = "screen.no_saves" },
     ["toast.reload.no_previous"] = { icon = "skip", text = "screen.no_previous" },
     ["toast.tool_denied"] = { icon = "lock", text = "screen.no_permission" },
 }
-local OVERLAY_TIME = 1.8
 
-local state = { scroll = 0, dir = 1, pauseUntil = 0 }
+-- Saves by reason in the strip of latest saves.
+local REASON_COLORS = { death = "bad", auto = "text3", quick = "warn", tool = "accent", command = "info" }
+
+-- Everything the screen reads from the timeline, worked out when the timeline changes, not every frame.
+local view = { rows = {}, recent = {} }
+-- Animation state: the arrow's angle, the latest new save, the overlay.
+local anim = { arrow = 0, newId = nil, newAt = 0, activeAt = 0 }
+
+local function rebuild()
+    local history = RARELOAD.State.history
+    local rows = history.rows or {}
+    local known = {}
+    for _, row in ipairs(view.rows) do known[row.id] = true end
+    local activeIndex
+    for index, row in ipairs(rows) do
+        if row.active then activeIndex = index end
+    end
+    local active = activeIndex and rows[activeIndex] or nil
+    local newest = rows[#rows]
+    if #view.rows > 0 and newest and not known[newest.id] then anim.newId, anim.newAt = newest.id, RealTime() end
+    if active and (not view.active or view.active.id ~= active.id) then anim.activeAt = RealTime() end
+
+    view.rows = rows
+    view.active = active
+    view.previous = activeIndex and rows[activeIndex - 1] or nil
+    view.target = active and Util.ToVector(active.info.pos) or nil
+    view.mode = istable(history.reload) and history.reload.mode or RARELOAD.RELOAD_MODES[1]
+    view.objects = 0
+    if active then
+        for _, kind in ipairs(RARELOAD.WORLD_KINDS) do view.objects = view.objects + (active.info[kind] or 0) end
+    end
+    view.recent = {}
+    for index = math.max(1, #rows - STRIP_MAX + 1), #rows do view.recent[#view.recent + 1] = rows[index] end
+end
+
+hook.Add("RareloadStateChanged", "Rareload.ToolScreen", function(what)
+    if what == "history" then rebuild() end
+    if what == "autosave" then anim.autosavedAt = RealTime() end
+end)
+rebuild()
 
 hook.Add("RareloadToast", "Rareload.ToolScreen", function(toast)
     local overlay = OVERLAYS[toast.key]
-    if overlay then state.overlay = { icon = overlay.icon, text = overlay.text, start = RealTime() } end
+    if not overlay then return end
+    local args = istable(toast.args) and toast.args or {}
+    anim.overlay = {
+        icon = overlay.icon,
+        text = L(overlay.text, unpack(args)),
+        sub = overlay.number and args[1] and L("save_no", args[1]) or nil,
+        start = RealTime(),
+    }
 end)
 
-hook.Add("RareloadStateChanged", "Rareload.ToolScreen", function(what)
-    if what == "autosave" then state.autosavedAt = RealTime() end
-end)
+-- Drawing helpers ---------------------------------------------------------------------------------------
 
--- Drawing helpers ---------------------------------------------------------------------------------
+local quad = { {}, {}, {}, {} } -- reused for every polygon of four points
+
+local function setQuad(x1, y1, x2, y2, x3, y3, x4, y4)
+    quad[1].x, quad[1].y, quad[2].x, quad[2].y = x1, y1, x2, y2
+    quad[3].x, quad[3].y, quad[4].x, quad[4].y = x3, y3, x4, y4
+    surface.DrawPoly(quad)
+end
+
+-- Circles of 12, 20 or 32 points, by size: each with its unit circle worked out once and one polygon
+-- reused by every circle of that size (drawn at once, so nothing keeps it).
+local circles = {}
+for _, points in ipairs({ 12, 20, 32 }) do
+    local shape = { cos = {}, sin = {}, poly = {} }
+    for i = 1, points do
+        local angle = (i - 1) / points * math.pi * 2
+        shape.cos[i], shape.sin[i], shape.poly[i] = math.cos(angle), math.sin(angle), {}
+    end
+    circles[points] = shape
+end
 
 local function circle(centerX, centerY, radius, col)
-    local poly = {}
-    for i = 0, 31 do
-        local angle = i / 32 * math.pi * 2
-        poly[#poly + 1] = { x = centerX + math.cos(angle) * radius, y = centerY + math.sin(angle) * radius }
+    local shape = circles[radius < 7 and 12 or radius < 16 and 20 or 32]
+    local poly = shape.poly
+    for i = 1, #poly do
+        poly[i].x, poly[i].y = centerX + shape.cos[i] * radius, centerY + shape.sin[i] * radius
     end
     draw.NoTexture()
     surface.SetDrawColor(col)
     surface.DrawPoly(poly)
 end
 
+-- A whole ring: two filled circles, far cheaper than an arc all the way round.
+local function ring(centerX, centerY, radius, thickness, col, inside)
+    circle(centerX, centerY, radius, col)
+    circle(centerX, centerY, radius - thickness, inside)
+end
+
+-- A ring from `fromFrac` to `toFrac` of a full turn, clockwise from the top.
+local function arc(centerX, centerY, radius, thickness, fromFrac, toFrac, col)
+    if toFrac <= fromFrac then return end
+    draw.NoTexture()
+    surface.SetDrawColor(col)
+    local segments = math.max(2, math.ceil((toFrac - fromFrac) * 32))
+    local inner = radius - thickness
+    for i = 0, segments - 1 do
+        local startAngle = (fromFrac + (toFrac - fromFrac) * i / segments) * math.pi * 2 - math.pi / 2
+        local endAngle = (fromFrac + (toFrac - fromFrac) * (i + 1) / segments) * math.pi * 2 - math.pi / 2
+        local cosStart, sinStart, cosEnd, sinEnd = math.cos(startAngle), math.sin(startAngle), math.cos(endAngle),
+            math.sin(endAngle)
+        setQuad(centerX + cosStart * radius, centerY + sinStart * radius, centerX + cosEnd * radius,
+            centerY + sinEnd * radius, centerX + cosEnd * inner, centerY + sinEnd * inner,
+            centerX + cosStart * inner, centerY + sinStart * inner)
+    end
+end
+
 local function thickLine(x1, y1, x2, y2, thickness)
     local angle = math.atan2(y2 - y1, x2 - x1)
     local dx, dy = math.sin(angle) * thickness / 2, -math.cos(angle) * thickness / 2
-    surface.DrawPoly({ { x = x1 + dx, y = y1 + dy }, { x = x2 + dx, y = y2 + dy },
-        { x = x2 - dx, y = y2 - dy }, { x = x1 - dx, y = y1 - dy } })
+    setQuad(x1 + dx, y1 + dy, x2 + dx, y2 + dy, x2 - dx, y2 - dy, x1 - dx, y1 - dy)
 end
 
--- Scales a label down to fit `maxW`, so long translations stay readable instead of overlapping.
-local function fittedText(text, posX, posY, maxW, col)
-    surface.SetFont("Rareload.Screen")
-    local tw = surface.GetTextSize(text)
-    if tw <= maxW then
-        return draw.SimpleText(text, "Rareload.Screen", posX, posY, col, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-    end
+local function textWidth(text, font)
+    surface.SetFont(font)
+    return (surface.GetTextSize(text))
+end
+
+-- Text scaled down to fit `maxWidth`, so long translations stay readable instead of overlapping.
+local function fittedText(text, font, posX, posY, maxWidth, col, alignX)
+    local width = textWidth(text, font)
+    alignX = alignX or TEXT_ALIGN_LEFT
+    if width <= maxWidth then return draw.SimpleText(text, font, posX, posY, col, alignX, TEXT_ALIGN_CENTER) end
+    local scale = maxWidth / width
     local matrix = Matrix()
     matrix:Translate(Vector(posX, posY, 0))
-    matrix:Scale(Vector(maxW / tw, maxW / tw, 1))
+    matrix:Scale(Vector(scale, scale, 1))
     matrix:Translate(Vector(-posX, -posY, 0))
     cam.PushModelMatrix(matrix, true)
-    draw.SimpleText(text, "Rareload.Screen", posX, posY, col, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    draw.SimpleText(text, font, posX, posY, col, alignX, TEXT_ALIGN_CENTER)
     cam.PopModelMatrix()
 end
 
@@ -79,10 +173,14 @@ local function easeOutBack(progress)
     return 1 + 2.70158 * progress ^ 3 + 1.70158 * progress ^ 2
 end
 
+local function meters(units) return string.format("%.0f", units * UNITS_TO_METERS) end
+
+-- Overlay icons ---------------------------------------------------------------------------------------
+
 local ICON_COLORS = { check = "ok", warn = "warn", skip = "accent", lock = "warn" }
 
 local function drawIcon(kind, centerX, centerY, size, alpha, progress)
-    local C = RARELOAD.UI.C
+    local C = UI.C
     if kind ~= "check" and progress < 0.55 then
         local shake = progress / 0.55
         centerX = centerX + math.sin(shake * math.pi * 6) * size * 0.08 * (1 - shake)
@@ -98,13 +196,15 @@ local function drawIcon(kind, centerX, centerY, size, alpha, progress)
     surface.SetDrawColor(255, 255, 255, alpha)
     draw.NoTexture()
     if kind == "check" then
-        local ax, ay, bx, by, cx, cy = centerX - size * 0.35, centerY, centerX - size * 0.1, centerY + size * 0.28,
-            centerX + size * 0.38,
-            centerY - size * 0.3
-        thickLine(ax, ay, Lerp(math.min(1, markProgress * 2), ax, bx), Lerp(math.min(1, markProgress * 2), ay, by),
-            thickness)
-        if markProgress > 0.5 then thickLine(bx, by, Lerp((markProgress - 0.5) * 2, bx, cx),
-            Lerp((markProgress - 0.5) * 2, by, cy), thickness) end
+        local startX, startY = centerX - size * 0.35, centerY
+        local cornerX, cornerY = centerX - size * 0.1, centerY + size * 0.28
+        local endX, endY = centerX + size * 0.38, centerY - size * 0.3
+        local first = math.min(1, markProgress * 2)
+        thickLine(startX, startY, Lerp(first, startX, cornerX), Lerp(first, startY, cornerY), thickness)
+        if markProgress > 0.5 then
+            local second = (markProgress - 0.5) * 2
+            thickLine(cornerX, cornerY, Lerp(second, cornerX, endX), Lerp(second, cornerY, endY), thickness)
+        end
     elseif kind == "warn" then
         local markSize = size * 0.5 * markProgress
         surface.DrawPoly({ { x = centerX, y = centerY - markSize },
@@ -121,135 +221,304 @@ local function drawIcon(kind, centerX, centerY, size, alpha, progress)
             { x = centerX + markSize * 0.45 + slide, y = centerY - markSize * 0.55 },
             { x = centerX + markSize * 0.45 + slide, y = centerY + markSize * 0.55 } })
     elseif kind == "lock" then
-        local bw, bh = size * 0.55, size * 0.4 * markProgress
-        surface.DrawRect(centerX - bw / 2, centerY, bw, bh)
-        local rr = bw * 0.35
+        local bodyWidth, bodyHeight = size * 0.55, size * 0.4 * markProgress
+        surface.DrawRect(centerX - bodyWidth / 2, centerY, bodyWidth, bodyHeight)
+        local shackle = bodyWidth * 0.35
         for i = 0, 9 do
-            local a1, a2 = math.pi + i / 10 * math.pi, math.pi + (i + 1) / 10 * math.pi
-            thickLine(centerX + math.cos(a1) * rr, centerY + math.sin(a1) * rr,
-                centerX + math.cos(a2) * rr, centerY + math.sin(a2) * rr, thickness * 0.7)
+            local fromAngle, toAngle = math.pi + i / 10 * math.pi, math.pi + (i + 1) / 10 * math.pi
+            thickLine(centerX + math.cos(fromAngle) * shackle, centerY + math.sin(fromAngle) * shackle,
+                centerX + math.cos(toAngle) * shackle, centerY + math.sin(toAngle) * shackle, thickness * 0.7)
         end
-        surface.DrawRect(centerX - rr - thickness * 0.35, centerY - 1, thickness * 0.7, 3)
-        surface.DrawRect(centerX + rr - thickness * 0.35, centerY - 1, thickness * 0.7, 3)
+        surface.DrawRect(centerX - shackle - thickness * 0.35, centerY - 1, thickness * 0.7, 3)
+        surface.DrawRect(centerX + shackle - thickness * 0.35, centerY - 1, thickness * 0.7, 3)
     end
 end
 
 local function drawOverlay(width, height)
-    local overlay = state.overlay
+    local overlay = anim.overlay
     local elapsed = RealTime() - overlay.start
     if elapsed > OVERLAY_TIME then
-        state.overlay = nil
+        anim.overlay = nil
         return
     end
     local progress = elapsed / OVERLAY_TIME
     local alpha = 255 * math.Clamp((1 - progress) / 0.25, 0, 1)
-    surface.SetDrawColor(0, 0, 0, alpha * 0.75)
+    surface.SetDrawColor(10, 12, 16, alpha * 0.82)
     surface.DrawRect(0, 0, width, height)
-    drawIcon(overlay.icon, width / 2, height / 2 - 20, 50, alpha, math.min(1, progress * 2.2))
-    draw.SimpleText(L(overlay.text), "Rareload.Screen", width / 2, height / 2 + 55, Color(255, 255, 255, alpha),
-        TEXT_ALIGN_CENTER,
-        TEXT_ALIGN_CENTER)
-end
-
-local function valueText(feature)
-    local settingDef = RARELOAD.Settings[feature.key]
-    local value = RARELOAD.Get(LocalPlayer(), feature.key)
-    if settingDef.type == "bool" then return value and L("ui.on") or L("ui.off"), value end
-    if settingDef.type == "enum" then return L("setting." .. feature.key .. "." .. value),
-        value ~= settingDef.values[1] end
-    return string.format(settingDef.type == "float" and "%.1f" or "%d", value) .. (settingDef.unit or ""), nil
-end
-
--- The autosave bar: time since the last autosave against the interval, then "waiting for a change".
-local function drawAutosave(width, height)
-    local C = RARELOAD.UI.C
-    local barY = height - BAR - 4
-    draw.RoundedBox(8, 8, barY, width - 16, BAR, Color(25, 25, 30))
-    local text, col, frac
-    if state.autosavedAt and RealTime() - state.autosavedAt < 1.5 then
-        text, col, frac = L("screen.autosaved"), C.ok, 1
-    else
-        local last = RARELOAD.State.lastAutosave
-        local interval = RARELOAD.Get(LocalPlayer(), "autoSaveInterval")
-        frac = last and math.Clamp((CurTime() - last) / interval, 0, 1) or 1
-        if frac < 1 then
-            text = L("screen.next_in", math.ceil(interval - (CurTime() - last)))
-            col = frac < 0.3 and C.ok or frac < 0.7 and C.warn or C.bad
-        else
-            text, col = L("screen.waiting"), C.accent
-        end
+    local lift = overlay.sub and 12 or 0
+    drawIcon(overlay.icon, width / 2, height / 2 - 22 - lift, 46, alpha, math.min(1, progress * 2.2))
+    fittedText(overlay.text, "Rareload.Screen", width / 2, height / 2 + 48 - lift, width - 20,
+        Color(255, 255, 255, alpha), TEXT_ALIGN_CENTER)
+    if overlay.sub then
+        local accent = UI.C.accentHi
+        fittedText(overlay.sub, "Rareload.ScreenBig", width / 2, height / 2 + 74, width - 20,
+            Color(accent.r, accent.g, accent.b, alpha), TEXT_ALIGN_CENTER)
     end
-    if frac > 0 then draw.RoundedBox(8, 10, barY + 2, (width - 20) * frac, BAR - 4, col) end
-    draw.SimpleText(text, "Rareload.Screen", width / 2 + 1, barY + BAR / 2 + 1, Color(0, 0, 0, 180), TEXT_ALIGN_CENTER,
-        TEXT_ALIGN_CENTER)
-    draw.SimpleText(text, "Rareload.Screen", width / 2, barY + BAR / 2, color_white, TEXT_ALIGN_CENTER,
-        TEXT_ALIGN_CENTER)
 end
 
--- The list scrolls down, pauses, scrolls back up, and pauses again.
-local function updateScroll(maxScroll)
-    if maxScroll <= 0 then
-        state.scroll = 0
+-- Header: the name, on/off, and the autosave countdown ---------------------------------------------------
+
+local function drawAutosaveRing(centerX, centerY, radius)
+    local C = UI.C
+    local lp = LocalPlayer()
+    if not RARELOAD.Get(lp, "autoSave") then return end
+    ring(centerX, centerY, radius, 3, C.line, C.bgDark)
+    local sinceAutosave = anim.autosavedAt and RealTime() - anim.autosavedAt or math.huge
+    if sinceAutosave < 1.2 then
+        local pulse = 1 + 0.25 * math.sin(sinceAutosave / 1.2 * math.pi)
+        ring(centerX, centerY, radius * pulse, 3, C.ok, C.bgDark)
+        UI.DrawIcon("disk", centerX - 8, centerY - 8, 16, C.ok)
         return
     end
-    if RealTime() < state.pauseUntil then return end
-    state.scroll = math.Clamp(state.scroll + state.dir * 15 * FrameTime(), 0, maxScroll)
-    if state.scroll == maxScroll or state.scroll == 0 then
-        state.dir = state.scroll == 0 and 1 or -1
-        state.pauseUntil = RealTime() + 4
+    local last = RARELOAD.State.lastAutosave
+    local interval = RARELOAD.Get(lp, "autoSaveInterval")
+    local fraction = last and math.Clamp((CurTime() - last) / interval, 0, 1) or 1
+    if fraction < 1 then
+        arc(centerX, centerY, radius, 3, 0, fraction, UI.Mix(C.ok, C.warn, fraction))
+        draw.SimpleText(math.ceil(interval - (CurTime() - last)), "Rareload.ScreenSmall", centerX, centerY, C.text,
+            TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    else
+        -- Waiting for the player to move or change something: a slow spinner.
+        local spin = RealTime() * 0.35 % 1
+        arc(centerX, centerY, radius, 3, spin, spin + 0.25, C.accent)
     end
+end
+
+local function drawHeader(width, enabled)
+    local C = UI.C
+    surface.SetDrawColor(C.bgDark)
+    surface.DrawRect(0, 0, width, HEAD_H)
+    surface.SetDrawColor(C.accent)
+    surface.DrawRect(0, HEAD_H - 2, width, 2)
+    draw.SimpleText("RARELOAD", "Rareload.ScreenHead", 10, HEAD_H / 2, C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    local dotColor = enabled and C.ok or C.bad
+    local pulse = enabled and 0.6 + 0.4 * math.abs(math.sin(RealTime() * 2)) or 1
+    circle(width - 52, HEAD_H / 2, 5, ColorAlpha(dotColor, 255 * pulse))
+    drawAutosaveRing(width - 20, HEAD_H / 2, 12)
+end
+
+-- The compass and the respawn save ---------------------------------------------------------------------
+
+local function drawCompass(lp)
+    local C = UI.C
+    ring(COMPASS_X, COMPASS_Y, COMPASS_R, 2, C.line, C.surface)
+    -- Four ticks: the top one is where the player is looking.
+    for i = 0, 3 do
+        local angle = i * math.pi / 2
+        local cosAngle, sinAngle = math.cos(angle), math.sin(angle)
+        surface.SetDrawColor(i == 0 and C.accentHi or C.line)
+        thickLine(COMPASS_X + sinAngle * (COMPASS_R - 7), COMPASS_Y - cosAngle * (COMPASS_R - 7),
+            COMPASS_X + sinAngle * (COMPASS_R - 2), COMPASS_Y - cosAngle * (COMPASS_R - 2), 2)
+    end
+
+    local toTarget = view.target - lp:GetPos()
+    local flat = Vector(toTarget.x, toTarget.y, 0):Length()
+    if flat < HERE_DIST then
+        local pulse = (RealTime() * 0.8) % 1
+        ring(COMPASS_X, COMPASS_Y, 8 + pulse * (COMPASS_R - 10), 3, ColorAlpha(C.ok, 255 * (1 - pulse)), C.surface)
+        UI.DrawIcon("house", COMPASS_X - 8, COMPASS_Y - 8, 16, color_white)
+        return flat
+    end
+    -- Up on the compass is where the player looks; the arrow turns smoothly towards the respawn point.
+    local relative = math.AngleDifference(toTarget:Angle().y, lp:EyeAngles().y)
+    anim.arrow = anim.arrow + math.AngleDifference(-relative, anim.arrow) * math.min(1, FrameTime() * 10)
+    local theta = math.rad(anim.arrow)
+    local sinTheta, cosTheta = math.sin(theta), math.cos(theta)
+    -- A navigation arrow, drawn as two halves (one lit, one in shade): a point `forward` units ahead of
+    -- the centre and `side` units to its right becomes a point on the screen.
+    local function point(forward, side)
+        return COMPASS_X + sinTheta * forward + cosTheta * side, COMPASS_Y - cosTheta * forward + sinTheta * side
+    end
+    local tipX, tipY = point(COMPASS_R - 9, 0)
+    local notchX, notchY = point(-10, 0)
+    local leftX, leftY = point(-20, -15)
+    local rightX, rightY = point(-20, 15)
+    draw.NoTexture()
+    surface.SetDrawColor(C.accentHi)
+    surface.DrawPoly({ { x = tipX, y = tipY }, { x = notchX, y = notchY }, { x = leftX, y = leftY } })
+    surface.SetDrawColor(C.accent)
+    surface.DrawPoly({ { x = tipX, y = tipY }, { x = rightX, y = rightY }, { x = notchX, y = notchY } })
+    return flat
+end
+
+local function drawRespawn(width, lp)
+    local C = UI.C
+    local active = view.active
+    local flat = drawCompass(lp)
+    local textWidthMax = width - TEXT_X - 8
+
+    fittedText(string.upper(L("screen.respawn")), "Rareload.ScreenSmall", TEXT_X, 46, textWidthMax, C.text3)
+    -- The number pops when the respawn point changes.
+    local sinceChange = RealTime() - anim.activeAt
+    local pop = sinceChange < 0.5 and 1 + 0.25 * (1 - easeOutBack(sinceChange / 0.5)) or 1
+    local number = L("save_no", active.id)
+    if pop ~= 1 then
+        local matrix = Matrix()
+        matrix:Translate(Vector(TEXT_X, 72, 0))
+        matrix:Scale(Vector(pop, pop, 1))
+        matrix:Translate(Vector(-TEXT_X, -72, 0))
+        cam.PushModelMatrix(matrix, true)
+        draw.SimpleText(number, "Rareload.ScreenBig", TEXT_X, 72, C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        cam.PopModelMatrix()
+    else
+        fittedText(number, "Rareload.ScreenBig", TEXT_X, 72, textWidthMax, C.text)
+    end
+    fittedText(UI.TimeAgo(active.time) .. " · " .. L("reason." .. tostring(active.reason)), "Rareload.ScreenSmall",
+        TEXT_X, 98, textWidthMax, C.text2)
+
+    if flat < HERE_DIST then
+        fittedText(L("screen.here"), "Rareload.Screen", TEXT_X, 122, textWidthMax, C.ok)
+    else
+        local rise = (view.target.z - lp:GetPos().z) * UNITS_TO_METERS
+        local distance = L("screen.distance", meters(flat))
+        if math.abs(rise) >= 2 then
+            distance = distance .. (rise > 0 and "  ▲" or "  ▼") .. string.format("%.0f", math.abs(rise))
+        end
+        fittedText(distance, "Rareload.Screen", TEXT_X, 122, textWidthMax, C.accentHi)
+    end
+end
+
+local function bar(posX, posY, width, fraction, col)
+    draw.RoundedBox(3, posX, posY, width, 6, UI.C.bgDark)
+    if fraction > 0 then draw.RoundedBox(3, posX, posY, math.max(6, width * math.min(fraction, 1)), 6, col) end
+end
+
+local function drawStats(width)
+    local C = UI.C
+    local info = view.active.info
+    local hp, armor = tonumber(info.hp), tonumber(info.armor)
+    local column = (width - 16) / 4
+    local posX = 8
+    UI.DrawIcon("heart", posX, STATS_Y - 8, 16, color_white)
+    draw.SimpleText(hp and math.floor(hp) or "-", "Rareload.ScreenSmall", posX + 20, STATS_Y - 3, C.text,
+        TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    bar(posX + 20, STATS_Y + 6, column - 26, (hp or 0) / 100, UI.HealthColor(hp or 0, 100))
+    posX = posX + column
+    UI.DrawIcon("shield", posX, STATS_Y - 8, 16, color_white)
+    draw.SimpleText(armor and math.floor(armor) or "-", "Rareload.ScreenSmall", posX + 20, STATS_Y - 3, C.text,
+        TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    bar(posX + 20, STATS_Y + 6, column - 26, (armor or 0) / 100, C.info)
+    posX = posX + column
+    UI.DrawIcon("gun", posX + 4, STATS_Y - 8, 16, color_white)
+    draw.SimpleText(info.weapons or 0, "Rareload.Screen", posX + 24, STATS_Y, C.text, TEXT_ALIGN_LEFT,
+        TEXT_ALIGN_CENTER)
+    posX = posX + column
+    UI.DrawIcon("bricks", posX + 4, STATS_Y - 8, 16, color_white)
+    draw.SimpleText(view.objects, "Rareload.Screen", posX + 24, STATS_Y, C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+end
+
+-- The latest saves, oldest on the left, each with its number; a new one pops in on the right. The save
+-- the reload key goes to is marked R.
+local function drawStrip(width)
+    local C = UI.C
+    local recent = view.recent
+    if #recent == 0 then return end
+    local left, right = 22, width - 22
+    local spacing = (right - left) / (STRIP_MAX - 1)
+    local sinceNew = RealTime() - anim.newAt
+    local slide = sinceNew < 0.45 and (1 - easeOutBack(sinceNew / 0.45)) * spacing or 0
+    local startX = right - (#recent - 1) * spacing
+    surface.SetDrawColor(C.line)
+    surface.DrawRect(left - 10, STRIP_Y - 1, right - left + 20, 2)
+    local reloadTarget = view.mode == "restore_current" and view.active or view.previous
+    for index, row in ipairs(recent) do
+        local nodeX = startX + (index - 1) * spacing + slide
+        local col = C[REASON_COLORS[row.reason] or "text2"]
+        local radius = row.active and 8 or 5
+        if row.id == anim.newId and sinceNew < 0.6 then radius = radius * easeOutBack(sinceNew / 0.6) end
+        if row.active then
+            local glow = 0.5 + 0.5 * math.sin(RealTime() * 3)
+            circle(nodeX, STRIP_Y, radius + 4 + glow * 2, ColorAlpha(C.accent, 60))
+            circle(nodeX, STRIP_Y, radius, C.text)
+            circle(nodeX, STRIP_Y, radius - 3, col)
+        else
+            circle(nodeX, STRIP_Y, radius, col)
+        end
+        if reloadTarget and row.id == reloadTarget.id then
+            draw.SimpleText("R", "Rareload.ScreenSmall", nodeX, STRIP_Y - 17, C.warn, TEXT_ALIGN_CENTER,
+                TEXT_ALIGN_CENTER)
+        elseif row.pinned then
+            UI.DrawIcon("flag_blue", nodeX - 8, STRIP_Y - 25, 16, color_white)
+        end
+        fittedText(tostring(row.id), "Rareload.ScreenSmall", nodeX, STRIP_Y + 19, spacing - 2,
+            row.active and C.text or C.text3, TEXT_ALIGN_CENTER)
+    end
+end
+
+-- Where else the player can go back to: the spot of their last death and their nearest checkpoint, with
+-- how far each one is.
+local function drawPlaces(width, lp)
+    local C = UI.C
+    local here = lp:GetPos()
+    local death = RARELOAD.State.death
+    local nearest, nearestDist
+    for _, checkpoint in ipairs(RARELOAD.State.checkpoints) do
+        if not checkpoint.disabled and checkpoint.vec then
+            local dist = here:Distance(checkpoint.vec)
+            if not nearestDist or dist < nearestDist then nearest, nearestDist = checkpoint, dist end
+        end
+    end
+    local hasDeath = death.pos ~= nil
+    draw.RoundedBox(6, 6, PLACES_Y - 15, width - 12, 30, C.surface)
+    local posX, right = 12, width - 12
+    if hasDeath then
+        local deathText = L("screen.meters", meters(here:Distance(death.pos)))
+        UI.DrawIcon("heart_delete", posX, PLACES_Y - 8, 16, color_white)
+        draw.SimpleText(deathText, "Rareload.ScreenSmall", posX + 20, PLACES_Y, C.bad, TEXT_ALIGN_LEFT,
+            TEXT_ALIGN_CENTER)
+        posX = posX + 20 + textWidth(deathText, "Rareload.ScreenSmall") + 12
+        surface.SetDrawColor(C.line)
+        surface.DrawRect(posX - 6, PLACES_Y - 9, 1, 18)
+    end
+    UI.DrawIcon("flag_blue", posX, PLACES_Y - 8, 16, nearest and color_white or C.textOff)
+    if nearest then
+        local distText = L("screen.meters", meters(nearestDist))
+        local distWidth = textWidth(distText, "Rareload.ScreenSmall")
+        draw.SimpleText(distText, "Rareload.ScreenSmall", right, PLACES_Y, C.info, TEXT_ALIGN_RIGHT,
+            TEXT_ALIGN_CENTER)
+        fittedText(nearest.name, "Rareload.ScreenSmall", posX + 20, PLACES_Y, right - distWidth - 8 - posX - 20,
+            C.text)
+    else
+        fittedText(L("screen.no_checkpoints"), "Rareload.ScreenSmall", posX + 20, PLACES_Y, right - posX - 20,
+            C.textOff)
+    end
+end
+
+-- No save yet: what to do to get one.
+local function drawEmpty(width)
+    local C = UI.C
+    circle(COMPASS_X, COMPASS_Y, COMPASS_R, C.surface)
+    local bob = math.sin(RealTime() * 2) * 3
+    UI.DrawIcon("disk", COMPASS_X - 16, COMPASS_Y - 16 + bob, 32, color_white)
+    fittedText(L("screen.no_saves"), "Rareload.Screen", TEXT_X, 74, width - TEXT_X - 8, C.text)
+    fittedText(L("screen.no_saves_hint"), "Rareload.ScreenSmall", TEXT_X, 98, width - TEXT_X - 8, C.text2)
 end
 
 -- Called from TOOL:DrawToolScreen, inside the tool's own cam.Start2D.
 function Screen.Draw(width, height)
     local lp = LocalPlayer()
     if not IsValid(lp) then return end
-    local C = RARELOAD.UI.C
-
-    surface.SetDrawColor(C.bg)
-    surface.DrawRect(0, 0, width, height)
-    surface.SetDrawColor(C.accent)
-    surface.DrawRect(0, 0, width, HEADER)
-    surface.SetMaterial(GRADIENT)
-    surface.SetDrawColor(255, 255, 255, 35)
-    surface.DrawTexturedRect(0, 0, width, HEADER)
-    draw.SimpleText("RARELOAD", "Rareload.ScreenTitle", width / 2, HEADER / 2, color_white, TEXT_ALIGN_CENTER,
-        TEXT_ALIGN_CENTER)
-
+    local C = UI.C
     local enabled = RARELOAD.Get(lp, "enabled")
-    draw.RoundedBox(8, 10, 60, width - 20, 30, enabled and C.ok or C.bad)
-    draw.SimpleText(enabled and L("screen.enabled") or L("screen.disabled"), "Rareload.Screen", width / 2, 75,
-        enabled and Color(15, 15, 15) or color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
-    local autosave = RARELOAD.Get(lp, "autoSave")
-    local bottom = height - (autosave and BAR + 8 or 22)
-    updateScroll(#FEATURES * ROW - (bottom - TOP))
-    render.SetScissorRect(0, TOP, width, bottom, true)
-    for i, feature in ipairs(FEATURES) do
-        local rowY = TOP + (i - 1) * ROW - state.scroll
-        if rowY + ROW > TOP and rowY < bottom then
-            if i % 2 == 0 then
-                surface.SetDrawColor(255, 255, 255, 6)
-                surface.DrawRect(8, rowY - 2, width - 16, ROW)
-            end
-            local text, on = valueText(feature)
-            local dot = on == nil and C.accent or on and C.ok or C.bad
-            draw.RoundedBox(10, 12, rowY + 2, 20, 16, dot)
-            surface.SetFont("Rareload.Screen")
-            local vw = surface.GetTextSize(text)
-            fittedText(L("setting." .. feature.key), 40, rowY + 10, width - 15 - vw - 8 - 40, color_white)
-            draw.SimpleText(text, "Rareload.Screen", width - 15, rowY + 10, on == nil and color_white or dot,
-                TEXT_ALIGN_RIGHT,
-                TEXT_ALIGN_CENTER)
-        end
+    -- Opaque: the tool screen's texture is shared, and anything see-through would show what was there before.
+    surface.SetDrawColor(C.bg.r, C.bg.g, C.bg.b, 255)
+    surface.DrawRect(0, 0, width, height)
+    drawHeader(width, enabled)
+    if view.active and view.target then
+        drawRespawn(width, lp)
+        drawStats(width)
+    else
+        drawEmpty(width)
     end
-    render.SetScissorRect(0, 0, 0, 0, false)
+    drawStrip(width)
+    drawPlaces(width, lp)
 
-    if autosave then drawAutosave(width, height) end
-    if state.overlay then
-        drawOverlay(width, height)
-    elseif not autosave then
-        draw.SimpleText("v" .. RARELOAD.version, "Rareload.Screen", width - 10, height - 4, Color(150, 150, 150, 180),
-            TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
+    if not enabled then
+        surface.SetDrawColor(10, 12, 16, 210)
+        surface.DrawRect(0, HEAD_H, width, height - HEAD_H)
+        draw.RoundedBox(8, 20, height / 2 - 18, width - 40, 36, C.bad)
+        fittedText(L("screen.off"), "Rareload.Screen", width / 2, height / 2, width - 56, color_white, TEXT_ALIGN_CENTER)
     end
+    if anim.overlay then drawOverlay(width, height) end
 end

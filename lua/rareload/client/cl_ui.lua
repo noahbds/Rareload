@@ -82,7 +82,9 @@ local SCALED_FONTS = {
     ["Rareload.Mono"] = { 14, 500 },
 }
 local FIXED_FONTS = {
-    ["Rareload.Screen"] = { 22, 600 }, ["Rareload.ScreenTitle"] = { 38, 900 },
+    -- The tool screen (cl_toolscreen.lua): 256 px, seen from arm's length, so nothing under 17 px.
+    ["Rareload.Screen"] = { 22, 700 }, ["Rareload.ScreenSmall"] = { 17, 700 }, ["Rareload.ScreenHead"] = { 24, 900 },
+    ["Rareload.ScreenBig"] = { 36, 900 },
     ["Rareload.Panel"] = { 24, 500 }, ["Rareload.PanelB"] = { 24, 700 }, ["Rareload.PanelTitle"] = { 32, 800 },
     ["Rareload.PanelSmall"] = { 19, 600 }, ["Rareload.Label"] = { 19, 700 },
     ["Rareload.Menu.Title"] = { 26, 800 }, ["Rareload.Menu.Head"] = { 17, 700 }, ["Rareload.Menu.Row"] = { 16, 500 },
