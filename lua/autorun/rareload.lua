@@ -4,7 +4,7 @@
 -- It can also be used to save and restore the state of the game world at any time, and to track changes made by players.
 RARELOAD = RARELOAD or {}
 
-RARELOAD.version = "5.4"
+RARELOAD.version = "5.5"
 RARELOAD.API = 1
 RARELOAD.loadGen = (RARELOAD.loadGen or 0) + 1
 
@@ -46,7 +46,7 @@ if RARELOAD.legacyConflict then
     MsgC(Color(255, 90, 90), "[Rareload] ", color_white, title .. ": " .. body .. "\n")
 
     if CLIENT then
-        hook.Add("InitPostEntity", "RareloadLegacyConflict", function()
+        hook.Add("InitPostEntity", "Rareload.LegacyConflict", function()
             timer.Simple(2, function()
                 chat.AddText(Color(255, 90, 90), "[Rareload] ", color_white, body)
                 Derma_Message(body, title, "OK")

@@ -232,7 +232,7 @@ Weapons.Adapter({
 
 -- Module ------------------------------------------------------------------------------------------
 
-local function report(ply, ctx, failed)
+local function report(ctx, failed)
     if failed > 0 then
         ctx:step("warn", "weaponState", failed .. " weapons kept their default attachments")
     end
@@ -242,7 +242,7 @@ end
 function Weapons.ApplyLater(ply, state, ctx, after)
     local done = ctx:async("weaponState")
     ctx:nextTick(function()
-        report(ply, ctx, Weapons.Apply(ply, state))
+        report(ctx, Weapons.Apply(ply, state))
         if after then after() end
         done()
     end)

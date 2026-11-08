@@ -110,7 +110,7 @@ if SERVER then
         if isentity(target) then
             enqueue(target, topic, key, chunks, urgent)
         else
-            for _, ply in ipairs(target or select(2, player.Iterator())) do
+            for _, ply in ipairs(target or player.GetAll()) do
                 enqueue(ply, topic, key, chunks, urgent)
             end
         end

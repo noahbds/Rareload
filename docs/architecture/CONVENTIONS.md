@@ -17,13 +17,14 @@ The rules the code already follows, written down so they stop drifting. When cod
 
 - One global: `RARELOAD`. Each subsystem is one `PascalCase` table on it (42 today: server `Store`, `History`, `Pipeline`, `Snapshot`, `Snapshots`, `Inventory`, `AntiStuck`, `Ownership`, `Share`, `Checkpoints`, `Death`, `PvP`, …; client `State`, `UI`, `Menu`, `Timeline`, `Inspector`, `World`, `Panels`, `Phantoms`, …; a client UI next to a server system of the same name takes a `UI` suffix: `CheckpointsUI`, `DeathUI`, `PlaceUI`), plus functions `RARELOAD.Get`, `.Can`, `.Toast`, `.Log`, `.Priv` and values `.version`, `.API`.
 - Fields starting with `_` (`Store._cache`, `Pipeline._defs`, `Pipeline._queue`, `Net._handlers`) are **private to their file**. Other files call a function on the owner instead (see `STATE_OWNERSHIP.md`).
-- Everything else is `local`. A missing `local` is a bug.
+- Everything else is `local`. A missing `local` is a bug. Without `glualint` here it is checked two ways (5.5 Phase 10): a token scan for assignments to names a file never declares, and a `__newindex` trap on `_G` (both realms) that records any global written from `lua/rareload/` while the whole test suite and the windows run. Both found only `RARELOAD`.
+- What other addons may call or hook, and so must keep its name and arguments: `RARELOAD.Module` (register a save module), `RARELOAD.Panels.Format` (fill a module's "other" tab on the world cards), the `RareloadCanSave` / `RareloadCanRestore` rules and the events in §4, plus `RARELOAD.Get`, `.Can`, `.version`, `.API`. Any other function on a subsystem table is internal and may change.
 - `RARELOAD.version` is the only copy of the version string.
 
 ## 3. Naming
 
 - `camelCase` locals and local functions, `PascalCase` public functions (`History.Append`), `SCREAMING_SNAKE` constants (`MAX_REQUEST`).
-- Names say what a thing is, not its type. Short names only in a 1–3 line scope (`tr`, `mv`, loop `i`). One short name must not mean two things across the codebase — see `READABILITY_AUDIT.md` §3 (`def`, `d`, `p`).
+- Names say what a thing is, not its type. A parameter that is not used is dropped, or named `_` when a later one is (engine callbacks such as `Paint(self, w, h)` keep their signature). Short names only in a 1–3 line scope (`tr`, `mv`, loop `i`). One short name must not mean two things across the codebase — see `READABILITY_AUDIT.md` §3 (`def`, `d`, `p`).
 - Keep a single-use local function when it names a real step or a complex condition; inline it only when it just forwards its arguments.
 - Lua operators only: `~=`, `and`, `or`, `not` (no `!=`, `&&`, `//` comments).
 
@@ -33,7 +34,7 @@ The rules the code already follows, written down so they stop drifting. When cod
 | :--- | :--- | :--- |
 | Net strings | `rareload.<x>` | `rareload.sync`, `rareload.req` (only two; everything else is an op inside them) |
 | Net ops / push topics | `<system>.<action>` | `history.restore`, `checkpoint.add`, `object.detail` |
-| Hook ids (`hook.Add` 2nd arg) | `Rareload.<System>[.<Purpose>]` | `Rareload.Snapshots`, `Rareload.Death` — 106 of 107 follow it; the one exception is `RareloadLegacyConflict` in the loader |
+| Hook ids (`hook.Add` 2nd arg) | `Rareload.<System>[.<Purpose>]` | `Rareload.Snapshots`, `Rareload.Death`, `Rareload.LegacyConflict` — all of them (the loader's `RareloadLegacyConflict` was renamed in 5.5) |
 | Hook events Rareload fires | `Rareload<Event>` | `RareloadCanSave`, `RareloadCanRestore`, `RareloadSaved`, `RareloadRestored`, `RareloadStateChanged`, `RareloadClientReady`, `RareloadLoaded`, `RareloadLanguageChanged`, `RareloadToast` |
 | Timer ids | `Rareload.<System>.<Purpose>` | `Rareload.Store.Flush`, `Rareload.History.Push` |
 | ConVars | `sv_rareload_<snake_key>` (server), `cl_rareload_<snake_key>` (player, USERINFO) | generated from the setting key by `Util.Snake` |

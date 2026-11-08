@@ -96,11 +96,6 @@ function Snapshot.IsVehiclePart(ent)
     return Snapshot.RootVehicleOf(ent) ~= nil
 end
 
-function Snapshot.IsVehicleDef(entityDef)
-    return isRootClass(entityDef.Class) or entityDef.LVS == true or entityDef.IsSimfphyscar == true
-        or entityDef.IsGlideVehicle == true
-end
-
 -- IDs ---------------------------------------------------------------------------------------------
 
 -- Rareload ID -> the live entity that has it. An ID belongs to one entity: the duplicator tools copy

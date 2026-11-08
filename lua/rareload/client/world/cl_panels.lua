@@ -455,7 +455,7 @@ local function bar(x, y, w, h, frac, col, text)
 end
 
 -- One card, centred on (0, 0) of the current 3D2D plane.
-local function drawCard(rec, focused, locked)
+local function drawCard(rec, focused)
     local cats, tabs = catsOf(rec)
     local view = Panels.View(rec)
     view.tab = math.Clamp(view.tab, 1, math.max(#tabs, 1))
@@ -756,13 +756,13 @@ end
 local fade = 1 -- alpha of the pile being drawn
 
 -- Draws `rec`'s card moved by (dx, dy), scaled by s, at alpha a (the plane is already open).
-local function drawMoved(rec, dx, dy, s, a, focused, locked)
+local function drawMoved(rec, dx, dy, s, a, focused)
     local m = Matrix()
     m:Translate(Vector(dx, dy, 0))
     m:Scale(Vector(s, s, 1))
     cam.PushModelMatrix(m, true)
     surface.SetAlphaMultiplier(a * fade)
-    drawCard(rec, focused, locked)
+    drawCard(rec, focused)
     surface.SetAlphaMultiplier(fade)
     cam.PopModelMatrix()
 end
@@ -933,14 +933,14 @@ local function drawOpenCard(g, focused, locked)
     if anim then
         local e = easeOutBack(t)
         if anim.from then
-            drawMoved(anim.from, anim.dir * t * g.w * 0.55, -t * g.h * 0.14, Lerp(t, 1, 0.82), 1 - t * t, false, false)
+            drawMoved(anim.from, anim.dir * t * g.w * 0.55, -t * g.h * 0.14, Lerp(t, 1, 0.82), 1 - t * t, false)
         end
         drawMoved(g.active, -anim.dir * (1 - e) * g.w * 0.1, (1 - e) * g.h * 0.05, Lerp(e, 0.9, 1), Lerp(t, 0.6, 1),
-            focused, locked)
+            focused)
     elseif open < 1 then
-        drawMoved(g.active, 0, g.h * 0.04 * (1 - open), Lerp(easeOutBack(open), 0.92, 1), open, focused, locked)
+        drawMoved(g.active, 0, g.h * 0.04 * (1 - open), Lerp(easeOutBack(open), 0.92, 1), open, focused)
     else
-        drawCard(g.active, focused, locked)
+        drawCard(g.active, focused)
     end
     if #g.members > 1 then
         local label = st.active .. " / " .. #g.members
