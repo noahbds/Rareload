@@ -10,11 +10,26 @@ History.COMPONENTS = RARELOAD.COMPONENTS
 -- Returns the player's saves document (a new, unsaved one if they have none) and its storage path,
 -- or nil for players without a stable ID. `ply` can also be a SteamID64: admins manage the saves of
 -- players who are offline (A3). The functions below take either.
+-- A document read from disk is given its parts once (a hand-edited or old file may lack them), so the
+-- code below never checks for them: entries and checkpoints are lists, every entry has its data.
+local normalized = setmetatable({}, { __mode = "k" })
+local function normalize(d)
+    if normalized[d] then return d end
+    d.entries = istable(d.entries) and d.entries or {}
+    d.checkpoints = istable(d.checkpoints) and d.checkpoints or {}
+    for _, entry in ipairs(d.entries) do
+        if not istable(entry.data) then entry.data = {} end
+    end
+    normalized[d] = true
+    return d
+end
+
 function History.Doc(ply)
     local key = isstring(ply) and (ply:match("^%d+$") and ply) or (not isstring(ply) and RARELOAD.Util.PlayerKey(ply))
     if not key then return nil end
     local rel = RARELOAD.Store.MapDir() .. "/" .. key
-    local d = RARELOAD.Store.Load(rel) or { v = RARELOAD.Store.SCHEMA, sid64 = key, nextId = 1, entries = {} }
+    local d = RARELOAD.Store.Load(rel)
+    d = d and normalize(d) or normalize({ v = RARELOAD.Store.SCHEMA, sid64 = key, nextId = 1 })
     return d, rel
 end
 
@@ -110,7 +125,6 @@ end
 function History.UpdateCheckpoints(ply, fn)
     local d = History.Doc(ply)
     if not d then return false end
-    d.checkpoints = istable(d.checkpoints) and d.checkpoints or {}
     local result = table.Pack(fn(d.checkpoints))
     if result[1] then save(ply, d, true) end
     return unpack(result, 1, result.n)
@@ -393,9 +407,9 @@ end
 -- What the inspector, the timeline preview and the world display show about one saved object.
 -- `snap` gives the NPC AI state and vehicle runtime kept next to the duplicator data.
 local function objectInfo(def, kind, snap)
-    local mods = istable(def.EntityMods) and def.EntityMods or {}
-    local phys = istable(def.PhysicsObjects) and (def.PhysicsObjects[0] or def.PhysicsObjects["0"]) or {}
-    local rl = istable(mods.rareload) and mods.rareload or {}
+    local Snapshot = RARELOAD.Snapshot
+    local mods, rl, bones = Snapshot.Mods(def), Snapshot.Rareload(def), Snapshot.Bones(def)
+    local phys = bones[0] or bones["0"] or {}
     local id = RARELOAD.Snapshot.DefID(def)
     local runtime, ai = byObjectId(snap.runtime, id), byObjectId(snap.ai, id)
     return {
@@ -612,7 +626,7 @@ function History.FlagObject(ply, entryId, objectId, flag, value)
     local field = ({ frozen = "Frozen", nogravity = "NoGrav" })[flag]
     if not field then return false, "unknown flag" end
     return changeObject(ply, entryId, objectId, function(def)
-        for _, phys in pairs(def.PhysicsObjects or {}) do phys[field] = value or nil end
+        for _, phys in pairs(RARELOAD.Snapshot.Bones(def)) do phys[field] = value or nil end
         return true
     end)
 end

@@ -146,6 +146,16 @@ end
 
 -- IDs are 12 hex characters; about one in 300 is all digits, which JSON reads back as a number, so
 -- an ID is always handled as a string.
+-- A saved object's optional parts, or NONE (read-only) when it has none: saved or imported objects
+-- may lack them, and this is the one place that knows.
+local NONE = setmetatable({}, { __newindex = function() error("[Rareload] NONE is read-only", 2) end })
+function Snapshot.Mods(def) return istable(def.EntityMods) and def.EntityMods or NONE end
+function Snapshot.Rareload(def)
+    local rl = Snapshot.Mods(def).rareload
+    return istable(rl) and rl or NONE
+end
+function Snapshot.Bones(def) return istable(def.PhysicsObjects) and def.PhysicsObjects or NONE end
+
 function Snapshot.DefID(def)
     local mods = def.EntityMods
     local id = istable(mods) and istable(mods.rareload) and mods.rareload.id
@@ -507,9 +517,7 @@ Snapshot.SKIP_REASONS = {
 
 -- Putting objects still on the map back the way they were saved (A1) ----------------------------
 
-local function bonesOf(def)
-    return istable(def.PhysicsObjects) and def.PhysicsObjects or {}
-end
+local bonesOf = Snapshot.Bones
 
 local function boneOf(def, i)
     local bones = bonesOf(def)
@@ -590,7 +598,7 @@ local function poses(ply, ent, def)
     for i, mat in pairs(istable(def._DuplicatedSubMaterials) and def._DuplicatedSubMaterials or {}) do
         if tonumber(i) and isstring(mat) then ent:SetSubMaterial(tonumber(i), mat) end
     end
-    local eyes = istable(def.EntityMods) and def.EntityMods.eyetarget
+    local eyes = Snapshot.Mods(def).eyetarget
     local fn = duplicator.EntityModifiers.eyetarget
     if eyes and fn then ProtectedCall(fn, ply, ent, eyes) end
 end
@@ -601,7 +609,7 @@ local function cosmetics(ply, ent, def)
     for group, value in pairs(istable(def.BodyG) and def.BodyG or {}) do
         if tonumber(group) and isnumber(value) then ent:SetBodygroup(tonumber(group), value) end
     end
-    local mods = istable(def.EntityMods) and def.EntityMods or {}
+    local mods = Snapshot.Mods(def)
     for name, plain in pairs(PLAIN) do
         local fn = duplicator.EntityModifiers[name]
         local data = mods[name] or (istable(ent.EntityMods) and ent.EntityMods[name] and plain)
@@ -610,7 +618,7 @@ local function cosmetics(ply, ent, def)
     -- Colour and material set without the Sandbox tools (the duplicator keeps them as these fields).
     if IsColor(def._DuplicatedColor) then ent:SetColor(def._DuplicatedColor) end
     if isstring(def._DuplicatedMaterial) then ent:SetMaterial(def._DuplicatedMaterial) end
-    local rl = istable(mods.rareload) and mods.rareload or {}
+    local rl = Snapshot.Rareload(def)
     if (tonumber(rl.maxHp) or 0) > 0 then
         ent:SetMaxHealth(rl.maxHp)
         ent:SetHealth(rl.hp or rl.maxHp)
@@ -678,8 +686,7 @@ function Snapshot.Reset(targets, ply)
     end
     local motion = IsValid(ply) and RARELOAD.Get(ply, "keepMotion")
     for _, p in ipairs(targets) do
-        local mods = istable(p.def.EntityMods) and p.def.EntityMods or {}
-        Snapshot.ApplyExtras(p.ent, mods.rareload, motion)
+        Snapshot.ApplyExtras(p.ent, Snapshot.Rareload(p.def), motion)
     end
     -- Vehicle parts get back the motion they had.
     for _, h in ipairs(held) do
@@ -801,14 +808,11 @@ local function finish(st)
             -- switched on again the way its key does it, which also starts its sound.
             local def = paste[index]
             if IsValid(ent) and def and def.Class == "gmod_thruster" and ent.Switch then
-                local rl = istable(def.EntityMods) and def.EntityMods.rareload
-                if (istable(rl) and rl.on) or (istable(def.DT) and def.DT.On) then
+                if Snapshot.Rareload(def).on or (istable(def.DT) and def.DT.On) then
                     ProtectedCall(function() ent:Switch(true) end)
                 end
             end
-            if IsValid(ent) and def and istable(def.EntityMods) then
-                Snapshot.ApplyExtras(ent, def.EntityMods.rareload, motion)
-            end
+            if IsValid(ent) and def then Snapshot.ApplyExtras(ent, Snapshot.Rareload(def), motion) end
         end
         for index, def in pairs(paste) do
             if not IsValid(report.created[index]) then
@@ -876,7 +880,7 @@ end
 
 -- The saved frozen state, once everything exists: unfrozen objects move again.
 local function letGo(ent, def)
-    local physics = istable(def.PhysicsObjects) and def.PhysicsObjects or {}
+    local physics = Snapshot.Bones(def)
     for i = 0, ent:GetPhysicsObjectCount() - 1 do
         local phys, saved = ent:GetPhysicsObjectNum(i), physics[i] or physics[tostring(i)]
         if IsValid(phys) and not (istable(saved) and saved.Frozen) then

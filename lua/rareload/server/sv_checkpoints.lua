@@ -12,7 +12,7 @@ local cursor = setmetatable({}, { __mode = "k" })
 
 function Checkpoints.List(ply)
     local d = RARELOAD.History.Doc(ply)
-    return d and istable(d.checkpoints) and d.checkpoints or {}
+    return d and d.checkpoints or {}
 end
 
 local function push(ply)
