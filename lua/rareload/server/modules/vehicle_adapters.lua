@@ -10,6 +10,11 @@ Vehicles.adapters = Vehicles.adapters or {}
 -- adapter = { id, priority, matches(ent), isReady?(ent), readyTimeout?, selfStabilizes?,
 --             captureRoot?(ent), applyRoot?(ent, t), captureComponents?(ent), applyComponents?(ent, list),
 --             onSeatEnter?(ent, seat, ply) }
+-- Instead of captureRoot/applyRoot, an adapter can list the runtime values its base wipes (see
+-- rootFromProps below): props = { { key, getter, setter, check?, toSave?, fromSave? } } in the order
+-- they are set back, lastProps = the ones set after the colours (they start engines, lights, sound),
+-- colorSetter?(ent) = the method that sets the colour, noPaint? = the base restores its paint itself,
+-- afterApply?(ent, t).
 function Vehicles.Adapter(adapter)
     Vehicles.adapters[adapter.id] = adapter
 end
@@ -58,6 +63,41 @@ local function applyCosmetic(ent, t, colorSetter)
     end
     set(ent, "SetSkin", t.skin)
     for id, v in pairs(t.bodygroups or {}) do ent:SetBodygroup(tonumber(id), v) end
+end
+
+local function captureProps(ent, t, props)
+    for _, p in ipairs(props or {}) do
+        local v = get(ent, p[2], p[4])
+        if v ~= nil and p[5] then v = p[5](v) end
+        t[p[1]] = v
+    end
+end
+
+local function applyProps(ent, t, props)
+    for _, p in ipairs(props or {}) do
+        local v = t[p[1]]
+        if v ~= nil and p[6] then v = p[6](v) end
+        set(ent, p[3], v)
+    end
+end
+
+-- captureRoot and applyRoot made from an adapter's property lists (Vehicles.Adapter).
+local function rootFromProps(a)
+    a.captureRoot = function(ent)
+        local t = {}
+        captureProps(ent, t, a.props)
+        captureProps(ent, t, a.lastProps)
+        captureCosmetic(ent, t)
+        if a.noPaint then t.color = nil end
+        return t
+    end
+    a.applyRoot = function(ent, t)
+        applyProps(ent, t, a.props)
+        applyCosmetic(ent, t, a.colorSetter and a.colorSetter(ent))
+        applyProps(ent, t, a.lastProps)
+        if a.afterApply then a.afterApply(ent, t) end
+    end
+    return a
 end
 
 -- Seats ---------------------------------------------------------------------------------------------
@@ -126,55 +166,32 @@ end
 
 -- Base adapters -------------------------------------------------------------------------------------
 
-Vehicles.Adapter({
+Vehicles.Adapter(rootFromProps({
     id = "source",
     priority = 0,
     matches = function(ent) return ent:IsVehicle() end,
     isReady = function(ent) return physReady(ent) and (not ent.IsValidVehicle or ent:IsValidVehicle()) end, -- G69
-    captureRoot = function(ent)
-        local t = { health = get(ent, "Health", isnumber), maxHealth = get(ent, "GetMaxHealth", isnumber) }
-        captureCosmetic(ent, t)
-        return t
-    end,
-    applyRoot = function(ent, t)
-        set(ent, "SetMaxHealth", t.maxHealth)
-        set(ent, "SetHealth", t.health)
-        applyCosmetic(ent, t)
-    end,
-})
+    props = {
+        { "maxHealth", "GetMaxHealth", "SetMaxHealth", isnumber }, { "health", "Health", "SetHealth", isnumber },
+    },
+}))
 
-Vehicles.Adapter({
+Vehicles.Adapter(rootFromProps({
     id = "simfphys",
     priority = 20,
     selfStabilizes = true,
     matches = function(ent) return ent.IsSimfphyscar == true end,
     isReady = physReady,
-    captureRoot = function(ent)
-        local t = {
-            active = get(ent, "GetActive", isbool),
-            lights = get(ent, "GetLightsEnabled", isbool),
-            handbrake = get(ent, "GetHandbrake", isbool),
-            health = get(ent, "GetCurHealth", isnumber),
-            maxHealth = get(ent, "GetMaxHealth", isnumber),
-            fuel = get(ent, "GetFuel", isnumber),
-            maxFuel = get(ent, "GetMaxFuel", isnumber),
-            fuelType = get(ent, "GetFuelType"),
-        }
-        captureCosmetic(ent, t)
-        return t
-    end,
-    applyRoot = function(ent, t)
-        set(ent, "SetMaxHealth", t.maxHealth)
-        set(ent, "SetCurHealth", t.health)
-        set(ent, "SetMaxFuel", t.maxFuel)
-        set(ent, "SetFuelType", t.fuelType)
-        set(ent, "SetFuel", t.fuel)
-        set(ent, "SetLightsEnabled", t.lights)
-        set(ent, "SetHandbrake", t.handbrake)
-        applyCosmetic(ent, t, isfunction(ent.SetColors) and "SetColors" or "SetColor")
-        set(ent, "SetActive", t.active) -- last: it starts the drivetrain
-    end,
-})
+    props = {
+        { "maxHealth", "GetMaxHealth", "SetMaxHealth", isnumber },
+        { "health", "GetCurHealth", "SetCurHealth", isnumber },
+        { "maxFuel", "GetMaxFuel", "SetMaxFuel", isnumber }, { "fuelType", "GetFuelType", "SetFuelType" },
+        { "fuel", "GetFuel", "SetFuel", isnumber }, { "lights", "GetLightsEnabled", "SetLightsEnabled", isbool },
+        { "handbrake", "GetHandbrake", "SetHandbrake", isbool },
+    },
+    lastProps = { { "active", "GetActive", "SetActive", isbool } }, -- it starts the drivetrain
+    colorSetter = function(ent) return isfunction(ent.SetColors) and "SetColors" or "SetColor" end,
+}))
 
 -- LVS keeps HP on engine, rotor and ammorack sub-entities (L15).
 local function lvsComponents(root)
@@ -193,7 +210,7 @@ local function lvsComponents(root)
     return out
 end
 
-Vehicles.Adapter({
+Vehicles.Adapter(rootFromProps({
     id = "lvs",
     priority = 20,
     selfStabilizes = true,
@@ -203,27 +220,11 @@ Vehicles.Adapter({
         if ready == nil then return physReady(ent) end
         return ready
     end,
-    captureRoot = function(ent)
-        local t = {
-            engineActive = get(ent, "GetEngineActive", isbool),
-            active = get(ent, "GetActive", isbool),
-            hp = get(ent, "GetHP", isnumber),
-            maxHp = get(ent, "GetMaxHP", isnumber),
-            damaged = get(ent, "GetDamaged", isbool),
-            ambientLight = get(ent, "GetAmbientLight"),
-        }
-        captureCosmetic(ent, t)
-        return t
-    end,
-    applyRoot = function(ent, t)
-        set(ent, "SetMaxHP", t.maxHp)
-        set(ent, "SetHP", t.hp)
-        set(ent, "SetDamaged", t.damaged)
-        set(ent, "SetAmbientLight", t.ambientLight)
-        set(ent, "SetEngineActive", t.engineActive)
-        set(ent, "SetActive", t.active)
-        applyCosmetic(ent, t)
-    end,
+    props = {
+        { "maxHp", "GetMaxHP", "SetMaxHP", isnumber }, { "hp", "GetHP", "SetHP", isnumber },
+        { "damaged", "GetDamaged", "SetDamaged", isbool }, { "ambientLight", "GetAmbientLight", "SetAmbientLight" },
+        { "engineActive", "GetEngineActive", "SetEngineActive", isbool }, { "active", "GetActive", "SetActive", isbool },
+    },
     captureComponents = function(ent)
         local out = {}
         for _, c in ipairs(lvsComponents(ent)) do
@@ -254,84 +255,44 @@ Vehicles.Adapter({
             end
         end
     end,
-})
+}))
 
 -- Glide restores its tuning variables itself; only the runtime state it filters out is re-applied.
-Vehicles.Adapter({
+Vehicles.Adapter(rootFromProps({
     id = "glide",
     priority = 20,
     selfStabilizes = true,
     matches = function(ent) return ent.IsGlideVehicle == true end,
     isReady = physReady,
-    captureRoot = function(ent)
-        local ang = get(ent, "GetTurretAngle", isangle)
-        local t = {
-            engineState = get(ent, "GetEngineState", isnumber),
-            chassisHealth = get(ent, "GetChassisHealth", isnumber),
-            engineHealth = get(ent, "GetEngineHealth", isnumber),
-            tireHealth = get(ent, "GetTireHealth", isnumber),
-            isOnFire = get(ent, "GetIsOnFire", isbool),
-            gear = get(ent, "GetGear", isnumber),
-            headlight = get(ent, "GetHeadlightState", isnumber),
-            siren = get(ent, "GetSirenState", isnumber),
-            turnSignal = get(ent, "GetTurnSignalState", isnumber),
-            lockState = get(ent, "GetLockState", isnumber),
-            isLocked = get(ent, "GetIsLocked", isbool),
-            weaponIndex = get(ent, "GetWeaponIndex", isnumber),
-            turret = ang and RARELOAD.Util.Ang(ang),
-        }
-        captureCosmetic(ent, t)
-        t.color = nil -- Glide's paint is tuning data it restores itself
-        return t
-    end,
-    applyRoot = function(ent, t)
-        set(ent, "SetChassisHealth", t.chassisHealth)
-        set(ent, "SetEngineHealth", t.engineHealth)
-        set(ent, "SetTireHealth", t.tireHealth)
-        set(ent, "SetIsOnFire", t.isOnFire)
-        set(ent, "SetGear", t.gear)
-        set(ent, "SetHeadlightState", t.headlight)
-        set(ent, "SetSirenState", t.siren)
-        set(ent, "SetTurnSignalState", t.turnSignal)
-        set(ent, "SetLockState", t.lockState)
-        set(ent, "SetIsLocked", t.isLocked)
-        set(ent, "SetTurretAngle", RARELOAD.Util.ToAngle(t.turret))
-        set(ent, "SetWeaponIndex", t.weaponIndex)
-        applyCosmetic(ent, t)
-        set(ent, "SetEngineState", t.engineState) -- last: it drives lights and sound
-    end,
-})
+    props = {
+        { "chassisHealth", "GetChassisHealth", "SetChassisHealth", isnumber },
+        { "engineHealth", "GetEngineHealth", "SetEngineHealth", isnumber },
+        { "tireHealth", "GetTireHealth", "SetTireHealth", isnumber },
+        { "isOnFire", "GetIsOnFire", "SetIsOnFire", isbool }, { "gear", "GetGear", "SetGear", isnumber },
+        { "headlight", "GetHeadlightState", "SetHeadlightState", isnumber },
+        { "siren", "GetSirenState", "SetSirenState", isnumber },
+        { "turnSignal", "GetTurnSignalState", "SetTurnSignalState", isnumber },
+        { "lockState", "GetLockState", "SetLockState", isnumber }, { "isLocked", "GetIsLocked", "SetIsLocked", isbool },
+        { "turret", "GetTurretAngle", "SetTurretAngle", isangle, RARELOAD.Util.Ang, RARELOAD.Util.ToAngle },
+        { "weaponIndex", "GetWeaponIndex", "SetWeaponIndex", isnumber },
+    },
+    lastProps = { { "engineState", "GetEngineState", "SetEngineState", isnumber } }, -- it drives lights and sound
+    noPaint = true, -- Glide's paint is tuning data it restores itself
+}))
 
-Vehicles.Adapter({
+Vehicles.Adapter(rootFromProps({
     id = "lfs",
     priority = 20,
     selfStabilizes = true,
     matches = function(ent) return ent.LFS == true end,
     isReady = physReady,
-    captureRoot = function(ent)
-        local t = {
-            active = get(ent, "GetActive", isbool),
-            engineActive = get(ent, "GetEngineActive", isbool),
-            isLocked = get(ent, "GetIsLocked", isbool),
-            hp = get(ent, "GetHP", isnumber),
-            shield = get(ent, "GetShield", isnumber),
-            lgear = get(ent, "GetLGear", isnumber),
-            rgear = get(ent, "GetRGear", isnumber),
-        }
-        captureCosmetic(ent, t)
-        return t
-    end,
-    applyRoot = function(ent, t)
-        set(ent, "SetHP", t.hp)
-        set(ent, "SetShield", t.shield)
-        set(ent, "SetLGear", t.lgear)
-        set(ent, "SetRGear", t.rgear)
-        set(ent, "SetIsLocked", t.isLocked)
-        set(ent, "SetEngineActive", t.engineActive)
-        set(ent, "SetActive", t.active)
-        applyCosmetic(ent, t)
-    end,
-})
+    props = {
+        { "hp", "GetHP", "SetHP", isnumber }, { "shield", "GetShield", "SetShield", isnumber },
+        { "lgear", "GetLGear", "SetLGear", isnumber }, { "rgear", "GetRGear", "SetRGear", isnumber },
+        { "isLocked", "GetIsLocked", "SetIsLocked", isbool },
+        { "engineActive", "GetEngineActive", "SetEngineActive", isbool }, { "active", "GetActive", "SetActive", isbool },
+    },
+}))
 
 -- WAC -------------------------------------------------------------------------------------------------
 -- Restored WAC aircraft need their input handler wrapped so "Exit" always works, and passengers
@@ -365,24 +326,17 @@ local function patchWAC(ent)
     end
 end
 
-Vehicles.Adapter({
+Vehicles.Adapter(rootFromProps({
     id = "wac",
     priority = 30,
     selfStabilizes = true,
     readyTimeout = 5,
     matches = isWAC,
     isReady = function(ent) return isfunction(ent.receiveInput) end,
-    captureRoot = function(ent)
-        local t = { health = get(ent, "Health", isnumber), maxHealth = get(ent, "GetMaxHealth", isnumber) }
-        captureCosmetic(ent, t)
-        return t
-    end,
-    applyRoot = function(ent, t)
-        set(ent, "SetMaxHealth", t.maxHealth)
-        set(ent, "SetHealth", t.health)
-        applyCosmetic(ent, t)
-        patchWAC(ent)
-    end,
+    props = {
+        { "maxHealth", "GetMaxHealth", "SetMaxHealth", isnumber }, { "health", "Health", "SetHealth", isnumber },
+    },
+    afterApply = patchWAC,
     onSeatEnter = function(ent, _, ply)
         patchWAC(ent)
         ply.wac = ply.wac or {}
@@ -391,7 +345,7 @@ Vehicles.Adapter({
         ply.wac.lastEnter = ply.wac.lastEnter or CurTime()
         if isfunction(ent.updateSeats) then pcall(ent.updateSeats, ent) end
     end,
-})
+}))
 
 hook.Add("PlayerEnteredVehicle", "Rareload.WAC.Bind", function(ply, seat)
     local aircraft = aircraftOf(seat)
