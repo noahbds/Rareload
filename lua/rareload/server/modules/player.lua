@@ -2,7 +2,7 @@
 
 local Util = RARELOAD.Util
 
-local function fmt(v) return string.format("%.0f", v) end
+local function formatCoord(v) return string.format("%.0f", v) end
 
 RARELOAD.Module({
     id = "transform",
@@ -52,7 +52,7 @@ RARELOAD.Module({
 
     -- Not "[x y z]": GMod's JSON reads a string of that shape back as a Vector.
     summary = function(saved)
-        return fmt(saved.pos[1]) .. ", " .. fmt(saved.pos[2]) .. ", " .. fmt(saved.pos[3])
+        return formatCoord(saved.pos[1]) .. ", " .. formatCoord(saved.pos[2]) .. ", " .. formatCoord(saved.pos[3])
     end,
 })
 
@@ -67,8 +67,8 @@ RARELOAD.Module({
 
     -- A save made on death (D4) keeps the health from before the fatal hit.
     save = function(ply, ctx)
-        local before = ctx and ctx.opts and ctx.opts.deathHealth
-        if before then return { hp = before.hp, armor = before.armor } end
+        local healthBeforeDeath = ctx and ctx.opts and ctx.opts.deathHealth
+        if healthBeforeDeath then return { hp = healthBeforeDeath.hp, armor = healthBeforeDeath.armor } end
         return { hp = ply:Health(), armor = ply:Armor() }
     end,
 

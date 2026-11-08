@@ -114,61 +114,61 @@ end)
 -- Methods: each returns candidate points, closest first ---------------------------------------------
 
 local function cached(pos, maxDist)
-    local out = {}
+    local candidates = {}
     for _, point in ipairs(cacheDoc().doc.points) do
         local v = RARELOAD.Util.ToVector(point)
-        if v and v:DistToSqr(pos) <= maxDist * maxDist then out[#out + 1] = v end
+        if v and v:DistToSqr(pos) <= maxDist * maxDist then candidates[#candidates + 1] = v end
     end
-    return byDistance(pos, out)
+    return byDistance(pos, candidates)
 end
 
 -- Straight up first (stuck in the floor), then rings of growing radius around the saved spot.
 local function displacement(pos, maxDist)
-    local out = {}
-    for dz = STEP, MAX_LIFT, STEP do out[#out + 1] = pos + Vector(0, 0, dz) end
+    local candidates = {}
+    for dz = STEP, MAX_LIFT, STEP do candidates[#candidates + 1] = pos + Vector(0, 0, dz) end
     for radius = STEP, maxDist, STEP do
         for i = 0, DIRECTIONS - 1 do
             local angle = i / DIRECTIONS * 2 * math.pi
-            out[#out + 1] = pos + Vector(math.cos(angle) * radius, math.sin(angle) * radius, RING_HEIGHT)
+            candidates[#candidates + 1] = pos + Vector(math.cos(angle) * radius, math.sin(angle) * radius, RING_HEIGHT)
         end
     end
-    return out
+    return candidates
 end
 
 -- Closest point of each walkable nav area nearby, skipping underwater, damaging and blocked areas (G71).
 local function navmeshPoints(pos, maxDist)
     if not navmesh.IsLoaded() then return {} end
-    local out = {}
+    local candidates = {}
     for _, area in ipairs(navmesh.Find(pos, maxDist, 64, 256)) do
         -- An area found within the radius can still have its closest point farther away.
         local usable = not area:IsUnderwater() and not area:IsDamaging() and not area:IsBlocked()
         local point = usable and area:GetClosestPointOnArea(pos)
-        if point and point:DistToSqr(pos) <= maxDist * maxDist then out[#out + 1] = point end
+        if point and point:DistToSqr(pos) <= maxDist * maxDist then candidates[#candidates + 1] = point end
     end
-    return byDistance(pos, out)
+    return byDistance(pos, candidates)
 end
 
 local SPAWN_CLASSES = { "info_player_*", "gmod_player_start" }
 local LANDMARK_CLASSES = { "info_teleport_destination", "info_landmark", "info_target" }
 
 local function positionsOf(classes)
-    local out = {}
+    local positions = {}
     for _, class in ipairs(classes) do
-        for _, ent in ipairs(ents.FindByClass(class)) do out[#out + 1] = ent:GetPos() end
+        for _, ent in ipairs(ents.FindByClass(class)) do positions[#positions + 1] = ent:GetPos() end
     end
-    return out
+    return positions
 end
 
 -- Spawn points, teleport destinations and landmarks near the saved spot: places a map maker meant
 -- players to stand.
 local function mapEntities(pos, maxDist)
-    local out = {}
-    for _, pos in ipairs(positionsOf(SPAWN_CLASSES)) do out[#out + 1] = pos end
-    for _, pos in ipairs(positionsOf(LANDMARK_CLASSES)) do out[#out + 1] = pos end
-    for i = #out, 1, -1 do
-        if out[i]:DistToSqr(pos) > maxDist * maxDist then table.remove(out, i) end
+    local candidates = {}
+    for _, pos in ipairs(positionsOf(SPAWN_CLASSES)) do candidates[#candidates + 1] = pos end
+    for _, pos in ipairs(positionsOf(LANDMARK_CLASSES)) do candidates[#candidates + 1] = pos end
+    for i = #candidates, 1, -1 do
+        if candidates[i]:DistToSqr(pos) > maxDist * maxDist then table.remove(candidates, i) end
     end
-    return byDistance(pos, out)
+    return byDistance(pos, candidates)
 end
 
 -- Last resort, at any distance: every player spawn point on the map.
@@ -199,7 +199,7 @@ AntiStuck.Method({ id = "emergency", fn = emergency })
 local CONFIG = "antistuck"
 local ACTIONS = { enable = true, disable = true, only = true, up = true, down = true, reset = true }
 
-local function config()
+local function methodConfig()
     local c = RARELOAD.Store.Load(CONFIG)
     return istable(c) and c or { v = RARELOAD.Store.SCHEMA, order = {}, disabled = {} }
 end
@@ -221,12 +221,12 @@ function AntiStuck.Ordered(methods, cfg)
 end
 
 function AntiStuck.List()
-    return AntiStuck.Ordered(AntiStuck.methods, config())
+    return AntiStuck.Ordered(AntiStuck.methods, methodConfig())
 end
 
 -- action: enable | disable | only | up | down | reset. Returns true, or false and a reason.
 function AntiStuck.Configure(action, id)
-    local list, cfg = AntiStuck.List(), config()
+    local list, cfg = AntiStuck.List(), methodConfig()
     local known
     for _, m in ipairs(list) do if m.id == id then known = m end end
     -- Checked before `cfg` (the cached document) is changed.

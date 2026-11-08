@@ -239,18 +239,18 @@ function Store.Overview()
                 players[sid] = usage
                 usage.nick = usage.nick or doc.nick
                 usage.bytes = usage.bytes + size
-                local mine = {}
+                local blobsOfPlayer = {}
                 for _, entry in ipairs(doc.entries or {}) do
                     usage.saves = usage.saves + 1
                     local bytes = 0
                     for _, hash in ipairs(blobRefs(entry, {})) do
                         used[hash] = true
                         bytes = bytes + (blobSize[hash] or 0)
-                        mine[hash] = true
+                        blobsOfPlayer[hash] = true
                     end
                     biggest[#biggest + 1] = { map = dir, sid = sid, nick = doc.nick, id = entry.id, bytes = bytes }
                 end
-                for hash in pairs(mine) do usage.bytes = usage.bytes + (blobSize[hash] or 0) end
+                for hash in pairs(blobsOfPlayer) do usage.bytes = usage.bytes + (blobSize[hash] or 0) end
             end
         end
         snapshotBlobs(dir, used)

@@ -22,8 +22,8 @@ local function request(op, args)
 end
 
 local function objectsOf(row)
-    local i = row.info
-    return (i.entities or 0) + (i.npcs or 0) + (i.vehicles or 0)
+    local info = row.info
+    return (info.entities or 0) + (info.npcs or 0) + (info.vehicles or 0)
 end
 
 -- A save's number ("Save No. 3") in the accent colour. Returns its width.
@@ -36,10 +36,10 @@ end
 
 -- Everything a search can match: note, type, held weapon, model, vehicle, position, dates.
 local function searchText(row)
-    local i = row.info
+    local info = row.info
     return string.lower(table.concat(
-        { "#" .. row.id, L("save_no", row.id), row.note or "", L("reason." .. row.reason), i.active or "",
-            i.active and UI.WeaponName(i.active) or "", i.model or "", i.vehicle or "", UI.Pos(i.pos),
+        { "#" .. row.id, L("save_no", row.id), row.note or "", L("reason." .. row.reason), info.active or "",
+            info.active and UI.WeaponName(info.active) or "", info.model or "", info.vehicle or "", UI.Pos(info.pos),
             UI.Date(row.time, "long"), UI.Date(row.time, "short"), UI.TimeAgo(row.time) }, " "))
 end
 
@@ -209,16 +209,16 @@ local function buildDetail(host, sel)
         if r.pinned then bx = bx + UI.DrawBadge(L("timeline.pinned"), bx, sc(64), C.warn) + sc(6) end
         UI.DrawBadge(L("reason." .. r.reason), bx, sc(64), C.info)
 
-        local i = r.info
+        local info = r.info
         local barX, barY, barW = x, h - sc(22), w - x - sc(16)
         draw.RoundedBox(sc(4), barX, barY, barW, sc(8), C.bgDark)
-        if i.hp then
-            draw.RoundedBox(sc(4), barX, barY, math.max(sc(4), barW * math.Clamp(i.hp / 100, 0, 1)), sc(8),
-                UI.HealthColor(i.hp, 100))
+        if info.hp then
+            draw.RoundedBox(sc(4), barX, barY, math.max(sc(4), barW * math.Clamp(info.hp / 100, 0, 1)), sc(8),
+                UI.HealthColor(info.hp, 100))
         end
-        draw.SimpleText(i.hp and (math.floor(i.hp) .. " HP") or L("ui.not_saved"), "Rareload.Tiny", barX, barY - sc(13),
-            C.text3)
-        draw.SimpleText(i.armor and L("timeline.armor", math.floor(i.armor)) or "", "Rareload.Tiny", barX + barW,
+        local hpText = info.hp and (math.floor(info.hp) .. " HP") or L("ui.not_saved")
+        draw.SimpleText(hpText, "Rareload.Tiny", barX, barY - sc(13), C.text3)
+        draw.SimpleText(info.armor and L("timeline.armor", math.floor(info.armor)) or "", "Rareload.Tiny", barX + barW,
             barY - sc(13),
             C.info, TEXT_ALIGN_RIGHT)
     end, C.bgDark)
@@ -230,14 +230,14 @@ local function buildDetail(host, sel)
     D.model:SetSize(sc(100), sc(104))
 
     D.stats = UI.Stats(host, function()
-        local i = (row() or {}).info or {}
+        local info = (row() or {}).info or {}
         return {
-            { L("field.health"),  i.hp and math.floor(i.hp),       i.hp and UI.HealthColor(i.hp, 100) },
-            { L("field.armor"),   i.armor and math.floor(i.armor), C.info },
-            { L("field.weapons"), i.weapons,                       C.text },
-            { L("kind.entities"), i.entities or 0,                 C.prop },
-            { L("kind.npcs"),     i.npcs or 0,                     C.npc },
-            { L("kind.vehicles"), i.vehicles or 0,                 C.vehicle },
+            { L("field.health"),  info.hp and math.floor(info.hp),       info.hp and UI.HealthColor(info.hp, 100) },
+            { L("field.armor"),   info.armor and math.floor(info.armor), C.info },
+            { L("field.weapons"), info.weapons,                       C.text },
+            { L("kind.entities"), info.entities or 0,                 C.prop },
+            { L("kind.npcs"),     info.npcs or 0,                     C.npc },
+            { L("kind.vehicles"), info.vehicles or 0,                 C.vehicle },
         }
     end)
     D.stats:Dock(TOP)
@@ -246,20 +246,20 @@ local function buildDetail(host, sel)
     D.rows = UI.Rows(host, function()
         local r = row()
         if not r then return {} end
-        local i = r.info
-        local a = RARELOAD.Util.ToAngle(i.ang)
+        local info = r.info
+        local a = RARELOAD.Util.ToAngle(info.ang)
         local list = {
-            { L("field.position"), UI.Pos(i.pos) },
+            { L("field.position"), UI.Pos(info.pos) },
             { L("field.angle"),    a and string.format("%.0f, %.0f, %.0f", a.p, a.y, a.r) or "-", C.text2 },
-            { L("field.active_weapon"), i.active and UI.WeaponName(i.active) or
-            (i.weapons and L("ui.none") or L("ui.not_saved")),
-                i.active and C.text or C.textOff },
+            { L("field.active_weapon"), info.active and UI.WeaponName(info.active) or
+            (info.weapons and L("ui.none") or L("ui.not_saved")),
+                info.active and C.text or C.textOff },
         }
-        if i.vehicle then list[#list + 1] = { L("field.vehicle"), i.vehicle, C.vehicle } end
-        if i.crouched then list[#list + 1] = { L("field.crouched"), L("ui.yes"), C.text2 } end
-        list[#list + 1] = { L("field.states"), i.states and UI.States(i.states) or L("ui.not_saved"), i.states and C
-        .warn or C.textOff }
-        list[#list + 1] = { L("field.model"), i.model or L("ui.not_saved"), i.model and C.text2 or C.textOff }
+        if info.vehicle then list[#list + 1] = { L("field.vehicle"), info.vehicle, C.vehicle } end
+        if info.crouched then list[#list + 1] = { L("field.crouched"), L("ui.yes"), C.text2 } end
+        local states = info.states and UI.States(info.states) or L("ui.not_saved")
+        list[#list + 1] = { L("field.states"), states, info.states and C.warn or C.textOff }
+        list[#list + 1] = { L("field.model"), info.model or L("ui.not_saved"), info.model and C.text2 or C.textOff }
         return list
     end)
     D.rows:Dock(TOP)

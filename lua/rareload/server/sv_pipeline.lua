@@ -221,13 +221,13 @@ function Pipeline.Save(ply, opts)
             if refusalReason then session:step("warn", moduleDef.id, "not saved: " .. refusalReason) end
             if isAllowed then
                 local out
-                local ok, err, ms = runProtectedTimed(function() out = moduleDef.save(ply, ctx) end)
+                local ok, errorText, elapsedMs = runProtectedTimed(function() out = moduleDef.save(ply, ctx) end)
                 if not ok then
                     out = prev and Pipeline.Payload(prev.data[moduleDef.id])   -- fail soft: keep the last good value
                 end
-                local detail = not ok and err or out == nil and "nothing to save"
+                local detail = not ok and errorText or out == nil and "nothing to save"
                     or moduleDef.summary and moduleDef.summary(out) or ""
-                session:step(ok and "ok" or "fail", moduleDef.id, detail, ms)
+                session:step(ok and "ok" or "fail", moduleDef.id, detail, elapsedMs)
                 if out ~= nil and moduleDef.heavy and not opts.captureOnly then
                     out = { ["$blob"] = RARELOAD.Store.BlobPut(out) }
                 end
@@ -429,12 +429,13 @@ runFrom = function(ctx, i)
             else
                 ctx._waiting, ctx._resumeAt = false, i
                 ctx._current, ctx._result = moduleDef.id, nil
-                local ok, err, ms = runProtectedTimed(moduleDef.restore, ctx.ply, data, ctx)
+                local ok, errorText, elapsedMs = runProtectedTimed(moduleDef.restore, ctx.ply, data, ctx)
                 ctx._current = nil
                 local moduleResult = ctx._result
-                local detail = not ok and err or moduleResult and moduleResult.detail
+                local detail = not ok and errorText or moduleResult and moduleResult.detail
                     or moduleDef.summary and moduleDef.summary(data) or ""
-                ctx:step(not ok and "fail" or moduleResult and moduleResult.status or "ok", moduleDef.id, detail, ms)
+                local status = not ok and "fail" or moduleResult and moduleResult.status or "ok"
+                ctx:step(status, moduleDef.id, detail, elapsedMs)
                 if ok and ctx._waiting then return end
             end
         end

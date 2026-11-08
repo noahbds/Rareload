@@ -150,7 +150,7 @@ end
 -- Individual player grants, persisted by SteamID64.
 local GRANTS = "rl_grants"
 
-local function granted(ply, name)
+local function isGranted(ply, name)
     local short = string.gsub(name, "^rareload_", "")
     local grants = ply:GetNW2String(GRANTS)
 
@@ -167,14 +167,14 @@ if SERVER then
         }
     end
 
-    local function listOf(sid64)
+    local function grantedListFor(sid64)
         local names = table.GetKeys(loadGrants().grants["id" .. sid64] or {})
         table.sort(names)
         return table.concat(names, ",")
     end
 
     local function pushGrantsToClient(ply)
-        ply:SetNW2String(GRANTS, listOf(ply:SteamID64()))
+        ply:SetNW2String(GRANTS, grantedListFor(ply:SteamID64()))
     end
 
     hook.Add("PlayerInitialSpawn", "Rareload.Perms.Grants", pushGrantsToClient)
@@ -213,7 +213,7 @@ if SERVER then
 
         for key in pairs(loadGrants().grants) do
             local sid64 = string.sub(key, 3)
-            out[sid64] = listOf(sid64)
+            out[sid64] = grantedListFor(sid64)
         end
 
         return out
@@ -239,7 +239,7 @@ local function hasPrivilege(ply, name)
         end
     end
 
-    return granted(ply, name) or tierAllows(ply, RARELOAD.Tier(name))
+    return isGranted(ply, name) or tierAllows(ply, RARELOAD.Tier(name))
 end
 
 -- The server console (no player) can do everything.
