@@ -173,11 +173,11 @@ if SERVER then
         return table.concat(names, ",")
     end
 
-    local function push(ply)
+    local function pushGrantsToClient(ply)
         ply:SetNW2String(GRANTS, listOf(ply:SteamID64()))
     end
 
-    hook.Add("PlayerInitialSpawn", "Rareload.Perms.Grants", push)
+    hook.Add("PlayerInitialSpawn", "Rareload.Perms.Grants", pushGrantsToClient)
 
     function RARELOAD.Grant(sid64, name, on)
         if not Privs[name] then
@@ -202,7 +202,7 @@ if SERVER then
 
         local ply = player.GetBySteamID64(sid64)
         if IsValid(ply) then
-            push(ply)
+            pushGrantsToClient(ply)
         end
 
         return true
@@ -220,7 +220,7 @@ if SERVER then
     end
 end
 
-local function check(ply, name)
+local function hasPrivilege(ply, name)
     local priv = Privs[name]
 
     if not priv then
@@ -248,8 +248,8 @@ function RARELOAD.Can(ply, name)
         return true
     end
 
-    return check(ply, name)
-        or (name ~= UMBRELLA and check(ply, UMBRELLA))
+    return hasPrivilege(ply, name)
+        or (name ~= UMBRELLA and hasPrivilege(ply, UMBRELLA))
 end
 
 -- Register privileges once the gamemode and admin mods have loaded.

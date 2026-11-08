@@ -8,7 +8,9 @@ local AntiStuck = RARELOAD.AntiStuck
 local CELL = 256      -- cached safe positions closer than this count as the same spot
 local CACHE_CAP = 512 -- L10
 local STEP = 32       -- displacement ring spacing
-local DIRECTIONS = 16
+local DIRECTIONS = 16 -- spots per displacement ring
+local MAX_LIFT = 128  -- how far straight up a spot stuck in the floor is tried
+local RING_HEIGHT = 36 -- ring spots are raised this much above the saved spot
 local UP, DOWN = Vector(0, 0, 18), Vector(0, 0, 256)
 
 local function hull(ply, crouched)
@@ -123,11 +125,11 @@ end
 -- Straight up first (stuck in the floor), then rings of growing radius around the saved spot.
 local function displacement(pos, maxDist)
     local out = {}
-    for dz = STEP, 128, STEP do out[#out + 1] = pos + Vector(0, 0, dz) end
-    for r = STEP, maxDist, STEP do
+    for dz = STEP, MAX_LIFT, STEP do out[#out + 1] = pos + Vector(0, 0, dz) end
+    for radius = STEP, maxDist, STEP do
         for i = 0, DIRECTIONS - 1 do
-            local a = i / DIRECTIONS * 2 * math.pi
-            out[#out + 1] = pos + Vector(math.cos(a) * r, math.sin(a) * r, 36)
+            local angle = i / DIRECTIONS * 2 * math.pi
+            out[#out + 1] = pos + Vector(math.cos(angle) * radius, math.sin(angle) * radius, RING_HEIGHT)
         end
     end
     return out

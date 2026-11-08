@@ -65,7 +65,7 @@ function Pipeline.Order(list)
     return out
 end
 
-local function order()
+local function orderedModules()
     if not ordered then
         local list = {}
         for _, moduleDef in pairs(defs) do list[#list + 1] = moduleDef end
@@ -75,7 +75,7 @@ local function order()
 end
 
 -- Fail on bad module definitions at load time, not on the first save.
-hook.Add("RareloadLoaded", "Rareload.Pipeline.Validate", function() order() end)
+hook.Add("RareloadLoaded", "Rareload.Pipeline.Validate", function() orderedModules() end)
 
 -- A registered module's definition, or nil; and every definition by id (do not modify either).
 function Pipeline.Def(id) return defs[id] end
@@ -123,13 +123,13 @@ function Pipeline.Allowed(ply, saving, what, priv, reason)
     for _, privName in ipairs(istable(priv) and priv or { priv }) do
         if not RARELOAD.Can(ply, privName) then return false, "no permission" end
     end
-    local ok, why = hook.Run(saving and "RareloadCanSave" or "RareloadCanRestore", ply, reason, what)
-    if ok == false then return false, isstring(why) and why or "refused by the server" end
+    local ok, refusalReason = hook.Run(saving and "RareloadCanSave" or "RareloadCanRestore", ply, reason, what)
+    if ok == false then return false, isstring(refusalReason) and refusalReason or "refused by the server" end
     return true
 end
 
 -- A module the player turned off is skipped without a reason; one they may not use comes with one.
-local function allowed(moduleDef, ply, saving, reason)
+local function moduleAllowed(moduleDef, ply, saving, reason)
     for _, s in ipairs(istable(moduleDef.setting) and moduleDef.setting or { moduleDef.setting }) do
         if not RARELOAD.Get(ply, s) then return false end
     end
@@ -144,7 +144,7 @@ end
 
 -- Runs fn like ProtectedCall (an error is still printed with its stack), and also returns the error
 -- text and how long it took in ms, for the report card.
-local function run(fn, ...)
+local function runProtectedTimed(fn, ...)
     local started = SysTime()
     local ok, err = xpcall(fn, function(e) ErrorNoHaltWithStack(e) return tostring(e) end, ...)
     return ok, not ok and err or nil, (SysTime() - started) * 1000
@@ -154,16 +154,17 @@ end
 
 -- `toast`: { toast = key?, args? } from a rule that explains itself (RareloadCanSave); a rule
 -- without a key shows nothing (it refused a save the player didn't ask for).
-local function refuse(ply, opts, why, toast)
+local function refuse(ply, opts, refusalReason, toast)
     if istable(toast) then
         if toast.toast and not opts.silent then RARELOAD.Toast(ply, toast.toast, toast.args, "error") end
     elseif not opts.silent then
         RARELOAD.Toast(ply, "toast.save_denied", nil, "error")
     end
     if not opts.captureOnly then
-        RARELOAD.Log("save", ply):verbose("%s could not save (%s): %s", ply:Nick(), opts.reason or "command", why)
+        RARELOAD.Log("save", ply):verbose("%s could not save (%s): %s", ply:Nick(), opts.reason or "command",
+            refusalReason)
     end
-    return false, why
+    return false, refusalReason
 end
 
 -- A manual save copies every object the player owns, so saving faster than this only adds load
@@ -212,15 +213,15 @@ function Pipeline.Save(ply, opts)
         for id, value in pairs(prev.data) do data[id] = value end
     end
 
-    for _, moduleDef in ipairs(order()) do
+    for _, moduleDef in ipairs(orderedModules()) do
         if not opts.only or opts.only[moduleDef.id] then
             local kept = opts.keepMissing and prev and prev.data[moduleDef.id] or nil
             data[moduleDef.id] = nil
-            local may, why = allowed(moduleDef, ply, true, opts.reason)
-            if why then session:step("warn", moduleDef.id, "not saved: " .. why) end
-            if may then
+            local isAllowed, refusalReason = moduleAllowed(moduleDef, ply, true, opts.reason)
+            if refusalReason then session:step("warn", moduleDef.id, "not saved: " .. refusalReason) end
+            if isAllowed then
                 local out
-                local ok, err, ms = run(function() out = moduleDef.save(ply, ctx) end)
+                local ok, err, ms = runProtectedTimed(function() out = moduleDef.save(ply, ctx) end)
                 if not ok then
                     out = prev and Pipeline.Payload(prev.data[moduleDef.id])   -- fail soft: keep the last good value
                 end
@@ -315,8 +316,8 @@ end
 
 -- Something in the save that the player may not get back: a line on the report card, and one toast
 -- naming everything once the restore is done.
-function Ctx:deny(what, why)
-    self:step("warn", what, "not restored: " .. why)
+function Ctx:deny(what, refusalReason)
+    self:step("warn", what, "not restored: " .. refusalReason)
     self.denied[#self.denied + 1] = what
 end
 
@@ -368,24 +369,24 @@ local function dataOf(ctx, moduleDef)
 end
 
 -- Returns false, plus why when the module is in the save but the player may not get it back.
-local function wants(ctx, moduleDef)
+local function shouldRestoreModule(ctx, moduleDef)
     if ctx.skipWorld and moduleDef.phase == "world" then return false end
     if ctx.died and moduleDef.skipOnDeath then return false end
     if ctx.only and not ctx.only[moduleDef.id] then return false end
     if external(ctx, moduleDef) then
         -- Not part of this save: a player who may not use it simply doesn't get it, without a warning.
-        return (allowed(moduleDef, ctx.ply, false, ctx.reason)) and loaded(ctx, moduleDef) ~= nil
+        return (moduleAllowed(moduleDef, ctx.ply, false, ctx.reason)) and loaded(ctx, moduleDef) ~= nil
     end
     if ctx.entry.data[moduleDef.id] == nil and not emptied(ctx, moduleDef) then return false end
-    return allowed(moduleDef, ctx.ply, false, ctx.reason)
+    return moduleAllowed(moduleDef, ctx.ply, false, ctx.reason)
 end
 
 -- The id of the module that takes the place of `moduleDef` in this restore, if any (moduleDef.replaces).
 local function replacedBy(ctx, moduleDef)
     if not ctx.replaced then
         ctx.replaced = {}
-        for _, other in ipairs(order()) do
-            if other.replaces and (wants(ctx, other)) then
+        for _, other in ipairs(orderedModules()) do
+            if other.replaces and (shouldRestoreModule(ctx, other)) then
                 for _, id in ipairs(other.replaces) do ctx.replaced[id] = other.id end
             end
         end
@@ -396,8 +397,8 @@ end
 -- Whether a `load` module would restore something for this player (used when they have no save on
 -- this map, so a spawn still gets e.g. their global inventory).
 function Pipeline.Loads(ply, reason)
-    for _, moduleDef in ipairs(order()) do
-        if moduleDef.load and (allowed(moduleDef, ply, false, reason)) and moduleDef.load(ply) ~= nil then
+    for _, moduleDef in ipairs(orderedModules()) do
+        if moduleDef.load and (moduleAllowed(moduleDef, ply, false, reason)) and moduleDef.load(ply) ~= nil then
             return true
         end
     end
@@ -406,31 +407,34 @@ end
 
 runFrom = function(ctx, i)
     pending[ctx.ply] = nil
-    local list = order()
+    local list = orderedModules()
     while i <= #list do
         if not ctx:isCurrent() then return end
         local moduleDef = list[i]
         i = i + 1
-        local may, why = false, nil
-        local by = replacedBy(ctx, moduleDef)
-        if by then
-            if ctx.entry.data[moduleDef.id] ~= nil then ctx:step("ok", moduleDef.id, "replaced by " .. by) end
+        local isAllowed, refusalReason = false, nil
+        local replacingModuleId = replacedBy(ctx, moduleDef)
+        if replacingModuleId then
+            if ctx.entry.data[moduleDef.id] ~= nil then
+                ctx:step("ok", moduleDef.id, "replaced by " .. replacingModuleId)
+            end
         else
-            may, why = wants(ctx, moduleDef)
+            isAllowed, refusalReason = shouldRestoreModule(ctx, moduleDef)
         end
-        if why then ctx:deny(moduleDef.id, why) end
-        if may then
+        if refusalReason then ctx:deny(moduleDef.id, refusalReason) end
+        if isAllowed then
             local data = dataOf(ctx, moduleDef)
             if data == nil then
                 ctx:step("fail", moduleDef.id, "saved data is missing")
             else
                 ctx._waiting, ctx._resumeAt = false, i
                 ctx._current, ctx._result = moduleDef.id, nil
-                local ok, err, ms = run(moduleDef.restore, ctx.ply, data, ctx)
+                local ok, err, ms = runProtectedTimed(moduleDef.restore, ctx.ply, data, ctx)
                 ctx._current = nil
-                local r = ctx._result
-                local detail = not ok and err or r and r.detail or moduleDef.summary and moduleDef.summary(data) or ""
-                ctx:step(not ok and "fail" or r and r.status or "ok", moduleDef.id, detail, ms)
+                local moduleResult = ctx._result
+                local detail = not ok and err or moduleResult and moduleResult.detail
+                    or moduleDef.summary and moduleDef.summary(data) or ""
+                ctx:step(not ok and "fail" or moduleResult and moduleResult.status or "ok", moduleDef.id, detail, ms)
                 if ok and ctx._waiting then return end
             end
         end
@@ -479,9 +483,9 @@ function Pipeline.SpawnHook(ply, hookName)
     if not ctx or not ctx:isCurrent() then return false end
 
     local handled = false
-    for _, moduleDef in ipairs(order()) do
+    for _, moduleDef in ipairs(orderedModules()) do
         if moduleDef.spawn and moduleDef.spawn.hook == hookName and not replacedBy(ctx, moduleDef)
-            and (wants(ctx, moduleDef)) then
+            and (shouldRestoreModule(ctx, moduleDef)) then
             local result
             ProtectedCall(function() result = moduleDef.spawn.fn(ply, dataOf(ctx, moduleDef), ctx) end)
             if result then

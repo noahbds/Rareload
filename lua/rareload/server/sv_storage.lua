@@ -24,7 +24,7 @@ function Store.MapDir()
     return (game.SinglePlayer() and "sp/" or "mp/") .. Store.Clean(game.GetMap())
 end
 
-local function decode(raw)
+local function decodeJson(raw)
     if not raw or raw == "" then return nil end
     local t = util.JSONToTable(raw, true) -- ignoreLimits: big saves must load (G1)
     return istable(t) and t or nil
@@ -66,14 +66,14 @@ function Store.Load(rel, fresh)
     if cache[rel] ~= nil then return cache[rel] or nil end
 
     local base = ROOT .. rel
-    local doc = decode(file.Read(base .. ".json", "DATA"))
+    local doc = decodeJson(file.Read(base .. ".json", "DATA"))
     if not doc and file.Exists(base .. ".json", "DATA") then
         local moved = base .. ".corrupt-" .. os.time() .. ".json"
         file.Rename(base .. ".json", moved)
         log():warn("%s.json was unreadable and was moved to %s", base, moved)
     end
     if not doc then
-        doc = decode(file.Read(base .. ".bak.json", "DATA"))
+        doc = decodeJson(file.Read(base .. ".bak.json", "DATA"))
         if doc then log():warn("loaded %s from its backup copy", rel) end
     end
     if doc and (tonumber(doc.v) or 0) > Store.SCHEMA then
@@ -152,7 +152,7 @@ end
 
 -- The blobs a map's server snapshots use (D9).
 local function snapshotBlobs(dir, used)
-    local doc = cache[dir .. "/_server"] or decode(file.Read(ROOT .. dir .. "/_server.json", "DATA"))
+    local doc = cache[dir .. "/_server"] or decodeJson(file.Read(ROOT .. dir .. "/_server.json", "DATA"))
     for _, snap in ipairs(doc and doc.snapshots or {}) do
         for _, part in pairs(snap.players or {}) do
             for _, value in pairs(part.data or {}) do
@@ -170,7 +170,7 @@ function Store.GC(dir)
     local used = snapshotBlobs(dir, {})
     for _, name in ipairs(file.Find(ROOT .. dir .. "/*.json", "DATA") or {}) do
         local id = name:match("^(%d+)%.json$") -- saves docs are named <SteamID64>.json
-        local doc = id and (cache[dir .. "/" .. id] or decode(file.Read(ROOT .. dir .. "/" .. name, "DATA")))
+        local doc = id and (cache[dir .. "/" .. id] or decodeJson(file.Read(ROOT .. dir .. "/" .. name, "DATA")))
         for _, entry in ipairs(doc and doc.entries or {}) do
             for _, value in pairs(entry.data or {}) do
                 if istable(value) and value["$blob"] then used[value["$blob"]] = true end
@@ -233,7 +233,7 @@ function Store.Overview()
             local size = file.Size(ROOT .. dir .. "/" .. name, "DATA") or 0
             mapBytes = mapBytes + size
             local sid = name:match("^(%d+)%.json$")
-            local doc = sid and decode(file.Read(ROOT .. dir .. "/" .. name, "DATA"))
+            local doc = sid and decodeJson(file.Read(ROOT .. dir .. "/" .. name, "DATA"))
             if doc then
                 local usage = players[sid] or { sid = sid, nick = doc.nick, bytes = 0, saves = 0 }
                 players[sid] = usage
@@ -293,29 +293,30 @@ function Store.Prune(days)
     return removed
 end
 
-local size = RARELOAD.Util.FormatBytes
+local formatBytes = RARELOAD.Util.FormatBytes
 
 -- Store.Overview as English lines, for the console and the server menu.
-function Store.UsageLines(u)
+function Store.UsageLines(overview)
     local lines, total = {}, 0
-    for _, m in ipairs(u.maps) do total = total + m.bytes end
-    lines[#lines + 1] = "Total: " .. size(total) .. " in " .. #u.maps .. " map folders"
+    for _, mapUsage in ipairs(overview.maps) do total = total + mapUsage.bytes end
+    lines[#lines + 1] = "Total: " .. formatBytes(total) .. " in " .. #overview.maps .. " map folders"
     lines[#lines + 1] = "By map:"
-    for i, m in ipairs(u.maps) do
+    for i, mapUsage in ipairs(overview.maps) do
         if i > 8 then break end
-        lines[#lines + 1] = "  " .. m.dir .. "  " .. size(m.bytes)
+        lines[#lines + 1] = "  " .. mapUsage.dir .. "  " .. formatBytes(mapUsage.bytes)
     end
     lines[#lines + 1] = "By player:"
-    for i, usage in ipairs(u.players) do
+    for i, usage in ipairs(overview.players) do
         if i > 8 then break end
-        lines[#lines + 1] = string.format("  %s (%s)  %s, %d saves", usage.nick or "?", usage.sid, size(usage.bytes),
-            usage.saves)
+        lines[#lines + 1] = string.format("  %s (%s)  %s, %d saves", usage.nick or "?", usage.sid,
+            formatBytes(usage.bytes), usage.saves)
     end
-    lines[#lines + 1] = "Unused data: " .. u.unusedCount .. " blobs, " .. size(u.unusedBytes)
+    lines[#lines + 1] = "Unused data: " .. overview.unusedCount .. " blobs, " .. formatBytes(overview.unusedBytes)
         .. " ('rareload data cleanup all' removes it)"
     lines[#lines + 1] = "Biggest saves:"
-    for _, b in ipairs(u.biggest) do
-        lines[#lines + 1] = string.format("  %s, %s No. %d  %s", b.map, b.nick or b.sid, b.id, size(b.bytes))
+    for _, bigSave in ipairs(overview.biggest) do
+        lines[#lines + 1] = string.format("  %s, %s No. %d  %s", bigSave.map, bigSave.nick or bigSave.sid, bigSave.id,
+            formatBytes(bigSave.bytes))
     end
     return lines
 end
@@ -382,7 +383,7 @@ end
 function Store.PData(ply, name, value)
     local key = "rareload_" .. name
     if value == nil then
-        return decode(ply:GetPData(key, nil))
+        return decodeJson(ply:GetPData(key, nil))
     end
     ply:SetPData(key, util.TableToJSON(value))
 end
