@@ -227,11 +227,8 @@ local BODY_PRIV = "rareload_restore_privileged_body"
 
 local function round(v) return isnumber(v) and math.Round(v, 2) or nil end
 
-local function get(ply, method)
-    if not isfunction(ply[method]) then return nil end
-    local ok, v = pcall(ply[method], ply)
-    return ok and v or nil
-end
+-- Built-in Player methods (all present in GMod, checked in game for players and bots).
+local function get(ply, method) return ply[method](ply) end
 
 local function hullOf(mins, maxs)
     return isvector(mins) and isvector(maxs) and { Util.Vec(mins), Util.Vec(maxs) } or nil
@@ -307,13 +304,13 @@ RARELOAD.Module({
                     setSize(ply, d)
                 else
                     for _, f in ipairs(group.fields) do
-                        if isnumber(d[f[1]]) and isfunction(ply[f[3]]) then ply[f[3]](ply, d[f[1]]) end
+                        if isnumber(d[f[1]]) then ply[f[3]](ply, d[f[1]]) end
                     end
                 end
             end
         end
         if isnumber(d.fov) then ply:SetFOV(d.fov, 0) end
-        if isnumber(d.suit) and isfunction(ply.SetSuitPower) then ply:SetSuitPower(d.suit) end
+        if isnumber(d.suit) then ply:SetSuitPower(d.suit) end
         if d.fire then
             ply:Ignite(RARELOAD.Get(nil, "fireDuration"))
         elseif ply:IsOnFire() then
