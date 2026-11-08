@@ -1,6 +1,7 @@
 -- The Rareload tool's screen (5.5): where the player will come back. A compass to the respawn point with its
--- distance, that save's number, age and contents, the latest saves, the autosave countdown, and how far the
--- last death and the nearest checkpoint are. Saves, restores and refused uses play a short animation over it.
+-- distance, that save's number, age, health, armor, weapons and objects, the latest saves, the autosave
+-- countdown, and how far the last death and the nearest checkpoint are. Saves, restores and refused uses
+-- play a short animation over it.
 -- (What each key does is already in GMod's tool help, top left, so the screen doesn't repeat it.)
 
 RARELOAD.ToolScreen = RARELOAD.ToolScreen or {}
@@ -8,12 +9,14 @@ local Screen = RARELOAD.ToolScreen
 local L = RARELOAD.L
 local UI, Util = RARELOAD.UI, RARELOAD.Util
 
-local HEAD_H = 32
-local COMPASS_X, COMPASS_Y, COMPASS_R = 54, 86, 38
-local TEXT_X = 104
-local STATS_Y = 146
-local STRIP_Y, STRIP_MAX = 188, 8
-local PLACES_Y = 236
+-- The screen is 256 px but shown only a few centimetres wide: every text is 21 px or more, and the screen
+-- shows a few things large rather than many small.
+local HEAD_H = 36
+local COMPASS_X, COMPASS_Y, COMPASS_R = 55, 90, 46
+local TEXT_X = 112
+local STATS_Y = 154
+local STRIP_Y, STRIP_MAX = 192, 6
+local PLACES_Y = 243
 local UNITS_TO_METERS = 0.01905
 local HERE_DIST = 80 -- closer than this (units) counts as standing on the respawn point
 local OVERLAY_TIME = 1.5
@@ -148,6 +151,81 @@ local function thickLine(x1, y1, x2, y2, thickness)
     setQuad(x1 + dx, y1 + dy, x2 + dx, y2 + dy, x2 - dx, y2 - dy, x1 - dx, y1 - dy)
 end
 
+-- Icons drawn as shapes. The silk icons (PNG) come out blank on the tool screen's render target, and
+-- shapes stay sharp at any size. Each fills a `size` box whose centre is (centerX, centerY).
+local function rect(posX, posY, width, height)
+    surface.DrawRect(math.floor(posX + 0.5), math.floor(posY + 0.5), math.floor(width + 0.5), math.floor(height + 0.5))
+end
+
+local tri = { {}, {}, {} } -- reused for every triangle
+
+local function triangle(x1, y1, x2, y2, x3, y3)
+    tri[1].x, tri[1].y, tri[2].x, tri[2].y, tri[3].x, tri[3].y = x1, y1, x2, y2, x3, y3
+    surface.DrawPoly(tri)
+end
+
+local GLYPHS = {
+    heart = function(centerX, centerY, size)
+        circle(centerX - size * 0.22, centerY - size * 0.12, size * 0.26, surface.GetDrawColor())
+        circle(centerX + size * 0.22, centerY - size * 0.12, size * 0.26, surface.GetDrawColor())
+        triangle(centerX - size * 0.47, centerY - size * 0.04, centerX + size * 0.47, centerY - size * 0.04, centerX,
+            centerY + size * 0.46)
+    end,
+    shield = function(centerX, centerY, size)
+        surface.DrawPoly({
+            { x = centerX - size * 0.4, y = centerY - size * 0.42 },
+            { x = centerX + size * 0.4, y = centerY - size * 0.42 },
+            { x = centerX + size * 0.4, y = centerY + size * 0.05 },
+            { x = centerX, y = centerY + size * 0.48 },
+            { x = centerX - size * 0.4, y = centerY + size * 0.05 },
+        })
+    end,
+    gun = function(centerX, centerY, size)
+        rect(centerX - size * 0.46, centerY - size * 0.32, size * 0.92, size * 0.26)
+        rect(centerX - size * 0.4, centerY - size * 0.1, size * 0.24, size * 0.48)
+        rect(centerX - size * 0.12, centerY - size * 0.08, size * 0.14, size * 0.16)
+    end,
+    bricks = function(centerX, centerY, size)
+        local brick, gap = size * 0.44, size * 0.08
+        for row = 0, 1 do
+            for column = 0, 1 do
+                rect(centerX - brick - gap / 2 + column * (brick + gap),
+                    centerY - brick - gap / 2 + row * (brick + gap),
+                    brick, brick)
+            end
+        end
+    end,
+    cross = function(centerX, centerY, size)
+        thickLine(centerX - size * 0.36, centerY - size * 0.36, centerX + size * 0.36, centerY + size * 0.36,
+            size * 0.2)
+        thickLine(centerX + size * 0.36, centerY - size * 0.36, centerX - size * 0.36, centerY + size * 0.36,
+            size * 0.2)
+    end,
+    flag = function(centerX, centerY, size)
+        rect(centerX - size * 0.38, centerY - size * 0.46, size * 0.12, size * 0.92)
+        triangle(centerX - size * 0.26, centerY - size * 0.46, centerX + size * 0.46, centerY - size * 0.24,
+            centerX - size * 0.26, centerY - size * 0.02)
+    end,
+    house = function(centerX, centerY, size)
+        triangle(centerX, centerY - size * 0.48, centerX + size * 0.5, centerY - size * 0.02, centerX - size * 0.5,
+            centerY - size * 0.02)
+        rect(centerX - size * 0.34, centerY - size * 0.04, size * 0.68, size * 0.48)
+    end,
+    clock = function(centerX, centerY, size)
+        local col = surface.GetDrawColor()
+        ring(centerX, centerY, size * 0.46, math.max(2, size * 0.12), col, UI.C.bg)
+        surface.SetDrawColor(col)
+        thickLine(centerX, centerY + 1, centerX, centerY - size * 0.28, math.max(2, size * 0.1))
+        thickLine(centerX - 1, centerY, centerX + size * 0.22, centerY, math.max(2, size * 0.1))
+    end,
+}
+
+local function glyph(name, centerX, centerY, size, col)
+    draw.NoTexture()
+    surface.SetDrawColor(col)
+    GLYPHS[name](centerX, centerY, size)
+end
+
 local function textWidth(text, font)
     surface.SetFont(font)
     return (surface.GetTextSize(text))
@@ -256,7 +334,7 @@ local function drawOverlay(width, height)
     end
 end
 
--- Header: the name, on/off, and the autosave countdown ---------------------------------------------------
+-- Header: the name and version, on/off, and the autosave countdown ---------------------------------------
 
 local function drawAutosaveRing(centerX, centerY, radius)
     local C = UI.C
@@ -265,9 +343,9 @@ local function drawAutosaveRing(centerX, centerY, radius)
     ring(centerX, centerY, radius, 3, C.line, C.bgDark)
     local sinceAutosave = anim.autosavedAt and RealTime() - anim.autosavedAt or math.huge
     if sinceAutosave < 1.2 then
-        local pulse = 1 + 0.25 * math.sin(sinceAutosave / 1.2 * math.pi)
+        local pulse = 1 + 0.2 * math.sin(sinceAutosave / 1.2 * math.pi)
         ring(centerX, centerY, radius * pulse, 3, C.ok, C.bgDark)
-        UI.DrawIcon("disk", centerX - 8, centerY - 8, 16, C.ok)
+        circle(centerX, centerY, radius * 0.45, C.ok)
         return
     end
     local last = RARELOAD.State.lastAutosave
@@ -275,8 +353,9 @@ local function drawAutosaveRing(centerX, centerY, radius)
     local fraction = last and math.Clamp((CurTime() - last) / interval, 0, 1) or 1
     if fraction < 1 then
         arc(centerX, centerY, radius, 3, 0, fraction, UI.Mix(C.ok, C.warn, fraction))
-        draw.SimpleText(math.ceil(interval - (CurTime() - last)), "Rareload.ScreenSmall", centerX, centerY, C.text,
-            TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        local seconds = math.ceil(interval - (CurTime() - last))
+        fittedText(tostring(seconds), "Rareload.ScreenSmall", centerX, centerY, radius * 2 - 6, C.text,
+            TEXT_ALIGN_CENTER)
     else
         -- Waiting for the player to move or change something: a slow spinner.
         local spin = RealTime() * 0.35 % 1
@@ -289,37 +368,34 @@ local function drawHeader(width, enabled)
     surface.SetDrawColor(C.bgDark)
     surface.DrawRect(0, 0, width, HEAD_H)
     surface.SetDrawColor(C.accent)
-    surface.DrawRect(0, HEAD_H - 2, width, 2)
-    draw.SimpleText("RARELOAD", "Rareload.ScreenHead", 10, HEAD_H / 2, C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    surface.DrawRect(0, HEAD_H - 3, width, 3)
+    draw.SimpleText("RARELOAD", "Rareload.ScreenHead", 9, HEAD_H / 2 - 1, C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    local titleWidth = textWidth("RARELOAD", "Rareload.ScreenHead")
+    draw.SimpleText("v" .. RARELOAD.version, "Rareload.ScreenSmall", 9 + titleWidth + 6, HEAD_H / 2, C.text3,
+        TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     local dotColor = enabled and C.ok or C.bad
     local pulse = enabled and 0.6 + 0.4 * math.abs(math.sin(RealTime() * 2)) or 1
-    circle(width - 52, HEAD_H / 2, 5, ColorAlpha(dotColor, 255 * pulse))
-    drawAutosaveRing(width - 20, HEAD_H / 2, 12)
+    circle(width - 52, HEAD_H / 2 - 1, 6, ColorAlpha(dotColor, 255 * pulse))
+    drawAutosaveRing(width - 20, HEAD_H / 2 - 1, 15)
 end
 
 -- The compass and the respawn save ---------------------------------------------------------------------
 
 local function drawCompass(lp)
     local C = UI.C
-    ring(COMPASS_X, COMPASS_Y, COMPASS_R, 2, C.line, C.surface)
-    -- Four ticks: the top one is where the player is looking.
-    for i = 0, 3 do
-        local angle = i * math.pi / 2
-        local cosAngle, sinAngle = math.cos(angle), math.sin(angle)
-        surface.SetDrawColor(i == 0 and C.accentHi or C.line)
-        thickLine(COMPASS_X + sinAngle * (COMPASS_R - 7), COMPASS_Y - cosAngle * (COMPASS_R - 7),
-            COMPASS_X + sinAngle * (COMPASS_R - 2), COMPASS_Y - cosAngle * (COMPASS_R - 2), 2)
-    end
-
+    ring(COMPASS_X, COMPASS_Y, COMPASS_R, 3, C.line, C.surface)
     local toTarget = view.target - lp:GetPos()
     local flat = Vector(toTarget.x, toTarget.y, 0):Length()
     if flat < HERE_DIST then
         local pulse = (RealTime() * 0.8) % 1
-        ring(COMPASS_X, COMPASS_Y, 8 + pulse * (COMPASS_R - 10), 3, ColorAlpha(C.ok, 255 * (1 - pulse)), C.surface)
-        UI.DrawIcon("house", COMPASS_X - 8, COMPASS_Y - 8, 16, color_white)
+        ring(COMPASS_X, COMPASS_Y, 12 + pulse * (COMPASS_R - 14), 4, ColorAlpha(C.ok, 255 * (1 - pulse)), C.surface)
+        glyph("house", COMPASS_X, COMPASS_Y, 30, C.text)
         return flat
     end
-    -- Up on the compass is where the player looks; the arrow turns smoothly towards the respawn point.
+    -- The tick on top is where the player looks.
+    surface.SetDrawColor(C.accentHi)
+    thickLine(COMPASS_X, COMPASS_Y - COMPASS_R + 4, COMPASS_X, COMPASS_Y - COMPASS_R + 11, 3)
+    -- The arrow turns smoothly towards the respawn point.
     local relative = math.AngleDifference(toTarget:Angle().y, lp:EyeAngles().y)
     anim.arrow = anim.arrow + math.AngleDifference(-relative, anim.arrow) * math.min(1, FrameTime() * 10)
     local theta = math.rad(anim.arrow)
@@ -329,10 +405,10 @@ local function drawCompass(lp)
     local function point(forward, side)
         return COMPASS_X + sinTheta * forward + cosTheta * side, COMPASS_Y - cosTheta * forward + sinTheta * side
     end
-    local tipX, tipY = point(COMPASS_R - 9, 0)
-    local notchX, notchY = point(-10, 0)
-    local leftX, leftY = point(-20, -15)
-    local rightX, rightY = point(-20, 15)
+    local tipX, tipY = point(COMPASS_R - 13, 0)
+    local notchX, notchY = point(-12, 0)
+    local leftX, leftY = point(-24, -18)
+    local rightX, rightY = point(-24, 18)
     draw.NoTexture()
     surface.SetDrawColor(C.accentHi)
     surface.DrawPoly({ { x = tipX, y = tipY }, { x = notchX, y = notchY }, { x = leftX, y = leftY } })
@@ -345,66 +421,55 @@ local function drawRespawn(width, lp)
     local C = UI.C
     local active = view.active
     local flat = drawCompass(lp)
-    local textWidthMax = width - TEXT_X - 8
+    local maxWidth = width - TEXT_X - 6
 
-    fittedText(string.upper(L("screen.respawn")), "Rareload.ScreenSmall", TEXT_X, 46, textWidthMax, C.text3)
-    -- The number pops when the respawn point changes.
+    -- How old the respawn save is, after a clock.
+    glyph("clock", TEXT_X + 9, 50, 18, C.text3)
+    fittedText(UI.TimeAgo(active.time), "Rareload.ScreenSmall", TEXT_X + 22, 50, maxWidth - 22, C.text2)
+    -- Its number, large; it pops when the respawn point changes.
+    local number = "#" .. active.id
     local sinceChange = RealTime() - anim.activeAt
     local pop = sinceChange < 0.5 and 1 + 0.25 * (1 - easeOutBack(sinceChange / 0.5)) or 1
-    local number = L("save_no", active.id)
     if pop ~= 1 then
         local matrix = Matrix()
-        matrix:Translate(Vector(TEXT_X, 72, 0))
+        matrix:Translate(Vector(TEXT_X, 88, 0))
         matrix:Scale(Vector(pop, pop, 1))
-        matrix:Translate(Vector(-TEXT_X, -72, 0))
+        matrix:Translate(Vector(-TEXT_X, -88, 0))
         cam.PushModelMatrix(matrix, true)
-        draw.SimpleText(number, "Rareload.ScreenBig", TEXT_X, 72, C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        draw.SimpleText(number, "Rareload.ScreenBig", TEXT_X - 2, 88, C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         cam.PopModelMatrix()
     else
-        fittedText(number, "Rareload.ScreenBig", TEXT_X, 72, textWidthMax, C.text)
+        fittedText(number, "Rareload.ScreenBig", TEXT_X - 2, 88, maxWidth, C.text)
     end
-    fittedText(UI.TimeAgo(active.time) .. " · " .. L("reason." .. tostring(active.reason)), "Rareload.ScreenSmall",
-        TEXT_X, 98, textWidthMax, C.text2)
 
     if flat < HERE_DIST then
-        fittedText(L("screen.here"), "Rareload.Screen", TEXT_X, 122, textWidthMax, C.ok)
+        fittedText(L("screen.here"), "Rareload.Screen", TEXT_X, 126, maxWidth, C.ok)
     else
+        local text = L("screen.meters", meters(flat))
         local rise = (view.target.z - lp:GetPos().z) * UNITS_TO_METERS
-        local distance = L("screen.distance", meters(flat))
         if math.abs(rise) >= 2 then
-            distance = distance .. (rise > 0 and "  ▲" or "  ▼") .. string.format("%.0f", math.abs(rise))
+            text = text .. (rise > 0 and " ▲" or " ▼") .. string.format("%.0f", math.abs(rise))
         end
-        fittedText(distance, "Rareload.Screen", TEXT_X, 122, textWidthMax, C.accentHi)
+        fittedText(text, "Rareload.Screen", TEXT_X, 126, maxWidth, C.accentHi)
     end
 end
 
-local function bar(posX, posY, width, fraction, col)
-    draw.RoundedBox(3, posX, posY, width, 6, UI.C.bgDark)
-    if fraction > 0 then draw.RoundedBox(3, posX, posY, math.max(6, width * math.min(fraction, 1)), 6, col) end
-end
-
+-- Health, armor, weapons and objects in the respawn save: an icon and a number each.
 local function drawStats(width)
     local C = UI.C
     local info = view.active.info
-    local hp, armor = tonumber(info.hp), tonumber(info.armor)
-    local column = (width - 16) / 4
-    local posX = 8
-    UI.DrawIcon("heart", posX, STATS_Y - 8, 16, color_white)
-    draw.SimpleText(hp and math.floor(hp) or "-", "Rareload.ScreenSmall", posX + 20, STATS_Y - 3, C.text,
-        TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-    bar(posX + 20, STATS_Y + 6, column - 26, (hp or 0) / 100, UI.HealthColor(hp or 0, 100))
-    posX = posX + column
-    UI.DrawIcon("shield", posX, STATS_Y - 8, 16, color_white)
-    draw.SimpleText(armor and math.floor(armor) or "-", "Rareload.ScreenSmall", posX + 20, STATS_Y - 3, C.text,
-        TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-    bar(posX + 20, STATS_Y + 6, column - 26, (armor or 0) / 100, C.info)
-    posX = posX + column
-    UI.DrawIcon("gun", posX + 4, STATS_Y - 8, 16, color_white)
-    draw.SimpleText(info.weapons or 0, "Rareload.Screen", posX + 24, STATS_Y, C.text, TEXT_ALIGN_LEFT,
-        TEXT_ALIGN_CENTER)
-    posX = posX + column
-    UI.DrawIcon("bricks", posX + 4, STATS_Y - 8, 16, color_white)
-    draw.SimpleText(view.objects, "Rareload.Screen", posX + 24, STATS_Y, C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    local values = {
+        { "heart", info.hp and math.floor(info.hp) or "-", UI.HealthColor(tonumber(info.hp) or 0, 100), C.bad },
+        { "shield", info.armor and math.floor(info.armor) or "-", C.info, C.info },
+        { "gun", info.weapons or 0, C.text, C.text2 },
+        { "bricks", view.objects, C.text, C.prop },
+    }
+    local column = (width - 8) / #values
+    for index, value in ipairs(values) do
+        local posX = 6 + (index - 1) * column
+        glyph(value[1], posX + 9, STATS_Y, 18, value[4])
+        fittedText(tostring(value[2]), "Rareload.Screen", posX + 22, STATS_Y, column - 26, value[3])
+    end
 end
 
 -- The latest saves, oldest on the left, each with its number; a new one pops in on the right. The save
@@ -413,85 +478,71 @@ local function drawStrip(width)
     local C = UI.C
     local recent = view.recent
     if #recent == 0 then return end
-    local left, right = 22, width - 22
+    local left, right = 24, width - 24
     local spacing = (right - left) / (STRIP_MAX - 1)
     local sinceNew = RealTime() - anim.newAt
     local slide = sinceNew < 0.45 and (1 - easeOutBack(sinceNew / 0.45)) * spacing or 0
     local startX = right - (#recent - 1) * spacing
     surface.SetDrawColor(C.line)
-    surface.DrawRect(left - 10, STRIP_Y - 1, right - left + 20, 2)
+    surface.DrawRect(left - 14, STRIP_Y - 1, right - left + 28, 3)
     local reloadTarget = view.mode == "restore_current" and view.active or view.previous
     for index, row in ipairs(recent) do
         local nodeX = startX + (index - 1) * spacing + slide
         local col = C[REASON_COLORS[row.reason] or "text2"]
-        local radius = row.active and 8 or 5
+        local radius = row.active and 9 or 6
         if row.id == anim.newId and sinceNew < 0.6 then radius = radius * easeOutBack(sinceNew / 0.6) end
         if row.active then
             local glow = 0.5 + 0.5 * math.sin(RealTime() * 3)
-            circle(nodeX, STRIP_Y, radius + 4 + glow * 2, ColorAlpha(C.accent, 60))
+            circle(nodeX, STRIP_Y, radius + 4 + glow * 2, ColorAlpha(C.accent, 70))
             circle(nodeX, STRIP_Y, radius, C.text)
             circle(nodeX, STRIP_Y, radius - 3, col)
         else
             circle(nodeX, STRIP_Y, radius, col)
         end
         if reloadTarget and row.id == reloadTarget.id then
-            draw.SimpleText("R", "Rareload.ScreenSmall", nodeX, STRIP_Y - 17, C.warn, TEXT_ALIGN_CENTER,
+            draw.SimpleText("R", "Rareload.ScreenSmall", nodeX, STRIP_Y - 20, C.warn, TEXT_ALIGN_CENTER,
                 TEXT_ALIGN_CENTER)
-        elseif row.pinned then
-            UI.DrawIcon("flag_blue", nodeX - 8, STRIP_Y - 25, 16, color_white)
         end
-        fittedText(tostring(row.id), "Rareload.ScreenSmall", nodeX, STRIP_Y + 19, spacing - 2,
+        fittedText(tostring(row.id), "Rareload.ScreenSmall", nodeX, STRIP_Y + 22, spacing - 4,
             row.active and C.text or C.text3, TEXT_ALIGN_CENTER)
     end
 end
 
--- Where else the player can go back to: the spot of their last death and their nearest checkpoint, with
--- how far each one is.
+-- Where else the player can go back to: their last death and their nearest checkpoint, with how far each
+-- one is.
 local function drawPlaces(width, lp)
     local C = UI.C
     local here = lp:GetPos()
     local death = RARELOAD.State.death
-    local nearest, nearestDist
+    local nearestDist
     for _, checkpoint in ipairs(RARELOAD.State.checkpoints) do
         if not checkpoint.disabled and checkpoint.vec then
             local dist = here:Distance(checkpoint.vec)
-            if not nearestDist or dist < nearestDist then nearest, nearestDist = checkpoint, dist end
+            if not nearestDist or dist < nearestDist then nearestDist = dist end
         end
     end
-    local hasDeath = death.pos ~= nil
-    draw.RoundedBox(6, 6, PLACES_Y - 15, width - 12, 30, C.surface)
-    local posX, right = 12, width - 12
-    if hasDeath then
-        local deathText = L("screen.meters", meters(here:Distance(death.pos)))
-        UI.DrawIcon("heart_delete", posX, PLACES_Y - 8, 16, color_white)
-        draw.SimpleText(deathText, "Rareload.ScreenSmall", posX + 20, PLACES_Y, C.bad, TEXT_ALIGN_LEFT,
-            TEXT_ALIGN_CENTER)
-        posX = posX + 20 + textWidth(deathText, "Rareload.ScreenSmall") + 12
-        surface.SetDrawColor(C.line)
-        surface.DrawRect(posX - 6, PLACES_Y - 9, 1, 18)
+    draw.RoundedBox(6, 4, PLACES_Y - 13, width - 8, 26, C.surface)
+    local half = (width - 8) / 2
+    local function place(index, icon, dist, col)
+        local posX = 4 + (index - 1) * half
+        glyph(icon, posX + 16, PLACES_Y, 16, dist and col or C.textOff)
+        fittedText(dist and L("screen.meters", meters(dist)) or "-", "Rareload.ScreenSmall", posX + 30, PLACES_Y,
+            half - 36, dist and col or C.textOff)
     end
-    UI.DrawIcon("flag_blue", posX, PLACES_Y - 8, 16, nearest and color_white or C.textOff)
-    if nearest then
-        local distText = L("screen.meters", meters(nearestDist))
-        local distWidth = textWidth(distText, "Rareload.ScreenSmall")
-        draw.SimpleText(distText, "Rareload.ScreenSmall", right, PLACES_Y, C.info, TEXT_ALIGN_RIGHT,
-            TEXT_ALIGN_CENTER)
-        fittedText(nearest.name, "Rareload.ScreenSmall", posX + 20, PLACES_Y, right - distWidth - 8 - posX - 20,
-            C.text)
-    else
-        fittedText(L("screen.no_checkpoints"), "Rareload.ScreenSmall", posX + 20, PLACES_Y, right - posX - 20,
-            C.textOff)
-    end
+    place(1, "cross", death.pos and here:Distance(death.pos) or nil, C.bad)
+    place(2, "flag", nearestDist, C.info)
+    surface.SetDrawColor(C.line)
+    surface.DrawRect(4 + half, PLACES_Y - 9, 1, 18)
 end
 
 -- No save yet: what to do to get one.
 local function drawEmpty(width)
     local C = UI.C
-    circle(COMPASS_X, COMPASS_Y, COMPASS_R, C.surface)
+    ring(COMPASS_X, COMPASS_Y, COMPASS_R, 3, C.line, C.surface)
     local bob = math.sin(RealTime() * 2) * 3
-    UI.DrawIcon("disk", COMPASS_X - 16, COMPASS_Y - 16 + bob, 32, color_white)
-    fittedText(L("screen.no_saves"), "Rareload.Screen", TEXT_X, 74, width - TEXT_X - 8, C.text)
-    fittedText(L("screen.no_saves_hint"), "Rareload.ScreenSmall", TEXT_X, 98, width - TEXT_X - 8, C.text2)
+    glyph("flag", COMPASS_X, COMPASS_Y + bob, 30, C.text2)
+    fittedText(L("screen.no_saves"), "Rareload.Screen", TEXT_X, 76, width - TEXT_X - 6, C.text)
+    fittedText(L("screen.no_saves_hint"), "Rareload.ScreenSmall", TEXT_X, 106, width - TEXT_X - 6, C.text2)
 end
 
 -- Called from TOOL:DrawToolScreen, inside the tool's own cam.Start2D.
@@ -518,7 +569,8 @@ function Screen.Draw(width, height)
         surface.SetDrawColor(10, 12, 16, 210)
         surface.DrawRect(0, HEAD_H, width, height - HEAD_H)
         draw.RoundedBox(8, 20, height / 2 - 18, width - 40, 36, C.bad)
-        fittedText(L("screen.off"), "Rareload.Screen", width / 2, height / 2, width - 56, color_white, TEXT_ALIGN_CENTER)
+        fittedText(L("screen.off"), "Rareload.Screen", width / 2, height / 2, width - 56, color_white,
+            TEXT_ALIGN_CENTER)
     end
     if anim.overlay then drawOverlay(width, height) end
 end

@@ -82,9 +82,9 @@ local SCALED_FONTS = {
     ["Rareload.Mono"] = { 14, 500 },
 }
 local FIXED_FONTS = {
-    -- The tool screen (cl_toolscreen.lua): 256 px, seen from arm's length, so nothing under 17 px.
-    ["Rareload.Screen"] = { 22, 700 }, ["Rareload.ScreenSmall"] = { 17, 700 }, ["Rareload.ScreenHead"] = { 24, 900 },
-    ["Rareload.ScreenBig"] = { 36, 900 },
+    -- The tool screen (cl_toolscreen.lua): 256 px shown a few centimetres wide, so nothing under 21 px.
+    ["Rareload.Screen"] = { 26, 800 }, ["Rareload.ScreenSmall"] = { 21, 800 }, ["Rareload.ScreenHead"] = { 27, 900 },
+    ["Rareload.ScreenBig"] = { 50, 900 },
     ["Rareload.Panel"] = { 24, 500 }, ["Rareload.PanelB"] = { 24, 700 }, ["Rareload.PanelTitle"] = { 32, 800 },
     ["Rareload.PanelSmall"] = { 19, 600 }, ["Rareload.Label"] = { 19, 700 },
     ["Rareload.Menu.Title"] = { 26, 800 }, ["Rareload.Menu.Head"] = { 17, 700 }, ["Rareload.Menu.Row"] = { 16, 500 },
@@ -224,7 +224,8 @@ function UI.TimeAgo(time)
     if age < 45 then return L("time.just_now") end
     if age < 3600 then return L("time.minutes", math.floor(age / 60)) end
     if age < 86400 then return L("time.hours", math.floor(age / 3600)) end
-    return L("time.days", math.floor(age / 86400))
+    local days = math.floor(age / 86400)
+    return days == 1 and L("time.day") or L("time.days", days)
 end
 
 -- Translated names of the states that are on.
