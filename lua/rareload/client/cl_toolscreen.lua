@@ -14,9 +14,9 @@ local UI, Util = RARELOAD.UI, RARELOAD.Util
 local HEAD_H = 36
 local COMPASS_X, COMPASS_Y, COMPASS_R = 55, 90, 46
 local TEXT_X = 112
-local STATS_Y = 154
-local STRIP_Y, STRIP_MAX = 192, 6
-local PLACES_Y = 243
+local STATS_Y = 162
+local STRIP_Y, STRIP_MAX = 200, 6
+local PLACES_Y = 244
 local UNITS_TO_METERS = 0.01905
 local HERE_DIST = 80 -- closer than this (units) counts as standing on the respawn point
 local OVERLAY_TIME = 1.5
@@ -423,35 +423,36 @@ local function drawRespawn(width, lp)
     local flat = drawCompass(lp)
     local maxWidth = width - TEXT_X - 6
 
-    -- How old the respawn save is, after a clock.
-    glyph("clock", TEXT_X + 9, 50, 18, C.text3)
-    fittedText(UI.TimeAgo(active.time), "Rareload.ScreenSmall", TEXT_X + 22, 50, maxWidth - 22, C.text2)
-    -- Its number, large; it pops when the respawn point changes.
+    -- "SAVE" above the save's number, large: the word on its own line, so a long translation shrinks only
+    -- itself. The number pops when the respawn point changes.
+    fittedText(string.upper(L("screen.save_word")), "Rareload.ScreenSmall", TEXT_X, 48, maxWidth, C.text3)
     local number = "#" .. active.id
+    local fit = math.min(1, maxWidth / textWidth(number, "Rareload.ScreenBig"))
     local sinceChange = RealTime() - anim.activeAt
     local pop = sinceChange < 0.5 and 1 + 0.25 * (1 - easeOutBack(sinceChange / 0.5)) or 1
-    if pop ~= 1 then
-        local matrix = Matrix()
-        matrix:Translate(Vector(TEXT_X, 88, 0))
-        matrix:Scale(Vector(pop, pop, 1))
-        matrix:Translate(Vector(-TEXT_X, -88, 0))
-        cam.PushModelMatrix(matrix, true)
-        draw.SimpleText(number, "Rareload.ScreenBig", TEXT_X - 2, 88, C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        cam.PopModelMatrix()
-    else
-        fittedText(number, "Rareload.ScreenBig", TEXT_X - 2, 88, maxWidth, C.text)
-    end
+    local scale = fit * pop
+    local matrix = Matrix()
+    matrix:Translate(Vector(TEXT_X, 82, 0))
+    matrix:Scale(Vector(scale, scale, 1))
+    matrix:Translate(Vector(-TEXT_X, -82, 0))
+    cam.PushModelMatrix(matrix, true)
+    draw.SimpleText(number, "Rareload.ScreenBig", TEXT_X - 2, 82, C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    cam.PopModelMatrix()
 
     if flat < HERE_DIST then
-        fittedText(L("screen.here"), "Rareload.Screen", TEXT_X, 126, maxWidth, C.ok)
+        fittedText(L("screen.here"), "Rareload.Screen", TEXT_X, 116, maxWidth, C.ok)
     else
         local text = L("screen.meters", meters(flat))
         local rise = (view.target.z - lp:GetPos().z) * UNITS_TO_METERS
         if math.abs(rise) >= 2 then
             text = text .. (rise > 0 and " ▲" or " ▼") .. string.format("%.0f", math.abs(rise))
         end
-        fittedText(text, "Rareload.Screen", TEXT_X, 126, maxWidth, C.accentHi)
+        fittedText(text, "Rareload.Screen", TEXT_X, 116, maxWidth, C.accentHi)
     end
+
+    -- How old the save is, after a clock.
+    glyph("clock", TEXT_X + 8, 140, 16, C.text3)
+    fittedText(UI.TimeAgo(active.time), "Rareload.ScreenSmall", TEXT_X + 20, 140, maxWidth - 20, C.text2)
 end
 
 -- Health, armor, weapons and objects in the respawn save: an icon and a number each.
@@ -500,7 +501,7 @@ local function drawStrip(width)
             circle(nodeX, STRIP_Y, radius, col)
         end
         if reloadTarget and row.id == reloadTarget.id then
-            draw.SimpleText("R", "Rareload.ScreenSmall", nodeX, STRIP_Y - 20, C.warn, TEXT_ALIGN_CENTER,
+            draw.SimpleText("R", "Rareload.ScreenSmall", nodeX, STRIP_Y - 18, C.warn, TEXT_ALIGN_CENTER,
                 TEXT_ALIGN_CENTER)
         end
         fittedText(tostring(row.id), "Rareload.ScreenSmall", nodeX, STRIP_Y + 22, spacing - 4,
@@ -521,7 +522,7 @@ local function drawPlaces(width, lp)
             if not nearestDist or dist < nearestDist then nearestDist = dist end
         end
     end
-    draw.RoundedBox(6, 4, PLACES_Y - 13, width - 8, 26, C.surface)
+    draw.RoundedBox(6, 4, PLACES_Y - 12, width - 8, 24, C.surface)
     local half = (width - 8) / 2
     local function place(index, icon, dist, col)
         local posX = 4 + (index - 1) * half
