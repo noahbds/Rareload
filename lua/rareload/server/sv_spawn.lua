@@ -5,14 +5,14 @@ local cleaningUp = nil   -- the player whose death is cleaning the whole map (de
 
 -- Returns how many objects were removed.
 local function removeOwned(ply, savedOnly)
-    local n = 0
+    local removed = 0
     for _, ent in ipairs(RARELOAD.Ownership.Owned(ply)) do
         if IsValid(ent) and not ent:IsPlayer() and (not savedOnly or ent.RareloadID) then
             ent:Remove()
-            n = n + 1
+            removed = removed + 1
         end
     end
-    return n
+    return removed
 end
 
 hook.Add("PostPlayerDeath", "Rareload.Spawn.Died", function(ply)
@@ -44,8 +44,8 @@ hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
         end)
         return
     elseif mode == "owned" or mode == "saved" then
-        local n = removeOwned(ply, mode == "saved")
-        RARELOAD.Log("spawn", ply):info("%s died: removed %d of their %sobjects", ply:Nick(), n,
+        local removed = removeOwned(ply, mode == "saved")
+        RARELOAD.Log("spawn", ply):info("%s died: removed %d of their %sobjects", ply:Nick(), removed,
             mode == "saved" and "saved " or "")
     end
 
@@ -62,7 +62,7 @@ hook.Add("PlayerSpawn", "Rareload.Spawn.Restore", function(ply, transition)
     -- With no saved position, the transform module still puts the player at the death spot.
     if spot and not (entry and entry.data.transform) then
         local data = { transform = {} }
-        for k, v in pairs(entry and entry.data or {}) do data[k] = v end
+        for moduleId, value in pairs(entry and entry.data or {}) do data[moduleId] = value end
         entry = { id = entry and entry.id, time = entry and entry.time, data = data }
     end
     if entry then

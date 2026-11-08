@@ -22,11 +22,11 @@ end
 -- The index of a checkpoint by number or name (case-insensitive), or nil.
 function Checkpoints.Find(ply, what)
     local list = Checkpoints.List(ply)
-    local n = tonumber(what)
-    if n and list[n] then return n end
+    local number = tonumber(what)
+    if number and list[number] then return number end
     what = string.lower(tostring(what or ""))
-    for i, c in ipairs(list) do
-        if string.lower(c.name) == what then return i end
+    for i, checkpoint in ipairs(list) do
+        if string.lower(checkpoint.name) == what then return i end
     end
 end
 
@@ -90,33 +90,33 @@ function Checkpoints.Go(ply, what)
         if istable(why) and why.toast then return false, why.toast, why.args end
         return false, "toast.checkpoint_denied"
     end
-    local c = Checkpoints.List(ply)[i]
-    local pos, ang = Util.ToVector(c.pos), Util.ToAngle(c.ang)
+    local checkpoint = Checkpoints.List(ply)[i]
+    local pos, ang = Util.ToVector(checkpoint.pos), Util.ToAngle(checkpoint.ang)
     if not pos then return false, "toast.checkpoint_unknown" end
     if ply:InVehicle() then ply:ExitVehicle() end
-    if RARELOAD.AntiStuck.IsStuck(pos, ply, c.crouched == true) then
-        local found = RARELOAD.AntiStuck.Resolve(pos, ply, c.crouched == true)
+    if RARELOAD.AntiStuck.IsStuck(pos, ply, checkpoint.crouched == true) then
+        local found = RARELOAD.AntiStuck.Resolve(pos, ply, checkpoint.crouched == true)
         if not found then return false, "toast.stuck" end
         pos = found
     end
-    if c.crouched then ply:AddFlags(FL_DUCKING) end
+    if checkpoint.crouched then ply:AddFlags(FL_DUCKING) end
     ply:SetPos(pos)
     if ang then ply:SetEyeAngles(ang) end
     ply:SetLocalVelocity(vector_origin)
     cursor[ply] = i
-    RARELOAD.Log("checkpoints", ply):verbose("%s went to checkpoint %s", ply:Nick(), c.name)
-    return true, "toast.checkpoint_went", { c.name }
+    RARELOAD.Log("checkpoints", ply):verbose("%s went to checkpoint %s", ply:Nick(), checkpoint.name)
+    return true, "toast.checkpoint_went", { checkpoint.name }
 end
 
 -- Cycles forward through the player's enabled checkpoints (#1 -> #2 -> ... -> #N) and wraps around.
 function Checkpoints.Cycle(ply)
     local list = Checkpoints.List(ply)
-    local n = #list
-    if n == 0 then return false, "toast.checkpoint_none" end
+    local count = #list
+    if count == 0 then return false, "toast.checkpoint_none" end
     local cur = cursor[ply]
-    local start = (cur and cur >= 1 and cur <= n) and (cur % n + 1) or 1
-    for step = 0, n - 1 do
-        local idx = (start - 1 + step) % n + 1
+    local start = (cur and cur >= 1 and cur <= count) and (cur % count + 1) or 1
+    for step = 0, count - 1 do
+        local idx = (start - 1 + step) % count + 1
         if not list[idx].disabled then
             return Checkpoints.Go(ply, idx)
         end
@@ -131,19 +131,19 @@ end
 RARELOAD.Net.Handle("checkpoint.get", { priv = PRIV, rate = 0.2, fn = push })
 RARELOAD.Net.Handle("checkpoint.add", {
     priv = PRIV, rate = 0.2, args = { name = "string:64" },
-    fn = function(ply, a) tell(ply, Checkpoints.Add(ply, a.name)) end,
+    fn = function(ply, args) tell(ply, Checkpoints.Add(ply, args.name)) end,
 })
 RARELOAD.Net.Handle("checkpoint.go", {
     priv = PRIV, rate = 0.15, args = { i = "uint" },
-    fn = function(ply, a) tell(ply, Checkpoints.Go(ply, a.i)) end,
+    fn = function(ply, args) tell(ply, Checkpoints.Go(ply, args.i)) end,
 })
 RARELOAD.Net.Handle("checkpoint.toggle", {
     priv = PRIV, rate = 0.1, args = { i = "uint" },
-    fn = function(ply, a) Checkpoints.Toggle(ply, a.i) end,
+    fn = function(ply, args) Checkpoints.Toggle(ply, args.i) end,
 })
 RARELOAD.Net.Handle("checkpoint.remove", {
     priv = PRIV, rate = 0.2, args = { i = "uint" },
-    fn = function(ply, a) tell(ply, Checkpoints.Remove(ply, a.i)) end,
+    fn = function(ply, args) tell(ply, Checkpoints.Remove(ply, args.i)) end,
 })
 
 -- The list is sent when the player is ready, so the markers show without opening the window.

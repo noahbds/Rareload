@@ -50,8 +50,8 @@ function TOOL:Reload()
 end
 
 if CLIENT then
-    function TOOL:DrawToolScreen(w, h)
-        RARELOAD.ToolScreen.Draw(w, h)
+    function TOOL:DrawToolScreen(width, height)
+        RARELOAD.ToolScreen.Draw(width, height)
     end
 
     function TOOL.BuildCPanel(panel)

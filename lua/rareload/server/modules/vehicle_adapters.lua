@@ -21,9 +21,9 @@ end
 
 function Vehicles.AdapterFor(ent)
     local best
-    for _, a in pairs(Vehicles.adapters) do
-        local ok, match = pcall(a.matches, ent)
-        if ok and match and (not best or a.priority > best.priority) then best = a end
+    for _, adapter in pairs(Vehicles.adapters) do
+        local ok, match = pcall(adapter.matches, ent)
+        if ok and match and (not best or adapter.priority > best.priority) then best = adapter end
     end
     return best
 end
@@ -32,8 +32,8 @@ end
 
 local function get(ent, method, check)
     if not isfunction(ent[method]) then return nil end
-    local ok, v = pcall(ent[method], ent)
-    if ok and (not check or check(v)) then return v end
+    local ok, value = pcall(ent[method], ent)
+    if ok and (not check or check(value)) then return value end
 end
 
 local function set(ent, method, value)
@@ -44,60 +44,60 @@ local function physReady(ent)
     return IsValid(ent:GetPhysicsObject())
 end
 
-local function captureCosmetic(ent, t)
-    local c = get(ent, "GetColor", istable)
-    if c then t.color = { c.r, c.g, c.b, c.a } end
-    t.skin = get(ent, "GetSkin", isnumber)
+local function captureCosmetic(ent, state)
+    local color = get(ent, "GetColor", istable)
+    if color then state.color = { color.r, color.g, color.b, color.a } end
+    state.skin = get(ent, "GetSkin", isnumber)
     local groups = {}
-    for _, g in ipairs(ent:GetBodyGroups() or {}) do
-        local v = ent:GetBodygroup(g.id)
-        if v ~= 0 then groups[tostring(g.id)] = v end
+    for _, bodygroup in ipairs(ent:GetBodyGroups() or {}) do
+        local value = ent:GetBodygroup(bodygroup.id)
+        if value ~= 0 then groups[tostring(bodygroup.id)] = value end
     end
-    if next(groups) then t.bodygroups = groups end
+    if next(groups) then state.bodygroups = groups end
 end
 
-local function applyCosmetic(ent, t, colorSetter)
-    if istable(t.color) then
-        set(ent, colorSetter or "SetColor", Color(t.color[1], t.color[2], t.color[3], t.color[4]))
-        ent:SetRenderMode(t.color[4] < 255 and RENDERMODE_TRANSALPHA or RENDERMODE_NORMAL)
+local function applyCosmetic(ent, state, colorSetter)
+    if istable(state.color) then
+        set(ent, colorSetter or "SetColor", Color(state.color[1], state.color[2], state.color[3], state.color[4]))
+        ent:SetRenderMode(state.color[4] < 255 and RENDERMODE_TRANSALPHA or RENDERMODE_NORMAL)
     end
-    set(ent, "SetSkin", t.skin)
-    for id, v in pairs(t.bodygroups or {}) do ent:SetBodygroup(tonumber(id), v) end
+    set(ent, "SetSkin", state.skin)
+    for id, value in pairs(state.bodygroups or {}) do ent:SetBodygroup(tonumber(id), value) end
 end
 
-local function captureProps(ent, t, props)
+local function captureProps(ent, state, props)
     for _, prop in ipairs(props or {}) do
-        local v = get(ent, prop[2], prop[4])
-        if v ~= nil and prop[5] then v = prop[5](v) end
-        t[prop[1]] = v
+        local value = get(ent, prop[2], prop[4])
+        if value ~= nil and prop[5] then value = prop[5](value) end
+        state[prop[1]] = value
     end
 end
 
-local function applyProps(ent, t, props)
+local function applyProps(ent, state, props)
     for _, prop in ipairs(props or {}) do
-        local v = t[prop[1]]
-        if v ~= nil and prop[6] then v = prop[6](v) end
-        set(ent, prop[3], v)
+        local value = state[prop[1]]
+        if value ~= nil and prop[6] then value = prop[6](value) end
+        set(ent, prop[3], value)
     end
 end
 
 -- captureRoot and applyRoot made from an adapter's property lists (Vehicles.Adapter).
-local function rootFromProps(a)
-    a.captureRoot = function(ent)
-        local t = {}
-        captureProps(ent, t, a.props)
-        captureProps(ent, t, a.lastProps)
-        captureCosmetic(ent, t)
-        if a.noPaint then t.color = nil end
-        return t
+local function rootFromProps(adapter)
+    adapter.captureRoot = function(ent)
+        local state = {}
+        captureProps(ent, state, adapter.props)
+        captureProps(ent, state, adapter.lastProps)
+        captureCosmetic(ent, state)
+        if adapter.noPaint then state.color = nil end
+        return state
     end
-    a.applyRoot = function(ent, t)
-        applyProps(ent, t, a.props)
-        applyCosmetic(ent, t, a.colorSetter and a.colorSetter(ent))
-        applyProps(ent, t, a.lastProps)
-        if a.afterApply then a.afterApply(ent, t) end
+    adapter.applyRoot = function(ent, state)
+        applyProps(ent, state, adapter.props)
+        applyCosmetic(ent, state, adapter.colorSetter and adapter.colorSetter(ent))
+        applyProps(ent, state, adapter.lastProps)
+        if adapter.afterApply then adapter.afterApply(ent, state) end
     end
-    return a
+    return adapter
 end
 
 -- Seats ---------------------------------------------------------------------------------------------
@@ -105,24 +105,24 @@ end
 local Seats = {}
 Vehicles.Seats = Seats
 
-local function isSeat(s)
-    return IsValid(s) and s:IsVehicle()
+local function isSeat(seat)
+    return IsValid(seat) and seat:IsVehicle()
 end
 
 function Seats.All(veh)
     local seats, seen = {}, {}
-    local function add(s)
-        if isSeat(s) and not seen[s] then
-            seen[s] = true
-            seats[#seats + 1] = s
+    local function add(seat)
+        if isSeat(seat) and not seen[seat] then
+            seen[seat] = true
+            seats[#seats + 1] = seat
         end
     end
     add(get(veh, "GetDriverSeat"))
     add(get(veh, "GetGunnerSeat"))
-    for _, s in pairs(get(veh, "GetPassengerSeats", istable) or {}) do add(s) end
+    for _, seat in pairs(get(veh, "GetPassengerSeats", istable) or {}) do add(seat) end
     for _, field in ipairs({ "DriverSeat", "GunnerSeat" }) do add(veh[field]) end
     for _, field in ipairs({ "pSeats", "PassengerSeats", "seats", "Seats" }) do
-        for _, s in pairs(istable(veh[field]) and veh[field] or {}) do add(s) end
+        for _, seat in pairs(istable(veh[field]) and veh[field] or {}) do add(seat) end
     end
     for _, child in ipairs(veh:GetChildren()) do
         add(child)
@@ -151,16 +151,16 @@ function Seats.Find(veh, desc)
             local ok, seat = pcall(veh.GetPassengerSeat, veh, desc.pod)
             if ok and isSeat(seat) then return seat end
         end
-        for _, s in ipairs(seats) do
-            if podIndex(s) == desc.pod then return s end
+        for _, seat in ipairs(seats) do
+            if podIndex(seat) == desc.pod then return seat end
         end
     end
     local target = RARELOAD.Util.ToVector(desc.pos)
     local best, bestDist
-    for _, s in ipairs(seats) do
-        local dist = target and veh:WorldToLocal(s:GetPos()):DistToSqr(target) or math.huge
-        if not bestDist or dist < bestDist or (dist == bestDist and s:GetClass() == desc.class) then
-            best, bestDist = s, dist
+    for _, seat in ipairs(seats) do
+        local dist = target and veh:WorldToLocal(seat:GetPos()):DistToSqr(target) or math.huge
+        if not bestDist or dist < bestDist or (dist == bestDist and seat:GetClass() == desc.class) then
+            best, bestDist = seat, dist
         end
     end
     return best
@@ -225,17 +225,18 @@ Vehicles.Adapter(rootFromProps({
     props = {
         { "maxHp", "GetMaxHP", "SetMaxHP", isnumber }, { "hp", "GetHP", "SetHP", isnumber },
         { "damaged", "GetDamaged", "SetDamaged", isbool }, { "ambientLight", "GetAmbientLight", "SetAmbientLight" },
-        { "engineActive", "GetEngineActive", "SetEngineActive", isbool }, { "active", "GetActive", "SetActive", isbool },
+        { "engineActive", "GetEngineActive", "SetEngineActive", isbool },
+            { "active", "GetActive", "SetActive", isbool },
     },
     captureComponents = function(ent)
         local out = {}
-        for _, c in ipairs(lvsComponents(ent)) do
-            local lp = ent:WorldToLocal(c:GetPos())
+        for _, component in ipairs(lvsComponents(ent)) do
+            local lp = ent:WorldToLocal(component:GetPos())
             out[#out + 1] = {
-                class = c:GetClass(),
+                class = component:GetClass(),
                 pos = { lp.x, lp.y, lp.z },
-                hp = get(c, "GetHP", isnumber),
-                maxHp = get(c, "GetMaxHP", isnumber)
+                hp = get(component, "GetHP", isnumber),
+                maxHp = get(component, "GetMaxHP", isnumber)
             }
         end
         return #out > 0 and out or nil
@@ -244,10 +245,10 @@ Vehicles.Adapter(rootFromProps({
         local live, used = lvsComponents(ent), {}
         for _, saved in ipairs(list) do
             local target, best, bestDist = RARELOAD.Util.ToVector(saved.pos), nil, nil
-            for _, c in ipairs(live) do
-                if not used[c] and c:GetClass() == saved.class and target then
-                    local dist = ent:WorldToLocal(c:GetPos()):DistToSqr(target)
-                    if not bestDist or dist < bestDist then best, bestDist = c, dist end
+            for _, component in ipairs(live) do
+                if not used[component] and component:GetClass() == saved.class and target then
+                    local dist = ent:WorldToLocal(component:GetPos()):DistToSqr(target)
+                    if not bestDist or dist < bestDist then best, bestDist = component, dist end
                 end
             end
             if best then
@@ -292,7 +293,8 @@ Vehicles.Adapter(rootFromProps({
         { "hp", "GetHP", "SetHP", isnumber }, { "shield", "GetShield", "SetShield", isnumber },
         { "lgear", "GetLGear", "SetLGear", isnumber }, { "rgear", "GetRGear", "SetRGear", isnumber },
         { "isLocked", "GetIsLocked", "SetIsLocked", isbool },
-        { "engineActive", "GetEngineActive", "SetEngineActive", isbool }, { "active", "GetActive", "SetActive", isbool },
+        { "engineActive", "GetEngineActive", "SetEngineActive", isbool },
+            { "active", "GetActive", "SetActive", isbool },
     },
 }))
 
@@ -305,9 +307,9 @@ local function isWAC(ent)
 end
 
 local function aircraftOf(seat)
-    local a = seat.wac_aircraft or seat:GetNWEntity("wac_aircraft")
-    if not IsValid(a) then a = seat:GetParent() end
-    return IsValid(a) and a or nil
+    local aircraft = seat.wac_aircraft or seat:GetNWEntity("wac_aircraft")
+    if not IsValid(aircraft) then aircraft = seat:GetParent() end
+    return IsValid(aircraft) and aircraft or nil
 end
 
 -- Kept outside the entity's table: that table is saved with the aircraft, so a flag stored there

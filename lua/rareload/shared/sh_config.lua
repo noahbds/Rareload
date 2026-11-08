@@ -2,19 +2,19 @@ RARELOAD.Settings = RARELOAD.Settings or {}
 local Settings = RARELOAD.Settings
 
 -- Turns a raw value into the setting's type, clamped to its range. Enums fall back to their default.
-local function coerce(settingDef, n)
+local function coerce(settingDef, value)
     if settingDef.type == "enum" then
-        for _, v in ipairs(settingDef.values) do
-            if v == tostring(n) then return v end
+        for _, allowed in ipairs(settingDef.values) do
+            if allowed == tostring(value) then return allowed end
         end
         return settingDef.default
     end
-    n = tonumber(n) or 0
-    if settingDef.type == "bool" then return n ~= 0 end
-    if settingDef.min then n = math.max(n, settingDef.min) end
-    if settingDef.max then n = math.min(n, settingDef.max) end
-    if settingDef.type == "int" then n = math.floor(n) end
-    return n
+    value = tonumber(value) or 0
+    if settingDef.type == "bool" then return value ~= 0 end
+    if settingDef.min then value = math.max(value, settingDef.min) end
+    if settingDef.max then value = math.min(value, settingDef.max) end
+    if settingDef.type == "int" then value = math.floor(value) end
+    return value
 end
 
 -- Locked player settings, as a comma-separated list of keys in one replicated convar (D3).
@@ -26,7 +26,7 @@ function RARELOAD.IsLocked(key)
     local raw = locks:GetString()
     if raw ~= lockCache.raw then
         lockCache.raw, lockCache.set = raw, {}
-        for k in string.gmatch(raw, "[%w_]+") do lockCache.set[k] = true end
+        for lockedKey in string.gmatch(raw, "[%w_]+") do lockCache.set[lockedKey] = true end
     end
     return lockCache.set[key] == true
 end
@@ -303,13 +303,13 @@ if SERVER then
         priv = "rareload_settings",
         rate = 0.1,
         args = { key = "string:64", value = "string:32" },
-        fn = function(ply, a)
-            local settingDef = Settings[a.key]
+        fn = function(ply, args)
+            local settingDef = Settings[args.key]
             if not settingDef or settingDef.scope == "client" then return end
-            if settingDef.type ~= "enum" and not tonumber(a.value) then return end
-            local value, before = coerce(settingDef, a.value), RARELOAD.ServerValue(a.key)
+            if settingDef.type ~= "enum" and not tonumber(args.value) then return end
+            local value, before = coerce(settingDef, args.value), RARELOAD.ServerValue(args.key)
             settingDef.cv:SetString(settingDef.type == "bool" and (value and "1" or "0") or tostring(value))
-            RARELOAD.Log("settings", ply):info("%s changed %s from %s to %s", ply:Nick(), a.key, tostring(before),
+            RARELOAD.Log("settings", ply):info("%s changed %s from %s to %s", ply:Nick(), args.key, tostring(before),
                 tostring(value))
         end,
     })
@@ -318,18 +318,19 @@ if SERVER then
         priv = "rareload_settings",
         rate = 0.1,
         args = { key = "string:64", locked = "bool" },
-        fn = function(ply, a)
-            local settingDef = Settings[a.key]
-            if not settingDef or settingDef.scope ~= "player" or RARELOAD.IsLocked(a.key) == a.locked then return end
+        fn = function(ply, args)
+            local settingDef = Settings[args.key]
+            if not settingDef or settingDef.scope ~= "player"
+                or RARELOAD.IsLocked(args.key) == args.locked then return end
             local keys = {}
-            for k in string.gmatch(locks:GetString(), "[%w_]+") do
-                if k ~= a.key and Settings[k] then keys[#keys + 1] = k end
+            for lockedKey in string.gmatch(locks:GetString(), "[%w_]+") do
+                if lockedKey ~= args.key and Settings[lockedKey] then keys[#keys + 1] = lockedKey end
             end
-            if a.locked then keys[#keys + 1] = a.key end
+            if args.locked then keys[#keys + 1] = args.key end
             table.sort(keys)
             locks:SetString(table.concat(keys, ","))
             RARELOAD.Log("settings", ply):info("%s %s the player setting %s", ply:Nick(),
-                a.locked and "locked" or "unlocked", a.key)
+                args.locked and "locked" or "unlocked", args.key)
         end,
     })
 end

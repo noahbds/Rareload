@@ -20,18 +20,18 @@ end
 local call = RARELOAD.Util.Call
 
 function Weapons.AdapterFor(wep)
-    for _, a in SortedPairs(Weapons.adapters) do
-        if call(a.available) and call(a.matches, wep) then return a end
+    for _, adapter in SortedPairs(Weapons.adapters) do
+        if call(adapter.available) and call(adapter.matches, wep) then return adapter end
     end
 end
 
 -- A copy holding only plain values (strings, numbers, booleans, tables of them).
-local function plain(v, depth)
-    if not istable(v) then return (isstring(v) or isnumber(v) or isbool(v)) and v or nil end
+local function plain(value, depth)
+    if not istable(value) then return (isstring(value) or isnumber(value) or isbool(value)) and value or nil end
     if depth > 12 then return nil end
     local out = {}
-    for k, x in pairs(v) do
-        if isstring(k) or isnumber(k) then out[k] = plain(x, depth + 1) end
+    for key, item in pairs(value) do
+        if isstring(key) or isnumber(key) then out[key] = plain(item, depth + 1) end
     end
     return out
 end
@@ -39,12 +39,12 @@ end
 function Weapons.Capture(ply)
     local out = { weapons = {}, owned = {} }
     for _, wep in ipairs(ply:GetWeapons()) do
-        local a = Weapons.AdapterFor(wep)
-        local data = a and call(a.capture, wep, ply)
-        if data ~= nil then out.weapons[wep:GetClass()] = { adapter = a.id, data = plain(data, 0) } end
+        local adapter = Weapons.AdapterFor(wep)
+        local data = adapter and call(adapter.capture, wep, ply)
+        if data ~= nil then out.weapons[wep:GetClass()] = { adapter = adapter.id, data = plain(data, 0) } end
     end
-    for id, a in SortedPairs(Weapons.adapters) do
-        local inv = call(a.available) and call(a.captureOwned, ply)
+    for id, adapter in SortedPairs(Weapons.adapters) do
+        local inv = call(adapter.available) and call(adapter.captureOwned, ply)
         if inv ~= nil then out.owned[id] = plain(inv, 0) end
     end
     if not next(out.weapons) and not next(out.owned) then return nil end
@@ -56,10 +56,11 @@ end
 -- Returns how many weapons could not get their state back.
 function Weapons.Apply(ply, state)
     local failed = 0
-    for class, w in pairs(istable(state) and istable(state.weapons) and state.weapons or {}) do
-        local wep, a = ply:GetWeapon(class), istable(w) and Weapons.adapters[w.adapter]
-        if IsValid(wep) and a and call(a.available) and call(a.matches, wep) and istable(w.data) then
-            local ok, err = pcall(a.apply, wep, w.data, ply)
+    for class, weaponState in pairs(istable(state) and istable(state.weapons) and state.weapons or {}) do
+        local wep, adapter = ply:GetWeapon(class), istable(weaponState) and Weapons.adapters[weaponState.adapter]
+        if IsValid(wep) and adapter and call(adapter.available) and call(adapter.matches,
+            wep) and istable(weaponState.data) then
+            local ok, err = pcall(adapter.apply, wep, weaponState.data, ply)
             if not ok then
                 failed = failed + 1
                 RARELOAD.Log("weapons", ply):warn("%s: %s state not applied: %s", ply:Nick(), class, tostring(err))
@@ -69,13 +70,13 @@ function Weapons.Apply(ply, state)
         end
     end
     for id, inv in pairs(istable(state) and istable(state.owned) and state.owned or {}) do
-        local a = Weapons.adapters[id]
-        if a and call(a.available) and istable(inv) then call(a.applyOwned, ply, inv) end
+        local adapter = Weapons.adapters[id]
+        if adapter and call(adapter.available) and istable(inv) then call(adapter.applyOwned, ply, inv) end
     end
     return failed
 end
 
-local function copy(t) return util.JSONToTable(util.TableToJSON(t)) or {} end
+local function copy(value) return util.JSONToTable(util.TableToJSON(value)) or {} end
 
 -- ARC9: a tree per slot, { Installed, ToggleNum, SubAttachments = { … } }, rebuilt the way the base
 -- rebuilds it when a client sends a new build (SWEP:ReceiveWeapon).
@@ -99,16 +100,16 @@ Weapons.Adapter({
         for i, slot in ipairs(wep.Attachments or {}) do tree[i] = istable(slot) and arc9Tree(slot) or {} end
         return { tree = tree, firemode = call(wep.GetFiremode, wep) }
     end,
-    apply = function(wep, t)
-        if istable(t.tree) then
-            wep:BuildSubAttachments(t.tree)
+    apply = function(wep, saved)
+        if istable(saved.tree) then
+            wep:BuildSubAttachments(saved.tree)
             call(wep.DoInvalidateCache, wep)
             call(wep.PruneAttachments, wep)
             call(wep.FillIntegralSlots, wep)
             call(wep.SendWeapon, wep)
             call(wep.PostModify, wep)
         end
-        if isnumber(t.firemode) then call(wep.SetFiremode, wep, t.firemode) end
+        if isnumber(saved.firemode) then call(wep.SetFiremode, wep, saved.firemode) end
     end,
     captureOwned = function(ply) return istable(ply.ARC9_AttInv) and copy(ply.ARC9_AttInv) or nil end,
     applyOwned = function(ply, inv)
@@ -131,14 +132,14 @@ Weapons.Adapter({
                 slots[#slots + 1] = { i = i, att = slot.Installed, toggle = slot.ToggleNum, slide = slot.SlidePos }
             end
         end
-        table.sort(slots, function(a, b) return a.i < b.i end)
+        table.sort(slots, function(left, right) return left.i < right.i end)
         return { slots = slots, firemode = call(wep.GetFireMode, wep) }
     end,
-    apply = function(wep, t, ply)
+    apply = function(wep, saved, ply)
         local want = {}
-        for _, s in ipairs(istable(t.slots) and t.slots or {}) do want[tonumber(s.i) or -1] = s end
+        for _, slot in ipairs(istable(saved.slots) and saved.slots or {}) do want[tonumber(slot.i) or -1] = slot end
         local current = table.GetKeys(wep.Attachments or {})
-        table.sort(current, function(a, b) return (tonumber(a) or 0) > (tonumber(b) or 0) end)
+        table.sort(current, function(left, right) return (tonumber(left) or 0) > (tonumber(right) or 0) end)
         for _, i in ipairs(current) do
             local slot = wep.Attachments[i]
             local kept = want[i] and want[i].att == (istable(slot) and slot.Installed)
@@ -146,22 +147,22 @@ Weapons.Adapter({
                 wep:Detach(i, true, true, true)
             end
         end
-        for _, s in ipairs(istable(t.slots) and t.slots or {}) do
-            local slot = wep.Attachments[tonumber(s.i) or -1]
-            if istable(slot) and isstring(s.att) then
-                if slot.Installed ~= s.att then
-                    call(ArcCW.PlayerGiveAtt, ArcCW, ply, s.att)
-                    wep:Attach(s.i, s.att, true, true)
+        for _, savedSlot in ipairs(istable(saved.slots) and saved.slots or {}) do
+            local slot = wep.Attachments[tonumber(savedSlot.i) or -1]
+            if istable(slot) and isstring(savedSlot.att) then
+                if slot.Installed ~= savedSlot.att then
+                    call(ArcCW.PlayerGiveAtt, ArcCW, ply, savedSlot.att)
+                    wep:Attach(savedSlot.i, savedSlot.att, true, true)
                 end
-                if slot.Installed == s.att then
-                    slot.ToggleNum = s.toggle or slot.ToggleNum
-                    slot.SlidePos = s.slide or slot.SlidePos
+                if slot.Installed == savedSlot.att then
+                    slot.ToggleNum = savedSlot.toggle or slot.ToggleNum
+                    slot.SlidePos = savedSlot.slide or slot.SlidePos
                 end
             end
         end
         call(wep.AdjustAtts, wep)
         call(wep.NetworkWeapon, wep)
-        if isnumber(t.firemode) then call(wep.SetFireMode, wep, t.firemode) end
+        if isnumber(saved.firemode) then call(wep.SetFireMode, wep, saved.firemode) end
     end,
     captureOwned = function(ply) return istable(ply.ArcCW_AttInv) and copy(ply.ArcCW_AttInv) or nil end,
     applyOwned = function(ply, inv)
@@ -183,12 +184,13 @@ Weapons.Adapter({
                 sel[#sel + 1] = { cat = cat, att = slot.atts[slot.sel] }
             end
         end
-        table.sort(sel, function(a, b) return tostring(a.cat) < tostring(b.cat) end)
+        table.sort(sel, function(left, right) return tostring(left.cat) < tostring(right.cat) end)
         return { sel = sel, firemode = call(wep.GetFireMode, wep) }
     end,
-    apply = function(wep, t)
+    apply = function(wep, saved)
         local want = {}
-        for _, s in ipairs(istable(t.sel) and t.sel or {}) do want[tostring(s.cat)] = s.att end
+        for _, selection in ipairs(istable(saved.sel) and saved.sel
+            or {}) do want[tostring(selection.cat)] = selection.att end
         for cat, slot in pairs(wep.Attachments or {}) do
             if istable(slot) and istable(slot.atts) then
                 local att = want[tostring(cat)]
@@ -199,7 +201,7 @@ Weapons.Adapter({
                 end
             end
         end
-        if isnumber(t.firemode) then call(wep.SetFireMode, wep, t.firemode) end
+        if isnumber(saved.firemode) then call(wep.SetFireMode, wep, saved.firemode) end
     end,
 })
 
@@ -219,12 +221,12 @@ Weapons.Adapter({
         table.sort(list)
         return { atts = list }
     end,
-    apply = function(wep, t)
+    apply = function(wep, saved)
         local inUse = {}
         for _, att in pairs(wep:GetAllAttachmentsInUse() or {}) do
             if istable(att) and att.ClassName then inUse[att.ClassName] = true end
         end
-        for _, class in ipairs(istable(t.atts) and t.atts or {}) do
+        for _, class in ipairs(istable(saved.atts) and saved.atts or {}) do
             if isstring(class) and not inUse[class] then wep:CreateAttachmentEntity(class) end
         end
     end,
@@ -260,9 +262,9 @@ RARELOAD.Module({
     restore = function(ply, state, ctx) Weapons.ApplyLater(ply, state, ctx) end,
 
     summary = function(state)
-        local n = table.Count(istable(state.weapons) and state.weapons or {})
+        local count = table.Count(istable(state.weapons) and state.weapons or {})
         local owned = table.GetKeys(istable(state.owned) and state.owned or {})
         table.sort(owned)
-        return n .. " customized weapons" .. (#owned > 0 and ", inventory: " .. table.concat(owned, ", ") or "")
+        return count .. " customized weapons" .. (#owned > 0 and ", inventory: " .. table.concat(owned, ", ") or "")
     end,
 })

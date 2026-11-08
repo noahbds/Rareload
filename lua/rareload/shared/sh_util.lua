@@ -40,47 +40,47 @@ end
 
 -- Text someone typed, as text: GMod's JSON reads a string like "[1 2 3]" or "{1 2 3}" back as a
 -- Vector or an Angle, so a note or a player name of that shape arrives as one.
-function Util.AsText(v)
-    if isvector(v) then return string.format("[%g %g %g]", v.x, v.y, v.z) end
-    if isangle(v) then return string.format("{%g %g %g}", v.p, v.y, v.r) end
-    if v ~= nil and not isstring(v) then return tostring(v) end
-    return v
+function Util.AsText(value)
+    if isvector(value) then return string.format("[%g %g %g]", value.x, value.y, value.z) end
+    if isangle(value) then return string.format("{%g %g %g}", value.p, value.y, value.r) end
+    if value ~= nil and not isstring(value) then return tostring(value) end
+    return value
 end
 
-function Util.Finite(n)
-    return isnumber(n) and n == n and n ~= math.huge and n ~= -math.huge
+function Util.Finite(value)
+    return isnumber(value) and value == value and value ~= math.huge and value ~= -math.huge
 end
 
 -- Vectors and angles are stored as 3-element arrays (§16.2).
-function Util.Vec(v)
-    return { v.x, v.y, v.z }
+function Util.Vec(vec)
+    return { vec.x, vec.y, vec.z }
 end
 
-function Util.ToVector(t)
-    if istable(t) and Util.Finite(t[1]) and Util.Finite(t[2]) and Util.Finite(t[3]) then
-        return Vector(t[1], t[2], t[3])
+function Util.ToVector(list)
+    if istable(list) and Util.Finite(list[1]) and Util.Finite(list[2]) and Util.Finite(list[3]) then
+        return Vector(list[1], list[2], list[3])
     end
 end
 
-function Util.Ang(a)
-    return { a.p, a.y, a.r }
+function Util.Ang(ang)
+    return { ang.p, ang.y, ang.r }
 end
 
-function Util.ToAngle(t)
-    if istable(t) and Util.Finite(t[1]) and Util.Finite(t[2]) and Util.Finite(t[3]) then
-        return Angle(t[1], t[2], t[3])
+function Util.ToAngle(list)
+    if istable(list) and Util.Finite(list[1]) and Util.Finite(list[2]) and Util.Finite(list[3]) then
+        return Angle(list[1], list[2], list[3])
     end
 end
 
 -- Deep equality for plain data (used to detect "nothing changed since the last save", L35).
-function Util.Equal(a, b)
-    if a == b then return true end
-    if not istable(a) or not istable(b) then return false end
-    for k, v in pairs(a) do
-        if not Util.Equal(v, b[k]) then return false end
+function Util.Equal(left, right)
+    if left == right then return true end
+    if not istable(left) or not istable(right) then return false end
+    for key, value in pairs(left) do
+        if not Util.Equal(value, right[key]) then return false end
     end
-    for k in pairs(b) do
-        if a[k] == nil then return false end
+    for key in pairs(right) do
+        if left[key] == nil then return false end
     end
     return true
 end
@@ -100,34 +100,34 @@ end
 -- Checks JSON syntax. Returns true, or false with the line, column and a short reason of the first
 -- error, so the object editor can point at it.
 function Util.CheckJSON(text)
-    local i, n = 1, #text
+    local i, length = 1, #text
     local function fail(why)
         local before = string.sub(text, 1, i - 1)
         local _, lines = string.gsub(before, "\n", "")
         local col = i - (string.find(before, "\n[^\n]*$") or 0)
         error({ line = lines + 1, col = col, why = why }, 0)
     end
-    local function skip() i = string.find(text, "[^ \t\r\n]", i) or n + 1 end
+    local function skip() i = string.find(text, "[^ \t\r\n]", i) or length + 1 end
     local value
     local function str()
         i = i + 1
-        while i <= n do
-            local c = string.sub(text, i, i)
-            if c == '"' then
+        while i <= length do
+            local char = string.sub(text, i, i)
+            if char == '"' then
                 i = i + 1
                 return
             end
-            if c == "\\" then
-                local e = string.sub(text, i + 1, i + 1)
-                if e == "u" then
+            if char == "\\" then
+                local escaped = string.sub(text, i + 1, i + 1)
+                if escaped == "u" then
                     if not string.find(string.sub(text, i + 2, i + 5), "^%x%x%x%x$") then fail("bad \\u escape") end
                     i = i + 6
-                elseif string.find(e, "^[\"\\/bfnrt]$") then
+                elseif string.find(escaped, "^[\"\\/bfnrt]$") then
                     i = i + 2
                 else
                     fail("bad escape")
                 end
-            elseif c == "\n" then
+            elseif char == "\n" then
                 fail("unfinished string")
             else
                 i = i + 1
@@ -145,19 +145,19 @@ function Util.CheckJSON(text)
         while true do
             item()
             skip()
-            local c = string.sub(text, i, i)
-            if c == close then
+            local char = string.sub(text, i, i)
+            if char == close then
                 i = i + 1
                 return
             end
-            if c ~= "," then fail("expected , or " .. close) end
+            if char ~= "," then fail("expected , or " .. close) end
             i = i + 1
         end
     end
     value = function()
         skip()
-        local c = string.sub(text, i, i)
-        if c == "{" then
+        local char = string.sub(text, i, i)
+        if char == "{" then
             list("}", function()
                 skip()
                 if string.sub(text, i, i) ~= '"' then fail("expected a key in quotes") end
@@ -167,14 +167,14 @@ function Util.CheckJSON(text)
                 i = i + 1
                 value()
             end)
-        elseif c == "[" then
+        elseif char == "[" then
             list("]", value)
-        elseif c == '"' then
+        elseif char == '"' then
             str()
         else
             local word = string.match(text, "^%-?%d+%.?%d*[eE]?[%+%-]?%d*", i) or string.match(text, "^%a+", i)
             if not word or (string.find(word, "^%a") and word ~= "true" and word ~= "false" and word ~= "null") then
-                fail(c == "" and "unexpected end" or "unexpected " .. c)
+                fail(char == "" and "unexpected end" or "unexpected " .. char)
             end
             i = i + #word
         end
@@ -182,7 +182,7 @@ function Util.CheckJSON(text)
     local ok, err = pcall(function()
         value()
         skip()
-        if i <= n then fail("text after the end") end
+        if i <= length then fail("text after the end") end
     end)
     if ok then return true end
     if not istable(err) then return false, 1, 1, "nested too deeply" end -- stack overflow (S-04)

@@ -133,11 +133,11 @@ RARELOAD.Net.Handle("death.respawn", {
     priv = "rareload_restore",
     rate = 0.5,
     args = { mode = "string:8" },
-    fn = function(ply, a)
-        if ply:Alive() or not CHOICES[a.mode] then return end
+    fn = function(ply, args)
+        if ply:Alive() or not CHOICES[args.mode] then return end
         local st = Death.State(ply)
-        if a.mode == "death" and not st.spot then return end
-        st.choice = a.mode
+        if args.mode == "death" and not st.spot then return end
+        st.choice = args.mode
         ply:Spawn()
     end,
 })

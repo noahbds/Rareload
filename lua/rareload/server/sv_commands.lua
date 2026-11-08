@@ -28,10 +28,11 @@ function Cmd.Phrase(key, ...)
         english = {}
         local text = file.Read("resource/localization/en/rareload.properties", "GAME") or ""
         for line in string.gmatch(text, "[^\r\n]+") do
-            local k, v = string.match(line, "^rareload%.([^=%s]+)=(.*)$")
-            if k then
+            local phraseKey, phrase = string.match(line, "^rareload%.([^=%s]+)=(.*)$")
+            if phraseKey then
                 -- \uXXXX is the format's only escape.
-                english[k] = string.gsub(v, "\\u(%x%x%x%x)", function(hex) return utf8.char(tonumber(hex, 16)) end)
+                english[phraseKey] = string.gsub(phrase, "\\u(%x%x%x%x)",
+                    function(hex) return utf8.char(tonumber(hex, 16)) end)
             end
         end
     end
@@ -383,11 +384,11 @@ Cmd.Register("history reload", {
 })
 
 local function coords(args)
-    local x, y, z = tonumber(args[1]), tonumber(args[2]), tonumber(args[3])
-    if not x or not y or not z or x ~= x or y ~= y or z ~= z
-        or math.abs(x) == math.huge or math.abs(y) == math.huge or math.abs(z) == math.huge then return nil end
-    local v = RARELOAD.Util.ToVector({ x, y, z })
-    return v and util.IsInWorld(v) and v or nil
+    local posX, posY, posZ = tonumber(args[1]), tonumber(args[2]), tonumber(args[3])
+    if not posX or not posY or not posZ or posX ~= posX or posY ~= posY or posZ ~= posZ
+        or math.abs(posX) == math.huge or math.abs(posY) == math.huge or math.abs(posZ) == math.huge then return nil end
+    local target = RARELOAD.Util.ToVector({ posX, posY, posZ })
+    return target and util.IsInWorld(target) and target or nil
 end
 
 Cmd.Register("tp", {
@@ -460,8 +461,8 @@ Cmd.Register("antistuck method", {
             RARELOAD.Log("antistuck", ply):info("%s: anti-stuck method %s %s", IsValid(ply) and ply:Nick() or "Console",
                 tostring(args[2] or "all"), action)
         end
-        for i, m in ipairs(RARELOAD.AntiStuck.List()) do
-            reply(string.format("  %d. [%s] %s", i, m.enabled and "on " or "off", m.id))
+        for i, method in ipairs(RARELOAD.AntiStuck.List()) do
+            reply(string.format("  %d. [%s] %s", i, method.enabled and "on " or "off", method.id))
         end
     end,
 })
@@ -472,10 +473,10 @@ Cmd.Register("data cleanup", {
     help = "Delete saved world data no save uses any more, on this map (or every map with 'all')",
     fn = function(ply, args, reply)
         local all = args[1] == "all"
-        local n = all and RARELOAD.Store.GCAll() or RARELOAD.Store.GC()
+        local removed = all and RARELOAD.Store.GCAll() or RARELOAD.Store.GC()
         RARELOAD.Log("admin", ply):info("%s cleaned up unused data%s: %d blobs", IsValid(ply) and ply:Nick() or
-            "Console", all and " on every map" or "", n)
-        reply("Removed " .. n .. " unused blobs" .. (all and " on every map." or "."))
+            "Console", all and " on every map" or "", removed)
+        reply("Removed " .. removed .. " unused blobs" .. (all and " on every map." or "."))
     end,
 })
 
@@ -494,10 +495,10 @@ Cmd.Register("data prune", {
     fn = function(ply, args, reply)
         local days = tonumber(args[1])
         if not days or days < 1 or days ~= math.floor(days) then return reply("Usage: rareload data prune <days>") end
-        local n = RARELOAD.Store.Prune(days)
+        local removed = RARELOAD.Store.Prune(days)
         RARELOAD.Log("admin", ply):info("%s deleted %d saves older than %d days", IsValid(ply) and ply:Nick() or
-            "Console", n, days)
-        reply("Deleted " .. n .. " saves older than " .. days .. " days.")
+            "Console", removed, days)
+        reply("Deleted " .. removed .. " saves older than " .. days .. " days.")
     end,
 })
 
@@ -560,8 +561,9 @@ Cmd.Register("checkpoint list", {
     fn = function(ply, _, reply)
         local list = RARELOAD.Checkpoints.List(ply)
         if #list == 0 then return reply("You have no checkpoints on this map.") end
-        for i, c in ipairs(list) do
-            reply(string.format("  %d. %s  (%.0f, %.0f, %.0f)", i, c.name, c.pos[1], c.pos[2], c.pos[3]))
+        for i, checkpoint in ipairs(list) do
+            reply(string.format("  %d. %s  (%.0f, %.0f, %.0f)", i, checkpoint.name, checkpoint.pos[1],
+                checkpoint.pos[2], checkpoint.pos[3]))
         end
     end,
 })
@@ -616,11 +618,11 @@ Cmd.Register("snapshots", {
     fn = function(_, _, reply)
         local list = RARELOAD.Snapshots.List()
         if #list == 0 then return reply("No snapshots on this map. Set sv_rareload_snapshot_interval to take them.") end
-        for _, s in ipairs(list) do
+        for _, snapshot in ipairs(list) do
             local names = {}
-            for _, part in pairs(s.players) do names[#names + 1] = part.nick end
-            reply(string.format("  #%d  %s  (%d min ago)  %s", s.id, os.date("%Y-%m-%d %H:%M", s.time),
-                math.floor((os.time() - s.time) / 60), table.concat(names, ", ")))
+            for _, part in pairs(snapshot.players) do names[#names + 1] = part.nick end
+            reply(string.format("  #%d  %s  (%d min ago)  %s", snapshot.id, os.date("%Y-%m-%d %H:%M", snapshot.time),
+                math.floor((os.time() - snapshot.time) / 60), table.concat(names, ", ")))
         end
     end,
 })
@@ -638,11 +640,11 @@ Cmd.Register("rollback", {
             if not target then return reply("That player is not in game.") end
             only = target:SteamID64()
         end
-        local n, skipped = RARELOAD.Snapshots.Rollback(snap, only)
+        local restored, skipped = RARELOAD.Snapshots.Rollback(snap, only)
         RARELOAD.Log("admin", ply):info("%s rolled back to snapshot No. %d: %d players%s",
-            IsValid(ply) and ply:Nick() or "Console", snap.id, n,
+            IsValid(ply) and ply:Nick() or "Console", snap.id, restored,
             #skipped > 0 and (", not: " .. table.concat(skipped, ", ")) or "")
-        reply("Rolled back " .. n .. " players to snapshot No. " .. snap.id
+        reply("Rolled back " .. restored .. " players to snapshot No. " .. snap.id
             .. (#skipped > 0 and (" (not in game or dead: " .. table.concat(skipped, ", ") .. ")") or "") .. ".")
     end,
 })
@@ -735,8 +737,8 @@ Cmd.Register("share", {
 -- "global" or a save number. Returns ok, save.
 local function inventoryTarget(arg)
     if arg == "global" then return true, nil end
-    local n = tonumber(arg)
-    if n and n >= 1 and n < math.huge and n == math.floor(n) then return true, n end
+    local number = tonumber(arg)
+    if number and number >= 1 and number < math.huge and number == math.floor(number) then return true, number end
     return false
 end
 
@@ -817,14 +819,14 @@ local function printLog(reply, count, filter)
             or "The log is empty.")
     end
     local day
-    for _, e in ipairs(events) do
-        local date = os.date("%Y-%m-%d", e.t)
+    for _, event in ipairs(events) do
+        local date = os.date("%Y-%m-%d", event.t)
         if date ~= day then
             day = date
             reply("-- " .. date)
         end
-        reply(string.format("%s %-5s %-9s %s", os.date("%H:%M:%S", e.t), LEVEL_TAGS[e.level] or e.level,
-            tostring(e.category), e.text))
+        reply(string.format("%s %-5s %-9s %s", os.date("%H:%M:%S", event.t), LEVEL_TAGS[event.level] or event.level,
+            tostring(event.category), event.text))
     end
     reply(string.format("(%d lines; 'rareload log <count> <filter>' to see more or fewer)", #events))
 end
@@ -873,8 +875,8 @@ Cmd.Register("status", {
     fn = function(_, _, reply)
         for _, line in ipairs(RARELOAD.Status.Lines()) do reply(line) end
         local methods = {}
-        for _, m in ipairs(RARELOAD.AntiStuck.List()) do
-            if m.enabled then methods[#methods + 1] = m.id end
+        for _, method in ipairs(RARELOAD.AntiStuck.List()) do
+            if method.enabled then methods[#methods + 1] = method.id end
         end
         reply("  Anti-stuck: " .. (#methods > 0 and table.concat(methods, " > ") or "every method is off"))
     end,
@@ -905,12 +907,12 @@ Cmd.Register("debug", {
 -- In-game checks of engine behaviour the offline tests can only stub (§27.4).
 local SELFTEST = {
     { "JSON keeps Vectors", function()
-        local t = util.JSONToTable(util.TableToJSON({ v = Vector(1, 2, 3) }))
-        return t and isvector(t.v) and t.v == Vector(1, 2, 3)
+        local decoded = util.JSONToTable(util.TableToJSON({ v = Vector(1, 2, 3) }))
+        return decoded and isvector(decoded.v) and decoded.v == Vector(1, 2, 3)
     end },
     { "Compress round-trip with maxSize", function()
-        local s = string.rep("rareload", 1000)
-        return util.Decompress(util.Compress(s), #s) == s
+        local text = string.rep("rareload", 1000)
+        return util.Decompress(util.Compress(text), #text) == text
     end },
     { "Storage write and read back", function()
         local rel = "selftest_" .. math.floor(SysTime() * 1000000) .. "_" .. math.random(1, 999999)

@@ -1,4 +1,5 @@
--- Phantoms: see-through client-side models of saved players and of saved objects, with the saved skin, bodygroups, material, scale and colour, a seated pose for a
+-- Phantoms: see-through client-side models of saved players and of saved objects, with the saved skin, bodygroups,
+-- material, scale and colour, a seated pose for a
 -- player saved in a vehicle, and a vehicle's parts (wheels, rotors…) placed as they were saved.
 -- Every model lives in this registry, which removes them on shutdown and re-creates any the engine
 -- deleted. They are never parented to server entities.
@@ -32,28 +33,29 @@ end
 
 -- What a phantom is built from; a change rebuilds it. A saved object can have no model (it then
 -- gets no phantom).
-local function signature(w)
-    return table.concat({ w.model or "", w.skin or 0, w.material or "", w.scale or 1, #(w.parts or {}),
-        tostring(w.seated), util.TableToJSON(w.bodygroups or {}) }, "|")
+local function signature(wanted)
+    return table.concat({ wanted.model or "", wanted.skin or 0, wanted.material or "", wanted.scale or 1,
+        #(wanted.parts or {}),
+        tostring(wanted.seated), util.TableToJSON(wanted.bodygroups or {}) }, "|")
 end
 Phantoms.Signature = signature
 
-local function build(w)
-    local ent = newModel(w.model)
+local function build(wanted)
+    local ent = newModel(wanted.model)
     if not ent then return end
-    ent.rareloadSig = w.sig or signature(w)
-    ent:SetSkin(w.skin or 0)
-    for index, value in pairs(w.bodygroups or {}) do
+    ent.rareloadSig = wanted.sig or signature(wanted)
+    ent:SetSkin(wanted.skin or 0)
+    for index, value in pairs(wanted.bodygroups or {}) do
         if isnumber(index) then ent:SetBodygroup(index, value) end
     end
-    if w.material and w.material ~= "" then ent:SetMaterial(w.material) end
-    if w.scale and w.scale ~= 1 then ent:SetModelScale(w.scale, 0) end
-    if w.playerColor then
-        local color = w.playerColor
+    if wanted.material and wanted.material ~= "" then ent:SetMaterial(wanted.material) end
+    if wanted.scale and wanted.scale ~= 1 then ent:SetModelScale(wanted.scale, 0) end
+    if wanted.playerColor then
+        local color = wanted.playerColor
         ent.GetPlayerColor = function() return color end -- read by the player colour material proxy
     end
-    if w.player then
-        if w.seated then
+    if wanted.player then
+        if wanted.seated then
             sit(ent)
         else
             local seq = ent:LookupSequence("idle_all_01")
@@ -61,7 +63,7 @@ local function build(w)
         end
     end
     ent.parts = {}
-    for _, savedPart in ipairs(w.parts or {}) do
+    for _, savedPart in ipairs(wanted.parts or {}) do
         local lp, la = Util.ToVector(savedPart.lp), Util.ToAngle(savedPart.la)
         -- Older saves can list a base's invisible helpers, whose model is error.mdl.
         local real = UI.IsModel(savedPart.model) and string.lower(savedPart.model) ~= "models/error.mdl"
@@ -91,27 +93,27 @@ end
 function Phantoms.Sync(wanted)
     local reg, count = Phantoms.reg, 0
     for key, ent in pairs(reg) do
-        local w = wanted[key]
-        if not IsValid(ent) or not w or ent.rareloadSig ~= (w.sig or signature(w)) then
+        local phantom = wanted[key]
+        if not IsValid(ent) or not phantom or ent.rareloadSig ~= (phantom.sig or signature(phantom)) then
             remove(ent)
             reg[key] = nil
         else
             count = count + 1
         end
     end
-    for key, w in pairs(wanted) do
+    for key, phantom in pairs(wanted) do
         local ent = reg[key]
-        if not ent and count < MAX and UI.IsModel(w.model) then
-            ent = build(w)
+        if not ent and count < MAX and UI.IsModel(phantom.model) then
+            ent = build(phantom)
             reg[key] = ent
             count = count + 1
         end
         if IsValid(ent) then
-            ent:SetPos(w.pos)
-            ent:SetAngles(w.ang)
-            ent:SetColor(w.color)
+            ent:SetPos(phantom.pos)
+            ent:SetAngles(phantom.ang)
+            ent:SetColor(phantom.color)
             for _, part in ipairs(ent.parts) do
-                if IsValid(part) then part:SetColor(w.color) end
+                if IsValid(part) then part:SetColor(phantom.color) end
             end
         end
     end

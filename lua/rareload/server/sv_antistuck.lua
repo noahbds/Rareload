@@ -47,7 +47,7 @@ local function snap(point, ply, crouched)
 end
 
 local function byDistance(pos, points)
-    table.sort(points, function(a, b) return a:DistToSqr(pos) < b:DistToSqr(pos) end)
+    table.sort(points, function(left, right) return left:DistToSqr(pos) < right:DistToSqr(pos) end)
     return points
 end
 
@@ -64,8 +64,8 @@ local function cacheDoc()
 end
 
 function AntiStuck.Remember(pos)
-    local c = cacheDoc()
-    local points = c.doc.points
+    local cached = cacheDoc()
+    local points = cached.doc.points
     for _, point in ipairs(points) do
         local dx, dy, dz = math.abs(point[1] - pos.x), math.abs(point[2] - pos.y), math.abs(point[3] - pos.z)
         if dx < CELL and dy < CELL and dz < CELL then
@@ -74,7 +74,7 @@ function AntiStuck.Remember(pos)
     end
     points[#points + 1] = RARELOAD.Util.Vec(pos)
     if #points > CACHE_CAP then table.remove(points, 1) end
-    RARELOAD.Store.Save(c.rel, c.doc)
+    RARELOAD.Store.Save(cached.rel, cached.doc)
 end
 
 -- Whether a player standing at `pos` would stand on something (a few units of air are fine).
@@ -97,17 +97,17 @@ function AntiStuck.Watch(ply, pos)
 end
 
 hook.Add("SetupMove", "Rareload.AntiStuck.Watch", function(ply, mv)
-    local w = watching[ply]
-    if not w then return end
+    local watch = watching[ply]
+    if not watch then return end
     local origin = mv:GetOrigin()
-    if CurTime() - w.t > 5 or ply:GetMoveType() == MOVETYPE_NOCLIP or ply:InVehicle()
-        or origin:DistToSqr(w.last) > TELEPORT * TELEPORT then
+    if CurTime() - watch.t > 5 or ply:GetMoveType() == MOVETYPE_NOCLIP or ply:InVehicle()
+        or origin:DistToSqr(watch.last) > TELEPORT * TELEPORT then
         watching[ply] = nil
-    elseif origin:DistToSqr(w.pos) > 64 * 64 then
+    elseif origin:DistToSqr(watch.pos) > 64 * 64 then
         watching[ply] = nil
-        if AntiStuck.OnFloor(w.pos, ply) then AntiStuck.Remember(w.pos) end
+        if AntiStuck.OnFloor(watch.pos, ply) then AntiStuck.Remember(watch.pos) end
     else
-        w.last = origin
+        watch.last = origin
     end
 end)
 
@@ -116,8 +116,8 @@ end)
 local function cached(pos, maxDist)
     local candidates = {}
     for _, point in ipairs(cacheDoc().doc.points) do
-        local v = RARELOAD.Util.ToVector(point)
-        if v and v:DistToSqr(pos) <= maxDist * maxDist then candidates[#candidates + 1] = v end
+        local pointVec = RARELOAD.Util.ToVector(point)
+        if pointVec and pointVec:DistToSqr(pos) <= maxDist * maxDist then candidates[#candidates + 1] = pointVec end
     end
     return byDistance(pos, candidates)
 end
@@ -180,8 +180,8 @@ end
 AntiStuck.methods = AntiStuck.methods or {}
 
 function AntiStuck.Method(methodDef)
-    for i, m in ipairs(AntiStuck.methods) do
-        if m.id == methodDef.id then
+    for i, method in ipairs(AntiStuck.methods) do
+        if method.id == methodDef.id then
             AntiStuck.methods[i] = methodDef
             return
         end
@@ -200,8 +200,8 @@ local CONFIG = "antistuck"
 local ACTIONS = { enable = true, disable = true, only = true, up = true, down = true, reset = true }
 
 local function methodConfig()
-    local c = RARELOAD.Store.Load(CONFIG)
-    return istable(c) and c or { v = RARELOAD.Store.SCHEMA, order = {}, disabled = {} }
+    local config = RARELOAD.Store.Load(CONFIG)
+    return istable(config) and config or { v = RARELOAD.Store.SCHEMA, order = {}, disabled = {} }
 end
 
 -- Pure (unit-tested): the registry sorted by the saved order (unknown ids keep their registry order,
@@ -210,11 +210,11 @@ function AntiStuck.Ordered(methods, cfg)
     local rank = {}
     for i, id in ipairs(cfg.order or {}) do rank[id] = i end
     local list = {}
-    for i, m in ipairs(methods) do
-        list[#list + 1] = { id = m.id, fn = m.fn, enabled = not (cfg.disabled or {})[m.id], index = i }
+    for i, method in ipairs(methods) do
+        list[#list + 1] = { id = method.id, fn = method.fn, enabled = not (cfg.disabled or {})[method.id], index = i }
     end
-    table.sort(list, function(a, b)
-        local ra, rb = rank[a.id] or 1000 + a.index, rank[b.id] or 1000 + b.index
+    table.sort(list, function(left, right)
+        local ra, rb = rank[left.id] or 1000 + left.index, rank[right.id] or 1000 + right.index
         return ra < rb
     end)
     return list
@@ -228,7 +228,7 @@ end
 function AntiStuck.Configure(action, id)
     local list, cfg = AntiStuck.List(), methodConfig()
     local known
-    for _, m in ipairs(list) do if m.id == id then known = m end end
+    for _, method in ipairs(list) do if method.id == id then known = method end end
     -- Checked before `cfg` (the cached document) is changed.
     if not ACTIONS[action] then return false, "unknown action" end
     if action ~= "reset" and not known then return false, "unknown method" end
@@ -238,18 +238,18 @@ function AntiStuck.Configure(action, id)
     elseif action == "enable" or action == "disable" then
         cfg.disabled[id] = action == "disable" or nil
     elseif action == "only" then
-        for _, m in ipairs(list) do cfg.disabled[m.id] = m.id ~= id or nil end
+        for _, method in ipairs(list) do cfg.disabled[method.id] = method.id ~= id or nil end
     elseif action == "up" or action == "down" then
-        for i, m in ipairs(list) do
+        for i, method in ipairs(list) do
             local j = i + (action == "up" and -1 or 1)
-            if m.id == id and list[j] then
+            if method.id == id and list[j] then
                 list[i], list[j] = list[j], list[i]
                 break
             end
         end
     end
     if action ~= "reset" then
-        for _, m in ipairs(list) do cfg.order[#cfg.order + 1] = m.id end
+        for _, method in ipairs(list) do cfg.order[#cfg.order + 1] = method.id end
     end
     RARELOAD.Store.Save(CONFIG, cfg)
     return true
@@ -276,8 +276,8 @@ function AntiStuck.Resolve(pos, ply, crouched, onTry)
         if free then return snapped end
     end
     local enabled = {}
-    for _, m in ipairs(AntiStuck.List()) do
-        if m.enabled then enabled[#enabled + 1] = m end
+    for _, method in ipairs(AntiStuck.List()) do
+        if method.enabled then enabled[#enabled + 1] = method end
     end
     local deadline = SysTime() + RARELOAD.Get(nil, "asMaxSearchTime")
     return AntiStuck.Search(pos, RARELOAD.Get(nil, "asMaxDistance"), enabled, test, deadline, SysTime)
@@ -286,7 +286,7 @@ end
 -- The server page's method list: read and change it over the network.
 local function pushMethods(ply)
     local list = {}
-    for _, m in ipairs(AntiStuck.List()) do list[#list + 1] = { id = m.id, enabled = m.enabled } end
+    for _, method in ipairs(AntiStuck.List()) do list[#list + 1] = { id = method.id, enabled = method.enabled } end
     RARELOAD.Net.Push(ply, "antistuck", { methods = list })
 end
 
@@ -296,10 +296,10 @@ RARELOAD.Net.Handle("antistuck.config", {
     priv = "rareload_anti_stuck",
     rate = 0.1,
     args = { action = "string:16", id = "string:32?" },
-    fn = function(ply, a)
-        if AntiStuck.Configure(a.action, a.id) then
-            RARELOAD.Log("antistuck", ply):info("%s: anti-stuck method %s %s", ply:Nick(), tostring(a.id or "all"),
-                a.action)
+    fn = function(ply, args)
+        if AntiStuck.Configure(args.action, args.id) then
+            RARELOAD.Log("antistuck", ply):info("%s: anti-stuck method %s %s", ply:Nick(), tostring(args.id or "all"),
+                args.action)
         end
         pushMethods(ply)
     end,

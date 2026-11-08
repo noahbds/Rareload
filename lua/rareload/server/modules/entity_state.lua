@@ -15,28 +15,28 @@ function EntityState.Adapter(adapter)
 end
 
 function EntityState.For(ent)
-    for _, a in SortedPairs(EntityState.adapters) do
-        local ok, match = pcall(a.matches, ent)
-        if ok and match then return a end
+    for _, adapter in SortedPairs(EntityState.adapters) do
+        local ok, match = pcall(adapter.matches, ent)
+        if ok and match then return adapter end
     end
 end
 
-local function plain(v)
-    if isnumber(v) or isstring(v) or isbool(v) then return v end
-    if isvector(v) then return { v.x, v.y, v.z, vec = true } end
-    if not istable(v) then return nil end
+local function plain(value)
+    if isnumber(value) or isstring(value) or isbool(value) then return value end
+    if isvector(value) then return { value.x, value.y, value.z, vec = true } end
+    if not istable(value) then return nil end
     local out = {}
-    for k, x in pairs(v) do
-        if isnumber(k) or isstring(k) then out[k] = plain(x) end
+    for key, item in pairs(value) do
+        if isnumber(key) or isstring(key) then out[key] = plain(item) end
     end
     return out
 end
 
-local function unplain(v)
-    if not istable(v) then return v end
-    if v.vec then return Vector(v[1], v[2], v[3]) end
+local function unplain(value)
+    if not istable(value) then return value end
+    if value.vec then return Vector(value[1], value[2], value[3]) end
     local out = {}
-    for k, x in pairs(v) do out[k] = unplain(x) end
+    for key, item in pairs(value) do out[key] = unplain(item) end
     return out
 end
 
@@ -49,13 +49,13 @@ EntityState.Adapter({
     id = "wire_gate",
     matches = function(ent) return ent:GetClass() == "gmod_wire_gate" end,
     capture = function(ent)
-        local t = {}
-        for _, field in ipairs(GATE_FIELDS) do t[field] = plain(ent[field]) end
-        return next(t) and t or nil
+        local vars = {}
+        for _, field in ipairs(GATE_FIELDS) do vars[field] = plain(ent[field]) end
+        return next(vars) and vars or nil
     end,
-    apply = function(ent, t)
+    apply = function(ent, vars)
         for _, field in ipairs(GATE_FIELDS) do
-            if t[field] ~= nil then ent[field] = unplain(t[field]) end
+            if vars[field] ~= nil then ent[field] = unplain(vars[field]) end
         end
         if isfunction(ent.CalcOutput) then ent:CalcOutput() end
     end,

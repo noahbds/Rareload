@@ -7,11 +7,11 @@
 
 local Util = RARELOAD.Util
 
-local function round(v, places) return isnumber(v) and math.Round(v, places or 0) or nil end
+local function round(value, places) return isnumber(value) and math.Round(value, places or 0) or nil end
 
 local function internal(ent, name)
-    local ok, v = pcall(ent.GetInternalVariable, ent, name)
-    return ok and v or nil
+    local ok, value = pcall(ent.GetInternalVariable, ent, name)
+    return ok and value or nil
 end
 
 -- Map state (C9) ------------------------------------------------------------------------------------
@@ -48,9 +48,9 @@ local function captureMapEntity(id, ent)
     if BREAKABLE[class] then return { id = id, kind = "breakable" } end
     if PROPS[class] then
         local phys = ent:GetPhysicsObject()
-        local a = ent:GetAngles()
+        local ang = ent:GetAngles()
         return { id = id, kind = "prop", pos = { round(ent:GetPos().x), round(ent:GetPos().y), round(ent:GetPos().z) },
-            ang = { round(a.p), round(a.y), round(a.r) }, frozen = IsValid(phys) and not phys:IsMotionEnabled() }
+            ang = { round(ang.p), round(ang.y), round(ang.r) }, frozen = IsValid(phys) and not phys:IsMotionEnabled() }
     end
 end
 
@@ -171,14 +171,15 @@ RARELOAD.Module({
             if not stormFox() then
                 ctx:step("warn", "environment", "StormFox2 is not installed; time and weather left as they are")
             else
-                local SF, s = StormFox2, saved.stormfox
-                if isnumber(s.time) then call(SF.Time.Set, s.time) end
-                if s.paused then call(SF.Time.Pause) else call(SF.Time.Resume) end
-                if isstring(s.weather) then call(SF.Weather.Set, s.weather, s.percent or 1, 0) end
-                if isnumber(s.temp) and istable(SF.Temperature) then call(SF.Temperature.Set, s.temp, 0) end
+                local SF, stormfox = StormFox2, saved.stormfox
+                if isnumber(stormfox.time) then call(SF.Time.Set, stormfox.time) end
+                if stormfox.paused then call(SF.Time.Pause) else call(SF.Time.Resume) end
+                if isstring(stormfox.weather) then call(SF.Weather.Set, stormfox.weather, stormfox.percent or 1, 0) end
+                if isnumber(stormfox.temp) and istable(SF.Temperature) then call(SF.Temperature.Set, stormfox.temp,
+                    0) end
                 if istable(SF.Wind) then
-                    if isnumber(s.windForce) then call(SF.Wind.SetForce, s.windForce, 0) end
-                    if isnumber(s.windYaw) then call(SF.Wind.SetYaw, s.windYaw, 0) end
+                    if isnumber(stormfox.windForce) then call(SF.Wind.SetForce, stormfox.windForce, 0) end
+                    if isnumber(stormfox.windYaw) then call(SF.Wind.SetYaw, stormfox.windYaw, 0) end
                 end
                 done[#done + 1] = "StormFox2"
             end
@@ -192,9 +193,10 @@ RARELOAD.Module({
     end,
 
     summary = function(saved)
-        local s = istable(saved.stormfox) and saved.stormfox
-        if s and s.time then
-            return string.format("%02d:%02d, %s", math.floor(s.time / 60), s.time % 60, tostring(s.weather))
+        local stormfox = istable(saved.stormfox) and saved.stormfox
+        if stormfox and stormfox.time then
+            return string.format("%02d:%02d, %s", math.floor(stormfox.time / 60), stormfox.time % 60,
+                tostring(stormfox.weather))
         end
         return saved.sky and "sky" or "nothing"
     end,

@@ -52,21 +52,22 @@ UI.KIND_COLORS = { entities = C.prop, npcs = C.npc, vehicles = C.vehicle, player
 
 -- A blend of two colours. At either end it is that colour itself (no new Color for the many widgets
 -- that are not hovered or animating): treat the result as read-only.
-function UI.Mix(a, b, t)
-    if t <= 0 then return a end
-    if t >= 1 then return b end
-    return Color(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t,
-        (a.a or 255) + ((b.a or 255) - (a.a or 255)) * t)
+function UI.Mix(fromColor, toColor, fraction)
+    if fraction <= 0 then return fromColor end
+    if fraction >= 1 then return toColor end
+    return Color(fromColor.r + (toColor.r - fromColor.r) * fraction,
+        fromColor.g + (toColor.g - fromColor.g) * fraction, fromColor.b + (toColor.b - fromColor.b) * fraction,
+        (fromColor.a or 255) + ((toColor.a or 255) - (fromColor.a or 255)) * fraction)
 end
 
 function UI.HealthColor(hp, max)
-    local f = (tonumber(max) or 0) > 0 and math.Clamp((tonumber(hp) or 0) / max, 0, 1) or 1
-    return f < 0.5 and UI.Mix(C.bad, C.warn, f * 2) or UI.Mix(C.warn, C.ok, (f - 0.5) * 2)
+    local fraction = (tonumber(max) or 0) > 0 and math.Clamp((tonumber(hp) or 0) / max, 0, 1) or 1
+    return fraction < 0.5 and UI.Mix(C.bad, C.warn, fraction * 2) or UI.Mix(C.warn, C.ok, (fraction - 0.5) * 2)
 end
 
 -- Scale and fonts: a fixed set, recreated only when the screen size changes (G37) --------------------
 
-function UI.sc(v) return math.floor(v * UI.S + 0.5) end
+function UI.sc(value) return math.floor(value * UI.S + 0.5) end
 
 local sc = UI.sc
 
@@ -94,10 +95,10 @@ end
 
 local function createFonts()
     UI.S = math.Clamp(ScrH() / 1080, 0.85, 2)
-    for name, f in pairs(SCALED_FONTS) do font(name, math.floor(f[1] * UI.S + 0.5), f[2]) end
+    for name, spec in pairs(SCALED_FONTS) do font(name, math.floor(spec[1] * UI.S + 0.5), spec[2]) end
 end
 createFonts()
-for name, f in pairs(FIXED_FONTS) do font(name, f[1], f[2]) end
+for name, spec in pairs(FIXED_FONTS) do font(name, spec[1], spec[2]) end
 hook.Add("OnScreenSizeChanged", "Rareload.UI.Fonts", function()
     createFonts()
     clipCache, clipCount = {}, 0
@@ -114,11 +115,12 @@ end
 -- icon is snapped to that and centred in the `size` box asked for.
 function UI.IconSize(size) return math.max(1, math.floor(size / 16 + 0.25)) * 16 end
 
-function UI.DrawIcon(name, x, y, size, col)
-    local s = UI.IconSize(size)
+function UI.DrawIcon(name, posX, posY, size, col)
+    local iconSize = UI.IconSize(size)
     surface.SetDrawColor(col or color_white)
     surface.SetMaterial(UI.Icon(name))
-    surface.DrawTexturedRect(math.floor(x + (size - s) / 2 + 0.5), math.floor(y + (size - s) / 2 + 0.5), s, s)
+    surface.DrawTexturedRect(math.floor(posX + (size - iconSize) / 2 + 0.5),
+        math.floor(posY + (size - iconSize) / 2 + 0.5), iconSize, iconSize)
 end
 
 -- World markers (checkpoints, the death spot): a beam standing on `pos`, and above it on screen a
@@ -147,26 +149,27 @@ function UI.DrawWorldTag(pos, height, icon, text, textCol, distance, alpha)
     if not screen.visible then return end
     surface.SetFont("Rareload.BodyB")
     local tw, th = surface.GetTextSize(text)
-    local w, h = tw + sc(34), th + sc(10)
-    local x, y = math.floor(screen.x - w / 2), math.floor(screen.y - h)
-    draw.RoundedBox(sc(6), x, y, w, h, tint(markBg, C.surface, alpha * 0.86))
-    UI.DrawIcon(icon, x + sc(6), y + (h - sc(16)) / 2, sc(16), tint(markIcon, color_white, alpha))
-    draw.SimpleText(text, "Rareload.BodyB", x + sc(28), y + h / 2, tint(markText, textCol, alpha), TEXT_ALIGN_LEFT,
+    local tagWidth, tagHeight = tw + sc(34), th + sc(10)
+    local posX, posY = math.floor(screen.x - tagWidth / 2), math.floor(screen.y - tagHeight)
+    draw.RoundedBox(sc(6), posX, posY, tagWidth, tagHeight, tint(markBg, C.surface, alpha * 0.86))
+    UI.DrawIcon(icon, posX + sc(6), posY + (tagHeight - sc(16)) / 2, sc(16), tint(markIcon, color_white, alpha))
+    draw.SimpleText(text, "Rareload.BodyB", posX + sc(28), posY + tagHeight / 2, tint(markText, textCol, alpha),
+        TEXT_ALIGN_LEFT,
         TEXT_ALIGN_CENTER)
-    draw.SimpleText(L("inspector.units", math.Round(distance)), "Rareload.Small", screen.x, y + h + sc(2),
+    draw.SimpleText(L("inspector.units", math.Round(distance)), "Rareload.Small", screen.x, posY + tagHeight + sc(2),
         tint(markDist, C.text3, alpha), TEXT_ALIGN_CENTER)
 end
 
 -- A rounded label with a tinted background; returns its width.
-function UI.DrawBadge(text, x, y, col, font, alignRight)
+function UI.DrawBadge(text, posX, posY, col, font, alignRight)
     font = font or "Rareload.Tiny"
     surface.SetFont(font)
     local tw, th = surface.GetTextSize(text)
-    local w, h = tw + sc(14), th + sc(6)
-    if alignRight then x = x - w end
-    draw.RoundedBox(sc(5), x, y, w, h, ColorAlpha(col, 45))
-    draw.SimpleText(text, font, x + w / 2, y + h / 2, col, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-    return w, h
+    local width, height = tw + sc(14), th + sc(6)
+    if alignRight then posX = posX - width end
+    draw.RoundedBox(sc(5), posX, posY, width, height, ColorAlpha(col, 45))
+    draw.SimpleText(text, font, posX + width / 2, posY + height / 2, col, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    return width, height
 end
 
 -- Clips text to `maxW` pixels with an ellipsis.
@@ -192,29 +195,30 @@ end
 
 -- Formatting --------------------------------------------------------------------------------------
 
-function UI.Pos(t)
-    local v = RARELOAD.Util.ToVector(t)
-    return v and string.format("%.0f, %.0f, %.0f", v.x, v.y, v.z) or "-"
+function UI.Pos(value)
+    local vec = RARELOAD.Util.ToVector(value)
+    return vec and string.format("%.0f, %.0f, %.0f", vec.x, vec.y, vec.z) or "-"
 end
 
 -- os.date only knows the C locale, so month and weekday names come from the translation files (G80).
-local function fillDate(t, template)
-    local date = os.date("*t", t)
+local function fillDate(time, template)
+    local date = os.date("*t", time)
     return (template:gsub("{(%w+)}", {
         wday = L("date.weekday." .. date.wday), month = L("date.month." .. date.month),
         mon = L("date.month_short." .. date.month),
-        day = tostring(date.day), year = tostring(date.year), time = os.date("%H:%M:%S", t), hm = os.date("%H:%M", t),
+        day = tostring(date.day), year = tostring(date.year), time = os.date("%H:%M:%S", time),
+            hm = os.date("%H:%M", time),
     }))
 end
 
 -- style: "long" ("Tuesday 23 September 2026, 14:03:22") or "short" ("23 Sep 14:03").
-function UI.Date(t, style)
-    if not t then return "-" end
-    return fillDate(t, L(style == "long" and "date.long" or "date.short"))
+function UI.Date(time, style)
+    if not time then return "-" end
+    return fillDate(time, L(style == "long" and "date.long" or "date.short"))
 end
 
-function UI.TimeAgo(t)
-    local age = os.time() - (tonumber(t) or 0)
+function UI.TimeAgo(time)
+    local age = os.time() - (tonumber(time) or 0)
     if age < 45 then return L("time.just_now") end
     if age < 3600 then return L("time.minutes", math.floor(age / 60)) end
     if age < 86400 then return L("time.hours", math.floor(age / 3600)) end
@@ -224,8 +228,8 @@ end
 -- Translated names of the states that are on.
 function UI.States(states)
     local on = {}
-    for _, k in ipairs(RARELOAD.PLAYER_STATES) do
-        if istable(states) and states[k] then on[#on + 1] = L("state." .. k) end
+    for _, stateName in ipairs(RARELOAD.PLAYER_STATES) do
+        if istable(states) and states[stateName] then on[#on + 1] = L("state." .. stateName) end
     end
     return #on > 0 and table.concat(on, ", ") or L("ui.none")
 end
@@ -251,8 +255,8 @@ function UI.ObjectName(class, model)
         name = isstring(model) and string.StripExtension(string.GetFileFromFilename(model)) or nil
     else
         -- Vehicle entries are keyed by spawn name, not class; GetForEdit reads them without a copy (G67).
-        for _, v in pairs(list.GetForEdit("Vehicles")) do
-            if v.Class == class and (v.Model == model or not name) then name = v.Name end
+        for _, vehicle in pairs(list.GetForEdit("Vehicles")) do
+            if vehicle.Class == class and (vehicle.Model == model or not name) then name = vehicle.Name end
         end
         local npc = list.GetEntry("NPC", class)
         local stored = scripted_ents.GetStored(class)
@@ -266,19 +270,20 @@ end
 -- util.IsValidModel is false for models the client hasn't loaded yet, so a mounted file counts too.
 -- What a saved object is called on screen: the player's own name for it, or its automatic one. Its
 -- number follows only when another object of the same save has that name (see UI.LabelObjects).
-function UI.ObjectLabel(o)
-    local name = o.name or UI.ObjectName(o.class, o.model)
-    return o.shared and o.num and name .. " #" .. o.num or name
+function UI.ObjectLabel(object)
+    local name = object.name or UI.ObjectName(object.class, object.model)
+    return object.shared and object.num and name .. " #" .. object.num or name
 end
 
 -- Marks the objects of one save whose name another of them shares.
 function UI.LabelObjects(objects)
     local count = {}
-    for _, o in ipairs(objects) do
-        local name = o.name or UI.ObjectName(o.class, o.model)
+    for _, object in ipairs(objects) do
+        local name = object.name or UI.ObjectName(object.class, object.model)
         count[name] = (count[name] or 0) + 1
     end
-    for _, o in ipairs(objects) do o.shared = count[o.name or UI.ObjectName(o.class, o.model)] > 1 end
+    for _, object in ipairs(objects) do object.shared = count[object.name or UI.ObjectName(object.class,
+        object.model)] > 1 end
 end
 
 function UI.IsModel(model)
@@ -289,16 +294,16 @@ end
 
 local SKIN = { PrintName = "Rareload", Author = "Rareload", DermaVersion = 1 }
 
-local function box(r, w, h, col) draw.RoundedBox(r, 0, 0, w, h, col) end
+local function box(radius, width, height, col) draw.RoundedBox(radius, 0, 0, width, height, col) end
 
-function SKIN:PaintPanel(panel, w, h)
-    if panel.m_bBackground then box(6, w, h, panel.m_bgColor or C.surface) end
+function SKIN:PaintPanel(panel, width, height)
+    if panel.m_bBackground then box(6, width, height, panel.m_bgColor or C.surface) end
 end
 
-function SKIN:PaintTextEntry(panel, w, h)
+function SKIN:PaintTextEntry(panel, width, height)
     if panel.m_bBackground then
-        box(sc(6), w, h, panel:HasFocus() and C.accent or C.line)
-        draw.RoundedBox(sc(6), 1, 1, w - 2, h - 2, panel:IsEnabled() and C.surface or C.bgDark)
+        box(sc(6), width, height, panel:HasFocus() and C.accent or C.line)
+        draw.RoundedBox(sc(6), 1, 1, width - 2, height - 2, panel:IsEnabled() and C.surface or C.bgDark)
     end
     local placeholder = panel:GetPlaceholderText()
     if placeholder and placeholder ~= "" and panel:GetText() == "" and not panel:HasFocus() then
@@ -313,8 +318,8 @@ end
 
 function SKIN:PaintVScrollBar() end
 
-function SKIN:PaintScrollBarGrip(panel, w, h)
-    draw.RoundedBox(sc(4), sc(1), 0, w - sc(2), h,
+function SKIN:PaintScrollBarGrip(panel, width, height)
+    draw.RoundedBox(sc(4), sc(1), 0, width - sc(2), height,
         panel.Hovered and C.text3 or C.line)
 end
 
@@ -322,16 +327,16 @@ function SKIN:PaintButtonUp() end
 
 function SKIN:PaintButtonDown() end
 
-function SKIN:PaintMenu(_, w, h) box(sc(4), w, h, C.surfaceHi) end
+function SKIN:PaintMenu(_, width, height) box(sc(4), width, height, C.surfaceHi) end
 
-function SKIN:PaintMenuSpacer(_, w, h) box(0, w, h, C.line) end
+function SKIN:PaintMenuSpacer(_, width, height) box(0, width, height, C.line) end
 
-function SKIN:PaintMenuOption(panel, w, h)
-    if panel.Hovered or panel.Highlight then box(sc(4), w, h, ColorAlpha(C.accent, 90)) end
-    if panel:GetChecked() then draw.RoundedBox(sc(3), sc(8), h / 2 - sc(3), sc(6), sc(6), C.accent) end
+function SKIN:PaintMenuOption(panel, width, height)
+    if panel.Hovered or panel.Highlight then box(sc(4), width, height, ColorAlpha(C.accent, 90)) end
+    if panel:GetChecked() then draw.RoundedBox(sc(3), sc(8), height / 2 - sc(3), sc(6), sc(6), C.accent) end
 end
 
-function SKIN:PaintTooltip(_, w, h) box(sc(4), w, h, C.surfaceHi) end
+function SKIN:PaintTooltip(_, width, height) box(sc(4), width, height, C.surfaceHi) end
 
 -- Colours Rareload sets itself; any other group is read from the Default skin when a panel asks for
 -- it. The engine loads the Default skin after autorun files run, so nothing is copied here.
@@ -341,9 +346,9 @@ SKIN.Colours = setmetatable({
     Button = { Normal = C.text, Hover = C.text, Down = C.text2, Disabled = C.textOff },
     TooltipText = C.text,
 }, {
-    __index = function(_, k)
+    __index = function(_, key)
         local default = derma.GetNamedSkin("Default")
-        return default and default.Colours[k]
+        return default and default.Colours[key]
     end
 })
 SKIN.colTextEntryText, SKIN.colTextEntryTextHighlight = C.text, C.accent
@@ -364,110 +369,112 @@ local STYLES = { primary = C.accent, success = C.ok, danger = C.bad, warn = C.wa
 function UI.Button(parent, text, onClick, opts)
     opts = opts or {}
     local col = STYLES[opts.style or "primary"]
-    local b = vgui.Create("DButton", parent)
-    b:SetText("")
-    b:SetTall(sc(opts.tall or 32))
-    b.label, b.icon = text, opts.icon
-    function b:SetLabel(t) self.label = t end
+    local button = vgui.Create("DButton", parent)
+    button:SetText("")
+    button:SetTall(sc(opts.tall or 32))
+    button.label, button.icon = text, opts.icon
+    function button:SetLabel(newLabel) self.label = newLabel end
 
     -- An active toggle button is drawn solid with a pulsing dot.
-    function b:SetActive(on) self.active = on end
+    function button:SetActive(on) self.active = on end
 
-    b.Paint = function(self, w, h)
-        local a = self:IsEnabled() and hoverAnim(self, self:IsHovered()) or 0
+    button.Paint = function(self, width, height)
+        local hover = self:IsEnabled() and hoverAnim(self, self:IsHovered()) or 0
         local fill, textCol
         if not self:IsEnabled() then
             fill, textCol = C.bgDark, C.textOff
         elseif opts.solid or self.active then
-            fill, textCol = UI.Mix(col, color_white, a * 0.15), Color(15, 17, 22)
+            fill, textCol = UI.Mix(col, color_white, hover * 0.15), Color(15, 17, 22)
         else
-            fill, textCol = UI.Mix(UI.Mix(C.surface, col, 0.14), col, a * 0.55), UI.Mix(C.text, color_white, a)
+            fill, textCol = UI.Mix(UI.Mix(C.surface, col, 0.14), col, hover * 0.55), UI.Mix(C.text, color_white, hover)
         end
         if self.Depressed then fill = UI.Mix(fill, color_black, 0.15) end
-        box(sc(7), w, h, fill)
+        box(sc(7), width, height, fill)
         surface.SetFont("Rareload.BodyB")
         local tw = surface.GetTextSize(self.label)
         local is = UI.IconSize(sc(16))
         local iw = self.icon and is + (self.label ~= "" and sc(7) or 0) or 0 -- no gap on an icon-only button
-        local x = math.floor((w - tw - iw) / 2)
+        local contentX = math.floor((width - tw - iw) / 2)
         if self.icon then
-            UI.DrawIcon(self.icon, x, math.floor((h - is) / 2), is,
+            UI.DrawIcon(self.icon, contentX, math.floor((height - is) / 2), is,
                 self:IsEnabled() and color_white or C.textOff)
         end
-        draw.SimpleText(self.label, "Rareload.BodyB", x + iw, math.floor(h / 2), textCol, TEXT_ALIGN_LEFT,
+        draw.SimpleText(self.label, "Rareload.BodyB", contentX + iw, math.floor(height / 2), textCol, TEXT_ALIGN_LEFT,
             TEXT_ALIGN_CENTER)
         if self.active then
-            local r = sc(3) + sc(1.5) * math.abs(math.sin(RealTime() * 4))
-            draw.RoundedBox(r, sc(12) - r, h / 2 - r, r * 2, r * 2, textCol)
+            local dotRadius = sc(3) + sc(1.5) * math.abs(math.sin(RealTime() * 4))
+            draw.RoundedBox(dotRadius, sc(12) - dotRadius, height / 2 - dotRadius, dotRadius * 2, dotRadius * 2,
+                textCol)
         end
     end
-    b.DoClick = function(self)
+    button.DoClick = function(self)
         surface.PlaySound("ui/buttonclickrelease.wav")
         if onClick then onClick(self) end
     end
-    function b:SizeToLabel(pad)
+    function button:SizeToLabel(pad)
         surface.SetFont("Rareload.BodyB")
         self:SetWide(surface.GetTextSize(self.label) +
             (self.icon and UI.IconSize(sc(16)) + (self.label ~= "" and sc(7) or 0) or 0) + sc(pad or 28))
     end
 
-    return b
+    return button
 end
 
 -- A rounded card. `paint(self, w, h)` draws its content after the background.
 function UI.Card(parent, paint, col)
     local panel = vgui.Create("DPanel", parent)
-    panel.Paint = function(self, w, h)
-        box(sc(10), w, h, col or C.surface)
-        if paint then paint(self, w, h) end
+    panel.Paint = function(self, width, height)
+        box(sc(10), width, height, col or C.surface)
+        if paint then paint(self, width, height) end
     end
     return panel
 end
 
 function UI.Label(parent, text, font, col)
-    local l = vgui.Create("DLabel", parent)
-    l:SetFont(font or "Rareload.Body")
-    l:SetTextColor(col or C.text)
-    l:SetText(text)
-    l:SizeToContents()
-    return l
+    local label = vgui.Create("DLabel", parent)
+    label:SetFont(font or "Rareload.Body")
+    label:SetTextColor(col or C.text)
+    label:SetText(text)
+    label:SizeToContents()
+    return label
 end
 
 -- A text entry with a search icon and a placeholder. onChange(text) runs on every keystroke.
 function UI.Search(parent, placeholder, onChange)
-    local e = vgui.Create("DTextEntry", parent)
-    e:SetTall(sc(32))
-    e:SetFont("Rareload.Body")
-    e:SetUpdateOnType(true)
-    e:SetTextInset(sc(28), 0)
-    e.Paint = function(self, w, h)
-        box(sc(8), w, h, self:HasFocus() and C.surfaceHi or C.surface)
-        UI.DrawIcon("magnifier", sc(8), (h - sc(16)) / 2, sc(16), ColorAlpha(color_white, 160))
+    local entry = vgui.Create("DTextEntry", parent)
+    entry:SetTall(sc(32))
+    entry:SetFont("Rareload.Body")
+    entry:SetUpdateOnType(true)
+    entry:SetTextInset(sc(28), 0)
+    entry.Paint = function(self, width, height)
+        box(sc(8), width, height, self:HasFocus() and C.surfaceHi or C.surface)
+        UI.DrawIcon("magnifier", sc(8), (height - sc(16)) / 2, sc(16), ColorAlpha(color_white, 160))
         self:DrawTextEntryText(C.text, C.accent, C.text)
         if self:GetValue() == "" then
-            draw.SimpleText(placeholder, "Rareload.Body", sc(30), h / 2, C.text3, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+            draw.SimpleText(placeholder, "Rareload.Body", sc(30), height / 2, C.text3, TEXT_ALIGN_LEFT,
+                TEXT_ALIGN_CENTER)
         end
     end
-    e.OnValueChange = function(_, v) onChange(v) end
-    return e
+    entry.OnValueChange = function(_, value) onChange(value) end
+    return entry
 end
 
 -- A multi-line or single-line text entry in the kit's style.
 function UI.TextEntry(parent, placeholder, multiline)
-    local e = vgui.Create("DTextEntry", parent)
-    e:SetFont(multiline and "Rareload.Mono" or "Rareload.Body")
-    e:SetMultiline(multiline or false)
-    e:SetTall(sc(32))
-    e.Paint = function(self, w, h)
-        box(sc(8), w, h, self:HasFocus() and C.surfaceHi or C.surface)
+    local entry = vgui.Create("DTextEntry", parent)
+    entry:SetFont(multiline and "Rareload.Mono" or "Rareload.Body")
+    entry:SetMultiline(multiline or false)
+    entry:SetTall(sc(32))
+    entry.Paint = function(self, width, height)
+        box(sc(8), width, height, self:HasFocus() and C.surfaceHi or C.surface)
         self:DrawTextEntryText(C.text, C.accent, C.text)
         local hint = self.placeholder or placeholder -- .placeholder: one that changes, set by the caller
         if hint and self:GetValue() == "" and not self:HasFocus() then
-            draw.SimpleText(hint, "Rareload.Body", sc(8), multiline and sc(10) or h / 2, C.text3, TEXT_ALIGN_LEFT,
+            draw.SimpleText(hint, "Rareload.Body", sc(8), multiline and sc(10) or height / 2, C.text3, TEXT_ALIGN_LEFT,
                 multiline and TEXT_ALIGN_TOP or TEXT_ALIGN_CENTER)
         end
     end
-    return e
+    return entry
 end
 
 -- Equal-width segmented choices. items = { { id, label } }. Returns the panel; :SetSelected(id).
@@ -478,27 +485,28 @@ function UI.Chips(parent, items, selected, onSelect)
     panel.selected = selected
     local buttons = {}
     for _, item in ipairs(items) do
-        local b = vgui.Create("DButton", panel)
-        b:SetText("")
-        b.Paint = function(self, w, h)
+        local button = vgui.Create("DButton", panel)
+        button:SetText("")
+        button.Paint = function(self, width, height)
             local on = panel.selected == item.id
-            local a = hoverAnim(self, self:IsHovered())
-            box(sc(6), w, h, on and ColorAlpha(C.accent, 90) or UI.Mix(C.surface, C.surfaceHi, a))
-            draw.SimpleText(UI.Clip(item.label, "Rareload.Small", w - sc(6)), "Rareload.Small", w / 2, h / 2,
+            local hover = hoverAnim(self, self:IsHovered())
+            box(sc(6), width, height, on and ColorAlpha(C.accent, 90) or UI.Mix(C.surface, C.surfaceHi, hover))
+            draw.SimpleText(UI.Clip(item.label, "Rareload.Small", width - sc(6)), "Rareload.Small", width / 2,
+                height / 2,
                 on and C.text or C.text2, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
-        b.DoClick = function()
+        button.DoClick = function()
             panel.selected = item.id
             onSelect(item.id)
         end
-        buttons[#buttons + 1] = b
+        buttons[#buttons + 1] = button
     end
-    panel.PerformLayout = function(_, w, h)
+    panel.PerformLayout = function(_, width, height)
         local gap = sc(5)
-        local bw = math.floor((w - gap * (#buttons - 1)) / #buttons)
-        for i, b in ipairs(buttons) do
-            b:SetPos((i - 1) * (bw + gap), 0)
-            b:SetSize(i == #buttons and w - (i - 1) * (bw + gap) or bw, h)
+        local bw = math.floor((width - gap * (#buttons - 1)) / #buttons)
+        for i, button in ipairs(buttons) do
+            button:SetPos((i - 1) * (bw + gap), 0)
+            button:SetSize(i == #buttons and width - (i - 1) * (bw + gap) or bw, height)
         end
     end
     function panel:SetSelected(id) self.selected = id end
@@ -508,33 +516,34 @@ end
 
 -- A button that opens a menu of options. options = { { id, label } }; get() returns the current id.
 function UI.Dropdown(parent, prefix, options, get, onSelect)
-    local b = vgui.Create("DButton", parent)
-    b:SetText("")
-    b:SetTall(sc(28))
-    b.Paint = function(self, w, h)
-        local a = hoverAnim(self, self:IsHovered())
-        box(sc(6), w, h, UI.Mix(C.surface, C.surfaceHi, a))
+    local button = vgui.Create("DButton", parent)
+    button:SetText("")
+    button:SetTall(sc(28))
+    button.Paint = function(self, width, height)
+        local hover = hoverAnim(self, self:IsHovered())
+        box(sc(6), width, height, UI.Mix(C.surface, C.surfaceHi, hover))
         local current = get()
         local label
-        for _, o in ipairs(options) do if o.id == current then label = o.label end end
-        draw.RoundedBox(sc(3), sc(10), h / 2 - sc(3), sc(6), sc(6), C.accent)
-        draw.SimpleText(UI.Clip((prefix and prefix .. " " or "") .. (label or "?"), "Rareload.Small", w - sc(44)),
-            "Rareload.Small", sc(22), h / 2, C.text2, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        for _, option in ipairs(options) do if option.id == current then label = option.label end end
+        draw.RoundedBox(sc(3), sc(10), height / 2 - sc(3), sc(6), sc(6), C.accent)
+        draw.SimpleText(UI.Clip((prefix and prefix .. " " or "") .. (label or "?"), "Rareload.Small", width - sc(44)),
+            "Rareload.Small", sc(22), height / 2, C.text2, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         surface.SetDrawColor(C.text3)
         draw.NoTexture()
-        local x, y = w - sc(14), h / 2
+        local arrowX, arrowY = width - sc(14), height / 2
         surface.DrawPoly({
-            { x = x - sc(4), y = y - sc(2) }, { x = x + sc(4), y = y - sc(2) }, { x = x, y = y + sc(3) }
+            { x = arrowX - sc(4), y = arrowY - sc(2) }, { x = arrowX + sc(4), y = arrowY - sc(2) },
+                { x = arrowX, y = arrowY + sc(3) }
         })
     end
-    b.DoClick = function()
+    button.DoClick = function()
         local items = {}
-        for i, o in ipairs(options) do
-            items[i] = { label = o.label, fn = function() onSelect(o.id) end, checked = o.id == get() }
+        for i, option in ipairs(options) do
+            items[i] = { label = option.label, fn = function() onSelect(option.id) end, checked = option.id == get() }
         end
         UI.Menu(items)
     end
-    return b
+    return button
 end
 
 -- Buttons side by side in equal widths, docked to the top of `parent`; hidden ones leave no gap.
@@ -543,14 +552,14 @@ function UI.SplitRow(parent, buttons, tall)
     panel:Dock(TOP)
     panel:SetTall(sc(tall))
     panel.Paint = function() end
-    for _, b in ipairs(buttons) do b:SetParent(panel) end
-    panel.PerformLayout = function(_, w, h)
+    for _, button in ipairs(buttons) do button:SetParent(panel) end
+    panel.PerformLayout = function(_, width, height)
         local shown = {}
-        for _, b in ipairs(buttons) do if b:IsVisible() then shown[#shown + 1] = b end end
-        local bw = (w - sc(6) * (#shown - 1)) / math.max(#shown, 1)
-        for i, b in ipairs(shown) do
-            b:SetPos(math.floor((i - 1) * (bw + sc(6))), 0)
-            b:SetSize(math.floor(bw), h)
+        for _, button in ipairs(buttons) do if button:IsVisible() then shown[#shown + 1] = button end end
+        local bw = (width - sc(6) * (#shown - 1)) / math.max(#shown, 1)
+        for i, button in ipairs(shown) do
+            button:SetPos(math.floor((i - 1) * (bw + sc(6))), 0)
+            button:SetSize(math.floor(bw), height)
         end
     end
     return panel
@@ -558,71 +567,73 @@ end
 
 -- A popup menu in Rareload's look. items = { { label, fn, icon? (silk name), checked? } }.
 function UI.Menu(items)
-    local m = DermaMenu()
-    m:SetSkin("Rareload")
+    local menu = DermaMenu()
+    menu:SetSkin("Rareload")
     for _, item in ipairs(items) do
-        local opt = m:AddOption(item.label, item.fn)
+        local opt = menu:AddOption(item.label, item.fn)
         if item.icon then opt:SetIcon("icon16/" .. item.icon .. ".png") end
         if item.checked ~= nil then opt:SetChecked(item.checked) end
         opt:SetTextColor(C.text)
     end
-    m:Open()
-    return m
+    menu:Open()
+    return menu
 end
 
 -- A checkbox with a label. value(): current state; onChange(new state).
 function UI.Check(parent, label, value, onChange)
-    local b = vgui.Create("DButton", parent)
-    b:SetText("")
-    b:SetTall(sc(24))
-    b.value = value
+    local button = vgui.Create("DButton", parent)
+    button:SetText("")
+    button:SetTall(sc(24))
+    button.value = value
     surface.SetFont("Rareload.Small")
-    b:SetWide(surface.GetTextSize(label) + sc(30))
-    b.Paint = function(self, w, h)
-        local s = sc(16)
-        local y = (h - s) / 2
-        draw.RoundedBox(sc(4), 0, y, s, s, self.value and C.accent or (self:IsHovered() and C.surfaceHi or C.line))
+    button:SetWide(surface.GetTextSize(label) + sc(30))
+    button.Paint = function(self, width, height)
+        local boxSize = sc(16)
+        local boxY = (height - boxSize) / 2
+        draw.RoundedBox(sc(4), 0, boxY, boxSize, boxSize,
+            self.value and C.accent or (self:IsHovered() and C.surfaceHi or C.line))
         if self.value then
             surface.SetDrawColor(color_white)
-            surface.DrawLine(sc(4), y + s / 2, sc(7), y + s - sc(4))
-            surface.DrawLine(sc(7), y + s - sc(4), s - sc(3), y + sc(4))
+            surface.DrawLine(sc(4), boxY + boxSize / 2, sc(7), boxY + boxSize - sc(4))
+            surface.DrawLine(sc(7), boxY + boxSize - sc(4), boxSize - sc(3), boxY + sc(4))
         end
-        draw.SimpleText(label, "Rareload.Small", s + sc(8), h / 2, self:IsEnabled() and C.text2 or C.textOff,
+        draw.SimpleText(label, "Rareload.Small", boxSize + sc(8), height / 2, self:IsEnabled() and C.text2 or C.textOff,
             TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
-    b.DoClick = function(self)
+    button.DoClick = function(self)
         self.value = not self.value
         onChange(self.value)
     end
-    function b:SetValue(v) self.value = v end
+    function button:SetValue(newValue) self.value = newValue end
 
-    return b
+    return button
 end
 
 -- A setting row with a toggle switch. opts = { tooltip, disabled, note } (note: small right text).
 -- A switch's track and knob (knob 0 = off .. 1 = on), for the windows' and the spawn menu's switches.
-function UI.DrawSwitch(x, y, w, h, knob, trackCol, knobCol)
-    local inset = h / 9
-    draw.RoundedBox(h / 2, x, y, w, h, trackCol)
-    draw.RoundedBox(h / 2 - inset, math.floor(x + inset + (w - h) * knob), y + inset, h - 2 * inset, h - 2 * inset,
+function UI.DrawSwitch(posX, posY, width, height, knob, trackCol, knobCol)
+    local inset = height / 9
+    draw.RoundedBox(height / 2, posX, posY, width, height, trackCol)
+    draw.RoundedBox(height / 2 - inset, math.floor(posX + inset + (width - height) * knob), posY + inset,
+        height - 2 * inset, height - 2 * inset,
         knobCol)
 end
 
 function UI.Switch(parent, label, value, onChange, opts)
     opts = opts or {}
-    local b = vgui.Create("DButton", parent)
-    b:SetText("")
-    b:SetTall(sc(30))
-    b.value = value
-    b.knob = value and 1 or 0
-    if opts.tooltip then b:SetTooltip(opts.tooltip) end
-    b:SetEnabled(not opts.disabled)
-    b.Paint = function(self, w, h)
+    local button = vgui.Create("DButton", parent)
+    button:SetText("")
+    button:SetTall(sc(30))
+    button.value = value
+    button.knob = value and 1 or 0
+    if opts.tooltip then button:SetTooltip(opts.tooltip) end
+    button:SetEnabled(not opts.disabled)
+    button.Paint = function(self, width, height)
         self.knob = Lerp(FrameTime() * 14, self.knob, self.value and 1 or 0)
-        local a = self:IsEnabled() and hoverAnim(self, self:IsHovered()) or 0
-        if a > 0.01 then box(sc(6), w, h, ColorAlpha(C.surfaceHi, 200 * a)) end
+        local hover = self:IsEnabled() and hoverAnim(self, self:IsHovered()) or 0
+        if hover > 0.01 then box(sc(6), width, height, ColorAlpha(C.surfaceHi, 200 * hover)) end
         local sw, sh = sc(34), sc(18)
-        local sx, sy = w - sw - sc(8), (h - sh) / 2
+        local sx, sy = width - sw - sc(8), (height - sh) / 2
         local on = self:IsEnabled() and C.ok or C.textOff
         UI.DrawSwitch(sx, sy, sw, sh, self.knob, UI.Mix(C.line, on, self.knob), color_white)
         local textCol = self:IsEnabled() and C.text or C.textOff
@@ -630,38 +641,41 @@ function UI.Switch(parent, label, value, onChange, opts)
         if opts.note then
             surface.SetFont("Rareload.Tiny")
             right = right - surface.GetTextSize(opts.note) - sc(6)
-            draw.SimpleText(opts.note, "Rareload.Tiny", sx - sc(8), h / 2, C.text3, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+            draw.SimpleText(opts.note, "Rareload.Tiny", sx - sc(8), height / 2, C.text3, TEXT_ALIGN_RIGHT,
+                TEXT_ALIGN_CENTER)
         end
-        draw.SimpleText(UI.Clip(label, "Rareload.Body", right - sc(8)), "Rareload.Body", sc(8), h / 2, textCol,
+        draw.SimpleText(UI.Clip(label, "Rareload.Body", right - sc(8)), "Rareload.Body", sc(8), height / 2, textCol,
             TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
-    b.DoClick = function(self)
+    button.DoClick = function(self)
         self.value = not self.value
         surface.PlaySound("ui/buttonclick.wav")
         onChange(self.value)
     end
-    return b
+    return button
 end
 
 -- Label/value rows with dividers. rows() returns { { label, value, color? } }; height follows the rows.
 function UI.Rows(parent, rows)
     local panel = vgui.Create("DPanel", parent)
     local rh = sc(24)
-    panel.Paint = function(self, w, h)
-        box(sc(10), w, h, C.surface)
+    panel.Paint = function(self, width, height)
+        box(sc(10), width, height, C.surface)
         local items = rows()
-        local y = sc(6)
-        for i, r in ipairs(items) do
+        local rowY = sc(6)
+        for i, item in ipairs(items) do
             if i > 1 then
                 surface.SetDrawColor(ColorAlpha(C.line, 120))
-                surface.DrawLine(sc(12), y, w - sc(12), y)
+                surface.DrawLine(sc(12), rowY, width - sc(12), rowY)
             end
-            draw.SimpleText(r[1], "Rareload.Small", sc(12), y + rh / 2, C.text3, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+            draw.SimpleText(item[1], "Rareload.Small", sc(12), rowY + rh / 2, C.text3, TEXT_ALIGN_LEFT,
+                TEXT_ALIGN_CENTER)
             surface.SetFont("Rareload.Small")
-            local lw = surface.GetTextSize(r[1])
-            draw.SimpleText(UI.Clip(r[2], "Rareload.Small", w - lw - sc(40)), "Rareload.Small", w - sc(12), y + rh / 2,
-                r[3] or C.text, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
-            y = y + rh
+            local lw = surface.GetTextSize(item[1])
+            draw.SimpleText(UI.Clip(item[2], "Rareload.Small", width - lw - sc(40)), "Rareload.Small", width - sc(12),
+                rowY + rh / 2,
+                item[3] or C.text, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+            rowY = rowY + rh
         end
         local want = #items * rh + sc(12)
         if self:GetTall() ~= want then self:SetTall(want) end
@@ -673,21 +687,23 @@ end
 function UI.Stats(parent, cards)
     local panel = vgui.Create("DPanel", parent)
     panel:SetTall(sc(64))
-    panel.Paint = function(_, w, h)
+    panel.Paint = function(_, width, height)
         local items = cards()
         local gap = sc(7)
-        local cw = (w - gap * (#items - 1)) / #items
-        for i, c in ipairs(items) do
-            local x = (i - 1) * (cw + gap)
-            draw.RoundedBox(sc(8), x, 0, cw, h, C.surface)
-            if c[2] ~= nil then
-                draw.SimpleText(tostring(c[2]), "Rareload.Stat", x + cw / 2, h * 0.42, c[3] or C.text,
+        local cw = (width - gap * (#items - 1)) / #items
+        for i, item in ipairs(items) do
+            local cellX = (i - 1) * (cw + gap)
+            draw.RoundedBox(sc(8), cellX, 0, cw, height, C.surface)
+            if item[2] ~= nil then
+                draw.SimpleText(tostring(item[2]), "Rareload.Stat", cellX + cw / 2, height * 0.42, item[3] or C.text,
                     TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
             else
-                draw.SimpleText(L("ui.not_saved"), "Rareload.Small", x + cw / 2, h * 0.42, C.textOff, TEXT_ALIGN_CENTER,
+                draw.SimpleText(L("ui.not_saved"), "Rareload.Small", cellX + cw / 2, height * 0.42, C.textOff,
+                    TEXT_ALIGN_CENTER,
                     TEXT_ALIGN_CENTER)
             end
-            draw.SimpleText(string.upper(c[1]), "Rareload.Tiny", x + cw / 2, h * 0.8, C.text3, TEXT_ALIGN_CENTER,
+            draw.SimpleText(string.upper(item[1]), "Rareload.Tiny", cellX + cw / 2, height * 0.8, C.text3,
+                TEXT_ALIGN_CENTER,
                 TEXT_ALIGN_CENTER)
         end
     end
@@ -700,11 +716,12 @@ function UI.Empty(parent, icon, title, hint)
     panel:SetMouseInputEnabled(false)
     -- What it says can change while it is shown.
     function panel:SetEmpty(newIcon, newTitle, newHint) icon, title, hint = newIcon, newTitle, newHint end
-    panel.Paint = function(_, w, h)
-        UI.DrawIcon(icon, w / 2 - sc(16), h / 2 - sc(46), sc(32), ColorAlpha(color_white, 90))
-        draw.SimpleText(title, "Rareload.H2", w / 2, h / 2 + sc(4), C.text2, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    panel.Paint = function(_, width, height)
+        UI.DrawIcon(icon, width / 2 - sc(16), height / 2 - sc(46), sc(32), ColorAlpha(color_white, 90))
+        draw.SimpleText(title, "Rareload.H2", width / 2, height / 2 + sc(4), C.text2, TEXT_ALIGN_CENTER,
+            TEXT_ALIGN_CENTER)
         if hint then
-            draw.SimpleText(hint, "Rareload.Small", w / 2, h / 2 + sc(28), C.text3, TEXT_ALIGN_CENTER,
+            draw.SimpleText(hint, "Rareload.Small", width / 2, height / 2 + sc(28), C.text3, TEXT_ALIGN_CENTER,
                 TEXT_ALIGN_CENTER)
         end
     end
@@ -715,11 +732,11 @@ end
 function UI.Model(parent, model, speed)
     local mp = vgui.Create("DModelPanel", parent)
     mp:SetMouseInputEnabled(false)
-    function mp:ShowModel(m)
-        m = UI.IsModel(m) and m or "models/error.mdl"
-        if self.shown == m then return end
-        self.shown = m
-        self:SetModel(m)
+    function mp:ShowModel(modelPath)
+        modelPath = UI.IsModel(modelPath) and modelPath or "models/error.mdl"
+        if self.shown == modelPath then return end
+        self.shown = modelPath
+        self:SetModel(modelPath)
         local ent = self:GetEntity()
         if not IsValid(ent) then return end
         local mn, mx = ent:GetRenderBounds()
@@ -737,10 +754,10 @@ end
 
 -- Scrollbar in the kit's style.
 function UI.Scroll(parent)
-    local s = vgui.Create("DScrollPanel", parent)
-    s:SetSkin("Rareload")
-    s:GetVBar():SetWide(sc(8))
-    return s
+    local scroll = vgui.Create("DScrollPanel", parent)
+    scroll:SetSkin("Rareload")
+    scroll:GetVBar():SetWide(sc(8))
+    return scroll
 end
 
 -- Windows -----------------------------------------------------------------------------------------
@@ -755,9 +772,9 @@ function UI.Window(opts)
         backdrop = vgui.Create("DPanel")
         backdrop:SetSize(ScrW(), ScrH())
         backdrop:MakePopup()
-        backdrop.Paint = function(_, w, h)
+        backdrop.Paint = function(_, width, height)
             surface.SetDrawColor(0, 0, 0, 170)
-            surface.DrawRect(0, 0, w, h)
+            surface.DrawRect(0, 0, width, height)
         end
     end
 
@@ -774,24 +791,24 @@ function UI.Window(opts)
     frame:DockPadding(sc(12), headH + sc(10), sc(12), sc(12))
     frame.title, frame.subtitle = opts.title, opts.subtitle
 
-    frame.Paint = function(self, w, h)
-        box(sc(14), w, h, C.bg)
+    frame.Paint = function(self, width, height)
+        box(sc(14), width, height, C.bg)
         draw.SimpleText(self.title, "Rareload.Title", sc(18), sc(12), C.accentHi, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
         if self.subtitle then
             draw.SimpleText(self.subtitle, "Rareload.Sub", sc(20), sc(40), C.text3, TEXT_ALIGN_LEFT,
                 TEXT_ALIGN_TOP)
         end
         surface.SetDrawColor(C.line)
-        surface.DrawLine(0, headH, w, headH)
+        surface.DrawLine(0, headH, width, headH)
     end
 
     -- Drag from anywhere in the header, not only the top 24 pixels.
     frame.OnMousePressed = function(self)
-        local x, y = self:ScreenToLocal(gui.MouseX(), gui.MouseY())
-        if self:GetSizable() and x > self:GetWide() - sc(20) and y > self:GetTall() - sc(20) then
+        local mouseX, mouseY = self:ScreenToLocal(gui.MouseX(), gui.MouseY())
+        if self:GetSizable() and mouseX > self:GetWide() - sc(20) and mouseY > self:GetTall() - sc(20) then
             self.Sizing = { gui.MouseX() - self:GetWide(), gui.MouseY() - self:GetTall() }
             self:MouseCapture(true)
-        elseif y < headH then
+        elseif mouseY < headH then
             self.Dragging = { gui.MouseX() - self.x, gui.MouseY() - self.y }
             self:MouseCapture(true)
         end
@@ -799,24 +816,24 @@ function UI.Window(opts)
 
     local buttons = {}
     function frame:HeaderButton(text, fn, bopts)
-        local b = UI.Button(self, text, fn, bopts)
-        b:SizeToLabel(bopts and bopts.pad)
-        buttons[#buttons + 1] = b
+        local button = UI.Button(self, text, fn, bopts)
+        button:SizeToLabel(bopts and bopts.pad)
+        buttons[#buttons + 1] = button
         self:InvalidateLayout()
-        return b
+        return button
     end
 
     frame:HeaderButton("", function() frame:Close() end, { style = "danger", icon = "cross", pad = 4 })
 
     local baseLayout = frame.PerformLayout
-    frame.PerformLayout = function(self, w, h)
-        if baseLayout then baseLayout(self, w, h) end
-        local x = w - sc(14)
-        for _, b in ipairs(buttons) do
-            if b:IsVisible() then
-                x = x - b:GetWide()
-                b:SetPos(x, (headH - b:GetTall()) / 2)
-                x = x - sc(6)
+    frame.PerformLayout = function(self, width, height)
+        if baseLayout then baseLayout(self, width, height) end
+        local buttonX = width - sc(14)
+        for _, button in ipairs(buttons) do
+            if button:IsVisible() then
+                buttonX = buttonX - button:GetWide()
+                button:SetPos(buttonX, (headH - button:GetTall()) / 2)
+                buttonX = buttonX - sc(6)
             end
         end
     end
@@ -863,10 +880,10 @@ end
 
 local KINDS = { info = NOTIFY_GENERIC, ok = NOTIFY_GENERIC, error = NOTIFY_ERROR, hint = NOTIFY_HINT }
 
-RARELOAD.Net.On("toast", function(t)
-    notification.AddLegacy(L(t.key, unpack(t.args or {})), KINDS[t.kind] or NOTIFY_GENERIC, 4)
-    surface.PlaySound(t.kind == "error" and "buttons/button10.wav" or "buttons/button14.wav")
-    hook.Run("RareloadToast", t)
+RARELOAD.Net.On("toast", function(toast)
+    notification.AddLegacy(L(toast.key, unpack(toast.args or {})), KINDS[toast.kind] or NOTIFY_GENERIC, 4)
+    surface.PlaySound(toast.kind == "error" and "buttons/button10.wav" or "buttons/button14.wav")
+    hook.Run("RareloadToast", toast)
 end)
 
 RARELOAD.Net.On("dev.reload", function()

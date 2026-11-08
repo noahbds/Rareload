@@ -23,12 +23,12 @@ end
 -- target = { pos, label, live? = fn -> entity, owner? = fn -> player, phantomKey?, fromRecord? }.
 -- Returns true when the highlight is now on.
 function Highlight.Toggle(kind, id, target)
-    local k = key(kind, id)
-    if Highlight.entries[k] then
-        Highlight.entries[k] = nil
+    local entryKey = key(kind, id)
+    if Highlight.entries[entryKey] then
+        Highlight.entries[entryKey] = nil
         return false
     end
-    Highlight.entries[k] = { kind = kind, target = target }
+    Highlight.entries[entryKey] = { kind = kind, target = target }
     return true
 end
 
@@ -77,45 +77,46 @@ local function resolve()
     if lookup and RARELOAD.World.Active() then
         local keys = {}
         for _, rec in ipairs(RARELOAD.World.records) do keys[rec.key] = true end
-        for k, e in pairs(Highlight.entries) do
-            if e.target.fromRecord and not keys[e.target.phantomKey] then Highlight.entries[k] = nil end
+        for entryKey, entry in pairs(Highlight.entries) do
+            if entry.target.fromRecord and not keys[entry.target.phantomKey] then Highlight.entries[entryKey] = nil end
         end
     end
 
     local eye = EyePos()
-    for _, e in pairs(Highlight.entries) do
-        local t = e.target
+    for _, entry in pairs(Highlight.entries) do
+        local target = entry.target
         if lookup then
-            e.liveEnt = t.live and t.live() or nil
-            e.ownerEnt = t.owner and t.owner() or nil
+            entry.liveEnt = target.live and target.live() or nil
+            entry.ownerEnt = target.owner and target.owner() or nil
         end
-        local live, owner = IsValid(e.liveEnt) and e.liveEnt or nil, IsValid(e.ownerEnt) and e.ownerEnt or nil
-        local r = { color = COLORS[e.kind], to = t.pos, dist = eye:Distance(t.pos) }
-        if e.kind == "saved" then
-            r.from, r.outline = eye, live or RARELOAD.Phantoms.Get(t.phantomKey or "")
-            r.label = L("highlight.saved", t.label or "?", math.floor(r.dist))
-        elseif e.kind == "link" and live then
-            r.from, r.outline, r.dual = live:GetPos(), live, true
-            r.label = L("highlight.drift", t.label or "?", math.floor(live:GetPos():Distance(t.pos)))
-        elseif e.kind == "player" then
-            r.from, r.outline, r.dual = owner and owner:EyePos() or eye, owner, owner ~= nil
-            r.label = L("highlight.player", t.label or "?", math.floor(r.dist))
+        local live, owner = IsValid(entry.liveEnt) and entry.liveEnt or nil,
+            IsValid(entry.ownerEnt) and entry.ownerEnt or nil
+        local line = { color = COLORS[entry.kind], to = target.pos, dist = eye:Distance(target.pos) }
+        if entry.kind == "saved" then
+            line.from, line.outline = eye, live or RARELOAD.Phantoms.Get(target.phantomKey or "")
+            line.label = L("highlight.saved", target.label or "?", math.floor(line.dist))
+        elseif entry.kind == "link" and live then
+            line.from, line.outline, line.dual = live:GetPos(), live, true
+            line.label = L("highlight.drift", target.label or "?", math.floor(live:GetPos():Distance(target.pos)))
+        elseif entry.kind == "player" then
+            line.from, line.outline, line.dual = owner and owner:EyePos() or eye, owner, owner ~= nil
+            line.label = L("highlight.player", target.label or "?", math.floor(line.dist))
         end
-        if r.from then resolved[#resolved + 1] = r end
+        if line.from then resolved[#resolved + 1] = line end
     end
-    table.sort(resolved, function(a, b) return a.dist < b.dist end)
+    table.sort(resolved, function(left, right) return left.dist < right.dist end)
     return resolved
 end
 
 -- Drawing ---------------------------------------------------------------------------------------------
 
 hook.Add("PreDrawHalos", "Rareload.Highlight", function()
-    local byColor, n = {}, 0
-    for _, r in ipairs(resolve()) do
-        if IsValid(r.outline) and n < MAX_HALOS then
-            byColor[r.color] = byColor[r.color] or {}
-            table.insert(byColor[r.color], r.outline)
-            n = n + 1
+    local byColor, count = {}, 0
+    for _, resolvedEntry in ipairs(resolve()) do
+        if IsValid(resolvedEntry.outline) and count < MAX_HALOS then
+            byColor[resolvedEntry.color] = byColor[resolvedEntry.color] or {}
+            table.insert(byColor[resolvedEntry.color], resolvedEntry.outline)
+            count = count + 1
         end
     end
     for col, list in pairs(byColor) do halo.Add(list, col, 3, 3, 1, true, true) end
@@ -130,28 +131,30 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Highlight", function(depth,
     local pulse = 0.65 + math.sin(RealTime() * 4) * 0.35
     render.OverrideDepthEnable(true, false)
     render.SetMaterial(BEAM)
-    for _, r in ipairs(list) do
-        beamCol.r, beamCol.g, beamCol.b, beamCol.a = r.color.r, r.color.g, r.color.b, 220 * pulse
-        render.DrawBeam(r.from, r.to, 6, 0, r.from:Distance(r.to) / 64, beamCol)
+    for _, resolvedEntry in ipairs(list) do
+        beamCol.r, beamCol.g, beamCol.b, beamCol.a = resolvedEntry.color.r, resolvedEntry.color.g,
+            resolvedEntry.color.b, 220 * pulse
+        render.DrawBeam(resolvedEntry.from, resolvedEntry.to, 6, 0, resolvedEntry.from:Distance(resolvedEntry.to) / 64,
+            beamCol)
     end
     render.SetMaterial(GLOW)
-    for _, r in ipairs(list) do
-        orbCol.r, orbCol.g, orbCol.b = r.color.r, r.color.g, r.color.b
-        render.DrawSprite(r.to + Vector(0, 0, 8), 34 * pulse, 34 * pulse, orbCol)
-        if r.dual then render.DrawSprite(r.from, 24 * pulse, 24 * pulse, orbCol) end
+    for _, resolvedEntry in ipairs(list) do
+        orbCol.r, orbCol.g, orbCol.b = resolvedEntry.color.r, resolvedEntry.color.g, resolvedEntry.color.b
+        render.DrawSprite(resolvedEntry.to + Vector(0, 0, 8), 34 * pulse, 34 * pulse, orbCol)
+        if resolvedEntry.dual then render.DrawSprite(resolvedEntry.from, 24 * pulse, 24 * pulse, orbCol) end
     end
     render.OverrideDepthEnable(false, false)
 end)
 
-local function label(text, x, y, col)
+local function label(text, posX, posY, col)
     surface.SetFont("Rareload.BodyB")
     local tw, th = surface.GetTextSize(text)
     local pad = UI.sc(6)
     surface.SetDrawColor(15, 18, 24, 220)
-    surface.DrawRect(x - tw / 2 - pad, y - th / 2 - 2, tw + pad * 2, th + 4)
+    surface.DrawRect(posX - tw / 2 - pad, posY - th / 2 - 2, tw + pad * 2, th + 4)
     surface.SetDrawColor(col)
-    surface.DrawOutlinedRect(x - tw / 2 - pad, y - th / 2 - 2, tw + pad * 2, th + 4, 1)
-    draw.SimpleText(text, "Rareload.BodyB", x, y, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    surface.DrawOutlinedRect(posX - tw / 2 - pad, posY - th / 2 - 2, tw + pad * 2, th + 4, 1)
+    draw.SimpleText(text, "Rareload.BodyB", posX, posY, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 end
 
 hook.Add("HUDPaint", "Rareload.Highlight", function()
@@ -160,10 +163,10 @@ hook.Add("HUDPaint", "Rareload.Highlight", function()
     local sw, sh = ScrW(), ScrH()
     local cx, cy = sw / 2, sh / 2
     for i = 1, math.min(#list, MAX_LABELS) do
-        local r = list[i]
-        local screen = (r.to + Vector(0, 0, 8)):ToScreen()
+        local resolvedEntry = list[i]
+        local screen = (resolvedEntry.to + Vector(0, 0, 8)):ToScreen()
         if screen.visible and screen.x >= 0 and screen.x <= sw and screen.y >= 0 and screen.y <= sh then
-            label(r.label, screen.x, screen.y - 24, r.color)
+            label(resolvedEntry.label, screen.x, screen.y - 24, resolvedEntry.color)
         else
             -- An arrow on the screen edge, pointing towards the spot.
             local dx, dy = screen.x - cx, screen.y - cy
@@ -172,15 +175,15 @@ hook.Add("HUDPaint", "Rareload.Highlight", function()
             local margin = 60
             local mx = math.Clamp(cx + dx / len * (cx - margin), margin, sw - margin)
             local my = math.Clamp(cy + dy / len * (cy - margin), margin, sh - margin)
-            local a, s = math.atan2(dy, dx), 12
-            surface.SetDrawColor(r.color)
+            local angle, arrowSize = math.atan2(dy, dx), 12
+            surface.SetDrawColor(resolvedEntry.color)
             draw.NoTexture()
             surface.DrawPoly({
-                { x = mx + math.cos(a) * s,       y = my + math.sin(a) * s },
-                { x = mx + math.cos(a + 2.5) * s, y = my + math.sin(a + 2.5) * s },
-                { x = mx + math.cos(a - 2.5) * s, y = my + math.sin(a - 2.5) * s },
+                { x = mx + math.cos(angle) * arrowSize,       y = my + math.sin(angle) * arrowSize },
+                { x = mx + math.cos(angle + 2.5) * arrowSize, y = my + math.sin(angle + 2.5) * arrowSize },
+                { x = mx + math.cos(angle - 2.5) * arrowSize, y = my + math.sin(angle - 2.5) * arrowSize },
             })
-            label(r.label, mx, my - 20, r.color)
+            label(resolvedEntry.label, mx, my - 20, resolvedEntry.color)
         end
     end
     -- below the preview banner

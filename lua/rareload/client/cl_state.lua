@@ -52,9 +52,9 @@ end)
 
 RARELOAD.Net.On("history.players", function(payload)
     State.players = istable(payload.list) and payload.list or {}
-    table.sort(State.players, function(a, b)
-        if a.online ~= b.online then return a.online end
-        return string.lower(a.nick or "") < string.lower(b.nick or "")
+    table.sort(State.players, function(left, right)
+        if left.online ~= right.online then return left.online end
+        return string.lower(left.nick or "") < string.lower(right.nick or "")
     end)
     changed("players")
 end)
@@ -121,7 +121,7 @@ end)
 
 RARELOAD.Net.On("checkpoints", function(payload)
     State.checkpoints = istable(payload.list) and payload.list or {}
-    for _, c in ipairs(State.checkpoints) do c.vec = RARELOAD.Util.ToVector(c.pos) end
+    for _, checkpoint in ipairs(State.checkpoints) do checkpoint.vec = RARELOAD.Util.ToVector(checkpoint.pos) end
     changed("checkpoints")
 end)
 

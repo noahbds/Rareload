@@ -44,7 +44,7 @@ function Pipeline.Order(list)
     local out = {}
     for i = 1, #Pipeline.PHASES do
         local group = groups[i] or {}
-        table.sort(group, function(a, b) return a.id < b.id end)
+        table.sort(group, function(left, right) return left.id < right.id end)
         local byId, state = {}, {}
         for _, moduleDef in ipairs(group) do byId[moduleDef.id] = moduleDef end
 
@@ -130,8 +130,8 @@ end
 
 -- A module the player turned off is skipped without a reason; one they may not use comes with one.
 local function moduleAllowed(moduleDef, ply, saving, reason)
-    for _, s in ipairs(istable(moduleDef.setting) and moduleDef.setting or { moduleDef.setting }) do
-        if not RARELOAD.Get(ply, s) then return false end
+    for _, settingKey in ipairs(istable(moduleDef.setting) and moduleDef.setting or { moduleDef.setting }) do
+        if not RARELOAD.Get(ply, settingKey) then return false end
     end
     return Pipeline.Allowed(ply, saving, moduleDef.id, saving and moduleDef.privSave or moduleDef.privRestore, reason)
 end
@@ -146,7 +146,8 @@ end
 -- text and how long it took in ms, for the report card.
 local function runProtectedTimed(fn, ...)
     local started = SysTime()
-    local ok, err = xpcall(fn, function(e) ErrorNoHaltWithStack(e) return tostring(e) end, ...)
+    local ok,
+        err = xpcall(fn, function(errorValue) ErrorNoHaltWithStack(errorValue) return tostring(errorValue) end, ...)
     return ok, not ok and err or nil, (SysTime() - started) * 1000
 end
 

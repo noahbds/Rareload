@@ -18,14 +18,14 @@ RARELOAD.Module({
         local mode = ply:GetInfo("gmod_toolmode")
         local tool = IsValid(gun) and istable(gun.Tool) and gun.Tool[mode]
         if not tool then return nil end
-        local convars, n = {}, 0
+        local convars, count = {}, 0
         local names = table.GetKeys(istable(tool.ClientConVar) and tool.ClientConVar or {})
         table.sort(names)
         for _, name in ipairs(names) do
             local value = ply:GetInfo(mode .. "_" .. name)
-            if n < MAX_CONVARS and isstring(value) and #value <= MAX_VALUE then
+            if count < MAX_CONVARS and isstring(value) and #value <= MAX_VALUE then
                 convars[name] = value
-                n = n + 1
+                count = count + 1
             end
         end
         return { mode = mode, convars = convars }

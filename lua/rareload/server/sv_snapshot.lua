@@ -189,42 +189,43 @@ local KEEP = { string = true, number = true, boolean = true, table = true, Vecto
 
 -- A copy with only plain data, and colors tagged since they lose their type in JSON (L18). Tables
 -- nested deeper than 16 levels are dropped: entity tables can refer to themselves.
-local function plainData(v, depth)
-    if type(v) ~= "table" then return v end
-    if IsColor(v) then return { __color = { v.r, v.g, v.b, v.a } } end
+local function plainData(value, depth)
+    if type(value) ~= "table" then return value end
+    if IsColor(value) then return { __color = { value.r, value.g, value.b, value.a } } end
     if depth > 16 then return nil end
     local out = {}
     -- Every object of every save goes through here: only tables are looked at further.
-    for k, x in pairs(v) do
-        local kt, xt = type(k), type(x)
+    for key, item in pairs(value) do
+        local kt, xt = type(key), type(item)
         if KEEP[xt] and (kt == "string" or kt == "number") then
-            if xt == "table" then out[k] = plainData(x, depth + 1) else out[k] = x end
+            if xt == "table" then out[key] = plainData(item, depth + 1) else out[key] = item end
         end
     end
     return out
 end
 
 -- Returns a copy with tagged colors revived, so cached save data is never modified.
-local function revive(v, depth)
-    if not istable(v) or depth > 8 then return v end
-    if istable(v.__color) then return Color(v.__color[1], v.__color[2], v.__color[3], v.__color[4]) end
+local function revive(value, depth)
+    if not istable(value) or depth > 8 then return value end
+    if istable(value.__color) then return Color(value.__color[1], value.__color[2], value.__color[3],
+        value.__color[4]) end
     local out = {}
-    for k, x in pairs(v) do out[k] = revive(x, depth + 1) end
+    for key, item in pairs(value) do out[key] = revive(item, depth + 1) end
     return out
 end
 
 -- A revived copy (colours back to Color objects) of saved data, for code outside this file.
-function Snapshot.Revive(v) return revive(v, 0) end
+function Snapshot.Revive(value) return revive(value, 0) end
 
 -- A copy with only plain data (and tagged colours), for code outside this file.
-function Snapshot.Plain(v) return plainData(v, 0) end
+function Snapshot.Plain(value) return plainData(value, 0) end
 
 -- Capture -----------------------------------------------------------------------------------------
 
 -- Object state the duplicator doesn't keep (5.4 plan, C1-C3, C6) -----------------------------------
 -- Kept in the "rareload" modifier and applied by Rareload's own restores only, never by other dupes.
 
-local function rv(v) return { math.Round(v.x), math.Round(v.y), math.Round(v.z) } end
+local function rv(vec) return { math.Round(vec.x), math.Round(vec.y), math.Round(vec.z) } end
 
 -- Bones that are moving: awake, not frozen, faster than a few units a second. Still builds keep
 -- comparing equal, so autosave doesn't save them again (L35).
@@ -256,10 +257,10 @@ end
 -- State an entity state adapter keeps (modules/entity_state.lua).
 local function stateOf(ent)
     local Adapters = RARELOAD.EntityState
-    local a = Adapters and Adapters.For(ent)
-    if not a then return nil end
-    local ok, t = pcall(a.capture, ent)
-    return ok and istable(t) and { adapter = a.id, data = t } or nil
+    local adapter = Adapters and Adapters.For(ent)
+    if not adapter then return nil end
+    local ok, state = pcall(adapter.capture, ent)
+    return ok and istable(state) and { adapter = adapter.id, data = state } or nil
 end
 
 -- Applies what Snapshot.Capture kept next to the duplicator data. `motion`: moving objects get
@@ -267,9 +268,9 @@ end
 function Snapshot.ApplyExtras(ent, rl, motion)
     if not istable(rl) then return end
     if istable(rl.vel) and motion then
-        for _, m in ipairs(rl.vel) do
-            local phys = ent:GetPhysicsObjectNum(tonumber(m.bone) or 0)
-            local lin, ang = RARELOAD.Util.ToVector(m.lin), RARELOAD.Util.ToVector(m.ang)
+        for _, boneMotion in ipairs(rl.vel) do
+            local phys = ent:GetPhysicsObjectNum(tonumber(boneMotion.bone) or 0)
+            local lin, ang = RARELOAD.Util.ToVector(boneMotion.lin), RARELOAD.Util.ToVector(boneMotion.ang)
             if IsValid(phys) and phys:IsMotionEnabled() then
                 phys:Wake()
                 if lin then phys:SetVelocity(lin) end
@@ -293,17 +294,17 @@ function Snapshot.ApplyExtras(ent, rl, motion)
     end
     local Adapters = RARELOAD.EntityState
     if istable(rl.state) and Adapters then
-        local a = Adapters.adapters[rl.state.adapter]
+        local adapter = Adapters.adapters[rl.state.adapter]
         local ok, match = false, false
-        if a then ok, match = pcall(a.matches, ent) end
-        if ok and match and istable(rl.state.data) then ProtectedCall(a.apply, ent, rl.state.data) end
+        if adapter then ok, match = pcall(adapter.matches, ent) end
+        if ok and match and istable(rl.state.data) then ProtectedCall(adapter.apply, ent, rl.state.data) end
     end
 end
 
 function Snapshot.PruneConstraints(snap)
-    for key, c in pairs(snap.Constraints) do
-        for _, e in pairs(istable(c) and c.Entity or {}) do
-            if not e.World and snap.Entities[e.Index] == nil then
+    for key, constraintData in pairs(snap.Constraints) do
+        for _, endpoint in pairs(istable(constraintData) and constraintData.Entity or {}) do
+            if not endpoint.World and snap.Entities[endpoint.Index] == nil then
                 snap.Constraints[key] = nil
                 break
             end
@@ -316,7 +317,7 @@ function Snapshot.Capture(targets)
     duplicator.SetLocalAng(angle_zero)
     local snap = { Entities = {}, Constraints = {} }
     -- Oldest first, so objects saved together are numbered in the order they were made.
-    table.sort(targets, function(a, b) return a:GetCreationID() < b:GetCreationID() end)
+    table.sort(targets, function(left, right) return left:GetCreationID() < right:GetCreationID() end)
 
     for _, ent in ipairs(targets) do
         if duplicator.IsAllowed(ent.ClassOverride or ent:GetClass()) then
@@ -334,13 +335,14 @@ function Snapshot.Capture(targets)
                 entityDef.RareloadNum, entityDef.RareloadName = nil, nil
                 snap.Entities[ent:EntIndex()] = entityDef
             end)
-            for _, c in pairs(constraint.GetTable(ent)) do
-                if IsValid(c.Constraint) then snap.Constraints[c.Constraint:GetCreationID()] = c end
+            for _, constraintData in pairs(constraint.GetTable(ent)) do
+                local constraintEnt = constraintData.Constraint
+                if IsValid(constraintEnt) then snap.Constraints[constraintEnt:GetCreationID()] = constraintData end
             end
         end
     end
     Snapshot.PruneConstraints(snap)
-    for key, c in pairs(snap.Constraints) do snap.Constraints[key] = plainData(c, 0) end
+    for key, constraintData in pairs(snap.Constraints) do snap.Constraints[key] = plainData(constraintData, 0) end
     return next(snap.Entities) and snap or nil
 end
 
@@ -357,13 +359,13 @@ function Snapshot.Merge(old, fresh)
     return fresh
 end
 
-local function sortedKeys(t)
+local function sortedKeys(list)
     local keys = {}
-    for k in pairs(t or {}) do keys[#keys + 1] = k end
-    table.sort(keys, function(a, b)
-        local x, y = tonumber(a), tonumber(b)
-        if x and y then return x < y end
-        return tostring(a) < tostring(b)
+    for key in pairs(list or {}) do keys[#keys + 1] = key end
+    table.sort(keys, function(left, right)
+        local leftNumber, rightNumber = tonumber(left), tonumber(right)
+        if leftNumber and rightNumber then return leftNumber < rightNumber end
+        return tostring(left) < tostring(right)
     end)
     return keys
 end
@@ -409,26 +411,26 @@ function Snapshot.KeepDeleted(old, fresh)
         end
     end
 
-    local n = 0
+    local count = 0
     for _, key in ipairs(sortedKeys(old.Constraints)) do
-        local c = old.Constraints[key]
-        local ends, keep, touches = {}, istable(c) and istable(c.Entity), false
-        for i, e in pairs(keep and c.Entity or {}) do
-            local to = moved[tostring(e.Index)]
-            if not e.World and not to then
+        local constraintData = old.Constraints[key]
+        local ends, keep, touches = {}, istable(constraintData) and istable(constraintData.Entity), false
+        for i, endpoint in pairs(keep and constraintData.Entity or {}) do
+            local to = moved[tostring(endpoint.Index)]
+            if not endpoint.World and not to then
                 keep = false
                 break
             end
-            touches = touches or kept[tostring(e.Index)] == true
-            local copy = table.Merge({}, e) -- shallow: only Index changes
-            copy.Index = to or e.Index
+            touches = touches or kept[tostring(endpoint.Index)] == true
+            local copy = table.Merge({}, endpoint) -- shallow: only Index changes
+            copy.Index = to or endpoint.Index
             ends[i] = copy
         end
         if keep and touches then
-            n = n + 1
-            local copy = table.Merge({}, c)
+            count = count + 1
+            local copy = table.Merge({}, constraintData)
             copy.Entity = ends
-            fresh.Constraints["kept" .. n] = copy
+            fresh.Constraints["kept" .. count] = copy
         end
     end
     return fresh
@@ -522,9 +524,9 @@ local function boneOf(entityDef, i)
     return bones[i] or bones[tostring(i)]
 end
 
-local function sameAngle(a, b)
-    return math.abs(math.AngleDifference(a.p, b.p)) < 1 and math.abs(math.AngleDifference(a.y, b.y)) < 1
-        and math.abs(math.AngleDifference(a.r, b.r)) < 1
+local function sameAngle(left, right)
+    return math.abs(math.AngleDifference(left.p, right.p)) < 1 and math.abs(math.AngleDifference(left.y, right.y)) < 1
+        and math.abs(math.AngleDifference(left.r, right.r)) < 1
 end
 
 -- Objects moved and frozen through their physics objects. NPCs only have a physics shadow that
@@ -687,11 +689,11 @@ function Snapshot.Reset(targets, ply)
         Snapshot.ApplyExtras(target.ent, Snapshot.Rareload(target.def), motion)
     end
     -- Vehicle parts get back the motion they had.
-    for _, h in ipairs(held) do
-        local phys = IsValid(h.ent) and h.ent:GetPhysicsObjectNum(h.bone)
+    for _, heldBone in ipairs(held) do
+        local phys = IsValid(heldBone.ent) and heldBone.ent:GetPhysicsObjectNum(heldBone.bone)
         if IsValid(phys) then
-            phys:EnableMotion(h.enabled)
-            if h.enabled then phys:Wake() end
+            phys:EnableMotion(heldBone.enabled)
+            if heldBone.enabled then phys:Wake() end
         end
     end
     return count
@@ -858,15 +860,16 @@ end
 -- duplicator.Paste's creation step for one entity. Returns the entity or nil.
 local function createOne(owner, entityDef)
     entityDef = table.Copy(entityDef) -- CreateEntityFromTable changes the table it is given
-    local e
-    if not ProtectedCall(function() e = duplicator.CreateEntityFromTable(owner, entityDef) end) then return nil end
-    if not IsValid(e) then return nil end
-    if e.RestoreNetworkVars then e:RestoreNetworkVars(entityDef.DT) end
-    if e.OnDuplicated then e:OnDuplicated(entityDef) end
-    e.BoneMods = table.Copy(entityDef.BoneMods)
-    e.EntityMods = table.Copy(entityDef.EntityMods)
-    e.PhysicsObjects = table.Copy(entityDef.PhysicsObjects)
-    return e
+    local duplicated
+    if not ProtectedCall(function() duplicated = duplicator.CreateEntityFromTable(owner,
+        entityDef) end) then return nil end
+    if not IsValid(duplicated) then return nil end
+    if duplicated.RestoreNetworkVars then duplicated:RestoreNetworkVars(entityDef.DT) end
+    if duplicated.OnDuplicated then duplicated:OnDuplicated(entityDef) end
+    duplicated.BoneMods = table.Copy(entityDef.BoneMods)
+    duplicated.EntityMods = table.Copy(entityDef.EntityMods)
+    duplicated.PhysicsObjects = table.Copy(entityDef.PhysicsObjects)
+    return duplicated
 end
 
 local function holdStill(ent)
@@ -902,7 +905,7 @@ function Snapshot.RestoreBatched(snap, ply, opts, ctx, onDone)
     local resume = ctx:async(opts.kind or "objects")
     local owner = st.limits and ply or nil
     local indexes = table.GetKeys(st.paste)
-    table.sort(indexes, function(a, b) return (tonumber(a) or 0) < (tonumber(b) or 0) end)
+    table.sort(indexes, function(left, right) return (tonumber(left) or 0) < (tonumber(right) or 0) end)
     local created, at, ticks = {}, 1, 0
     duplicator.SetLocalPos(vector_origin)
     duplicator.SetLocalAng(angle_zero)
@@ -934,7 +937,8 @@ function Snapshot.RestoreBatched(snap, ply, opts, ctx, onDone)
         for _, index in ipairs(indexes) do
             if IsValid(created[index]) then made[#made + 1] = index end
         end
-        for _, c in pairs(revive(snap.Constraints or {}, 0)) do constraints[#constraints + 1] = c end
+        for _, constraintData in pairs(revive(snap.Constraints or {},
+            0)) do constraints[#constraints + 1] = constraintData end
         inBatches(made, function(index)
             local ent = created[index]
             if not IsValid(ent) then return end
@@ -942,8 +946,8 @@ function Snapshot.RestoreBatched(snap, ply, opts, ctx, onDone)
             duplicator.ApplyBoneModifiers(owner, ent)
             if ent.PostEntityPaste then ent:PostEntityPaste(owner or NULL, ent, created) end
         end, function()
-            inBatches(constraints, function(c)
-                duplicator.CreateConstraintFromTable(c, created, owner)
+            inBatches(constraints, function(constraintData)
+                duplicator.CreateConstraintFromTable(constraintData, created, owner)
             end, function()
                 inBatches(made, function(index)
                     if IsValid(created[index]) then letGo(created[index], st.paste[index]) end
@@ -968,13 +972,13 @@ function Snapshot.RestoreBatched(snap, ply, opts, ctx, onDone)
             if not index then break end
             at = at + 1
             local entityDef = st.paste[index]
-            local e = createOne(owner, entityDef)
+            local restoredEnt = createOne(owner, entityDef)
             -- Some factories create nothing without a player (Glide), as in pasteAll.
-            if not e and not st.limits and IsValid(ply) then e = createOne(ply, entityDef) end
-            if e then
-                holdStill(e)
-                e.RareloadID = Snapshot.DefID(entityDef)
-                created[index] = e
+            if not restoredEnt and not st.limits and IsValid(ply) then restoredEnt = createOne(ply, entityDef) end
+            if restoredEnt then
+                holdStill(restoredEnt)
+                restoredEnt.RareloadID = Snapshot.DefID(entityDef)
+                created[index] = restoredEnt
             end
         end
         if indexes[at] and ctx:isCurrent() then
@@ -1023,23 +1027,24 @@ function Snapshot.Report(ctx, label, report, keepMoving)
     if (report.removed or 0) > 0 then head = head .. ", " .. report.removed .. " removed (exact restore)" end
     if #report.skipped > 0 then
         local byReason, order = {}, {}
-        for _, s in ipairs(report.skipped) do
-            if not byReason[s.reason] then
-                byReason[s.reason] = { n = 0, names = {}, seen = {}, unique = 0 }
-                order[#order + 1] = s.reason
+        for _, skip in ipairs(report.skipped) do
+            if not byReason[skip.reason] then
+                byReason[skip.reason] = { n = 0, names = {}, seen = {}, unique = 0 }
+                order[#order + 1] = skip.reason
             end
-            local r = byReason[s.reason]
-            r.n = r.n + 1
-            if not r.seen[s.what] then
-                r.seen[s.what], r.unique = true, r.unique + 1
-                if #r.names < 3 then r.names[#r.names + 1] = string.GetFileFromFilename(s.what) end
+            local group = byReason[skip.reason]
+            group.n = group.n + 1
+            if not group.seen[skip.what] then
+                group.seen[skip.what], group.unique = true, group.unique + 1
+                if #group.names < 3 then group.names[#group.names + 1] = string.GetFileFromFilename(skip.what) end
             end
         end
         local parts = { head }
         for _, reason in ipairs(order) do
-            local r = byReason[reason]
-            parts[#parts + 1] = Snapshot.SKIP_REASONS[reason] .. " (" .. r.n .. "): " .. table.concat(r.names, ", ")
-                .. (r.unique > #r.names and ", …" or "")
+            local group = byReason[reason]
+            parts[#parts + 1] = Snapshot.SKIP_REASONS[reason] .. " (" .. group.n .. "): " .. table.concat(group.names,
+                ", ")
+                .. (group.unique > #group.names and ", …" or "")
         end
         ctx:result("warn", label, table.concat(parts, " · "))
     elseif (report.reset or 0) > 0 or (report.removed or 0) > 0 then
@@ -1060,7 +1065,7 @@ function Snapshot.Summary(snap, noun)
         total = total + 1
     end
     local classes = table.GetKeys(counts)
-    table.sort(classes, function(a, b) return counts[a] > counts[b] end)
+    table.sort(classes, function(left, right) return counts[left] > counts[right] end)
     local parts = {}
     for i = 1, math.min(3, #classes) do
         parts[i] = classes[i] .. (counts[classes[i]] > 1 and " x" .. counts[classes[i]] or "")

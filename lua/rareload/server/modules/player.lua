@@ -2,7 +2,7 @@
 
 local Util = RARELOAD.Util
 
-local function formatCoord(v) return string.format("%.0f", v) end
+local function formatCoord(value) return string.format("%.0f", value) end
 
 RARELOAD.Module({
     id = "transform",
@@ -149,8 +149,8 @@ RARELOAD.Module({
 
     summary = function(saved)
         local on = {}
-        for _, k in ipairs(RARELOAD.PLAYER_STATES) do
-            if saved[k] then on[#on + 1] = k end
+        for _, stateName in ipairs(RARELOAD.PLAYER_STATES) do
+            if saved[stateName] then on[#on + 1] = stateName end
         end
         return #on > 0 and table.concat(on, ", ") or "none"
     end,
@@ -190,7 +190,7 @@ RARELOAD.Module({
     save = function(ply)
         local bodygroups = {}
         for i = 0, ply:GetNumBodyGroups() - 1 do bodygroups[#bodygroups + 1] = ply:GetBodygroup(i) end
-        local c = ply:GetColor()
+        local color = ply:GetColor()
         return {
             model = ply:GetModel(),
             skin = ply:GetSkin(),
@@ -198,7 +198,7 @@ RARELOAD.Module({
             playerColor = Util.Vec(ply:GetPlayerColor()),
             weaponColor = Util.Vec(ply:GetWeaponColor()),
             material = ply:GetMaterial(),
-            color = { c.r, c.g, c.b, c.a },
+            color = { color.r, color.g, color.b, color.a },
         }
     end,
 
@@ -214,8 +214,8 @@ RARELOAD.Module({
         if pc then ply:SetPlayerColor(pc) end
         if wc then ply:SetWeaponColor(wc) end
         ply:SetMaterial(saved.material or "")
-        local c = saved.color
-        if istable(c) then ply:SetColor(Color(c[1], c[2], c[3], c[4])) end
+        local color = saved.color
+        if istable(color) then ply:SetColor(Color(color[1], color[2], color[3], color[4])) end
     end,
 
     summary = function(saved) return string.GetFileFromFilename(saved.model or "?") end,
@@ -226,7 +226,7 @@ RARELOAD.Module({
 -- when they differ from what the player has now, so a player who was never changed gets no warning.
 local BODY_PRIV = "rareload_restore_privileged_body"
 
-local function round(v) return isnumber(v) and math.Round(v, 2) or nil end
+local function round(value) return isnumber(value) and math.Round(value, 2) or nil end
 
 -- Built-in Player methods (all present in GMod, checked in game for players and bots).
 local function get(ply, method) return ply[method](ply) end
@@ -277,7 +277,7 @@ RARELOAD.Module({
     save = function(ply)
         local data = {}
         for _, group in ipairs(BODY_GROUPS) do
-            for _, f in ipairs(group.fields) do data[f[1]] = round(get(ply, f[2])) end
+            for _, field in ipairs(group.fields) do data[field[1]] = round(get(ply, field[2])) end
         end
         data.view, data.viewDucked = Util.Vec(ply:GetViewOffset()), Util.Vec(ply:GetViewOffsetDucked())
         data.hull, data.hullDuck = hullOf(ply:GetHull()), hullOf(ply:GetHullDuck())
@@ -294,8 +294,8 @@ RARELOAD.Module({
     restore = function(ply, saved, ctx)
         for _, group in ipairs(BODY_GROUPS) do
             local changed = false
-            for _, f in ipairs(group.fields) do
-                changed = changed or differs(saved[f[1]], get(ply, f[2]))
+            for _, field in ipairs(group.fields) do
+                changed = changed or differs(saved[field[1]], get(ply, field[2]))
             end
             if changed then
                 local ok, why = RARELOAD.Pipeline.Allowed(ply, false, group.name, BODY_PRIV, ctx.reason)
@@ -304,8 +304,8 @@ RARELOAD.Module({
                 elseif group.name == "size" then
                     setSize(ply, saved)
                 else
-                    for _, f in ipairs(group.fields) do
-                        if isnumber(saved[f[1]]) then ply[f[3]](ply, saved[f[1]]) end
+                    for _, field in ipairs(group.fields) do
+                        if isnumber(saved[field[1]]) then ply[field[3]](ply, saved[field[1]]) end
                     end
                 end
             end
@@ -342,7 +342,7 @@ local function wornOutfits(ply)
             out[#out + 1] = part
         end
     end
-    table.sort(out, function(a, b) return tostring(a.self.UniqueID) < tostring(b.self.UniqueID) end)
+    table.sort(out, function(left, right) return tostring(left.self.UniqueID) < tostring(right.self.UniqueID) end)
     return out
 end
 

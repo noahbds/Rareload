@@ -26,17 +26,17 @@ local function emptyInventory() return { weapons = {}, ammo = { reserve = {}, cl
 -- The rail ------------------------------------------------------------------------------------------
 
 local function railButton(parent, key, isSelected, onClick)
-    local b = vgui.Create("DButton", parent)
-    b:SetText("")
-    b:Dock(TOP)
-    b:DockMargin(0, 0, sc(4), sc(6))
-    b:SetTall(sc(54))
-    b.Paint = function(self, w, h)
+    local button = vgui.Create("DButton", parent)
+    button:SetText("")
+    button:Dock(TOP)
+    button:DockMargin(0, 0, sc(4), sc(6))
+    button:SetTall(sc(54))
+    button.Paint = function(self, width, height)
         local selected = isSelected(key)
         self.anim = Lerp(FrameTime() * 12, self.anim or 0, (self:IsHovered() or selected) and 1 or 0)
-        draw.RoundedBox(sc(9), 0, 0, w, h,
+        draw.RoundedBox(sc(9), 0, 0, width, height,
             UI.Mix(C.surface, ColorAlpha(C.accent, 255), selected and 0.18 or self.anim * 0.08))
-        if selected then draw.RoundedBox(sc(3), 0, sc(9), sc(3), h - sc(18), C.accent) end
+        if selected then draw.RoundedBox(sc(3), 0, sc(9), sc(3), height - sc(18), C.accent) end
 
         local pad, isz = sc(12), UI.IconSize(sc(16))
         local title, sub, icon, subCol
@@ -51,21 +51,21 @@ local function railButton(parent, key, isSelected, onClick)
         else
             local row = State.Row(key) or { info = {} }
             title, icon = L("save_no", key), row.active and "flag_green" or "disk"
-            local n = row.info and row.info.weapons
+            local weaponCount = row.info and row.info.weapons
             sub = (row.time and UI.TimeAgo(row.time) or "") .. "  ·  "
-                .. (n and L("inventory.weapons_count", n) or L("ui.not_saved"))
+                .. (weaponCount and L("inventory.weapons_count", weaponCount) or L("ui.not_saved"))
             subCol = C.text3
         end
         UI.DrawIcon(icon, pad, sc(10), isz)
-        draw.SimpleText(UI.Clip(title, "Rareload.BodyB", w - pad * 2 - isz - sc(8)), "Rareload.BodyB",
+        draw.SimpleText(UI.Clip(title, "Rareload.BodyB", width - pad * 2 - isz - sc(8)), "Rareload.BodyB",
             pad + isz + sc(8), sc(10), key == GLOBAL and C.accentHi or C.text)
-        draw.SimpleText(UI.Clip(sub, "Rareload.Small", w - pad * 2), "Rareload.Small", pad, sc(32), subCol)
+        draw.SimpleText(UI.Clip(sub, "Rareload.Small", width - pad * 2), "Rareload.Small", pad, sc(32), subCol)
     end
-    b.DoClick = function()
+    button.DoClick = function()
         surface.PlaySound("ui/buttonrollover.wav")
         onClick(key)
     end
-    return b
+    return button
 end
 
 -- The contents list ---------------------------------------------------------------------------------
@@ -79,9 +79,9 @@ local function contentLines(inv)
     lines[#lines + 1] = { title = L("inventory.section_weapons", #(inv.weapons or {})) }
     if #(inv.weapons or {}) == 0 then lines[#lines + 1] = { empty = L("inventory.no_weapons") } end
     local classes = table.Copy(inv.weapons or {})
-    table.sort(classes, function(a, b)
-        if (a == inv.activeWeapon) ~= (b == inv.activeWeapon) then return a == inv.activeWeapon end
-        return string.lower(UI.WeaponName(a)) < string.lower(UI.WeaponName(b))
+    table.sort(classes, function(left, right)
+        if (left == inv.activeWeapon) ~= (right == inv.activeWeapon) then return left == inv.activeWeapon end
+        return string.lower(UI.WeaponName(left)) < string.lower(UI.WeaponName(right))
     end)
     for _, class in ipairs(classes) do
         local clip = clips[class]
@@ -132,40 +132,44 @@ local function buildContents(parent)
     canvas.lines = {}
     function canvas:SetLines(lines)
         self.lines = lines
-        local h = 0
-        for _, line in ipairs(lines) do h = h + sc(line.title and (line.gap and 40 or 26) or ROW) end
-        self:SetTall(h + sc(4))
+        local totalHeight = 0
+        for _, line in ipairs(lines) do totalHeight = totalHeight + sc(line.title and (line.gap and 40 or 26)
+            or ROW) end
+        self:SetTall(totalHeight + sc(4))
     end
 
-    canvas.Paint = function(self, w)
-        local y = 0
+    canvas.Paint = function(self, width)
+        local rowY = 0
         for _, line in ipairs(self.lines) do
             if line.title then
                 local th = sc(line.gap and 40 or 26)
-                draw.SimpleText(string.upper(line.title), "Rareload.Tiny", sc(4), y + th - sc(10), C.text3,
+                draw.SimpleText(string.upper(line.title), "Rareload.Tiny", sc(4), rowY + th - sc(10), C.text3,
                     TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
-                y = y + th
+                rowY = rowY + th
             elseif line.empty then
-                draw.SimpleText(line.empty, "Rareload.Small", sc(12), y + sc(ROW) / 2, C.textOff, TEXT_ALIGN_LEFT,
+                draw.SimpleText(line.empty, "Rareload.Small", sc(12), rowY + sc(ROW) / 2, C.textOff, TEXT_ALIGN_LEFT,
                     TEXT_ALIGN_CENTER)
-                y = y + sc(ROW)
+                rowY = rowY + sc(ROW)
             else
-                local h = sc(ROW) - sc(3)
-                draw.RoundedBox(sc(6), 0, y, w - sc(6), h, line.held and ColorAlpha(C.accent, 40) or C.surface)
+                local rowHeight = sc(ROW) - sc(3)
+                draw.RoundedBox(sc(6), 0, rowY, width - sc(6), rowHeight,
+                    line.held and ColorAlpha(C.accent, 40) or C.surface)
                 local isz = UI.IconSize(sc(16))
-                UI.DrawIcon(line.icon, sc(8), y + (h - isz) / 2, isz)
-                local x = sc(8) + isz + sc(8)
+                UI.DrawIcon(line.icon, sc(8), rowY + (rowHeight - isz) / 2, isz)
+                local textX = sc(8) + isz + sc(8)
                 surface.SetFont("Rareload.BodyB")
-                local nw = math.min(surface.GetTextSize(line.name), w * 0.45)
-                draw.SimpleText(UI.Clip(line.name, "Rareload.BodyB", w * 0.45), "Rareload.BodyB", x, y + h / 2,
+                local nw = math.min(surface.GetTextSize(line.name), width * 0.45)
+                draw.SimpleText(UI.Clip(line.name, "Rareload.BodyB", width * 0.45), "Rareload.BodyB", textX,
+                    rowY + rowHeight / 2,
                     line.missing and C.textOff or C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
                 local sub = line.class ~= line.name and line.class or ""
                 if line.missing then sub = sub .. (sub ~= "" and "  ·  " or "") .. L("inventory.missing") end
-                draw.SimpleText(UI.Clip(sub, "Rareload.Small", w * 0.3), "Rareload.Small", x + nw + sc(10), y + h / 2,
+                draw.SimpleText(UI.Clip(sub, "Rareload.Small", width * 0.3), "Rareload.Small", textX + nw + sc(10),
+                    rowY + rowHeight / 2,
                     line.missing and C.warn or C.text3, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-                local rx = w - sc(18)
+                local rx = width - sc(18)
                 if line.right then
-                    draw.SimpleText(line.right, "Rareload.Small", rx, y + h / 2, C.text2, TEXT_ALIGN_RIGHT,
+                    draw.SimpleText(line.right, "Rareload.Small", rx, rowY + rowHeight / 2, C.text2, TEXT_ALIGN_RIGHT,
                         TEXT_ALIGN_CENTER)
                     surface.SetFont("Rareload.Small")
                     rx = rx - surface.GetTextSize(line.right) - sc(10)
@@ -173,9 +177,10 @@ local function buildContents(parent)
                 if line.held then
                     surface.SetFont("Rareload.Tiny")
                     local _, th = surface.GetTextSize("X")
-                    UI.DrawBadge(L("inventory.held"), rx, y + math.floor((h - th - sc(6)) / 2), C.accent, nil, true)
+                    UI.DrawBadge(L("inventory.held"), rx, rowY + math.floor((rowHeight - th - sc(6)) / 2), C.accent,
+                        nil, true)
                 end
-                y = y + sc(ROW)
+                rowY = rowY + sc(ROW)
             end
         end
     end
@@ -204,9 +209,9 @@ function Manager.Open(key)
     side:Dock(LEFT)
     side:SetWide(sc(290))
     side:DockPadding(0, 0, sc(12), 0)
-    side.Paint = function(_, w, h)
+    side.Paint = function(_, width, height)
         surface.SetDrawColor(C.line)
-        surface.DrawLine(w - 1, 0, w - 1, h)
+        surface.DrawLine(width - 1, 0, width - 1, height)
     end
     local rail = UI.Scroll(side)
     rail:Dock(FILL)
@@ -217,7 +222,7 @@ function Manager.Open(key)
     detail:DockMargin(sc(14), 0, 0, 0)
     detail.Paint = function() end
 
-    local header = UI.Card(detail, function(self, w, h)
+    local header = UI.Card(detail, function(self, width, height)
         local data = State.inventory[selected]
         draw.SimpleText(targetName(selected), "Rareload.H1", sc(16), sc(12), C.accentHi)
         local status, col
@@ -234,7 +239,7 @@ function Manager.Open(key)
             col = C.text2
             if data and data.globalOn then status, col = L("inventory.replaced_by_global"), C.warn end
         end
-        draw.SimpleText(UI.Clip(status, "Rareload.Small", w - sc(32)), "Rareload.Small", sc(16), sc(46), col)
+        draw.SimpleText(UI.Clip(status, "Rareload.Small", width - sc(32)), "Rareload.Small", sc(16), sc(46), col)
     end, C.bgDark)
     header:Dock(TOP)
     header:SetTall(sc(74))
@@ -245,7 +250,7 @@ function Manager.Open(key)
         local inv = data and data.inventory
         local reserve = inv and inv.ammo and inv.ammo.reserve or {}
         local rounds = 0
-        for _, n in pairs(reserve) do rounds = rounds + (tonumber(n) or 0) end
+        for _, count in pairs(reserve) do rounds = rounds + (tonumber(count) or 0) end
         return {
             { L("field.weapons"),        inv and #(inv.weapons or {}),         C.text },
             { L("inventory.ammo_types"), inv and table.Count(reserve),         C.info },
@@ -276,7 +281,7 @@ function Manager.Open(key)
 
     local list = vgui.Create("DPanel", detail)
     list:Dock(FILL)
-    list.Paint = function(_, w, h) draw.RoundedBox(sc(10), 0, 0, w, h, C.bgDark) end
+    list.Paint = function(_, width, height) draw.RoundedBox(sc(10), 0, 0, width, height, C.bgDark) end
     list:DockPadding(sc(10), sc(4), sc(4), sc(8))
     local scroll, canvas = buildContents(list)
     scroll:Dock(FILL)
@@ -330,10 +335,11 @@ function Manager.Open(key)
         local data = current()
         local target = selected
         local items = {}
-        for i, v in ipairs(data and data.versions or {}) do
+        for i, version in ipairs(data and data.versions or {}) do
             items[#items + 1] = {
-                label = L("inventory.version", UI.Date(v.time, "long"), L("inventory.reason." .. tostring(v.reason)),
-                    v.weapons or 0),
+                label = L("inventory.version", UI.Date(version.time, "long"),
+                    L("inventory.reason." .. tostring(version.reason)),
+                    version.weapons or 0),
                 icon = "arrow_undo",
                 fn = function()
                     UI.Confirm(L("inventory.rollback"), L("inventory.rollback_confirm", targetName(target)), function()
@@ -373,7 +379,7 @@ function Manager.Open(key)
 
     local buttons = { edit, copyJson, give, copyFrom, history }
     local function sizeButtons()
-        for _, b in ipairs(buttons) do b:SizeToLabel(24) end
+        for _, button in ipairs(buttons) do button:SizeToLabel(24) end
     end
 
     update = function()
@@ -388,43 +394,43 @@ function Manager.Open(key)
             empty:SetEmpty("cross", L("inventory.gone"))
         end
         canvas:SetLines(contentLines(inv or emptyInventory()))
-        for _, b in ipairs(buttons) do b:SetEnabled(exists == true) end
+        for _, button in ipairs(buttons) do button:SetEnabled(exists == true) end
         local versions = exists and #data.versions or 0
         history:SetLabel(L("inventory.history") .. (versions > 0 and "  (" .. versions .. ")" or ""))
         sizeButtons()
         detail:InvalidateLayout()
     end
 
-    local function select(k)
-        selected = k
+    local function select(targetKey)
+        selected = targetKey
         update()
-        request("inventory.get", { save = saveOf(k) })
+        request("inventory.get", { save = saveOf(targetKey) })
     end
 
     refresh = function()
         rail:Clear()
-        local isSelected = function(k) return k == selected end
+        local isSelected = function(targetKey) return targetKey == selected end
         railButton(rail, GLOBAL, isSelected, select)
         local title = UI.Label(rail, string.upper(L("inventory.saves_here")), "Rareload.Tiny", C.text3)
         title:Dock(TOP)
         title:DockMargin(sc(4), sc(8), 0, sc(6))
         local rows = table.Copy(State.history.rows)
-        table.sort(rows, function(a, b) return a.time > b.time end)
+        table.sort(rows, function(left, right) return left.time > right.time end)
         for _, row in ipairs(rows) do railButton(rail, row.id, isSelected, select) end
         if #rows == 0 then
-            local e = UI.Label(rail, L("timeline.empty"), "Rareload.Small", C.textOff)
-            e:Dock(TOP)
-            e:DockMargin(sc(4), 0, 0, 0)
+            local emptyLabel = UI.Label(rail, L("timeline.empty"), "Rareload.Small", C.textOff)
+            emptyLabel:Dock(TOP)
+            emptyLabel:DockMargin(sc(4), 0, 0, 0)
         end
         -- The selected save was deleted: back to the global inventory.
         if selected ~= GLOBAL and not State.Row(selected) and State.history.loaded then select(GLOBAL) end
     end
 
-    hook.Add("RareloadStateChanged", frame, function(_, what, k)
+    hook.Add("RareloadStateChanged", frame, function(_, what, changedKey)
         if what == "history" then
             refresh()
             if selected ~= GLOBAL then request("inventory.get", { save = selected }) end
-        elseif what == "inventory" and k == selected then
+        elseif what == "inventory" and changedKey == selected then
             update()
         end
     end)

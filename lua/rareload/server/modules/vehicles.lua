@@ -1,4 +1,5 @@
--- Vehicles: the player's vehicles with their runtime state, and the seat they were in. After a paste, one Tick-driven scheduler takes each vehicle through:
+-- Vehicles: the player's vehicles with their runtime state, and the seat they were in. After a paste, one Tick-driven
+-- scheduler takes each vehicle through:
 --   WAIT_READY (the adapter's readiness probe) → APPLY (runtime state) → SETTLE (physics, only for
 --   bases that don't do it themselves) → RESEAT (put the player back in their seat) → done.
 
@@ -186,16 +187,16 @@ RARELOAD.Module({
         for _, veh in ipairs(targets) do
             local adapter = Vehicles.AdapterFor(veh)
             if adapter then
-                local r = { adapter = adapter.id, parts = phantomParts(veh) }
+                local rootState = { adapter = adapter.id, parts = phantomParts(veh) }
                 if adapter.captureRoot then
-                    local ok, t = pcall(adapter.captureRoot, veh)
-                    r.root = ok and t or nil
+                    local ok, captured = pcall(adapter.captureRoot, veh)
+                    rootState.root = ok and captured or nil
                 end
                 if adapter.captureComponents then
-                    local ok, t = pcall(adapter.captureComponents, veh)
-                    r.components = ok and t or nil
+                    local ok, captured = pcall(adapter.captureComponents, veh)
+                    rootState.components = ok and captured or nil
                 end
-                snap.runtime[Snapshot.ID(veh)] = r
+                snap.runtime[Snapshot.ID(veh)] = rootState
             end
             if IsValid(seat) and (seat == veh or Snapshot.RootVehicleOf(seat) == veh) then
                 snap.seat = { vehicle = Snapshot.ID(veh), seat = Vehicles.Seats.Describe(veh, seat) }

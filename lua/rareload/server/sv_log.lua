@@ -35,27 +35,28 @@ RARELOAD.LogRing = RARELOAD.LogRing or { events = {}, next = 1, counts = { error
 local ring = RARELOAD.LogRing
 
 -- Log file: one line per event, a file per day, old ones removed at startup.
-local function toFile(e)
+local function toFile(event)
     if not RARELOAD.Get(nil, "logToFile") then return end
-    RARELOAD.Store.AppendLog(os.date("%Y-%m-%d", e.t), string.format("%s %-7s %-10s %s%s",
-        os.date("%H:%M:%S", e.t), e.level, e.category, e.sid and ("[" .. e.sid .. "] ") or "", e.text))
+    RARELOAD.Store.AppendLog(os.date("%Y-%m-%d", event.t), string.format("%s %-7s %-10s %s%s",
+        os.date("%H:%M:%S", event.t), event.level, event.category, event.sid and ("[" .. event.sid .. "] ") or "",
+            event.text))
 end
 
 local function remember(level, category, text, ply)
-    local e = { t = os.time(), level = level, category = category, text = text }
-    if IsValid(ply) and ply:IsPlayer() then e.nick, e.sid = ply:Nick(), ply:SteamID64() or "?" end
-    ring.events[ring.next] = e
+    local event = { t = os.time(), level = level, category = category, text = text }
+    if IsValid(ply) and ply:IsPlayer() then event.nick, event.sid = ply:Nick(), ply:SteamID64() or "?" end
+    ring.events[ring.next] = event
     ring.next = ring.next % RING_SIZE + 1
     if ring.counts[level] then ring.counts[level] = ring.counts[level] + 1 end
-    toFile(e)
-    return e
+    toFile(event)
+    return event
 end
 
 local function echo(level, category, text)
     MsgC(COLORS[level], "[Rareload:" .. category .. "] ", color_white, text .. "\n")
 end
 
--- The `n` newest events matching `filter` (nil for all), oldest first. A filter word is a level
+-- The `count` newest events matching `filter` (nil for all), oldest first. A filter word is a level
 -- (errors, warnings, activity, debug), a category, or text found in the event or the player's name.
 local FILTER_LEVELS = {
     errors = "error",
@@ -69,21 +70,22 @@ local FILTER_LEVELS = {
     verbose = "verbose"
 }
 
-function RARELOAD.LogRecent(n, filter)
+function RARELOAD.LogRecent(count, filter)
     local want, words = nil, {}
     for word in string.gmatch(string.lower(filter or ""), "%S+") do
         if FILTER_LEVELS[word] then want = FILTER_LEVELS[word] else words[#words + 1] = word end
     end
     local out = {}
     for i = 1, RING_SIZE do
-        local e = ring.events[(ring.next - 1 - i) % RING_SIZE + 1]
-        if not e or #out >= n then break end
-        local ok = not want or e.level == want or (want == "warn" and e.level == "error")
+        local event = ring.events[(ring.next - 1 - i) % RING_SIZE + 1]
+        if not event or #out >= count then break end
+        local ok = not want or event.level == want or (want == "warn" and event.level == "error")
         for _, word in ipairs(words) do
-            local hay = string.lower(e.category .. " " .. e.text .. " " .. (e.nick or "") .. " " .. (e.sid or ""))
+            local hay = string.lower(event.category .. " " .. event.text .. " " .. (event.nick or "") .. " "
+                .. (event.sid or ""))
             ok = ok and string.find(hay, word, 1, true) ~= nil
         end
-        if ok then table.insert(out, 1, e) end
+        if ok then table.insert(out, 1, event) end
     end
     return out
 end
@@ -130,8 +132,8 @@ local function contents(data)
     if not istable(data) then return nil end
     local info = RARELOAD.History.Info(data)
     local parts = {}
-    local function add(n, one, many)
-        if (tonumber(n) or 0) > 0 then parts[#parts + 1] = n .. " " .. (n == 1 and one or many) end
+    local function add(count, one, many)
+        if (tonumber(count) or 0) > 0 then parts[#parts + 1] = count .. " " .. (count == 1 and one or many) end
     end
     add(info.entities, "object", "objects")
     add(info.npcs, "NPC", "NPCs")
@@ -167,8 +169,8 @@ function Session:finish(info)
     info = info or {}
     local ms = math.Round((SysTime() - self.started) * 1000, 1)
     local warns, fails = 0, 0
-    for _, s in ipairs(self.steps) do
-        if s.status == "warn" then warns = warns + 1 elseif s.status == "fail" then fails = fails + 1 end
+    for _, step in ipairs(self.steps) do
+        if step.status == "warn" then warns = warns + 1 elseif step.status == "fail" then fails = fails + 1 end
     end
     local level = fails > 0 and "error" or warns > 0 and "warn" or info.auto and "verbose" or "info"
 
@@ -179,12 +181,12 @@ function Session:finish(info)
         echo(level, category, text)
         -- What went wrong is always shown with it; every step at the debug level.
         local all = RARELOAD.LogWants("verbose")
-        for _, s in ipairs(self.steps) do
-            if all or s.status ~= "ok" then
-                local stepLevel = s.status == "fail" and "error" or s.status == "warn" and "warn" or "verbose"
-                local line = string.format("  %s %s: %s%s", MARK[stepLevel], s.title, s.detail,
-                    s.ms and string.format(" (%s ms)", s.ms) or "")
-                if s.status ~= "ok" then remember(stepLevel, category, line, self.ply) end
+        for _, step in ipairs(self.steps) do
+            if all or step.status ~= "ok" then
+                local stepLevel = step.status == "fail" and "error" or step.status == "warn" and "warn" or "verbose"
+                local line = string.format("  %s %s: %s%s", MARK[stepLevel], step.title, step.detail,
+                    step.ms and string.format(" (%s ms)", step.ms) or "")
+                if step.status ~= "ok" then remember(stepLevel, category, line, self.ply) end
                 MsgC(COLORS[stepLevel], line .. "\n")
             end
         end

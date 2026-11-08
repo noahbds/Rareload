@@ -9,7 +9,7 @@ RARELOAD.Keys = {
     { convar = "cl_rareload_key_checkpoint_go", label = "menu.key_checkpoint_go" },
 }
 
-for _, k in ipairs(RARELOAD.Keys) do
-    CreateClientConVar(k.convar, "0", true, true, "Rareload: key code for " .. k.convar .. " (0 = none)", 0,
+for _, keyDef in ipairs(RARELOAD.Keys) do
+    CreateClientConVar(keyDef.convar, "0", true, true, "Rareload: key code for " .. keyDef.convar .. " (0 = none)", 0,
         BUTTON_CODE_LAST)
 end

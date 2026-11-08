@@ -48,10 +48,10 @@ hook.Add("RareloadSaved", "Rareload.Autosave", function(ply) remember(ply) end)
 
 -- Movement and view changes are checked once a second, not every tick.
 local function checkMovement(ply)
-    local b = base[ply]
-    if not b then return remember(ply) end
-    local turned = math.abs(math.AngleDifference(ply:EyeAngles().y, b.yaw))
-    if ply:GetPos():DistToSqr(b.pos) > MOVE or turned > RARELOAD.Get(ply, "autoSaveAngleThreshold") then
+    local basePose = base[ply]
+    if not basePose then return remember(ply) end
+    local turned = math.abs(math.AngleDifference(ply:EyeAngles().y, basePose.yaw))
+    if ply:GetPos():DistToSqr(basePose.pos) > MOVE or turned > RARELOAD.Get(ply, "autoSaveAngleThreshold") then
         mark(ply, "transform", "states")
         -- Driving moves the vehicle too; without it the save would reseat the player in the vehicle
         -- where it was last saved.

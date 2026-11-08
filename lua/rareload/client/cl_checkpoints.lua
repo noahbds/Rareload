@@ -37,26 +37,27 @@ function CP.Open()
         if not IsValid(scroll) then return end
         scroll:Clear()
         if #State.checkpoints == 0 then
-            local e = UI.Empty(scroll, "flag_blue", L("checkpoint.none"), L("checkpoint.help"))
-            e:Dock(TOP)
-            e:SetTall(sc(200))
+            local empty = UI.Empty(scroll, "flag_blue", L("checkpoint.none"), L("checkpoint.help"))
+            empty:Dock(TOP)
+            empty:SetTall(sc(200))
             return
         end
-        for i, c in ipairs(State.checkpoints) do
-            local off = c.disabled == true
+        for i, checkpoint in ipairs(State.checkpoints) do
+            local off = checkpoint.disabled == true
             local row = vgui.Create("DPanel", scroll)
             row:Dock(TOP)
             row:SetTall(sc(46))
             row:DockMargin(0, 0, sc(4), sc(6))
-            row.Paint = function(_, w, h)
-                draw.RoundedBox(sc(8), 0, 0, w, h, C.surface)
-                UI.DrawIcon("flag_blue", sc(12), (h - sc(16)) / 2, sc(16),
+            row.Paint = function(_, width, height)
+                draw.RoundedBox(sc(8), 0, 0, width, height, C.surface)
+                UI.DrawIcon("flag_blue", sc(12), (height - sc(16)) / 2, sc(16),
                     off and ColorAlpha(color_white, 90) or color_white)
-                draw.SimpleText(UI.Clip(i .. ". " .. c.name, "Rareload.BodyB", w - sc(310)), "Rareload.BodyB", sc(38),
-                    h / 2, off and C.textOff or C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-                if c.vec then
-                    draw.SimpleText(L("inspector.units", math.Round(LocalPlayer():GetPos():Distance(c.vec))),
-                        "Rareload.Small", w - sc(260), h / 2, C.text3, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+                draw.SimpleText(UI.Clip(i .. ". " .. checkpoint.name, "Rareload.BodyB", width - sc(310)),
+                    "Rareload.BodyB", sc(38),
+                    height / 2, off and C.textOff or C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+                if checkpoint.vec then
+                    draw.SimpleText(L("inspector.units", math.Round(LocalPlayer():GetPos():Distance(checkpoint.vec))),
+                        "Rareload.Small", width - sc(260), height / 2, C.text3, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
                 end
             end
             local del = UI.Button(row, "", function() request("checkpoint.remove", { i = i }) end,
@@ -100,19 +101,20 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Checkpoints", function(dept
     if depth or sky or not shown() then return end
     local eye = EyePos()
     render.SetColorMaterial()
-    for _, c in ipairs(State.checkpoints) do
-        local dist = not c.disabled and c.vec and eye:Distance(c.vec)
-        if dist and dist < RANGE and dist > 40 then UI.DrawWorldBeam(c.vec, 80, 4, C.accent, alphaAt(dist) * 0.7) end
+    for _, checkpoint in ipairs(State.checkpoints) do
+        local dist = not checkpoint.disabled and checkpoint.vec and eye:Distance(checkpoint.vec)
+        if dist and dist < RANGE and dist > 40 then UI.DrawWorldBeam(checkpoint.vec, 80, 4, C.accent,
+            alphaAt(dist) * 0.7) end
     end
 end)
 
 hook.Add("HUDPaint", "Rareload.Checkpoints", function()
     if not shown() then return end
     local eye = EyePos()
-    for i, c in ipairs(State.checkpoints) do
-        local dist = not c.disabled and c.vec and eye:Distance(c.vec)
+    for i, checkpoint in ipairs(State.checkpoints) do
+        local dist = not checkpoint.disabled and checkpoint.vec and eye:Distance(checkpoint.vec)
         if dist and dist < RANGE and dist > 40 then
-            UI.DrawWorldTag(c.vec, 88, "flag_blue", i .. ". " .. c.name, C.text, dist, alphaAt(dist))
+            UI.DrawWorldTag(checkpoint.vec, 88, "flag_blue", i .. ". " .. checkpoint.name, C.text, dist, alphaAt(dist))
         end
     end
 end)

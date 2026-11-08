@@ -15,8 +15,8 @@ local readonly = {}
 
 local function log() return RARELOAD.Log("storage") end
 
-function Store.Clean(s)
-    return (string.gsub(string.lower(tostring(s)), "[^a-z0-9_%-]", "_"))
+function Store.Clean(text)
+    return (string.gsub(string.lower(tostring(text)), "[^a-z0-9_%-]", "_"))
 end
 
 -- Singleplayer and multiplayer saves never mix (D1, L16).
@@ -26,8 +26,8 @@ end
 
 local function decodeJson(raw)
     if not raw or raw == "" then return nil end
-    local t = util.JSONToTable(raw, true) -- ignoreLimits: big saves must load (G1)
-    return istable(t) and t or nil
+    local decoded = util.JSONToTable(raw, true) -- ignoreLimits: big saves must load (G1)
+    return istable(decoded) and decoded or nil
 end
 
 local encoded = {} -- rel -> JSON of a dirty document that was already encoded (blobs)
@@ -263,9 +263,9 @@ function Store.Overview()
     end
     local list = {}
     for _, usage in pairs(players) do list[#list + 1] = usage end
-    table.sort(maps, function(a, b) return a.bytes > b.bytes end)
-    table.sort(list, function(a, b) return a.bytes > b.bytes end)
-    table.sort(biggest, function(a, b) return a.bytes > b.bytes end)
+    table.sort(maps, function(left, right) return left.bytes > right.bytes end)
+    table.sort(list, function(left, right) return left.bytes > right.bytes end)
+    table.sort(biggest, function(left, right) return left.bytes > right.bytes end)
     for i = #biggest, 6, -1 do biggest[i] = nil end
     return { maps = maps, players = list, unusedCount = unusedCount, unusedBytes = unusedBytes, biggest = biggest }
 end
@@ -280,9 +280,9 @@ function Store.Prune(days)
             local rel = sid and dir .. "/" .. sid
             local doc = rel and Store.Load(rel)
             if doc and istable(doc.entries) then
-                local n = RARELOAD.History.PruneDoc(doc, cutoff) -- History decides which saves may go
-                if n > 0 then
-                    removed = removed + n
+                local removedHere = RARELOAD.History.PruneDoc(doc, cutoff) -- History decides which saves may go
+                if removedHere > 0 then
+                    removed = removed + removedHere
                     Store.Save(rel, doc)
                 end
             end
@@ -360,11 +360,11 @@ end
 
 -- How many players have a saves document on this map.
 function Store.PlayersWithSaves()
-    local n = 0
+    local count = 0
     for _, name in ipairs(file.Find(ROOT .. Store.MapDir() .. "/*.json", "DATA") or {}) do
-        if name:match("^%d+%.json$") then n = n + 1 end -- <SteamID64>.json
+        if name:match("^%d+%.json$") then count = count + 1 end -- <SteamID64>.json
     end
-    return n
+    return count
 end
 
 -- How many files and bytes a folder under data/rareload holds (not counting sub-folders).

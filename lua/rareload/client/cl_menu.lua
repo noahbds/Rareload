@@ -51,7 +51,7 @@ local function grouped(filter)
     local out = {}
     for _, cat in ipairs(CATEGORIES) do
         if groups[cat] then
-            table.sort(groups[cat], function(a, b) return a.order < b.order end)
+            table.sort(groups[cat], function(left, right) return left.order < right.order end)
             out[#out + 1] = { name = cat, defs = groups[cat] }
         end
     end
@@ -62,16 +62,16 @@ end
 
 local wrapCache = {}
 
--- `text` broken into lines no wider than `w`.
-local function wrap(text, fnt, w)
-    w = math.max(math.floor(w), 40)
-    local key = fnt .. "\1" .. w .. "\1" .. text
+-- `text` broken into lines no wider than `maxWidth`.
+local function wrap(text, fnt, maxWidth)
+    maxWidth = math.max(math.floor(maxWidth), 40)
+    local key = fnt .. "\1" .. maxWidth .. "\1" .. text
     if wrapCache[key] then return wrapCache[key] end
     surface.SetFont(fnt)
     local lines, cur = {}, ""
     for word in string.gmatch(text, "%S+") do
         local try = cur == "" and word or cur .. " " .. word
-        if cur ~= "" and surface.GetTextSize(try) > w then
+        if cur ~= "" and surface.GetTextSize(try) > maxWidth then
             lines[#lines + 1] = cur
             cur = word
         else
@@ -88,21 +88,22 @@ end
 -- The icon in a row's left column: a lock (the server decides), or a reset arrow when the player
 -- changed the setting. opts.lock = { locked, toggle } makes the lock a switch (server page).
 local function gutterIcon(row)
-    local o = row.opts
-    if o.lock then return o.lock.locked and "lock" or "lock_open", o.lock.locked and 255 or 90 end
-    if o.locked then return "lock", 255 end
-    if o.changed then return "arrow_undo", row.gutterHover and 255 or 170 end
+    local rowOptions = row.opts
+    if rowOptions.lock then return rowOptions.lock.locked and "lock" or "lock_open",
+        rowOptions.lock.locked and 255 or 90 end
+    if rowOptions.locked then return "lock", 255 end
+    if rowOptions.changed then return "arrow_undo", row.gutterHover and 255 or 170 end
 end
 
 local function onGutterClick(row)
-    local o = row.opts
-    if o.lock then
-        o.lock.locked = not o.lock.locked
-        o.lock.toggle(o.lock.locked)
+    local rowOptions = row.opts
+    if rowOptions.lock then
+        rowOptions.lock.locked = not rowOptions.lock.locked
+        rowOptions.lock.toggle(rowOptions.lock.locked)
         return true
     end
-    if o.changed and o.reset then
-        o.reset()
+    if rowOptions.changed and rowOptions.reset then
+        rowOptions.reset()
         return true
     end
 end
@@ -118,17 +119,17 @@ local function newRow(parent, label, opts, rightW, belowH)
     row.opts, row.hover, row.lines, row.labelH = opts, 0, { label }, LINE
     if opts.tooltip then row:SetTooltip(opts.tooltip) end
 
-    row.PerformLayout = function(self, w)
-        self.lines = wrap(label, "Rareload.Menu.Row", w - GUTTER - rightW - PAD - (rightW > 0 and 8 or 0))
+    row.PerformLayout = function(self, width)
+        self.lines = wrap(label, "Rareload.Menu.Row", width - GUTTER - rightW - PAD - (rightW > 0 and 8 or 0))
         self.labelH = #self.lines * LINE
-        local h = self.labelH + 12 + belowH
-        if self:GetTall() ~= h then self:SetTall(h) end
-        if self.LayoutBelow then self:LayoutBelow(w, h) end
+        local rowHeight = self.labelH + 12 + belowH
+        if self:GetTall() ~= rowHeight then self:SetTall(rowHeight) end
+        if self.LayoutBelow then self:LayoutBelow(width, rowHeight) end
     end
 
-    row.PaintBase = function(self, w, h)
+    row.PaintBase = function(self, width, height)
         self.hover = anim(self.hover, self:IsHovered() and not opts.disabled and 1 or 0)
-        if self.hover > 0.01 then draw.RoundedBox(4, 0, 0, w, h, ColorAlpha(HOVER, 8 * self.hover)) end
+        if self.hover > 0.01 then draw.RoundedBox(4, 0, 0, width, height, ColorAlpha(HOVER, 8 * self.hover)) end
         local icon, alpha = gutterIcon(self)
         if icon then UI.DrawIcon(icon, 3, 6 + math.floor((LINE - 16) / 2), 16, ColorAlpha(color_white, alpha)) end
         for i, line in ipairs(self.lines) do
@@ -170,13 +171,13 @@ local function newRow(parent, label, opts, rightW, belowH)
         if code == MOUSE_LEFT and self.Release then return self:Release() end
         if code ~= MOUSE_RIGHT or opts.disabled and not opts.changed then return end
         if not (opts.reset and opts.changed) and not opts.menu then return end
-        local m = DermaMenu()
+        local menu = DermaMenu()
         if opts.reset and opts.changed then
-            m:AddOption(L("menu.use_server_value"), opts.reset):SetIcon(
+            menu:AddOption(L("menu.use_server_value"), opts.reset):SetIcon(
                 "icon16/arrow_undo.png")
         end
-        if opts.menu then opts.menu(m) end
-        m:Open()
+        if opts.menu then opts.menu(menu) end
+        menu:Open()
     end
     return row
 end
@@ -184,11 +185,11 @@ end
 local function toggle(parent, label, value, onChange, opts)
     local row = newRow(parent, label, opts, 40, 0)
     row.value, row.knob = value, value and 1 or 0
-    row.Paint = function(self, w, h)
-        self:PaintBase(w, h)
+    row.Paint = function(self, width, height)
+        self:PaintBase(width, height)
         self.knob = anim(self.knob, self.value and 1 or 0)
         local sw, sh = 36, 18
-        local sx, sy = w - sw - PAD, math.floor(6 + self.labelH / 2 - sh / 2)
+        local sx, sy = width - sw - PAD, math.floor(6 + self.labelH / 2 - sh / 2)
         UI.DrawSwitch(sx, sy, sw, sh, self.knob, UI.Mix(SWITCH_OFF, opts.disabled and SWITCH_OFF or ACCENT, self.knob),
             opts.disabled and TEXT2 or color_white)
     end
@@ -201,20 +202,21 @@ local function toggle(parent, label, value, onChange, opts)
 end
 
 local function slider(parent, label, value, min, max, decimals, suffix, onChange, opts)
-    local function text(v) return string.format("%." .. decimals .. "f", v) .. (suffix or "") end
+    local function text(number) return string.format("%." .. decimals .. "f", number) .. (suffix or "") end
     surface.SetFont("Rareload.Menu.Value")
     local valueW = math.max(surface.GetTextSize(text(min)), surface.GetTextSize(text(max))) + 4
     local row = newRow(parent, label, opts, valueW, 18)
     row.value = value
-    row.Paint = function(self, w, h)
-        self:PaintBase(w, h)
-        draw.SimpleText(text(self.value), "Rareload.Menu.Value", w - PAD, 6, opts.disabled and MUTED or ACCENT,
+    row.Paint = function(self, width, height)
+        self:PaintBase(width, height)
+        draw.SimpleText(text(self.value), "Rareload.Menu.Value", width - PAD, 6, opts.disabled and MUTED or ACCENT,
             TEXT_ALIGN_RIGHT)
-        local tx, ty, tw = GUTTER, h - 14, w - GUTTER - PAD
-        local f = math.Clamp((self.value - min) / (max - min), 0, 1)
+        local tx, ty, tw = GUTTER, height - 14, width - GUTTER - PAD
+        local fraction = math.Clamp((self.value - min) / (max - min), 0, 1)
         draw.RoundedBox(3, tx, ty, tw, 6, TRACK)
-        if f > 0 then draw.RoundedBox(3, tx, ty, math.max(tw * f, 6), 6, opts.disabled and MUTED or ACCENT) end
-        draw.RoundedBox(7, math.floor(tx + tw * f - 7), ty - 4, 14, 14, opts.disabled and TEXT2 or color_white)
+        if fraction > 0 then draw.RoundedBox(3, tx, ty, math.max(tw * fraction, 6), 6,
+            opts.disabled and MUTED or ACCENT) end
+        draw.RoundedBox(7, math.floor(tx + tw * fraction - 7), ty - 4, 14, 14, opts.disabled and TEXT2 or color_white)
     end
     row.Press = function(self)
         self.dragging = true
@@ -231,22 +233,24 @@ local function slider(parent, label, value, min, max, decimals, suffix, onChange
     row.Think = function(self)
         think(self)
         if not self.dragging then return end
-        local x = self:CursorPos()
-        self.value = math.Round(min + math.Clamp((x - GUTTER) / (self:GetWide() - GUTTER - PAD), 0, 1) * (max - min),
+        local cursorX = self:CursorPos()
+        self.value = math.Round(min + math.Clamp((cursorX - GUTTER) / (self:GetWide() - GUTTER - PAD), 0,
+            1) * (max - min),
             decimals)
     end
     -- Right click: type an exact value.
     local extra = opts.menu
-    opts.menu = function(m)
-        m:AddOption(L("menu.type_value"), function()
-            Derma_StringRequest(label, L("menu.type_value_help", text(min), text(max)), tostring(row.value), function(v)
-                if not tonumber(v) or not IsValid(row) then return end
-                row.value = math.Round(math.Clamp(tonumber(v), min, max), decimals)
+    opts.menu = function(menu)
+        menu:AddOption(L("menu.type_value"), function()
+            Derma_StringRequest(label, L("menu.type_value_help", text(min), text(max)), tostring(row.value),
+                function(typed)
+                if not tonumber(typed) or not IsValid(row) then return end
+                row.value = math.Round(math.Clamp(tonumber(typed), min, max), decimals)
                 row.holdUntil = RealTime() + HOLD
                 onChange(row.value)
             end)
         end):SetIcon("icon16/pencil.png")
-        if extra then extra(m) end
+        if extra then extra(menu) end
     end
     return row
 end
@@ -258,9 +262,9 @@ local function dropdown(parent, label, options, current, onSelect, opts)
     combo:SetFont("Rareload.Menu.Row")
     combo:SetTextColor(TEXT)
     combo:SetEnabled(not opts.disabled)
-    for _, o in ipairs(options) do combo:AddChoice(o.label, o.id, o.id == current) end
-    combo.Paint = function(self, w, h)
-        draw.RoundedBox(4, 0, 0, w, h, self:IsHovered() and CARD_HI or TRACK)
+    for _, option in ipairs(options) do combo:AddChoice(option.label, option.id, option.id == current) end
+    combo.Paint = function(self, width, height)
+        draw.RoundedBox(4, 0, 0, width, height, self:IsHovered() and CARD_HI or TRACK)
     end
     row.combo = combo
     combo.OnSelect = function(_, _, _, id)
@@ -271,45 +275,45 @@ local function dropdown(parent, label, options, current, onSelect, opts)
     end
     -- Shows `id` without sending it back.
     row.Select = function(self, id)
-        for i, o in ipairs(options) do
-            if o.id == id and combo:GetSelectedID() ~= i then
+        for i, option in ipairs(options) do
+            if option.id == id and combo:GetSelectedID() ~= i then
                 self.syncing = true
                 combo:ChooseOptionID(i)
                 self.syncing = false
             end
         end
     end
-    row.LayoutBelow = function(_, w, h)
-        combo:SetPos(GUTTER, h - 32)
-        combo:SetSize(w - GUTTER - PAD, 26)
+    row.LayoutBelow = function(_, width, height)
+        combo:SetPos(GUTTER, height - 32)
+        combo:SetSize(width - GUTTER - PAD, 26)
     end
     return row
 end
 
 -- A full-width button; its icon and text are centred together.
 local function button(parent, text, icon, col, onClick)
-    local b = vgui.Create("DButton", parent)
-    b:Dock(TOP)
-    b:DockMargin(0, 3, 0, 3)
-    b:SetTall(32)
-    b:SetText("")
-    b.hover = 0
-    b.Paint = function(self, w, h)
+    local buttonPanel = vgui.Create("DButton", parent)
+    buttonPanel:Dock(TOP)
+    buttonPanel:DockMargin(0, 3, 0, 3)
+    buttonPanel:SetTall(32)
+    buttonPanel:SetText("")
+    buttonPanel.hover = 0
+    buttonPanel.Paint = function(self, width, height)
         self.hover = anim(self.hover, self:IsHovered() and 1 or 0)
         local fill = UI.Mix(col, color_white, self.hover * 0.12)
         if self:IsDown() then fill = UI.Mix(fill, color_black, 0.15) end
-        draw.RoundedBox(6, 0, 0, w, h, fill)
-        local label = UI.Clip(text, "Rareload.Menu.Value", w - 54)
+        draw.RoundedBox(6, 0, 0, width, height, fill)
+        local label = UI.Clip(text, "Rareload.Menu.Value", width - 54)
         surface.SetFont("Rareload.Menu.Value")
-        local x = math.floor((w - surface.GetTextSize(label) - 22) / 2)
-        UI.DrawIcon(icon, x, math.floor((h - 16) / 2), 16)
-        draw.SimpleText(label, "Rareload.Menu.Value", x + 22, h / 2, TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        local textX = math.floor((width - surface.GetTextSize(label) - 22) / 2)
+        UI.DrawIcon(icon, textX, math.floor((height - 16) / 2), 16)
+        draw.SimpleText(label, "Rareload.Menu.Value", textX + 22, height / 2, TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
-    b.DoClick = function()
+    buttonPanel.DoClick = function()
         surface.PlaySound("ui/buttonclick.wav")
         onClick()
     end
-    return b
+    return buttonPanel
 end
 
 -- Wrapped help text.
@@ -319,10 +323,10 @@ local function note(parent, text)
     panel:DockMargin(0, 4, 0, 6)
     panel:SetTall(16)
     panel.lines = { text }
-    panel.PerformLayout = function(self, w)
-        self.lines = wrap(text, "Rareload.Menu.Note", w - 4)
-        local h = #self.lines * 16
-        if self:GetTall() ~= h then self:SetTall(h) end
+    panel.PerformLayout = function(self, width)
+        self.lines = wrap(text, "Rareload.Menu.Note", width - 4)
+        local textHeight = #self.lines * 16
+        if self:GetTall() ~= textHeight then self:SetTall(textHeight) end
     end
     panel.Paint = function(self)
         for i, line in ipairs(self.lines) do draw.SimpleText(line, "Rareload.Menu.Note", 2, (i - 1) * 16, TEXT2) end
@@ -337,20 +341,21 @@ local function caption(parent, text)
     panel:Dock(TOP)
     panel:DockMargin(8, 12, 8, 0)
     panel:SetTall(18)
-    panel.Paint = function(_, w, h)
-        draw.SimpleText(text, "Rareload.Menu.Note", 2, h / 2, MUTED, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    panel.Paint = function(_, width, height)
+        draw.SimpleText(text, "Rareload.Menu.Note", 2, height / 2, MUTED, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         surface.SetFont("Rareload.Menu.Note")
         local tw = surface.GetTextSize(text)
         surface.SetDrawColor(CARD_HI)
-        surface.DrawRect(tw + 10, math.floor(h / 2), w - tw - 12, 1)
+        surface.DrawRect(tw + 10, math.floor(height / 2), width - tw - 12, 1)
     end
 end
 
-local function arrow(x, y, size, rot, col)
-    local a, poly = math.rad(rot), {}
-    local c, s = math.cos(a), math.sin(a)
+local function arrow(centerX, centerY, size, rot, col)
+    local angle, poly = math.rad(rot), {}
+    local cosine, sine = math.cos(angle), math.sin(angle)
     for i, vertex in ipairs({ { -size, -size * 0.5 }, { size, -size * 0.5 }, { 0, size * 0.6 } }) do
-        poly[i] = { x = x + vertex[1] * c - vertex[2] * s, y = y + vertex[1] * s + vertex[2] * c }
+        poly[i] = { x = centerX + vertex[1] * cosine - vertex[2] * sine,
+            y = centerY + vertex[1] * sine + vertex[2] * cosine }
     end
     surface.SetDrawColor(col)
     draw.NoTexture()
@@ -364,23 +369,23 @@ local function section(parent, title, icon, open)
     box:DockMargin(6, 6, 6, 0)
     box:SetTall(HEAD_H)
     box.open = open ~= false
-    box.Paint = function(_, w, h) draw.RoundedBox(6, 0, 0, w, h, CARD) end
+    box.Paint = function(_, width, height) draw.RoundedBox(6, 0, 0, width, height, CARD) end
 
     local head = vgui.Create("DButton", box)
     head:Dock(TOP)
     head:SetTall(HEAD_H)
     head:SetText("")
     head.hover, head.rot = 0, box.open and 0 or -90
-    head.Paint = function(self, w, h)
+    head.Paint = function(self, width, height)
         self.hover = anim(self.hover, self:IsHovered() and 1 or 0)
         self.rot = anim(self.rot, box.open and 0 or -90)
-        if self.hover > 0.01 then draw.RoundedBox(6, 0, 0, w, h, ColorAlpha(HOVER, 10 * self.hover)) end
+        if self.hover > 0.01 then draw.RoundedBox(6, 0, 0, width, height, ColorAlpha(HOVER, 10 * self.hover)) end
         surface.SetDrawColor(ACCENT)
-        surface.DrawRect(0, 8, 3, h - 16)
-        UI.DrawIcon(icon, 11, math.floor((h - 16) / 2), 16)
-        draw.SimpleText(UI.Clip(title, "Rareload.Menu.Head", w - 64), "Rareload.Menu.Head", 35, h / 2, TEXT,
+        surface.DrawRect(0, 8, 3, height - 16)
+        UI.DrawIcon(icon, 11, math.floor((height - 16) / 2), 16)
+        draw.SimpleText(UI.Clip(title, "Rareload.Menu.Head", width - 64), "Rareload.Menu.Head", 35, height / 2, TEXT,
             TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        arrow(w - 16, h / 2, 5, self.rot, TEXT2)
+        arrow(width - 16, height / 2, 5, self.rot, TEXT2)
     end
     head.DoClick = function()
         box.open = not box.open
@@ -420,21 +425,21 @@ local function control(parent, settingDef, get, set, opts)
     local label = L("setting." .. settingDef.key)
     local help = L("setting." .. settingDef.key .. ".help")
     local refresh = opts.refresh
-    opts.refresh = function(o)
-        o.tooltip = nil
-        if refresh then refresh(o) end
-        o.tooltip = o.tooltip or help
+    opts.refresh = function(rowOptions)
+        rowOptions.tooltip = nil
+        if refresh then refresh(rowOptions) end
+        rowOptions.tooltip = rowOptions.tooltip or help
     end
     opts.refresh(opts)
 
     local row
     if settingDef.type == "bool" then
-        row = toggle(parent, label, get(), function(v) set(v and "1" or "0") end, opts)
+        row = toggle(parent, label, get(), function(checked) set(checked and "1" or "0") end, opts)
         row.Sync = function(self) self.value = get() end
     elseif settingDef.type == "enum" then
         local options = {}
-        for _, v in ipairs(settingDef.values) do
-            options[#options + 1] = { id = v, label = L("setting." .. settingDef.key .. "." .. v) }
+        for _, allowed in ipairs(settingDef.values) do
+            options[#options + 1] = { id = allowed, label = L("setting." .. settingDef.key .. "." .. allowed) }
         end
         row = dropdown(parent, label, options, get(), set, opts)
         row.Sync = function(self)
@@ -444,7 +449,7 @@ local function control(parent, settingDef, get, set, opts)
     else
         row = slider(parent, label, get(), settingDef.min, settingDef.max, settingDef.type == "float" and 1 or 0,
             settingDef.unit,
-            function(v) set(tostring(v)) end, opts)
+            function(value) set(tostring(value)) end, opts)
         row.Sync = function(self) self.value = get() end
     end
     row.tooltip = opts.tooltip
@@ -461,25 +466,25 @@ local function begin(panel, subtitle)
     local before = {}
     for _, child in ipairs(panel:GetChildren()) do before[child] = true end
     panel.rareloadBefore = before
-    panel.Paint = function(_, w, h)
+    panel.Paint = function(_, width, height)
         surface.SetDrawColor(BG)
-        surface.DrawRect(0, 0, w, h)
+        surface.DrawRect(0, 0, width, height)
     end
 
     local header = vgui.Create("DPanel", panel)
     header:Dock(TOP)
     header:DockMargin(6, 6, 6, 0)
     header:SetTall(60)
-    header.Paint = function(_, w, h)
-        draw.RoundedBox(6, 0, 0, w, h, CARD)
+    header.Paint = function(_, width, height)
+        draw.RoundedBox(6, 0, 0, width, height, CARD)
         surface.SetDrawColor(ACCENT)
-        surface.DrawRect(0, h - 3, w, 3)
+        surface.DrawRect(0, height - 3, width, 3)
         draw.SimpleText("RARELOAD", "Rareload.Menu.Title", 12, 7, TEXT)
         local version = "v" .. RARELOAD.version
         surface.SetFont("Rareload.Menu.Note")
         local vw = surface.GetTextSize(version)
-        draw.SimpleText(UI.Clip(subtitle, "Rareload.Menu.Note", w - vw - 36), "Rareload.Menu.Note", 13, 37, TEXT2)
-        draw.SimpleText(version, "Rareload.Menu.Note", w - 12, 37, ACCENT, TEXT_ALIGN_RIGHT)
+        draw.SimpleText(UI.Clip(subtitle, "Rareload.Menu.Note", width - vw - 36), "Rareload.Menu.Note", 13, 37, TEXT2)
+        draw.SimpleText(version, "Rareload.Menu.Note", width - 12, 37, ACCENT, TEXT_ALIGN_RIGHT)
     end
 end
 
@@ -489,8 +494,8 @@ local function finish(panel)
     footer:Dock(TOP)
     footer:DockMargin(6, 10, 6, 6)
     footer:SetTall(20)
-    footer.Paint = function(_, w, h)
-        draw.SimpleText(L("menu.made_by"), "Rareload.Menu.Note", w / 2, h / 2, MUTED, TEXT_ALIGN_CENTER,
+    footer.Paint = function(_, width, height)
+        draw.SimpleText(L("menu.made_by"), "Rareload.Menu.Note", width / 2, height / 2, MUTED, TEXT_ALIGN_CENTER,
             TEXT_ALIGN_CENTER)
     end
     panel.rareloadItems = {}
@@ -506,12 +511,12 @@ local function intro(panel, text)
     box:Dock(TOP)
     box:DockMargin(6, 6, 6, 0)
     box:DockPadding(10, 6, 10, 2)
-    box.Paint = function(_, w, h) draw.RoundedBox(6, 0, 0, w, h, CARD) end
-    local n = note(box, text)
+    box.Paint = function(_, width, height) draw.RoundedBox(6, 0, 0, width, height, CARD) end
+    local notePanel = note(box, text)
     box.Think = function(self) -- the note's height is known once it has been laid out
-        local h = n:GetTall() + 18
-        if self:GetTall() ~= h then
-            self:SetTall(h)
+        local boxHeight = notePanel:GetTall() + 18
+        if self:GetTall() ~= boxHeight then
+            self:SetTall(boxHeight)
             self:InvalidateParent(true)
         end
     end
@@ -535,12 +540,13 @@ function Menu.BuildToolPanel(panel)
                 and not RARELOAD.Can(lp, "rareload_restore_privileged_states")
                 and L("setting.keepStates.help") .. "\n" .. L("menu.states_limited")
             control(content, settingDef, function() return RARELOAD.Get(lp, settingDef.key) end,
-                function(v) RunConsoleCommand(settingDef.pref, v) end, {
-                    refresh = function(o)
-                        o.locked = RARELOAD.IsLocked(settingDef.key)
-                        o.disabled = o.locked or noPriv
-                        o.changed = not o.locked and pref ~= nil and pref:GetFloat() ~= -1
-                        o.tooltip = o.locked and L("menu.locked") or noPriv and L("menu.no_priv") or limited or nil
+                function(value) RunConsoleCommand(settingDef.pref, value) end, {
+                    refresh = function(rowOptions)
+                        rowOptions.locked = RARELOAD.IsLocked(settingDef.key)
+                        rowOptions.disabled = rowOptions.locked or noPriv
+                        rowOptions.changed = not rowOptions.locked and pref ~= nil and pref:GetFloat() ~= -1
+                        rowOptions.tooltip = rowOptions.locked and L("menu.locked") or noPriv and L("menu.no_priv")
+                            or limited or nil
                     end,
                     reset = function() RunConsoleCommand(settingDef.pref, "-1") end,
                 })
@@ -566,24 +572,25 @@ function Menu.BuildToolPanel(panel)
     -- Quick save and quick load keys (cl_keys.lua): a binder per key, and a click on it waits for one.
     local keys = section(panel, L("menu.keys"), ICONS.keys, false)
     note(keys, L("menu.keys_help"))
-    for _, k in ipairs(RARELOAD.Keys or {}) do
+    for _, keyDef in ipairs(RARELOAD.Keys or {}) do
         local row = vgui.Create("DPanel", keys)
         row:Dock(TOP)
         row:DockMargin(0, 2, 0, 2)
         row:SetTall(30)
         row:SetPaintBackground(false)
-        local label = L(k.label)
-        row.Paint = function(_, _, h)
-            draw.SimpleText(label, "Rareload.Menu.Row", 4, h / 2, TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        local label = L(keyDef.label)
+        row.Paint = function(_, _, height)
+            draw.SimpleText(label, "Rareload.Menu.Row", 4, height / 2, TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         end
         local binder = vgui.Create("DBinder", row)
         binder:Dock(RIGHT)
         binder:SetWide(120)
-        binder:SetConVar(k.convar)
+        binder:SetConVar(keyDef.convar)
         binder:SetFont("Rareload.Menu.Value")
         binder:SetTextColor(TEXT)
-        binder.Paint = function(self, w, h)
-            draw.RoundedBox(6, 0, 0, w, h, self:IsHovered() and BUTTONS.gray or UI.Mix(BUTTONS.gray, color_black, 0.3))
+        binder.Paint = function(self, width, height)
+            draw.RoundedBox(6, 0, 0, width, height,
+                self:IsHovered() and BUTTONS.gray or UI.Mix(BUTTONS.gray, color_black, 0.3))
         end
     end
 
@@ -614,7 +621,7 @@ local function buildServer(panel)
     end
     intro(panel, L("menu.server_help"))
     local function setter(settingDef)
-        return function(v) RARELOAD.Net.Request("settings.set", { key = settingDef.key, value = v }) end
+        return function(value) RARELOAD.Net.Request("settings.set", { key = settingDef.key, value = value }) end
     end
 
     caption(panel, L("menu.server_caption"))
@@ -632,16 +639,16 @@ local function buildServer(panel)
         local function fill()
             methods:Clear()
             note(methods, L("menu.methods_help"))
-            for i, m in ipairs(RARELOAD.State.antistuck) do
-                toggle(methods, i .. ". " .. L("antistuck." .. m.id), m.enabled,
-                    function(v) config(v and "enable" or "disable", m.id) end, {
-                        tooltip = L("antistuck." .. m.id .. ".help"),
+            for i, method in ipairs(RARELOAD.State.antistuck) do
+                toggle(methods, i .. ". " .. L("antistuck." .. method.id), method.enabled,
+                    function(checked) config(checked and "enable" or "disable", method.id) end, {
+                        tooltip = L("antistuck." .. method.id .. ".help"),
                         menu = function(menu)
-                            menu:AddOption(L("menu.move_up"), function() config("up", m.id) end):SetIcon(
+                            menu:AddOption(L("menu.move_up"), function() config("up", method.id) end):SetIcon(
                                 "icon16/arrow_up.png")
-                            menu:AddOption(L("menu.move_down"), function() config("down", m.id) end):SetIcon(
+                            menu:AddOption(L("menu.move_down"), function() config("down", method.id) end):SetIcon(
                                 "icon16/arrow_down.png")
-                            menu:AddOption(L("menu.only_this"), function() config("only", m.id) end):SetIcon(
+                            menu:AddOption(L("menu.only_this"), function() config("only", method.id) end):SetIcon(
                                 "icon16/star.png")
                         end,
                     })
@@ -690,12 +697,14 @@ local function buildServer(panel)
             local list = RARELOAD.State.snapshots
             if #list == 0 then note(snaps, L("menu.snapshots_none")) end
             for i = #list, 1, -1 do
-                local s = list[i]
-                local label = L("menu.snapshot_rollback", s.id, os.date("%H:%M", s.time), #s.players)
+                local snapshot = list[i]
+                local label = L("menu.snapshot_rollback", snapshot.id, os.date("%H:%M", snapshot.time),
+                    #snapshot.players)
                 button(snaps, label, "arrow_undo", BUTTONS.orange, function()
-                    UI.Confirm(L("menu.snapshots"), L("menu.snapshot_confirm", table.concat(s.players, ", ")),
-                        function() RARELOAD.Net.Request("snapshot.rollback", { id = s.id }) end, L("menu.snapshots"))
-                end):SetTooltip(table.concat(s.players, ", "))
+                    UI.Confirm(L("menu.snapshots"), L("menu.snapshot_confirm", table.concat(snapshot.players, ", ")),
+                        function() RARELOAD.Net.Request("snapshot.rollback", { id = snapshot.id }) end,
+                            L("menu.snapshots"))
+                end):SetTooltip(table.concat(snapshot.players, ", "))
             end
         end
         fill()
@@ -742,7 +751,7 @@ local function buildServer(panel)
                             { key = settingDef.key, locked = locked })
                     end
                 },
-                refresh = function(o) o.lock.locked = RARELOAD.IsLocked(settingDef.key) end,
+                refresh = function(rowOptions) rowOptions.lock.locked = RARELOAD.IsLocked(settingDef.key) end,
             })
         end
     end
@@ -756,7 +765,7 @@ local function buildClient(panel)
         local content = section(panel, L("category." .. group.name), ICONS[group.name])
         for _, settingDef in ipairs(group.defs) do
             control(content, settingDef, function() return RARELOAD.Get(nil, settingDef.key) end,
-                function(v) RunConsoleCommand(settingDef.convar, v) end, {})
+                function(value) RunConsoleCommand(settingDef.convar, value) end, {})
         end
     end
     local reset = section(panel, L("menu.actions"), ICONS.actions)
@@ -793,8 +802,8 @@ function Menu.Rebuild()
     local builders = {
         { Menu.toolPanel, Menu.BuildToolPanel }, { Menu.pages.server, buildServer }, { Menu.pages.client, buildClient }
     }
-    for _, b in ipairs(builders) do
-        if IsValid(b[1]) then b[2](b[1]) end
+    for _, builder in ipairs(builders) do
+        if IsValid(builder[1]) then builder[2](builder[1]) end
     end
 end
 

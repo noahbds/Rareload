@@ -169,10 +169,10 @@ RARELOAD.Module({
 
 -- { [index] = Rareload ID or "world" } for the ends of a live constraint; nil when one end is not a
 -- saved object. The indexes are the game's (a pulley uses 1 and 4).
-local function endsOf(c)
+local function endsOf(constraintData)
     local ids = {}
-    for i, e in pairs(c.Entity or {}) do
-        local id = e.World and "world" or IsValid(e.Entity) and e.Entity.RareloadID
+    for i, endpoint in pairs(constraintData.Entity or {}) do
+        local id = endpoint.World and "world" or IsValid(endpoint.Entity) and endpoint.Entity.RareloadID
         if not id then return nil end
         ids[i] = id
     end
@@ -192,11 +192,11 @@ end
 local function eachLive(entities, fn)
     local seen = {}
     for _, ent in ipairs(entities) do
-        for _, c in pairs(constraint.GetTable(ent)) do
-            if c.Type and IsValid(c.Constraint) and not seen[c.Constraint] then
-                seen[c.Constraint] = true
-                local ids = endsOf(c)
-                if ids then fn(c, ids) end
+        for _, constraintData in pairs(constraint.GetTable(ent)) do
+            if constraintData.Type and IsValid(constraintData.Constraint) and not seen[constraintData.Constraint] then
+                seen[constraintData.Constraint] = true
+                local ids = endsOf(constraintData)
+                if ids then fn(constraintData, ids) end
             end
         end
     end
@@ -220,31 +220,31 @@ local function removeExtra(entry, list, entities)
             local id = DefID(constraintDef)
             if id then mine[tostring(id)] = true end
         end
-        for _, c in pairs(istable(snap) and snap.Constraints or {}) do
-            local ids, known = {}, istable(c) and c.Type and istable(c.Entity)
-            for i, e in pairs(known and c.Entity or {}) do
-                local constraintDef = snap.Entities[e.Index] or snap.Entities[tostring(e.Index)]
-                ids[i] = e.World and "world" or constraintDef and DefID(constraintDef)
+        for _, constraintData in pairs(istable(snap) and snap.Constraints or {}) do
+            local ids, known = {}, istable(constraintData) and constraintData.Type and istable(constraintData.Entity)
+            for i, endpoint in pairs(known and constraintData.Entity or {}) do
+                local constraintDef = snap.Entities[endpoint.Index] or snap.Entities[tostring(endpoint.Index)]
+                ids[i] = endpoint.World and "world" or constraintDef and DefID(constraintDef)
                 known = known and ids[i] ~= nil
             end
             if known then
-                local key = keyOf(c.Type, ids)
+                local key = keyOf(constraintData.Type, ids)
                 fromSnaps[key] = (fromSnaps[key] or 0) + 1
             end
         end
     end
-    for key, n in pairs(fromSnaps) do want[key] = math.max(want[key] or 0, n) end
+    for key, count in pairs(fromSnaps) do want[key] = math.max(want[key] or 0, count) end
 
     local removed = 0
-    eachLive(entities, function(c, ids)
+    eachLive(entities, function(constraintData, ids)
         for _, id in pairs(ids) do
             if id ~= "world" and not mine[tostring(id)] then return end -- not only this save's objects
         end
-        local key = keyOf(c.Type, ids)
+        local key = keyOf(constraintData.Type, ids)
         if (want[key] or 0) > 0 then
             want[key] = want[key] - 1
         else
-            c.Constraint:Remove()
+            constraintData.Constraint:Remove()
             removed = removed + 1
         end
     end)
@@ -267,16 +267,17 @@ RARELOAD.Module({
             if ent.RareloadID then saved[#saved + 1] = ent end
         end
         local out = {}
-        eachLive(saved, function(c, ids)
+        eachLive(saved, function(constraintData, ids)
             -- A JSON round-trip drops the entity references and keeps the constraint settings (G3).
-            local copy = util.JSONToTable(util.TableToJSON(c))
+            local copy = util.JSONToTable(util.TableToJSON(constraintData))
             copy.OnDieFunctions = nil -- undo and cleanup callbacks
-            for i, e in pairs(copy.Entity) do e.Index = i end
-            out[#out + 1] = { def = copy, ids = ids, order = keyOf(c.Type, ids) .. "|" .. c.Constraint:GetCreationID() }
+            for i, endpoint in pairs(copy.Entity) do endpoint.Index = i end
+            out[#out + 1] = { def = copy, ids = ids,
+                order = keyOf(constraintData.Type, ids) .. "|" .. constraintData.Constraint:GetCreationID() }
         end)
         -- A stable order, so an unchanged build compares equal to the previous save.
-        table.sort(out, function(a, b) return a.order < b.order end)
-        for _, o in ipairs(out) do o.order = nil end
+        table.sort(out, function(left, right) return left.order < right.order end)
+        for _, info in ipairs(out) do info.order = nil end
         return #out > 0 and out or nil
     end,
 
@@ -290,8 +291,8 @@ RARELOAD.Module({
         end
         local removed = ctx.exact and removeExtra(ctx.entry, list, entities) or 0
         local have = {}
-        eachLive(entities, function(c, ids)
-            local key = keyOf(c.Type, ids)
+        eachLive(entities, function(constraintData, ids)
+            local key = keyOf(constraintData.Type, ids)
             have[key] = (have[key] or 0) + 1
         end)
 

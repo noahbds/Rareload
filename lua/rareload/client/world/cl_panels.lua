@@ -70,43 +70,44 @@ end
 
 -- Values ----------------------------------------------------------------------------------------------
 
-local function yesNo(v) return v and L("ui.yes") or L("ui.no") end
+local function yesNo(value) return value and L("ui.yes") or L("ui.no") end
 
 local function humanize(key)
     key = tostring(key):gsub("_", " "):gsub("(%l)(%u)", "%1 %2")
     return (key:gsub("^%l", string.upper))
 end
 
-local function summarize(v)
-    if isvector(v) then return string.format("%.1f, %.1f, %.1f", v.x, v.y, v.z) end
-    if isangle(v) then return string.format("%.0f, %.0f, %.0f", v.p, v.y, v.r) end
-    if isbool(v) then return yesNo(v) end
-    if isnumber(v) then return v == math.floor(v) and tostring(v) or string.format("%.2f", v) end
-    if istable(v) then
-        if istable(v.__color) then return table.concat(v.__color, " ") end
-        local json = util.TableToJSON(v) or "{}"
+local function summarize(value)
+    if isvector(value) then return string.format("%.1f, %.1f, %.1f", value.x, value.y, value.z) end
+    if isangle(value) then return string.format("%.0f, %.0f, %.0f", value.p, value.y, value.r) end
+    if isbool(value) then return yesNo(value) end
+    if isnumber(value) then return value == math.floor(value) and tostring(value) or string.format("%.2f", value) end
+    if istable(value) then
+        if istable(value.__color) then return table.concat(value.__color, " ") end
+        local json = util.TableToJSON(value) or "{}"
         return #json > 60 and string.sub(json, 1, 57) .. "…" or json
     end
-    return tostring(v)
+    return tostring(value)
 end
 
 -- Like SortedPairs, but keys are compared as text: saved tables mix number and text keys (JSON turns
 -- "357" into 357), which SortedPairs can't sort.
-local function ordered(t)
+local function ordered(source)
     local keys = {}
-    for k in pairs(istable(t) and t or {}) do keys[#keys + 1] = k end
-    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+    for key in pairs(istable(source) and source or {}) do keys[#keys + 1] = key end
+    table.sort(keys, function(left, right) return tostring(left) < tostring(right) end)
     local i = 0
     return function()
         i = i + 1
-        local k = keys[i]
-        if k ~= nil then return k, t[k] end
+        local key = keys[i]
+        if key ~= nil then return key, source[key] end
     end
 end
 
-local function colorOf(v)
-    if istable(v) and istable(v.__color) then return Color(v.__color[1], v.__color[2], v.__color[3]) end
-    local vec = istable(v) and Util.ToVector(v)
+local function colorOf(value)
+    if istable(value) and istable(value.__color) then return Color(value.__color[1], value.__color[2],
+        value.__color[3]) end
+    local vec = istable(value) and Util.ToVector(value)
     if vec then return Color(math.Clamp(vec.x * 255, 0, 255), math.Clamp(vec.y * 255, 0, 255),
             math.Clamp(vec.z * 255, 0, 255)) end
 end
@@ -121,8 +122,9 @@ local function builder()
         table.insert(cats[cat], { label = tostring(label), value = tostring(value), color = color, swatch = swatch })
     end
     -- Every key of a table, in order, as a readable label and a short value.
-    local function addAll(cat, t, indent)
-        for k, v in ordered(istable(t) and t or {}) do add(cat, (indent or "") .. humanize(k), summarize(v)) end
+    local function addAll(cat, source, indent)
+        for key, value in ordered(istable(source) and source or {}) do add(cat, (indent or "") .. humanize(key),
+            summarize(value)) end
     end
     return cats, add, addAll
 end
@@ -144,11 +146,11 @@ local function playerCats(rec)
     for id in ordered(modules) do saved[#saved + 1] = L("module." .. id) end
     add("basic", L("field.saved"), table.concat(saved, ", "), C.ok)
 
-    local t = modules.transform or {}
-    local a = Util.ToAngle(t.ang)
-    add("position", L("field.position"), UI.Pos(t.pos))
-    add("position", L("field.angle"), a and string.format("%.0f, %.0f", a.p, a.y))
-    if t.crouched then add("position", L("field.crouched"), L("ui.yes")) end
+    local transform = modules.transform or {}
+    local ang = Util.ToAngle(transform.ang)
+    add("position", L("field.position"), UI.Pos(transform.pos))
+    add("position", L("field.angle"), ang and string.format("%.0f, %.0f", ang.p, ang.y))
+    if transform.crouched then add("position", L("field.crouched"), L("ui.yes")) end
     if rec.seated then add("position", L("field.vehicle"), L("ui.yes"), C.vehicle) end
     add("position", L("field.distance"), L("inspector.units", math.Round(LocalPlayer():GetPos():Distance(rec.pos))))
 
@@ -179,7 +181,8 @@ local function playerCats(rec)
         add("appearance", L("field.model"), look.model and string.GetFileFromFilename(look.model))
         add("appearance", L("field.skin"), look.skin)
         local bg = {}
-        for i, v in ipairs(look.bodygroups or {}) do if v ~= 0 then bg[#bg + 1] = (i - 1) .. ":" .. v end end
+        for i, group in ipairs(look.bodygroups or {}) do if group ~= 0 then bg[#bg + 1] = (i - 1) .. ":"
+            .. group end end
         add("appearance", L("field.bodygroups"), #bg > 0 and table.concat(bg, "  ") or nil)
         if look.material and look.material ~= "" then add("appearance", L("field.material"), look.material) end
         add("appearance", L("field.player_color"), look.playerColor and summarize(Util.ToVector(look.playerColor)), nil,
@@ -192,23 +195,23 @@ local function playerCats(rec)
         end
     end
 
-    local h = modules.health
-    if h then
-        add("stats", L("field.health"), h.hp, UI.HealthColor(h.hp, 100))
-        add("stats", L("field.armor"), h.armor, C.info)
+    local health = modules.health
+    if health then
+        add("stats", L("field.health"), health.hp, UI.HealthColor(health.hp, 100))
+        add("stats", L("field.armor"), health.armor, C.info)
     end
     if modules.states then add("stats", L("field.states"), UI.States(modules.states), C.warn) end
 
     local byKind, classes = {}, {}
-    for _, o in ipairs(rec.objects or {}) do
-        byKind[o.kind] = (byKind[o.kind] or 0) + 1
-        classes[o.class or "?"] = (classes[o.class or "?"] or 0) + 1
+    for _, object in ipairs(rec.objects or {}) do
+        byKind[object.kind] = (byKind[object.kind] or 0) + 1
+        classes[object.class or "?"] = (classes[object.class or "?"] or 0) + 1
     end
     for _, kind in ipairs(RARELOAD.WORLD_KINDS) do
         add("world", L("kind." .. kind), byKind[kind] or 0, UI.KIND_COLORS[kind])
     end
     local top = table.GetKeys(classes)
-    table.sort(top, function(x, y) return classes[x] > classes[y] end)
+    table.sort(top, function(leftClass, rightClass) return classes[leftClass] > classes[rightClass] end)
     for i = 1, math.min(8, #top) do add("world", "  " .. top[i], "× " .. classes[top[i]]) end
 
     local builtIn = {
@@ -219,7 +222,7 @@ local function playerCats(rec)
         if not builtIn[id] then
             local label = L("module." .. id)
             add("other", label == "rareload.module." .. id and id or label, "", C.accent)
-            local function addOther(l, v, c) add("other", "  " .. l, v, c) end
+            local function addOther(rowLabel, value, color) add("other", "  " .. rowLabel, value, color) end
             local fn = Panels.formatters[id]
             if fn then
                 ProtectedCall(fn, data, addOther)
@@ -235,26 +238,26 @@ end
 
 -- The saved object with this ID among those on display, which knows whether its name is shared.
 local function savedObject(id)
-    for _, r in ipairs(RARELOAD.World.records) do
-        if r.obj and r.obj.id == id then return r.obj end
+    for _, record in ipairs(RARELOAD.World.records) do
+        if record.obj and record.obj.id == id then return record.obj end
     end
 end
 
 local function objectCats(rec)
     local cats, add, addAll = builder()
-    local o, live = rec.obj, RARELOAD.World.LiveOf(rec)
-    local detail = State.details[State.DetailKey(rec.sid, rec.entryId, o.id)]
+    local object, live = rec.obj, RARELOAD.World.LiveOf(rec)
+    local detail = State.details[State.DetailKey(rec.sid, rec.entryId, object.id)]
 
-    add("basic", L("field.class"), o.class)
-    add("basic", L("field.model"), o.model and string.GetFileFromFilename(o.model))
-    add("basic", L("field.id"), o.id)
-    add("basic", L("field.kind"), L("kind." .. o.kind), UI.KIND_COLORS[o.kind])
+    add("basic", L("field.class"), object.class)
+    add("basic", L("field.model"), object.model and string.GetFileFromFilename(object.model))
+    add("basic", L("field.id"), object.id)
+    add("basic", L("field.kind"), L("kind." .. object.kind), UI.KIND_COLORS[object.kind])
     add("basic", L("field.owner"), rec.ownerNick)
-    if o.base then add("basic", L("field.base"), L("base." .. o.base), C.vehicle) end
-    if o.squad and o.squad ~= "" then add("basic", L("field.squad"), o.squad, C.npc) end
+    if object.base then add("basic", L("field.base"), L("base." .. object.base), C.vehicle) end
+    if object.squad and object.squad ~= "" then add("basic", L("field.squad"), object.squad, C.npc) end
 
-    add("position", L("field.saved_position"), UI.Pos(o.pos))
-    add("position", L("field.saved_angle"), UI.Pos(o.ang))
+    add("position", L("field.saved_position"), UI.Pos(object.pos))
+    add("position", L("field.saved_angle"), UI.Pos(object.ang))
     if live then
         add("position", L("field.live_position"), summarize(live:GetPos()))
         add("position", L("field.live_angle"), summarize(live:GetAngles()))
@@ -265,49 +268,53 @@ local function objectCats(rec)
     end
     add("position", L("field.distance"), L("inspector.units", math.Round(LocalPlayer():GetPos():Distance(rec.pos))))
 
-    add("state", L("field.frozen"), yesNo(o.frozen))
-    add("state", L("field.gravity"), yesNo(not o.nograv))
-    if o.maxHp and o.maxHp > 0 then add("state", L("field.saved_health"), (o.hp or 0) .. " / " .. o.maxHp,
-            UI.HealthColor(o.hp, o.maxHp)) end
+    add("state", L("field.frozen"), yesNo(object.frozen))
+    add("state", L("field.gravity"), yesNo(not object.nograv))
+    if object.maxHp and object.maxHp > 0 then add("state", L("field.saved_health"),
+        (object.hp or 0) .. " / " .. object.maxHp,
+            UI.HealthColor(object.hp, object.maxHp)) end
     if live and live:Health() > 0 and live:GetMaxHealth() > 0 then add("state", L("field.live_health"),
             live:Health() .. " / " .. live:GetMaxHealth()) end
-    if o.npcState then add("state", L("field.npc_state"), L("world.npc_state." .. (STATE_NAMES[o.npcState] or "none")),
+    if object.npcState then add("state", L("field.npc_state"),
+        L("world.npc_state." .. (STATE_NAMES[object.npcState] or "none")),
             C.npc) end
     if live and live.GetDriver and IsValid(live:GetDriver()) then
         add("state", L("field.driver"), live:GetDriver():Nick(), C.vehicle)
     end
 
-    add("visual", L("field.skin"), o.skin)
-    if o.scale then add("visual", L("field.scale"), o.scale) end
+    add("visual", L("field.skin"), object.skin)
+    if object.scale then add("visual", L("field.scale"), object.scale) end
     local bg = {}
-    for k, v in ordered(o.bodygroups or {}) do if v ~= 0 then bg[#bg + 1] = k .. ":" .. v end end
+    for group,
+        value in ordered(object.bodygroups or {}) do if value ~= 0 then bg[#bg + 1] = group .. ":" .. value end end
     add("visual", L("field.bodygroups"), #bg > 0 and table.concat(bg, "  ") or nil)
-    if o.material and o.material ~= "" then add("visual", L("field.material"), o.material) end
-    if o.color then add("visual", L("field.color"), summarize(o.color), nil, colorOf(o.color)) end
-    if o.parts then add("visual", L("field.parts"), #o.parts) end
+    if object.material and object.material ~= "" then add("visual", L("field.material"), object.material) end
+    if object.color then add("visual", L("field.color"), summarize(object.color), nil, colorOf(object.color)) end
+    if object.parts then add("visual", L("field.parts"), #object.parts) end
 
     if detail then
         local entityDef = detail.def or {}
         local physics = istable(entityDef.PhysicsObjects) and entityDef.PhysicsObjects or {}
         add("physics", L("field.bodies"), table.Count(physics))
         add("physics", L("field.collision_group"), entityDef.ColGroup)
-        local n = 0
+        local boneCount = 0
         for bone, phys in ordered(physics) do
-            n = n + 1
-            if n > 8 then break end
+            boneCount = boneCount + 1
+            if boneCount > 8 then break end
             local frozen = phys.Frozen and L("field.frozen") .. "  " or ""
             add("physics", L("world.bone", bone), frozen .. summarize(phys.Pos))
         end
         -- What the object is attached to, then that constraint's settings.
-        for _, c in ipairs(istable(detail.constraints) and detail.constraints or {}) do
+        for _, constraintInfo in ipairs(istable(detail.constraints) and detail.constraints or {}) do
             local names = {}
-            for _, e in ipairs(c.to or {}) do
-                names[#names + 1] = e.world and L("world.constraint_world")
-                    or e.class and UI.ObjectLabel(savedObject(e.id) or e) or tostring(e.id)
+            for _, endpoint in ipairs(constraintInfo.to or {}) do
+                names[#names + 1] = endpoint.world and L("world.constraint_world")
+                    or endpoint.class and UI.ObjectLabel(savedObject(endpoint.id) or endpoint) or tostring(endpoint.id)
             end
-            add("constraints", c.type, #names > 0 and table.concat(names, ", ") or L("world.constraint_self"),
+            add("constraints", constraintInfo.type,
+                #names > 0 and table.concat(names, ", ") or L("world.constraint_self"),
                 CAT_COLORS.constraints)
-            addAll("constraints", c.set, "   ")
+            addAll("constraints", constraintInfo.set, "   ")
         end
         local runtime = istable(detail.runtime) and detail.runtime or {}
         addAll("vehicle", runtime.root)
@@ -320,9 +327,9 @@ local function objectCats(rec)
         end
         addAll("network", entityDef.DT)
         local shown = 0
-        for k, v in ordered(entityDef) do
-            if not KNOWN_KEYS[k] and shown < 60 then
-                add("data", humanize(k), summarize(v))
+        for key, value in ordered(entityDef) do
+            if not KNOWN_KEYS[key] and shown < 60 then
+                add("data", humanize(key), summarize(value))
                 shown = shown + 1
             end
         end
@@ -353,9 +360,9 @@ local function measure(rec)
     end
     surface.SetFont("Rareload.PanelTitle")
     local title = surface.GetTextSize(rec.title or "?") + 26 + (hasBar(rec) and 240 or 24)
-    local w = math.Clamp(math.max(SIDE + 16 + need, title), MIN_W, MAX_W)
-    local h = HEAD + 12 + math.max(#rec.tabs * TAB, math.min(rows, VISIBLE) * ROW, ROW * 3)
-    rec.cardW, rec.cardH = math.max(rec.cardW or 0, math.ceil(w)), math.max(rec.cardH or 0, h)
+    local cardWidth = math.Clamp(math.max(SIDE + 16 + need, title), MIN_W, MAX_W)
+    local cardHeight = HEAD + 12 + math.max(#rec.tabs * TAB, math.min(rows, VISIBLE) * ROW, ROW * 3)
+    rec.cardW, rec.cardH = math.max(rec.cardW or 0, math.ceil(cardWidth)), math.max(rec.cardH or 0, cardHeight)
 end
 
 -- The record's tabs, rebuilt at most once a second (live values change) or when details arrive.
@@ -407,21 +414,21 @@ end
 -- appear instead of gaining tabs when looked at.
 local function prefetch(focus, groups)
     if focus and askDetail(focus.active) then return end
-    for _, g in ipairs(groups) do
-        for _, m in ipairs(g.members) do
-            if askDetail(m.rec) then return end
+    for _, pile in ipairs(groups) do
+        for _, member in ipairs(pile.members) do
+            if askDetail(member.rec) then return end
         end
     end
 end
 
 -- The tab and scroll the viewer chose for a record.
 function Panels.View(rec)
-    local v = Panels.view[rec.key]
-    if not v then
-        v = { tab = 1, scroll = 0 }
-        Panels.view[rec.key] = v
+    local view = Panels.view[rec.key]
+    if not view then
+        view = { tab = 1, scroll = 0 }
+        Panels.view[rec.key] = view
     end
-    return v
+    return view
 end
 
 -- Status line under a panel's title, with its colour.
@@ -447,10 +454,11 @@ local function kindColor(rec)
 end
 
 
-local function bar(x, y, w, h, frac, col, text)
-    draw.RoundedBox(4, x, y, w, h, BAR_BG)
-    if frac > 0 then draw.RoundedBox(4, x, y, math.max(8, w * math.Clamp(frac, 0, 1)), h, col) end
-    if text then draw.SimpleText(text, "Rareload.PanelSmall", x + w / 2, y + h / 2, color_white, TEXT_ALIGN_CENTER,
+local function bar(posX, posY, width, height, frac, col, text)
+    draw.RoundedBox(4, posX, posY, width, height, BAR_BG)
+    if frac > 0 then draw.RoundedBox(4, posX, posY, math.max(8, width * math.Clamp(frac, 0, 1)), height, col) end
+    if text then draw.SimpleText(text, "Rareload.PanelSmall", posX + width / 2, posY + height / 2, color_white,
+        TEXT_ALIGN_CENTER,
             TEXT_ALIGN_CENTER) end
 end
 
@@ -461,29 +469,29 @@ local function drawCard(rec, focused)
     view.tab = math.Clamp(view.tab, 1, math.max(#tabs, 1))
     local tab = tabs[view.tab]
     local lines = tab and cats[tab] or {}
-    local W, h = sizeOf(rec)
-    local x, y = -W / 2, -h / 2
+    local cardWidth, cardHeight = sizeOf(rec)
+    local left, top = -cardWidth / 2, -cardHeight / 2
 
-    draw.RoundedBox(10, x, y, W, h, BG)
-    draw.RoundedBoxEx(10, x, y, W, HEAD, HEAD_BG, true, true, false, false)
+    draw.RoundedBox(10, left, top, cardWidth, cardHeight, BG)
+    draw.RoundedBoxEx(10, left, top, cardWidth, HEAD, HEAD_BG, true, true, false, false)
     surface.SetDrawColor(focused and C.accent or ACCENT_DIM)
-    surface.DrawRect(x, y + HEAD - 2, W, 2)
-    surface.DrawOutlinedRect(x, y, W, h, focused and 2 or 1)
+    surface.DrawRect(left, top + HEAD - 2, cardWidth, 2)
+    surface.DrawOutlinedRect(left, top, cardWidth, cardHeight, focused and 2 or 1)
 
     -- Title, status and badges.
-    draw.RoundedBox(4, x + 12, y + 14, 6, 44, kindColor(rec))
-    draw.SimpleText(UI.Clip(rec.title or "?", "Rareload.PanelTitle", W - (hasBar(rec) and 266 or 50)),
-        "Rareload.PanelTitle", x + 26, y + 6, color_white)
+    draw.RoundedBox(4, left + 12, top + 14, 6, 44, kindColor(rec))
+    draw.SimpleText(UI.Clip(rec.title or "?", "Rareload.PanelTitle", cardWidth - (hasBar(rec) and 266 or 50)),
+        "Rareload.PanelTitle", left + 26, top + 6, color_white)
     local text, col = status(rec)
     surface.SetFont("Rareload.PanelSmall")
     local sw = surface.GetTextSize(text)
-    draw.SimpleText(text, "Rareload.PanelSmall", x + 26, y + 46, col)
-    local bx = x + 26 + sw + 10
+    draw.SimpleText(text, "Rareload.PanelSmall", left + 26, top + 46, col)
+    local bx = left + 26 + sw + 10
     local function badge(label, bcol)
         surface.SetFont("Rareload.PanelSmall")
         local bw = surface.GetTextSize(label) + 14
-        draw.RoundedBox(5, bx, y + 45, bw, 22, ColorAlpha(bcol, 60))
-        draw.SimpleText(label, "Rareload.PanelSmall", bx + bw / 2, y + 56, bcol, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        draw.RoundedBox(5, bx, top + 45, bw, 22, ColorAlpha(bcol, 60))
+        draw.SimpleText(label, "Rareload.PanelSmall", bx + bw / 2, top + 56, bcol, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         bx = bx + bw + 6
     end
     if rec.obj and rec.obj.base then badge(L("base." .. rec.obj.base .. ".short"), C.vehicle) end
@@ -491,42 +499,43 @@ local function drawCard(rec, focused)
     if not rec.preview and owner == LocalPlayer() then badge(L("world.yours"), C.ok) end
 
     -- Health (and armor for players) on the right of the header.
-    local bx2, bw2 = x + W - 214, 200
+    local bx2, bw2 = left + cardWidth - 214, 200
     if rec.kind == "player" and rec.data.health then
         local hp = rec.data.health
-        bar(bx2, y + 12, bw2, 22, (hp.hp or 0) / 100, UI.HealthColor(hp.hp, 100), L("world.hp", hp.hp or 0))
-        bar(bx2, y + 40, bw2, 22, (hp.armor or 0) / 100, C.info, L("world.armor", hp.armor or 0))
+        bar(bx2, top + 12, bw2, 22, (hp.hp or 0) / 100, UI.HealthColor(hp.hp, 100), L("world.hp", hp.hp or 0))
+        bar(bx2, top + 40, bw2, 22, (hp.armor or 0) / 100, C.info, L("world.armor", hp.armor or 0))
     elseif rec.obj and rec.obj.maxHp and rec.obj.maxHp > 0 then
-        bar(bx2, y + 12, bw2, 22, (rec.obj.hp or 0) / rec.obj.maxHp, UI.HealthColor(rec.obj.hp, rec.obj.maxHp),
+        bar(bx2, top + 12, bw2, 22, (rec.obj.hp or 0) / rec.obj.maxHp, UI.HealthColor(rec.obj.hp, rec.obj.maxHp),
             (rec.obj.hp or 0) .. " / " .. rec.obj.maxHp)
     end
 
     -- Tabs on the left.
-    local ty = y + HEAD + 6
+    local ty = top + HEAD + 6
     surface.SetDrawColor(SIDE_BG)
-    surface.DrawRect(x, ty - 4, SIDE, h - HEAD - 4)
+    surface.DrawRect(left, ty - 4, SIDE, cardHeight - HEAD - 4)
     for i, id in ipairs(tabs) do
         local active = i == view.tab
         local tcol = CAT_COLORS[id] or C.text2
         if active then
             surface.SetDrawColor(ColorAlpha(tcol, 45))
-            surface.DrawRect(x, ty, SIDE, TAB)
+            surface.DrawRect(left, ty, SIDE, TAB)
             surface.SetDrawColor(tcol)
-            surface.DrawRect(x, ty, 3, TAB)
+            surface.DrawRect(left, ty, 3, TAB)
         end
-        draw.SimpleText(UI.Clip(L("world.cat." .. id), "Rareload.PanelSmall", SIDE - 46), "Rareload.PanelSmall", x + 12,
+        draw.SimpleText(UI.Clip(L("world.cat." .. id), "Rareload.PanelSmall", SIDE - 46), "Rareload.PanelSmall",
+            left + 12,
             ty + TAB / 2,
             active and color_white or ColorAlpha(tcol, 200), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-        draw.SimpleText(tostring(#cats[id]), "Rareload.PanelSmall", x + SIDE - 10, ty + TAB / 2, C.text3,
+        draw.SimpleText(tostring(#cats[id]), "Rareload.PanelSmall", left + SIDE - 10, ty + TAB / 2, C.text3,
             TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
         ty = ty + TAB
     end
 
     -- Rows of the active tab.
-    local cx, cw = x + SIDE + 8, W - SIDE - 16
+    local cx, cw = left + SIDE + 8, cardWidth - SIDE - 16
     local maxScroll = math.max(#lines - VISIBLE, 0)
     view.scroll = math.Clamp(view.scroll, 0, maxScroll)
-    local ry = y + HEAD + 6
+    local ry = top + HEAD + 6
     for i = 1, math.min(#lines, VISIBLE) do
         local line = lines[i + view.scroll]
         if i % 2 == 0 then
@@ -552,18 +561,19 @@ local function drawCard(rec, focused)
     if maxScroll > 0 then
         local trackH = math.min(#lines, VISIBLE) * ROW
         local gripH = trackH * VISIBLE / #lines
-        draw.RoundedBox(3, x + W - 6, y + HEAD + 6, 4, trackH, TRACK)
-        draw.RoundedBox(3, x + W - 6, y + HEAD + 6 + (trackH - gripH) * view.scroll / maxScroll, 4, gripH, C.accent)
+        draw.RoundedBox(3, left + cardWidth - 6, top + HEAD + 6, 4, trackH, TRACK)
+        draw.RoundedBox(3, left + cardWidth - 6, top + HEAD + 6 + (trackH - gripH) * view.scroll / maxScroll, 4, gripH,
+            C.accent)
     end
-    return h
+    return cardHeight
 end
 
 -- A pill of text centred at (0, y).
-local function hint(text, y, col)
+local function hint(text, posY, col)
     surface.SetFont("Rareload.PanelSmall")
     local tw = surface.GetTextSize(text)
-    draw.RoundedBox(6, -tw / 2 - 10, y, tw + 20, 26, HINT_BG)
-    draw.SimpleText(text, "Rareload.PanelSmall", 0, y + 13, col or color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    draw.RoundedBox(6, -tw / 2 - 10, posY, tw + 20, 26, HINT_BG)
+    draw.SimpleText(text, "Rareload.PanelSmall", 0, posY + 13, col or color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 end
 
 -- Placement -------------------------------------------------------------------------------------------
@@ -576,8 +586,8 @@ end
 -- World units per screen pixel at `pos` on a plane facing the viewer, measured with the real projection.
 -- A 3D2D scale of this draws one panel unit per pixel: text at its font's own size, never blown up.
 local function unitsPerPixel(pos, ang)
-    local a, b = pos:ToScreen(), (pos + ang:Forward() * 16):ToScreen()
-    local px = math.sqrt((b.x - a.x) ^ 2 + (b.y - a.y) ^ 2) / 16
+    local origin, ahead = pos:ToScreen(), (pos + ang:Forward() * 16):ToScreen()
+    local px = math.sqrt((ahead.x - origin.x) ^ 2 + (ahead.y - origin.y) ^ 2) / 16
     return px > 0.01 and 1 / px or math.huge
 end
 
@@ -602,14 +612,15 @@ local function placement(mn, mx, size, eye)
 end
 
 -- Does the aim ray hit the panel's rectangle? Returns the distance to the panel.
-local function hitTest(pos, ang, scale, w, h, eye, aim)
+local function hitTest(pos, ang, scale, width, height, eye, aim)
     local normal = (pos - eye):GetNormalized()
     local denom = aim:Dot(normal)
     if denom <= 1e-4 then return nil end
-    local t = (pos - eye):Dot(normal) / denom
-    local rel = eye + aim * t - pos
-    if math.abs(rel:Dot(ang:Forward())) <= w / 2 * scale and math.abs(rel:Dot(ang:Right())) <= h / 2 * scale then
-        return t
+    local distance = (pos - eye):Dot(normal) / denom
+    local rel = eye + aim * distance - pos
+    if math.abs(rel:Dot(ang:Forward())) <= width / 2 * scale
+        and math.abs(rel:Dot(ang:Right())) <= height / 2 * scale then
+        return distance
     end
 end
 
@@ -637,7 +648,7 @@ local function candidates(eye, aim)
             end
         end
     end
-    table.sort(out, function(a, b) return a.edge < b.edge end)
+    table.sort(out, function(left, right) return left.edge < right.edge end)
     local budget = RARELOAD.Get(nil, "wdMaxDrawPerFrame")
     local limit = out[budget + 1] and out[budget + 1].edge or maxDist
     for i = #out, budget + 1, -1 do out[i] = nil end
@@ -648,42 +659,43 @@ end
 -- circles would join a car parked beside a bus.
 -- Spheres around the boxes rule out most pairs first; each box is read once per frame.
 local PAD = Vector(CLUSTER / 2, CLUSTER / 2, CLUSTER / 2)
-local function box(c)
-    if not c.pos then
-        c.pos, c.ang, c.mins, c.maxs = c.ent:GetPos(), c.ent:GetAngles(), c.ent:OBBMins() - PAD, c.ent:OBBMaxs() + PAD
+local function box(candidate)
+    if not candidate.pos then
+        candidate.pos, candidate.ang, candidate.mins, candidate.maxs = candidate.ent:GetPos(),
+            candidate.ent:GetAngles(), candidate.ent:OBBMins() - PAD, candidate.ent:OBBMaxs() + PAD
     end
-    return c.pos, c.ang, c.mins, c.maxs
+    return candidate.pos, candidate.ang, candidate.mins, candidate.maxs
 end
 
-local function close(a, b)
-    local reach = a.sphere + b.sphere
-    if a.center:DistToSqr(b.center) > reach * reach then return false end
-    local ap, aa, amn, amx = box(a)
-    local bp, ba, bmn, bmx = box(b)
+local function close(first, second)
+    local reach = first.sphere + second.sphere
+    if first.center:DistToSqr(second.center) > reach * reach then return false end
+    local ap, aa, amn, amx = box(first)
+    local bp, ba, bmn, bmx = box(second)
     return util.IsOBBIntersectingOBB(ap, aa, amn, amx, bp, ba, bmn, bmx, 0)
 end
 
 -- Single-linkage piles of models that touch or almost touch.
 local function piles(list)
     local groups = {}
-    for _, c in ipairs(list) do
+    for _, candidate in ipairs(list) do
         local home
-        for _, g in ipairs(groups) do
-            for _, m in ipairs(g.members) do
-                if close(c, m) then
-                    home = g
+        for _, pile in ipairs(groups) do
+            for _, member in ipairs(pile.members) do
+                if close(candidate, member) then
+                    home = pile
                     break
                 end
             end
             if home then break end
         end
-        if home then table.insert(home.members, c) else groups[#groups + 1] = { members = { c } } end
+        if home then table.insert(home.members, candidate) else groups[#groups + 1] = { members = { candidate } } end
     end
-    for _, g in ipairs(groups) do
-        table.sort(g.members, function(a, b) return a.rec.key < b.rec.key end)
+    for _, pile in ipairs(groups) do
+        table.sort(pile.members, function(left, right) return left.rec.key < right.rec.key end)
         local keys = {}
-        for i, m in ipairs(g.members) do keys[i] = m.rec.key end
-        g.key = table.concat(keys, "|")
+        for i, member in ipairs(pile.members) do keys[i] = member.rec.key end
+        pile.key = table.concat(keys, "|")
     end
     return groups
 end
@@ -691,45 +703,45 @@ end
 -- The member of a pile the viewer looks at most (a small bonus keeps last frame's choice, and
 -- bigger models win ties), so the pile sits by what the player is facing.
 -- The biggest model of a pile, which the pile's panel sits on (stable while the viewer looks around).
-local function baseOf(g)
-    local best = g.members[1]
-    for _, m in ipairs(g.members) do
-        if m.radius + m.half > best.radius + best.half then best = m end
+local function baseOf(pile)
+    local best = pile.members[1]
+    for _, member in ipairs(pile.members) do
+        if member.radius + member.half > best.radius + best.half then best = member end
     end
     return best
 end
 
 -- The box around every model of a pile.
-local function boundsOf(g)
+local function boundsOf(pile)
     local mn, mx
-    for _, m in ipairs(g.members) do
-        local a, b = m.ent:WorldSpaceAABB()
+    for _, member in ipairs(pile.members) do
+        local boxMin, boxMax = member.ent:WorldSpaceAABB()
         if mn then
-            mn = Vector(math.min(mn.x, a.x), math.min(mn.y, a.y), math.min(mn.z, a.z))
-            mx = Vector(math.max(mx.x, b.x), math.max(mx.y, b.y), math.max(mx.z, b.z))
+            mn = Vector(math.min(mn.x, boxMin.x), math.min(mn.y, boxMin.y), math.min(mn.z, boxMin.z))
+            mx = Vector(math.max(mx.x, boxMax.x), math.max(mx.y, boxMax.y), math.max(mx.z, boxMax.z))
         else
-            mn, mx = a, b
+            mn, mx = boxMin, boxMax
         end
     end
     return mn, mx
 end
 
-local function anchorOf(g, eye, aim)
-    local st = Panels.piles[g.key]
-    local best, score = g.members[1], -2
-    for _, m in ipairs(g.members) do
-        local s = (m.center - eye):GetNormalized():Dot(aim) + 0.0005 * m.radius
-        if st and st.anchor == m.rec.key then s = s + 0.05 end
-        if s > score then best, score = m, s end
+local function anchorOf(pile, eye, aim)
+    local st = Panels.piles[pile.key]
+    local best, score = pile.members[1], -2
+    for _, member in ipairs(pile.members) do
+        local alignment = (member.center - eye):GetNormalized():Dot(aim) + 0.0005 * member.radius
+        if st and st.anchor == member.rec.key then alignment = alignment + 0.05 end
+        if alignment > score then best, score = member, alignment end
     end
     return best
 end
 
-local function pileState(g)
-    local st = Panels.piles[g.key]
+local function pileState(pile)
+    local st = Panels.piles[pile.key]
     if not st then
         st = { active = 1 }
-        Panels.piles[g.key] = st
+        Panels.piles[pile.key] = st
     end
     st.seen = RealTime()
     return st
@@ -738,30 +750,30 @@ end
 -- Flips the locked pile by `dir` cards, with the swap animation.
 function Panels.Flip(dir)
     local lock = Panels.lock
-    local g = lock and Panels.groups and Panels.groups[lock.pile]
-    if not g or #g.members < 2 then return false end
-    local st = pileState(g)
-    local from = g.members[st.active]
-    st.active = (st.active - 1 + dir) % #g.members + 1
+    local pile = lock and Panels.groups and Panels.groups[lock.pile]
+    if not pile or #pile.members < 2 then return false end
+    local st = pileState(pile)
+    local from = pile.members[st.active]
+    st.active = (st.active - 1 + dir) % #pile.members + 1
     st.anim = { from = from and from.rec, t0 = RealTime(), dir = dir }
-    lock.rec = g.members[st.active].rec.key
+    lock.rec = pile.members[st.active].rec.key
     return true
 end
 
-local function easeOutBack(t)
-    local u = t - 1
-    return 1 + 2.70158 * u * u * u + 1.70158 * u * u
+local function easeOutBack(progress)
+    local shifted = progress - 1
+    return 1 + 2.70158 * shifted * shifted * shifted + 1.70158 * shifted * shifted
 end
 
 local fade = 1 -- alpha of the pile being drawn
 
 -- Draws `rec`'s card moved by (dx, dy), scaled by s, at alpha a (the plane is already open).
-local function drawMoved(rec, dx, dy, s, a, focused)
-    local m = Matrix()
-    m:Translate(Vector(dx, dy, 0))
-    m:Scale(Vector(s, s, 1))
-    cam.PushModelMatrix(m, true)
-    surface.SetAlphaMultiplier(a * fade)
+local function drawMoved(rec, dx, dy, scale, alpha, focused)
+    local matrix = Matrix()
+    matrix:Translate(Vector(dx, dy, 0))
+    matrix:Scale(Vector(scale, scale, 1))
+    cam.PushModelMatrix(matrix, true)
+    surface.SetAlphaMultiplier(alpha * fade)
     drawCard(rec, focused)
     surface.SetAlphaMultiplier(fade)
     cam.PopModelMatrix()
@@ -780,29 +792,29 @@ local TAG_H, TAG_TITLE = 40, 340
 
 local TAG_NAMES, TAG_NAME_W = 3, 200 -- a stack's tag names its first few models
 
-local function tagLayout(g)
-    local rec = g.active
-    if #g.members > 1 then
+local function tagLayout(pile)
+    local rec = pile.active
+    if #pile.members > 1 then
         -- A stack: how many, then each model's name by a dot of its kind's colour.
-        local t = { stack = L("world.tag_stack", #g.members), names = {} }
+        local layout = { stack = L("world.tag_stack", #pile.members), names = {} }
         surface.SetFont("Rareload.PanelSmall")
-        t.sw = surface.GetTextSize(t.stack) + 20
-        local w = 10 + t.sw + 12
+        layout.sw = surface.GetTextSize(layout.stack) + 20
+        local stackWidth = 10 + layout.sw + 12
         surface.SetFont("Rareload.PanelB")
-        for i = 1, math.min(#g.members, TAG_NAMES) do
-            local r = g.members[i].rec
-            local name = UI.Clip(r.title or "?", "Rareload.PanelB", TAG_NAME_W)
+        for i = 1, math.min(#pile.members, TAG_NAMES) do
+            local record = pile.members[i].rec
+            local name = UI.Clip(record.title or "?", "Rareload.PanelB", TAG_NAME_W)
             local nw = surface.GetTextSize(name)
-            t.names[i] = { text = name, w = nw, col = kindColor(r) }
-            w = w + 14 + nw + 16
+            layout.names[i] = { text = name, w = nw, col = kindColor(record) }
+            stackWidth = stackWidth + 14 + nw + 16
         end
-        if #g.members > TAG_NAMES then
-            t.more = "+" .. (#g.members - TAG_NAMES)
+        if #pile.members > TAG_NAMES then
+            layout.more = "+" .. (#pile.members - TAG_NAMES)
             surface.SetFont("Rareload.PanelSmall")
-            w = w + surface.GetTextSize(t.more) + 4
+            stackWidth = stackWidth + surface.GetTextSize(layout.more) + 4
         end
-        t.w = w
-        return t
+        layout.w = stackWidth
+        return layout
     end
     local title = UI.Clip(rec.title or "?", "Rareload.PanelB", TAG_TITLE)
     local text, col = status(rec)
@@ -810,12 +822,12 @@ local function tagLayout(g)
     local tw = surface.GetTextSize(title)
     surface.SetFont("Rareload.PanelSmall")
     local sw = surface.GetTextSize(text)
-    local w = 20 + tw + 12 + sw + (hasBar(rec) and 72 or 0) + 14
-    return { title = title, tw = tw, text = text, col = col, sw = sw, w = w }
+    local tagWidth = 20 + tw + 12 + sw + (hasBar(rec) and 72 or 0) + 14
+    return { title = title, tw = tw, text = text, col = col, sw = sw, w = tagWidth }
 end
 
-local function tagPlacement(g, eye)
-    local mn, mx = g.mn, g.mx
+local function tagPlacement(pile, eye)
+    local mn, mx = pile.mn, pile.mx
     local hx, hy = (mx.x - mn.x) / 2, (mx.y - mn.y) / 2
     local dx, dy = mn.x + hx - eye.x, mn.y + hy - eye.y
     local dist = math.sqrt(dx * dx + dy * dy)
@@ -829,36 +841,36 @@ end
 
 local TAG_BACK = Color(28, 34, 46, 200)
 
-local function drawStackTag(t, n)
-    local x, y = -t.w / 2, -TAG_H / 2
-    for k = math.min(n - 1, 2), 1, -1 do -- the tags of the models below peek out, like a pile of cards
-        draw.RoundedBox(8, x + 8 * k, y - 6 * k, t.w, TAG_H, ColorAlpha(TAG_BACK, 200 - k * 60))
+local function drawStackTag(layout, count)
+    local left, top = -layout.w / 2, -TAG_H / 2
+    for peek = math.min(count - 1, 2), 1, -1 do -- the tags of the models below peek out, like a pile of cards
+        draw.RoundedBox(8, left + 8 * peek, top - 6 * peek, layout.w, TAG_H, ColorAlpha(TAG_BACK, 200 - peek * 60))
     end
-    draw.RoundedBox(8, x, y, t.w, TAG_H, BG)
-    draw.RoundedBox(6, x + 8, y + 7, t.sw, TAG_H - 14, BADGE_BG)
-    draw.SimpleText(t.stack, "Rareload.PanelSmall", x + 8 + t.sw / 2, 0, color_white, TEXT_ALIGN_CENTER,
+    draw.RoundedBox(8, left, top, layout.w, TAG_H, BG)
+    draw.RoundedBox(6, left + 8, top + 7, layout.sw, TAG_H - 14, BADGE_BG)
+    draw.SimpleText(layout.stack, "Rareload.PanelSmall", left + 8 + layout.sw / 2, 0, color_white, TEXT_ALIGN_CENTER,
         TEXT_ALIGN_CENTER)
-    local cx = x + 10 + t.sw + 12
-    for _, nm in ipairs(t.names) do
+    local cx = left + 10 + layout.sw + 12
+    for _, nm in ipairs(layout.names) do
         draw.RoundedBox(4, cx, -4, 8, 8, nm.col)
         draw.SimpleText(nm.text, "Rareload.PanelB", cx + 14, 0, color_white, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         cx = cx + 14 + nm.w + 16
     end
-    if t.more then
-        draw.SimpleText(t.more, "Rareload.PanelSmall", cx, 0, C.text2, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    if layout.more then
+        draw.SimpleText(layout.more, "Rareload.PanelSmall", cx, 0, C.text2, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
 end
 
-local function drawTag(g)
-    local t, rec = g.tag, g.active
-    if t.stack then return drawStackTag(t, #g.members) end
-    local x, y = -t.w / 2, -TAG_H / 2
-    draw.RoundedBox(8, x, y, t.w, TAG_H, BG)
-    draw.RoundedBox(2, x + 7, y + 8, 4, TAG_H - 16, kindColor(rec))
-    draw.SimpleText(t.title, "Rareload.PanelB", x + 20, 0, color_white, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-    local cx = x + 20 + t.tw + 12
-    draw.SimpleText(t.text, "Rareload.PanelSmall", cx, 0, t.col, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-    cx = cx + t.sw + 12
+local function drawTag(pile)
+    local layout, rec = pile.tag, pile.active
+    if layout.stack then return drawStackTag(layout, #pile.members) end
+    local left, top = -layout.w / 2, -TAG_H / 2
+    draw.RoundedBox(8, left, top, layout.w, TAG_H, BG)
+    draw.RoundedBox(2, left + 7, top + 8, 4, TAG_H - 16, kindColor(rec))
+    draw.SimpleText(layout.title, "Rareload.PanelB", left + 20, 0, color_white, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    local cx = left + 20 + layout.tw + 12
+    draw.SimpleText(layout.text, "Rareload.PanelSmall", cx, 0, layout.col, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    cx = cx + layout.sw + 12
     if hasBar(rec) then
         local hp, max
         if rec.kind == "player" then
@@ -873,10 +885,11 @@ local function drawTag(g)
 end
 
 -- Where a 3D2D rectangle centred on `pos` lands on screen, or nil when part of it is behind the view.
-local function screenRect(pos, ang, scale, w, h)
-    local f, r = ang:Forward() * (w * scale / 2), ang:Right() * (h * scale / 2)
+local function screenRect(pos, ang, scale, width, height)
+    local forward, right = ang:Forward() * (width * scale / 2), ang:Right() * (height * scale / 2)
     local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
-    for _, corner in ipairs({ pos + f + r, pos + f - r, pos - f + r, pos - f - r }) do
+    for _, corner in ipairs({ pos + forward + right, pos + forward - right, pos - forward + right,
+        pos - forward - right }) do
         local sc = corner:ToScreen()
         if not sc.visible then return nil end
         x0, y0, x1, y1 = math.min(x0, sc.x), math.min(y0, sc.y), math.max(x1, sc.x), math.max(y1, sc.y)
@@ -884,25 +897,26 @@ local function screenRect(pos, ang, scale, w, h)
     return { x0 - 3, y0 - 3, x1 + 3, y1 + 3 }
 end
 
-local function overlaps(r, taken)
-    for _, o in ipairs(taken) do
-        if r[1] < o[3] and o[1] < r[3] and r[2] < o[4] and o[2] < r[4] then return true end
+local function overlaps(rect, taken)
+    for _, other in ipairs(taken) do
+        if rect[1] < other[3] and other[1] < rect[3] and rect[2] < other[4] and other[2] < rect[4] then return true end
     end
     return false
 end
 
 -- How far along the aim ray it meets one of the pile's models (a box-ish test: the model's height and
 -- footprint radius around its centre).
-local function aimedModel(g, eye, aim)
+local function aimedModel(pile, eye, aim)
     local best
-    for _, m in ipairs(g.members) do
-        local oc = m.center - eye
-        local t = oc:Dot(aim)
-        if t > 0 then
-            local rel = aim * t - oc
-            local inCylinder = math.abs(rel.z) < m.half and rel.x * rel.x + rel.y * rel.y < m.radius * m.radius
-            if inCylinder and (not best or t < best) then
-                best = t
+    for _, member in ipairs(pile.members) do
+        local oc = member.center - eye
+        local along = oc:Dot(aim)
+        if along > 0 then
+            local rel = aim * along - oc
+            local inCylinder = math.abs(rel.z) < member.half
+                and rel.x * rel.x + rel.y * rel.y < member.radius * member.radius
+            if inCylinder and (not best or along < best) then
+                best = along
             end
         end
     end
@@ -912,54 +926,58 @@ end
 -- The open card's outline marks which model of a pile it shows: its phantom when the object has left
 -- its saved spot or is missing, else the object itself.
 hook.Add("PreDrawHalos", "Rareload.Panels.Pile", function()
-    local g = Panels.focus
-    if g and #g.members > 1 and IsValid(g.activeEnt) then halo.Add({ g.activeEnt }, C.accent, 2, 2, 1, true, true) end
+    local pile = Panels.focus
+    if pile and #pile.members > 1 and IsValid(pile.activeEnt) then halo.Add({ pile.activeEnt }, C.accent, 2, 2, 1,
+        true, true) end
 end)
 
-local function drawOpenCard(g, focused, locked)
-    local st = Panels.piles[g.key]
-    if g.inside then cam.IgnoreZ(true) end -- standing at a big model, the card can end up inside it
-    cam.Start3D2D(g.pos, g.ang, g.scale)
-    for k = math.min(#g.members - 1, 2), 1, -1 do -- the next cards peek out behind
-        local ph, pw = g.h * 0.94 ^ k, g.w * 0.94 ^ k
-        draw.RoundedBox(10, -pw / 2 + 26 * k, -ph / 2 - 22 * k, pw, ph, Color(18, 22, 30, 200 - k * 50))
-        draw.RoundedBoxEx(10, -pw / 2 + 26 * k, -ph / 2 - 22 * k, pw, 46, Color(28, 34, 46, 220 - k * 50), true, true,
+local function drawOpenCard(pile, focused, locked)
+    local st = Panels.piles[pile.key]
+    if pile.inside then cam.IgnoreZ(true) end -- standing at a big model, the card can end up inside it
+    cam.Start3D2D(pile.pos, pile.ang, pile.scale)
+    for behind = math.min(#pile.members - 1, 2), 1, -1 do -- the next cards peek out behind
+        local ph, pw = pile.h * 0.94 ^ behind, pile.w * 0.94 ^ behind
+        draw.RoundedBox(10, -pw / 2 + 26 * behind, -ph / 2 - 22 * behind, pw, ph, Color(18, 22, 30, 200 - behind * 50))
+        draw.RoundedBoxEx(10, -pw / 2 + 26 * behind, -ph / 2 - 22 * behind, pw, 46,
+            Color(28, 34, 46, 220 - behind * 50), true, true,
             false, false)
     end
     local anim = st.anim
-    local t = anim and (RealTime() - anim.t0) / ANIM or 1
-    if t >= 1 then st.anim, anim = nil, nil end
+    local progress = anim and (RealTime() - anim.t0) / ANIM or 1
+    if progress >= 1 then st.anim, anim = nil, nil end
     local open = math.min((RealTime() - (Panels.openAt or 0)) / OPEN, 1)
     if anim then
-        local e = easeOutBack(t)
+        local eased = easeOutBack(progress)
         if anim.from then
-            drawMoved(anim.from, anim.dir * t * g.w * 0.55, -t * g.h * 0.14, Lerp(t, 1, 0.82), 1 - t * t, false)
+            drawMoved(anim.from, anim.dir * progress * pile.w * 0.55, -progress * pile.h * 0.14,
+                Lerp(progress, 1, 0.82), 1 - progress * progress, false)
         end
-        drawMoved(g.active, -anim.dir * (1 - e) * g.w * 0.1, (1 - e) * g.h * 0.05, Lerp(e, 0.9, 1), Lerp(t, 0.6, 1),
+        drawMoved(pile.active, -anim.dir * (1 - eased) * pile.w * 0.1, (1 - eased) * pile.h * 0.05,
+            Lerp(eased, 0.9, 1), Lerp(progress, 0.6, 1),
             focused)
     elseif open < 1 then
-        drawMoved(g.active, 0, g.h * 0.04 * (1 - open), Lerp(easeOutBack(open), 0.92, 1), open, focused)
+        drawMoved(pile.active, 0, pile.h * 0.04 * (1 - open), Lerp(easeOutBack(open), 0.92, 1), open, focused)
     else
-        drawCard(g.active, focused)
+        drawCard(pile.active, focused)
     end
-    if #g.members > 1 then
-        local label = st.active .. " / " .. #g.members
+    if #pile.members > 1 then
+        local label = st.active .. " / " .. #pile.members
         surface.SetFont("Rareload.Label")
         local bw = surface.GetTextSize(label) + 20
-        draw.RoundedBox(6, -bw / 2, -g.h / 2 - 32, bw, 26, BADGE_BG)
-        draw.SimpleText(label, "Rareload.Label", 0, -g.h / 2 - 19, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        draw.RoundedBox(6, -bw / 2, -pile.h / 2 - 32, bw, 26, BADGE_BG)
+        draw.SimpleText(label, "Rareload.Label", 0, -pile.h / 2 - 19, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
-    local hy = g.h / 2 + 8
+    local hy = pile.h / 2 + 8
     if locked then
         hint(L("world.hint_locked"), hy, C.warn)
-        hint(#g.members > 1 and L("world.hint_controls_pile") or L("world.hint_controls"), hy + 30)
-        hint(g.active.kind == "player" and L("world.hint_highlight_player") or L("world.hint_highlight"), hy + 60)
+        hint(#pile.members > 1 and L("world.hint_controls_pile") or L("world.hint_controls"), hy + 30)
+        hint(pile.active.kind == "player" and L("world.hint_highlight_player") or L("world.hint_highlight"), hy + 60)
     else
         hint(L("world.hint_inspect"), hy)
-        if #g.members > 1 then hint(L("world.hint_pile", #g.members), hy + 30) end
+        if #pile.members > 1 then hint(L("world.hint_pile", #pile.members), hy + 30) end
     end
     cam.End3D2D()
-    if g.inside then cam.IgnoreZ(false) end
+    if pile.inside then cam.IgnoreZ(false) end
 end
 
 hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sky)
@@ -979,42 +997,42 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
     local openKey = Panels.focus and Panels.focus.key
     local focus, focusT
 
-    for _, g in ipairs(groups) do
-        Panels.groups[g.key] = g
-        local st = pileState(g)
-        local anchor = anchorOf(g, eye, aim)
-        g.base = baseOf(g)
-        g.mn, g.mx = boundsOf(g)
-        g.size = math.max(g.base.radius, g.base.half) * 2
+    for _, pile in ipairs(groups) do
+        Panels.groups[pile.key] = pile
+        local st = pileState(pile)
+        local anchor = anchorOf(pile, eye, aim)
+        pile.base = baseOf(pile)
+        pile.mn, pile.mx = boundsOf(pile)
+        pile.size = math.max(pile.base.radius, pile.base.half) * 2
         st.anchor = anchor.rec.key
-        local lockedHere = lock and lock.pile == g.key
+        local lockedHere = lock and lock.pile == pile.key
         if not lockedHere then
-            for i, m in ipairs(g.members) do if m == anchor then st.active = i end end
+            for i, member in ipairs(pile.members) do if member == anchor then st.active = i end end
         end
-        st.active = math.Clamp(st.active, 1, #g.members)
-        g.active = g.members[st.active].rec
-        g.activeEnt = g.members[st.active].ent -- its phantom when it has left its saved spot
-        g.dist = eye:Distance(g.base.center)
-        g.tag = tagLayout(g)
-        g.tagPos, g.tagAng, g.tagScale = tagPlacement(g, eye)
+        st.active = math.Clamp(st.active, 1, #pile.members)
+        pile.active = pile.members[st.active].rec
+        pile.activeEnt = pile.members[st.active].ent -- its phantom when it has left its saved spot
+        pile.dist = eye:Distance(pile.base.center)
+        pile.tag = tagLayout(pile)
+        pile.tagPos, pile.tagAng, pile.tagScale = tagPlacement(pile, eye)
         -- The open card keeps the focus while it is looked at; otherwise the nearest tag or model aimed at.
         -- A tag or card aimed at is focused wherever it is drawn (from high above, every object can be
         -- further than the focus distance); aiming at the model itself only counts within that distance.
-        local t
-        if g.key == openKey then
-            local w, h = sizeOf(g.active)
-            local pos, ang, scale = placement(g.mn, g.mx, g.size, eye)
-            t = hitTest(pos, ang, scale, w, h, eye, aim) and 0
+        local layout
+        if pile.key == openKey then
+            local width, height = sizeOf(pile.active)
+            local pos, ang, scale = placement(pile.mn, pile.mx, pile.size, eye)
+            layout = hitTest(pos, ang, scale, width, height, eye, aim) and 0
         end
-        t = t or hitTest(g.tagPos, g.tagAng, g.tagScale, g.tag.w, TAG_H, eye, aim)
-            or g.dist < interact and aimedModel(g, eye, aim) or nil
-        if t and (not focusT or t < focusT) then focus, focusT = g, t end
+        layout = layout or hitTest(pile.tagPos, pile.tagAng, pile.tagScale, pile.tag.w, TAG_H, eye, aim)
+            or pile.dist < interact and aimedModel(pile, eye, aim) or nil
+        if layout and (not focusT or layout < focusT) then focus, focusT = pile, layout end
     end
 
     -- The lock follows its pile when the piles are re-formed as models move.
     if lock and not Panels.groups[lock.pile] then
-        for _, g in ipairs(groups) do
-            for _, m in ipairs(g.members) do if m.rec.key == lock.rec then lock.pile = g.key end end
+        for _, pile in ipairs(groups) do
+            for _, member in ipairs(pile.members) do if member.rec.key == lock.rec then lock.pile = pile.key end end
         end
     end
     if lock then focus = Panels.groups[lock.pile] end
@@ -1030,31 +1048,31 @@ hook.Add("PostDrawTranslucentRenderables", "Rareload.Panels", function(depth, sk
         focus.pos, focus.ang, focus.scale, focus.inside = placement(focus.mn, focus.mx, focus.size, eye)
         taken[1] = screenRect(focus.pos, focus.ang, focus.scale, focus.w, focus.h)
     end
-    table.sort(groups, function(a, b) return a.dist < b.dist end)
+    table.sort(groups, function(left, right) return left.dist < right.dist end)
     local step = FrameTime() * 8
-    for _, g in ipairs(groups) do
-        local st = Panels.piles[g.key]
+    for _, pile in ipairs(groups) do
+        local st = Panels.piles[pile.key]
         local show = false
-        if g ~= focus then
-            local r = screenRect(g.tagPos, g.tagAng, g.tagScale, g.tag.w, TAG_H)
-            show = r ~= nil and not overlaps(r, taken)
-            if show then taken[#taken + 1] = r end
+        if pile ~= focus then
+            local rect = screenRect(pile.tagPos, pile.tagAng, pile.tagScale, pile.tag.w, TAG_H)
+            show = rect ~= nil and not overlaps(rect, taken)
+            if show then taken[#taken + 1] = rect end
         end
         st.tagA = math.Approach(st.tagA or 0, show and 1 or 0, step)
     end
 
     for i = #groups, 1, -1 do -- farthest first
-        local g = groups[i]
-        local focused, locked = g == focus, lock and lock.pile == g.key
+        local pile = groups[i]
+        local focused, locked = pile == focus, lock and lock.pile == pile.key
         fade = 1
         if focused then
             surface.SetAlphaMultiplier(1)
-            drawOpenCard(g, true, locked)
-        elseif Panels.piles[g.key].tagA > 0 then
-            surface.SetAlphaMultiplier(Panels.piles[g.key].tagA *
-                math.Clamp((reach - g.base.edge) / (reach * FADE), 0, 1))
-            cam.Start3D2D(g.tagPos, g.tagAng, g.tagScale)
-            drawTag(g)
+            drawOpenCard(pile, true, locked)
+        elseif Panels.piles[pile.key].tagA > 0 then
+            surface.SetAlphaMultiplier(Panels.piles[pile.key].tagA *
+                math.Clamp((reach - pile.base.edge) / (reach * FADE), 0, 1))
+            cam.Start3D2D(pile.tagPos, pile.tagAng, pile.tagScale)
+            drawTag(pile)
             cam.End3D2D()
         end
     end

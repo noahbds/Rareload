@@ -1,4 +1,5 @@
--- Save history per player and map: the current save is simply the active entry. Timeline operations, undo, the tool's reload-key modes and edits of saved objects.
+-- Save history per player and map: the current save is simply the active entry. Timeline operations, undo, the tool's
+-- reload-key modes and edits of saved objects.
 
 RARELOAD.History = RARELOAD.History or {}
 local History = RARELOAD.History
@@ -51,8 +52,8 @@ end
 
 -- Entries never dropped to make room or by age: pinned ones, the respawn point and the quick slot.
 -- (A death save may go; its id is then forgotten.)
-local function kept(doc, e)
-    return e.pinned or e.id == doc.activeId or e.id == doc.quickId
+local function kept(doc, entry)
+    return entry.pinned or entry.id == doc.activeId or entry.id == doc.quickId
 end
 
 -- After entries were removed: the quick slot and the death save point at an entry, or at nothing.
@@ -93,8 +94,8 @@ function History.Append(ply, entry, opts)
 
     local cap, i = RARELOAD.Get(ply, "historySize"), 1
     while #doc.entries > cap and i <= #doc.entries do
-        local e = doc.entries[i]
-        if kept(doc, e) or e.id == doc.deathId then i = i + 1 else table.remove(doc.entries, i) end
+        local oldEntry = doc.entries[i]
+        if kept(doc, oldEntry) or oldEntry.id == doc.deathId then i = i + 1 else table.remove(doc.entries, i) end
     end
     forgetMissing(doc)
     return save(ply, doc)
@@ -113,8 +114,8 @@ end
 function History.PruneDoc(doc, cutoff)
     local before = #doc.entries
     for i = #doc.entries, 1, -1 do
-        local e = doc.entries[i]
-        if (tonumber(e.time) or 0) < cutoff and not kept(doc, e) then table.remove(doc.entries, i) end
+        local entry = doc.entries[i]
+        if (tonumber(entry.time) or 0) < cutoff and not kept(doc, entry) then table.remove(doc.entries, i) end
     end
     forgetMissing(doc)
     return before - #doc.entries
@@ -137,9 +138,9 @@ function History.SetPinned(ply, id, pinned)
     if not entry then return false end
     -- Pinned saves are never dropped, so their number is capped (A3).
     if pinned and not entry.pinned then
-        local n = 0
-        for _, e in ipairs(doc.entries) do if e.pinned then n = n + 1 end end
-        if n >= RARELOAD.Get(nil, "pinnedMax") then return false, "full" end
+        local pinnedCount = 0
+        for _, other in ipairs(doc.entries) do if other.pinned then pinnedCount = pinnedCount + 1 end end
+        if pinnedCount >= RARELOAD.Get(nil, "pinnedMax") then return false, "full" end
     end
     entry.pinned = pinned or nil
     return save(ply, doc)
@@ -182,8 +183,8 @@ function History.Clear(ply)
     local doc = History.Doc(ply)
     if not doc then return false end
     local left = {}
-    for _, e in ipairs(doc.entries) do
-        if kept(doc, e) then left[#left + 1] = e end
+    for _, entry in ipairs(doc.entries) do
+        if kept(doc, entry) then left[#left + 1] = entry end
     end
     doc.entries = left
     forgetMissing(doc)
@@ -254,15 +255,16 @@ end
 -- vehicles that finished spawning later, E14), and their objects are restored exactly as captured
 -- (moved ones put back, removed ones pasted again, new ones removed).
 function History.Undo(ply)
-    local u = undos[ply]
-    if not u then return false end
+    local undo = undos[ply]
+    if not undo then return false end
     undos[ply] = nil
     refresh(ply)
-    for _, ent in ipairs(u.ctx.spawned) do
+    for _, ent in ipairs(undo.ctx.spawned) do
         if IsValid(ent) then ent:Remove() end
     end
-    if u.entry then
-        RARELOAD.Pipeline.Restore(ply, u.entry, { only = u.only, reason = "undo", reset = true, exact = u.world })
+    if undo.entry then
+        RARELOAD.Pipeline.Restore(ply, undo.entry,
+            { only = undo.only, reason = "undo", reset = true, exact = undo.world })
     end
     return true
 end
@@ -384,13 +386,13 @@ local lastKey = setmetatable({}, { __mode = "k" })
 
 hook.Add("PlayerButtonDown", "Rareload.QuickKeys", function(ply, button)
     if ply:IsBot() then return end
-    for convar, k in pairs(KEYS) do
+    for convar, keyDef in pairs(KEYS) do
         if button ~= 0 and ply:GetInfoNum(convar, 0) == button then
-            if CurTime() - (lastKey[ply] or -math.huge) < (k.cooldown or 1) then return end
+            if CurTime() - (lastKey[ply] or -math.huge) < (keyDef.cooldown or 1) then return end
             lastKey[ply] = CurTime()
             if not RARELOAD.Can(ply, "rareload_use_tool") then return end
-            if k.priv and not RARELOAD.Can(ply, k.priv) then return end
-            k.fn(ply)
+            if keyDef.priv and not RARELOAD.Can(ply, keyDef.priv) then return end
+            keyDef.fn(ply)
             return
         end
     end
@@ -442,8 +444,8 @@ local function eachObject(entry, fn)
     for _, kind in ipairs(WORLD_KINDS) do
         local snap = entry and RARELOAD.Pipeline.Payload(entry.data[kind])
         for _, entityDef in pairs(snap and snap.Entities or {}) do
-            local r = fn(entityDef, kind, snap)
-            if r ~= nil then return r end
+            local result = fn(entityDef, kind, snap)
+            if result ~= nil then return result end
         end
     end
 end
@@ -460,12 +462,12 @@ function History.Objects(ply, id)
 end
 
 -- Constraint settings worth showing: plain values, without the ends (shown as names) and the type.
-local function constraintSettings(c)
+local function constraintSettings(constraintData)
     local out = {}
-    for k, v in pairs(c) do
-        if isstring(k) and (isnumber(v) or isbool(v) or isstring(v)) and k ~= "Type"
-            and not string.match(k, "^Bone%d?$") and not string.match(k, "^Ent%d$") then
-            out[k] = v
+    for key, value in pairs(constraintData) do
+        if isstring(key) and (isnumber(value) or isbool(value) or isstring(value)) and key ~= "Type"
+            and not string.match(key, "^Bone%d?$") and not string.match(key, "^Ent%d$") then
+            out[key] = value
         end
     end
     return out
@@ -487,7 +489,7 @@ local function objectConstraints(entry, objectId)
     end)
 
     local out, seen = {}, {}
-    local function add(c, ids)
+    local function add(constraintData, ids)
         local to, own, list = {}, false, {}
         for _, id in pairs(ids) do
             id = tostring(id)
@@ -500,32 +502,32 @@ local function objectConstraints(entry, objectId)
         end
         if not own then return end
         table.sort(list)
-        local key = tostring(c.Type) .. "|" .. table.concat(list, "|")
+        local key = tostring(constraintData.Type) .. "|" .. table.concat(list, "|")
         if (seen[key] or 0) > 0 then
             seen[key] = seen[key] - 1 -- the same constraint, already listed from the other source
             return
         end
-        out[#out + 1] = { type = c.Type, to = to, set = constraintSettings(c), key = key }
+        out[#out + 1] = { type = constraintData.Type, to = to, set = constraintSettings(constraintData), key = key }
     end
 
     local list = RARELOAD.Pipeline.Payload(entry.data.constraints)
     for _, saved in ipairs(istable(list) and list or {}) do add(saved.def, saved.ids) end
-    for _, o in ipairs(out) do seen[o.key] = (seen[o.key] or 0) + 1 end
+    for _, info in ipairs(out) do seen[info.key] = (seen[info.key] or 0) + 1 end
     for _, kind in ipairs(WORLD_KINDS) do
         local snap = RARELOAD.Pipeline.Payload(entry.data[kind])
-        for _, c in pairs(snap and snap.Constraints or {}) do
-            if istable(c) and c.Type and istable(c.Entity) then
+        for _, constraintData in pairs(snap and snap.Constraints or {}) do
+            if istable(constraintData) and constraintData.Type and istable(constraintData.Entity) then
                 local ids, known = {}, true
-                for i, e in pairs(c.Entity) do
-                    local entityDef = snap.Entities[e.Index] or snap.Entities[tostring(e.Index)]
-                    ids[i] = e.World and "world" or entityDef and DefID(entityDef)
+                for i, endpoint in pairs(constraintData.Entity) do
+                    local entityDef = snap.Entities[endpoint.Index] or snap.Entities[tostring(endpoint.Index)]
+                    ids[i] = endpoint.World and "world" or entityDef and DefID(entityDef)
                     known = known and ids[i] ~= nil
                 end
-                if known then add(c, ids) end
+                if known then add(constraintData, ids) end
             end
         end
     end
-    for _, o in ipairs(out) do o.key = nil end
+    for _, info in ipairs(out) do info.key = nil end
     return #out > 0 and out or nil
 end
 
@@ -552,10 +554,10 @@ end
 -- type, and never its class or model unless the editor is a full admin (S6).
 function History.ValidateEdit(entityDef, edit, isAdmin)
     if not istable(edit) then return false, "the edit is not a table" end
-    for k, v in pairs(edit) do
-        if entityDef[k] == nil then return false, "unknown key " .. tostring(k) end
-        if type(entityDef[k]) ~= type(v) then return false, "wrong type for " .. tostring(k) end
-        if (k == "Class" or k == "Model") and not isAdmin then return false, k .. " needs rareload_admin" end
+    for key, value in pairs(edit) do
+        if entityDef[key] == nil then return false, "unknown key " .. tostring(key) end
+        if type(entityDef[key]) ~= type(value) then return false, "wrong type for " .. tostring(key) end
+        if (key == "Class" or key == "Model") and not isAdmin then return false, key .. " needs rareload_admin" end
     end
     return true
 end
@@ -652,7 +654,7 @@ function History.EditObject(ply, entryId, objectId, edit)
     return changeObject(ply, entryId, objectId, function(entityDef)
         local ok, err = History.ValidateEdit(entityDef, edit, RARELOAD.Can(ply, "rareload_admin"))
         if not ok then return false, err end
-        for k, v in pairs(edit) do entityDef[k] = v end
+        for key, value in pairs(edit) do entityDef[key] = value end
         return true
     end)
 end
@@ -681,14 +683,14 @@ end
 
 -- Raw values for the timeline; the client formats and translates them (L29).
 function History.Info(data)
-    local t, h = data.transform or {}, data.health or {}
+    local transform, health = data.transform or {}, data.health or {}
     local info = {
-        pos = t.pos,
-        ang = t.ang,
-        crouched = t.crouched,
+        pos = transform.pos,
+        ang = transform.ang,
+        crouched = transform.crouched,
         model = data.appearance and data.appearance.model,
-        hp = h.hp,
-        armor = h.armor,
+        hp = health.hp,
+        armor = health.armor,
         active = data.activeWeapon,
         states = data.states,
         weapons = data.weapons and #data.weapons,
@@ -731,20 +733,20 @@ end
 -- One row per entry.
 function History.Rows(ply)
     local doc, rows = History.Doc(ply), {}
-    for _, e in ipairs(doc and doc.entries or {}) do
-        e.note = noteText(e.note)
+    for _, entry in ipairs(doc and doc.entries or {}) do
+        entry.note = noteText(entry.note)
         local modules = {}
-        for id in pairs(e.data) do modules[#modules + 1] = id end
+        for id in pairs(entry.data) do modules[#modules + 1] = id end
         table.sort(modules)
         rows[#rows + 1] = {
-            id = e.id,
-            time = e.time,
-            reason = e.reason,
-            pinned = e.pinned,
-            note = e.note,
-            active = e.id == doc.activeId,
+            id = entry.id,
+            time = entry.time,
+            reason = entry.reason,
+            pinned = entry.pinned,
+            note = entry.note,
+            active = entry.id == doc.activeId,
             modules = modules,
-            info = History.Info(e.data)
+            info = History.Info(entry.data)
         }
     end
     return rows
@@ -796,19 +798,19 @@ local function nameOf(target)
     return (doc and doc.nick or "?") .. " (" .. target .. ")"
 end
 
-local function handle(op, priv, args, fn)
-    args.sid = "string:20?"
+local function handle(op, priv, schema, fn)
+    schema.sid = "string:20?"
     RARELOAD.Net.Handle(op, {
         priv = priv,
         rate = 0.2,
-        args = args,
-        fn = function(ply, a)
-            local target = targetFor(ply, a.sid)
+        args = schema,
+        fn = function(ply, args)
+            local target = targetFor(ply, args.sid)
             if not target then return end
-            local key, targs = fn(target, a, ply)
+            local key, targs = fn(target, args, ply)
             if key then RARELOAD.Toast(ply, key, targs) end
             if target ~= ply and op ~= "history.get" then
-                RARELOAD.Log("admin", ply):info("%s: %s, save No. %s of %s", ply:Nick(), op, tostring(a.id or "-"),
+                RARELOAD.Log("admin", ply):info("%s: %s, save No. %s of %s", ply:Nick(), op, tostring(args.id or "-"),
                     nameOf(target))
             end
             pushRows(ply)
@@ -820,45 +822,45 @@ end
 handle("history.get", "rareload_restore", {}, function(target, _, ply)
     viewing[ply] = target ~= ply and (isstring(target) and target or target:SteamID64()) or nil
 end)
-handle("history.pin", "rareload_restore", { id = "uint", pinned = "bool" }, function(ply, a)
-    local _, why = History.SetPinned(ply, a.id, a.pinned)
+handle("history.pin", "rareload_restore", { id = "uint", pinned = "bool" }, function(ply, args)
+    local _, why = History.SetPinned(ply, args.id, args.pinned)
     if why == "full" then return "toast.pin_full", { RARELOAD.Get(nil, "pinnedMax") } end
 end)
 handle("history.note", "rareload_restore", { id = "uint", note = "string:256" },
-    function(ply, a) History.SetNote(ply, a.id, a.note) end)
+    function(ply, args) History.SetNote(ply, args.id, args.note) end)
 -- "Place here…" (D6): moves where the save respawns the player; the rest of the save stays as it is.
 handle("history.move", "rareload_save", { id = "uint", x = "number", y = "number", z = "number", yaw = "number" },
-    function(ply, a)
-        local pos = Vector(a.x, a.y, a.z)
+    function(ply, args)
+        local pos = Vector(args.x, args.y, args.z)
         if not util.IsInWorld(pos + Vector(0, 0, 16)) then return "toast.place_outside" end
-        local ok = History.Update(ply, a.id, function(e)
-            local t = istable(e.data.transform) and e.data.transform or {}
-            t.pos, t.ang = RARELOAD.Util.Vec(pos), RARELOAD.Util.Ang(Angle(0, a.yaw % 360, 0))
-            t.crouched, t.mapVersion = nil, game.GetMapVersion()
-            e.data.transform = t
+        local ok = History.Update(ply, args.id, function(entry)
+            local transform = istable(entry.data.transform) and entry.data.transform or {}
+            transform.pos, transform.ang = RARELOAD.Util.Vec(pos), RARELOAD.Util.Ang(Angle(0, args.yaw % 360, 0))
+            transform.crouched, transform.mapVersion = nil, game.GetMapVersion()
+            entry.data.transform = transform
         end)
-        if ok then return "toast.placed", { a.id } end
+        if ok then return "toast.placed", { args.id } end
     end)
-handle("history.delete", "rareload_restore", { id = "uint" }, function(ply, a) History.Delete(ply, a.id) end)
+handle("history.delete", "rareload_restore", { id = "uint" }, function(ply, args) History.Delete(ply, args.id) end)
 handle("history.clear", "rareload_restore", {}, function(ply) History.Clear(ply) end)
-handle("history.activate", "rareload_restore", { id = "uint" }, function(ply, a)
-    if History.Activate(ply, a.id) then return "toast.activated", { a.id } end
+handle("history.activate", "rareload_restore", { id = "uint" }, function(ply, args)
+    if History.Activate(ply, args.id) then return "toast.activated", { args.id } end
 end)
 handle("history.restore", "rareload_restore", { id = "uint", comps = "string:128?", exact = "bool?" },
-    function(ply, a)
+    function(ply, args)
         if isstring(ply) then return "toast.admin_offline" end -- restoring needs the player in game
         if not ply:Alive() then return "toast.restore_dead" end
-        if History.Restore(ply, a.id, parseComps(a.comps), { exact = a.exact }) then
-            return "toast.restored", { a.id }
+        if History.Restore(ply, args.id, parseComps(args.comps), { exact = args.exact }) then
+            return "toast.restored", { args.id }
         end
     end)
 handle("history.undo", "rareload_restore", {}, function(ply)
     if isstring(ply) then return "toast.nothing_to_undo" end
     return History.Undo(ply) and "toast.undone" or "toast.nothing_to_undo"
 end)
-handle("history.reloadMode", "rareload_use_tool", { mode = "string:32", comps = "string:128?" }, function(ply, a)
+handle("history.reloadMode", "rareload_use_tool", { mode = "string:32", comps = "string:128?" }, function(ply, args)
     if isstring(ply) then return end
-    History.SetReloadConfig(ply, a.mode, parseComps(a.comps))
+    History.SetReloadConfig(ply, args.mode, parseComps(args.comps))
 end)
 
 RARELOAD.Net.Handle("history.players", {
@@ -892,11 +894,11 @@ RARELOAD.Net.Handle("object.get", {
     priv = "rareload_manage_objects",
     rate = 0.3,
     args = { entryId = "uint", objectId = "string:32" },
-    fn = function(ply, a)
-        local entityDef = History.ObjectDef(ply, a.entryId, a.objectId)
+    fn = function(ply, args)
+        local entityDef = History.ObjectDef(ply, args.entryId, args.objectId)
         if entityDef then
             RARELOAD.Net.Push(ply, "object.def",
-                { entryId = a.entryId, objectId = a.objectId, json = util.TableToJSON(entityDef, true) })
+                { entryId = args.entryId, objectId = args.objectId, json = util.TableToJSON(entityDef, true) })
         end
     end,
 })
@@ -906,21 +908,21 @@ RARELOAD.Net.Handle("object.get", {
 RARELOAD.Net.Handle("object.detail", {
     rate = 0.1,
     args = { sid = "string:20?", entryId = "uint?", objectId = "string:32" },
-    fn = function(ply, a)
+    fn = function(ply, args)
         local entry
-        if a.sid and a.sid ~= ply:SteamID64() then
-            local owner = player.GetBySteamID64(a.sid)
+        if args.sid and args.sid ~= ply:SteamID64() then
+            local owner = player.GetBySteamID64(args.sid)
             if not IsValid(owner) then return end
             if not RARELOAD.Get(nil, "debug") or not RARELOAD.Can(ply, "rareload_debug") then return end
             entry = History.Active(owner)
         elseif RARELOAD.Can(ply, "rareload_restore") then
-            entry = a.entryId and History.Get(ply, a.entryId) or History.Active(ply)
+            entry = args.entryId and History.Get(ply, args.entryId) or History.Active(ply)
         end
-        local detail = entry and History.ObjectDetail(entry, a.objectId)
+        local detail = entry and History.ObjectDetail(entry, args.objectId)
         if detail then
             RARELOAD.Net.Push(ply, "object.detail",
-                { sid = a.sid, entryId = a.entryId, objectId = a.objectId, detail = detail },
-                { key = "detail:" .. tostring(a.sid) .. ":" .. tostring(a.entryId) .. ":" .. a.objectId })
+                { sid = args.sid, entryId = args.entryId, objectId = args.objectId, detail = detail },
+                { key = "detail:" .. tostring(args.sid) .. ":" .. tostring(args.entryId) .. ":" .. args.objectId })
         end
     end,
 })
@@ -935,42 +937,42 @@ RARELOAD.Net.Handle("history.objects", {
     priv = "rareload_restore",
     rate = 0.3,
     args = { id = "uint" },
-    fn = function(ply, a) pushObjects(ply, a.id) end,
+    fn = function(ply, args) pushObjects(ply, args.id) end,
 })
 
-local function objectOp(op, args, fn, priv)
+local function objectOp(op, schema, fn, priv)
     RARELOAD.Net.Handle(op, {
         priv = priv or "rareload_manage_objects",
         rate = 0.2,
-        args = args,
-        fn = function(ply, a)
-            local ok, err = fn(ply, a)
+        args = schema,
+        fn = function(ply, args)
+            local ok, err = fn(ply, args)
             if not ok then RARELOAD.Log("history", ply):warn("%s: %s failed: %s", ply:Nick(), op, tostring(err)) end
-            pushObjects(ply, a.entryId)
+            pushObjects(ply, args.entryId)
         end
     })
 end
 
-objectOp("object.delete", { entryId = "uint", objectId = "string:32" }, function(ply, a)
-    return History.DeleteObject(ply, a.entryId, a.objectId)
+objectOp("object.delete", { entryId = "uint", objectId = "string:32" }, function(ply, args)
+    return History.DeleteObject(ply, args.entryId, args.objectId)
 end)
 -- ids: object IDs separated by commas.
-objectOp("object.deleteMany", { entryId = "uint", ids = "string:60000" }, function(ply, a)
+objectOp("object.deleteMany", { entryId = "uint", ids = "string:60000" }, function(ply, args)
     local ids = {}
-    for id in string.gmatch(a.ids, "[%w]+") do ids[id] = true end
-    return History.DeleteObjects(ply, a.entryId, ids)
+    for id in string.gmatch(args.ids, "[%w]+") do ids[id] = true end
+    return History.DeleteObjects(ply, args.entryId, ids)
 end)
 objectOp("object.flag", { entryId = "uint", objectId = "string:32", flag = "string:16", value = "bool" },
-    function(ply, a)
-        return History.FlagObject(ply, a.entryId, a.objectId, a.flag, a.value)
+    function(ply, args)
+        return History.FlagObject(ply, args.entryId, args.objectId, args.flag, args.value)
     end)
 -- Naming your own saved objects needs no more than seeing them.
-objectOp("object.rename", { entryId = "uint", objectId = "string:32", name = "string:48" }, function(ply, a)
-    return History.RenameObject(ply, a.entryId, a.objectId, a.name)
+objectOp("object.rename", { entryId = "uint", objectId = "string:32", name = "string:48" }, function(ply, args)
+    return History.RenameObject(ply, args.entryId, args.objectId, args.name)
 end, "rareload_restore")
 -- The edit arrives as JSON and is decoded with the default size limits (S12).
-objectOp("object.edit", { entryId = "uint", objectId = "string:32", json = "string:60000" }, function(ply, a)
-    return History.EditObject(ply, a.entryId, a.objectId, util.JSONToTable(a.json))
+objectOp("object.edit", { entryId = "uint", objectId = "string:32", json = "string:60000" }, function(ply, args)
+    return History.EditObject(ply, args.entryId, args.objectId, util.JSONToTable(args.json))
 end)
 
 -- Pushes after changes ----------------------------------------------------------------------------
@@ -1064,9 +1066,9 @@ local function logged(name, level, describe)
 end
 
 local function idList(ids)
-    local n = 0
-    for _ in pairs(ids or {}) do n = n + 1 end
-    return n
+    local count = 0
+    for _ in pairs(ids or {}) do count = count + 1 end
+    return count
 end
 
 logged("Delete", "info", function(ply, id) return ply:Nick() .. " deleted save No. " .. tostring(id) end)

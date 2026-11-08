@@ -98,7 +98,7 @@ function Snapshots.Find(what)
     local list = Snapshots.List()
     local id = tostring(what or ""):match("^#(%d+)$")
     if id then
-        for _, s in ipairs(list) do if s.id == tonumber(id) then return s end end
+        for _, snapshot in ipairs(list) do if snapshot.id == tonumber(id) then return snapshot end end
         return nil
     end
     local minutes = tonumber(what)
@@ -214,11 +214,11 @@ end)
 
 local function push(ply)
     local rows = {}
-    for _, s in ipairs(Snapshots.List()) do
+    for _, snapshot in ipairs(Snapshots.List()) do
         local names = {}
-        for _, part in ipairs(s.players) do names[#names + 1] = part.nick end
+        for _, part in ipairs(snapshot.players) do names[#names + 1] = part.nick end
         table.sort(names)
-        rows[#rows + 1] = { id = s.id, time = s.time, players = names }
+        rows[#rows + 1] = { id = snapshot.id, time = snapshot.time, players = names }
     end
     RARELOAD.Net.Push(ply, "snapshots", { list = rows, crashed = Snapshots.crashed == true })
 end
@@ -240,12 +240,13 @@ RARELOAD.Net.Handle("snapshot.rollback", {
     priv = PRIV,
     rate = 2,
     args = { id = "uint" },
-    fn = function(ply, a)
-        local snap = Snapshots.Find("#" .. a.id)
+    fn = function(ply, args)
+        local snap = Snapshots.Find("#" .. args.id)
         if not snap then return end
-        local n, skipped = Snapshots.Rollback(snap)
-        RARELOAD.Log("admin", ply):info("%s rolled back to snapshot No. %d: %d players%s", ply:Nick(), a.id, n,
+        local restored, skipped = Snapshots.Rollback(snap)
+        RARELOAD.Log("admin", ply):info("%s rolled back to snapshot No. %d: %d players%s", ply:Nick(), args.id,
+            restored,
             #skipped > 0 and (", not: " .. table.concat(skipped, ", ")) or "")
-        RARELOAD.Toast(ply, "toast.rollback_done", { n, #skipped }, "ok")
+        RARELOAD.Toast(ply, "toast.rollback_done", { restored, #skipped }, "ok")
     end,
 })

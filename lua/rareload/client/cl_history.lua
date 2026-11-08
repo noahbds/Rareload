@@ -27,10 +27,10 @@ local function objectsOf(row)
 end
 
 -- A save's number ("Save No. 3") in the accent colour. Returns its width.
-local function drawNumber(id, font, x, y)
+local function drawNumber(id, font, posX, posY)
     local text = L("save_no", id)
     surface.SetFont(font)
-    draw.SimpleText(text, font, x, y, C.accentHi)
+    draw.SimpleText(text, font, posX, posY, C.accentHi)
     return (surface.GetTextSize(text))
 end
 
@@ -54,11 +54,11 @@ local function view(filter, sort, search)
         if keep and search ~= "" then keep = string.find(searchText(row), search, 1, true) ~= nil end
         if keep then out[#out + 1] = row end
     end
-    table.sort(out, function(a, b)
-        if sort == "oldest" then return a.time < b.time end
-        if sort == "health" then return (a.info.hp or 100) > (b.info.hp or 100) end
-        if sort == "pinned" and (a.pinned or false) ~= (b.pinned or false) then return a.pinned == true end
-        return a.time > b.time
+    table.sort(out, function(left, right)
+        if sort == "oldest" then return left.time < right.time end
+        if sort == "health" then return (left.info.hp or 100) > (right.info.hp or 100) end
+        if sort == "pinned" and (left.pinned or false) ~= (right.pinned or false) then return left.pinned == true end
+        return left.time > right.time
     end)
     return out
 end
@@ -111,11 +111,11 @@ end)
 
 -- Would a standing player fit at this spot? (the live free/blocked line)
 local function spotFree(pos)
-    local v = RARELOAD.Util.ToVector(pos)
-    if not v then return true end
+    local vec = RARELOAD.Util.ToVector(pos)
+    if not vec then return true end
     local tr = util.TraceHull({
-        start = v,
-        endpos = v,
+        start = vec,
+        endpos = vec,
         mins = Vector(-16, -16, 4),
         maxs = Vector(16, 16, 72),
         mask = MASK_PLAYERSOLID,
@@ -127,50 +127,50 @@ end
 -- List rows ---------------------------------------------------------------------------------------
 
 local function buildRow(parent, row, isSelected, onClick)
-    local b = vgui.Create("DButton", parent)
-    b:SetText("")
-    b:Dock(TOP)
-    b:DockMargin(0, 0, sc(4), sc(6))
-    b:SetTall(sc(62))
+    local button = vgui.Create("DButton", parent)
+    button:SetText("")
+    button:Dock(TOP)
+    button:DockMargin(0, 0, sc(4), sc(6))
+    button:SetTall(sc(62))
     -- The texts change at most once a second ("8 min ago"); the list can hold hundreds of rows.
     local texts, textsAt = nil, 0
-    b.Paint = function(self, w, h)
+    button.Paint = function(self, width, height)
         -- Only the rows inside the list's visible part are drawn (the scroll panel draws them all).
         local viewport = self:GetParent():GetParent()
-        local _, y = self:LocalToScreen(0, 0)
+        local _, screenY = self:LocalToScreen(0, 0)
         local _, vy = viewport:LocalToScreen(0, 0)
-        if y + h < vy or y > vy + viewport:GetTall() then return end
+        if screenY + height < vy or screenY > vy + viewport:GetTall() then return end
         if RealTime() - textsAt > 1 then
             texts = texts or { line = UI.Date(row.time, "short") .. "  ·  " .. L("reason." .. row.reason) }
             texts.ago, textsAt = UI.TimeAgo(row.time), RealTime()
         end
         local selected = isSelected(row.id)
         self.anim = Lerp(FrameTime() * 12, self.anim or 0, (self:IsHovered() or selected) and 1 or 0)
-        draw.RoundedBox(sc(9), 0, 0, w, h, UI.Mix(C.surface, C.accent, selected and 0.18 or self.anim * 0.08))
+        draw.RoundedBox(sc(9), 0, 0, width, height, UI.Mix(C.surface, C.accent, selected and 0.18 or self.anim * 0.08))
         local bar = row.active and C.ok or selected and C.accent
-        if bar then draw.RoundedBox(sc(3), 0, sc(9), sc(3), h - sc(18), bar) end
+        if bar then draw.RoundedBox(sc(3), 0, sc(9), sc(3), height - sc(18), bar) end
 
         local pad, isz = sc(14), UI.IconSize(sc(16))
         local nw = drawNumber(row.id, "Rareload.BodyB", pad, sc(10))
         draw.SimpleText(texts.ago, "Rareload.BodyB", pad + nw + sc(8), sc(10), C.text)
         draw.SimpleText(texts.line, "Rareload.Small", pad, sc(33), C.text3)
 
-        local x = w - sc(12)
+        local badgeX = width - sc(12)
         local function icon(name, cond)
             if not cond then return end
-            UI.DrawIcon(name, math.floor(x - isz), sc(11), isz)
-            x = x - isz - sc(6)
+            UI.DrawIcon(name, math.floor(badgeX - isz), sc(11), isz)
+            badgeX = badgeX - isz - sc(6)
         end
         icon("star", row.pinned)
         icon("note", (row.note or "") ~= "")
         if row.active then
-            draw.RoundedBox(sc(4), x - sc(8), sc(14), sc(8), sc(8), C.ok)
+            draw.RoundedBox(sc(4), badgeX - sc(8), sc(14), sc(8), sc(8), C.ok)
         end
 
-        local info, rx, iy = row.info, w - sc(12), sc(34)
-        local function badge(iconName, n, col)
-            if (n or 0) <= 0 then return end
-            local text = tostring(n)
+        local info, rx, iy = row.info, width - sc(12), sc(34)
+        local function badge(iconName, count, col)
+            if (count or 0) <= 0 then return end
+            local text = tostring(count)
             surface.SetFont("Rareload.Small")
             local tw = surface.GetTextSize(text)
             draw.SimpleText(text, "Rareload.Small", rx, iy + isz / 2, col, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
@@ -183,11 +183,11 @@ local function buildRow(parent, row, isSelected, onClick)
         badge("brick", info.entities, C.prop)
         if info.hp then badge("heart", math.floor(info.hp), UI.HealthColor(info.hp, 100)) end
     end
-    b.DoClick = function()
+    button.DoClick = function()
         surface.PlaySound("ui/buttonrollover.wav")
         onClick(row.id)
     end
-    return b
+    return button
 end
 
 -- Detail pane (built once, updated in place) ------------------------------------------------------
@@ -195,22 +195,22 @@ end
 local function buildDetail(host, sel)
     local D = {}
     local function row() return sel() end
-    local function gap(panel, b) panel:DockMargin(0, 0, 0, sc(b or 10)) end
+    local function gap(panel, bottom) panel:DockMargin(0, 0, 0, sc(bottom or 10)) end
 
-    D.header = UI.Card(host, function(_, w, h)
-        local r = row()
-        if not r then return end
-        local x = sc(118)
-        local nw = drawNumber(r.id, "Rareload.H1", x, sc(12))
-        draw.SimpleText(UI.TimeAgo(r.time), "Rareload.H1", x + nw + sc(10), sc(12), C.text)
-        draw.SimpleText(UI.Date(r.time, "long"), "Rareload.Small", x, sc(42), C.text2)
-        local bx = x
-        if r.active then bx = bx + UI.DrawBadge(L("timeline.is_active"), bx, sc(64), C.ok) + sc(6) end
-        if r.pinned then bx = bx + UI.DrawBadge(L("timeline.pinned"), bx, sc(64), C.warn) + sc(6) end
-        UI.DrawBadge(L("reason." .. r.reason), bx, sc(64), C.info)
+    D.header = UI.Card(host, function(_, width, height)
+        local selectedRow = row()
+        if not selectedRow then return end
+        local textX = sc(118)
+        local nw = drawNumber(selectedRow.id, "Rareload.H1", textX, sc(12))
+        draw.SimpleText(UI.TimeAgo(selectedRow.time), "Rareload.H1", textX + nw + sc(10), sc(12), C.text)
+        draw.SimpleText(UI.Date(selectedRow.time, "long"), "Rareload.Small", textX, sc(42), C.text2)
+        local bx = textX
+        if selectedRow.active then bx = bx + UI.DrawBadge(L("timeline.is_active"), bx, sc(64), C.ok) + sc(6) end
+        if selectedRow.pinned then bx = bx + UI.DrawBadge(L("timeline.pinned"), bx, sc(64), C.warn) + sc(6) end
+        UI.DrawBadge(L("reason." .. selectedRow.reason), bx, sc(64), C.info)
 
-        local info = r.info
-        local barX, barY, barW = x, h - sc(22), w - x - sc(16)
+        local info = selectedRow.info
+        local barX, barY, barW = textX, height - sc(22), width - textX - sc(16)
         draw.RoundedBox(sc(4), barX, barY, barW, sc(8), C.bgDark)
         if info.hp then
             draw.RoundedBox(sc(4), barX, barY, math.max(sc(4), barW * math.Clamp(info.hp / 100, 0, 1)), sc(8),
@@ -244,13 +244,13 @@ local function buildDetail(host, sel)
     gap(D.stats, 12)
 
     D.rows = UI.Rows(host, function()
-        local r = row()
-        if not r then return {} end
-        local info = r.info
-        local a = RARELOAD.Util.ToAngle(info.ang)
+        local selectedRow = row()
+        if not selectedRow then return {} end
+        local info = selectedRow.info
+        local ang = RARELOAD.Util.ToAngle(info.ang)
         local list = {
             { L("field.position"), UI.Pos(info.pos) },
-            { L("field.angle"),    a and string.format("%.0f, %.0f, %.0f", a.p, a.y, a.r) or "-", C.text2 },
+            { L("field.angle"),    ang and string.format("%.0f, %.0f, %.0f", ang.p, ang.y, ang.r) or "-", C.text2 },
             { L("field.active_weapon"), info.active and UI.WeaponName(info.active) or
             (info.weapons and L("ui.none") or L("ui.not_saved")),
                 info.active and C.text or C.textOff },
@@ -269,15 +269,15 @@ local function buildDetail(host, sel)
     D.status:Dock(TOP)
     D.status:SetTall(sc(22))
     gap(D.status, 6)
-    D.status.Paint = function(self, w, h)
-        local r = row()
-        if not r then return end
+    D.status.Paint = function(self, width, height)
+        local selectedRow = row()
+        if not selectedRow then return end
         if (self.next or 0) < RealTime() then -- the live free/blocked check, 3 times a second
-            self.next, self.free = RealTime() + 0.33, spotFree(r.info.pos)
+            self.next, self.free = RealTime() + 0.33, spotFree(selectedRow.info.pos)
         end
-        UI.DrawIcon(self.free and "accept" or "exclamation", 0, (h - sc(16)) / 2, sc(16))
+        UI.DrawIcon(self.free and "accept" or "exclamation", 0, (height - sc(16)) / 2, sc(16))
         draw.SimpleText(self.free and L("timeline.spot_free") or L("timeline.spot_blocked"), "Rareload.Small", sc(22),
-            h / 2,
+            height / 2,
             self.free and C.ok or C.bad, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
 
@@ -288,54 +288,54 @@ local function buildDetail(host, sel)
     end
 
     D.preview = UI.Button(host, "", function()
-        local r = row()
-        if not r then return end
-        local on = not Timeline.Previewing(r.id)
-        Timeline.Preview(on and r or nil)
+        local selectedRow = row()
+        if not selectedRow then return end
+        local on = not Timeline.Previewing(selectedRow.id)
+        Timeline.Preview(on and selectedRow or nil)
         if on then UI.Notify(L("timeline.preview_hint")) end
     end, { style = "info", icon = "eye" })
     -- Follows the preview even when it is turned off elsewhere (`rareload preview off`).
     D.preview.Think = function(self)
-        local r = row()
-        local on = r ~= nil and Timeline.Previewing(r.id)
+        local selectedRow = row()
+        local on = selectedRow ~= nil and Timeline.Previewing(selectedRow.id)
         self:SetActive(on)
         self:SetLabel(on and L("timeline.preview_hide") or L("timeline.preview_show"))
     end
     D.objects = UI.Button(host, "", function()
-        local r = row()
-        if r then RARELOAD.Inspector.Open(r.id) end
+        local selectedRow = row()
+        if selectedRow then RARELOAD.Inspector.Open(selectedRow.id) end
     end, { style = "primary", icon = "bricks" })
     D.inventory = UI.Button(host, L("inventory.open_save"), function()
-        local r = row()
-        if r then RARELOAD.InventoryManager.Open(r.id) end
+        local selectedRow = row()
+        if selectedRow then RARELOAD.InventoryManager.Open(selectedRow.id) end
     end, { style = "info", icon = "gun" })
     D.tools = split({ D.preview, D.objects, D.inventory })
     -- Export to this game's data folder, or offer a copy to another player (A2).
     D.export = UI.Button(host, L("share.export"), function()
-        local r = row()
-        if r then RARELOAD.Share.Export(r.id) end
+        local selectedRow = row()
+        if selectedRow then RARELOAD.Share.Export(selectedRow.id) end
     end, { style = "info", icon = "disk" })
     D.share = UI.Button(host, L("share.share"), function()
-        local r = row()
-        if r then RARELOAD.Share.Pick(r.id) end
+        local selectedRow = row()
+        if selectedRow then RARELOAD.Share.Pick(selectedRow.id) end
     end, { style = "info", icon = "group_go" })
     -- Move where the save respawns the player (D6).
     D.place = UI.Button(host, L("place.button"), function()
-        local r = row()
-        if r then RARELOAD.PlaceUI.Start(r.id, r.info.model, Timeline.target) end
+        local selectedRow = row()
+        if selectedRow then RARELOAD.PlaceUI.Start(selectedRow.id, selectedRow.info.model, Timeline.target) end
     end, { style = "info", icon = "arrow_inout" })
     D.shareTools = split({ D.place, D.export, D.share })
 
-    D.banner = UI.Card(host, function(_, w, h)
-        draw.SimpleText(L("timeline.is_active"), "Rareload.BodyB", w / 2, h / 2, C.ok, TEXT_ALIGN_CENTER,
+    D.banner = UI.Card(host, function(_, width, height)
+        draw.SimpleText(L("timeline.is_active"), "Rareload.BodyB", width / 2, height / 2, C.ok, TEXT_ALIGN_CENTER,
             TEXT_ALIGN_CENTER)
     end, ColorAlpha(C.ok, 40))
     D.banner:Dock(TOP)
     D.banner:SetTall(sc(34))
     gap(D.banner)
     D.setActive = UI.Button(host, L("timeline.set_active"), function()
-        local r = row()
-        if r then request("history.activate", { id = r.id }) end
+        local selectedRow = row()
+        if selectedRow then request("history.activate", { id = selectedRow.id }) end
     end, { style = "success", icon = "arrow_refresh" })
     D.setActive:Dock(TOP)
     gap(D.setActive)
@@ -345,11 +345,11 @@ local function buildDetail(host, sel)
     D.note:SetUpdateOnType(false)
     gap(D.note)
     local function commit()
-        local r = row()
-        if not r then return end
-        local v = string.sub(D.note:GetValue(), 1, 256)
-        if v ~= (r.note or "") then
-            request("history.note", { id = r.id, note = v })
+        local selectedRow = row()
+        if not selectedRow then return end
+        local note = string.sub(D.note:GetValue(), 1, 256)
+        if note ~= (selectedRow.note or "") then
+            request("history.note", { id = selectedRow.id, note = note })
             UI.Notify(L("timeline.note_saved"))
         end
     end
@@ -366,26 +366,26 @@ local function buildDetail(host, sel)
         if pos then RunConsoleCommand("rareload", "tp", pos.x, pos.y, pos.z) end
     end, { style = "info", icon = "world_go" })
     D.pin = UI.Button(D.actions, "", function()
-        local r = row()
-        if r then request("history.pin", { id = r.id, pinned = not r.pinned }) end
+        local selectedRow = row()
+        if selectedRow then request("history.pin", { id = selectedRow.id, pinned = not selectedRow.pinned }) end
     end, { style = "warn", icon = "star" })
     D.pin:SetTooltip(L("timeline.pin_help"))
     D.delete = UI.Button(D.actions, L("timeline.delete"), function() Timeline.Delete(row()) end,
         { style = "danger", icon = "cross" })
     D.restore = UI.Button(D.actions, L("timeline.restore_all"), function() Timeline.Restore(row()) end,
         { style = "success", solid = true, icon = "arrow_rotate_clockwise" })
-    D.actions.PerformLayout = function(_, w, h)
-        local x = 0
-        for _, b in ipairs({ D.teleport, D.pin, D.delete }) do
-            if b:IsVisible() then
-                b:SizeToLabel(20)
-                b:SetPos(x, 0)
-                b:SetTall(h)
-                x = x + b:GetWide() + sc(6)
+    D.actions.PerformLayout = function(_, width, height)
+        local buttonX = 0
+        for _, button in ipairs({ D.teleport, D.pin, D.delete }) do
+            if button:IsVisible() then
+                button:SizeToLabel(20)
+                button:SetPos(buttonX, 0)
+                button:SetTall(height)
+                buttonX = buttonX + button:GetWide() + sc(6)
             end
         end
-        D.restore:SetPos(x, 0)
-        D.restore:SetSize(w - x, h)
+        D.restore:SetPos(buttonX, 0)
+        D.restore:SetSize(width - buttonX, height)
     end
 
     -- Partial restore (F25); the ticked parts are also what the reload key restores (F28).
@@ -410,10 +410,10 @@ local function buildDetail(host, sel)
     D.exact:Dock(TOP)
     gap(D.exact, 6)
     D.applyParts = UI.Button(host, L("timeline.restore_selected"), function()
-        local r, comps = row(), Timeline.Comps()
-        if not r then return end
+        local selectedRow, comps = row(), Timeline.Comps()
+        if not selectedRow then return end
         if comps == "" then return UI.Notify(L("timeline.nothing_selected"), "error") end
-        Timeline.Restore(r, comps)
+        Timeline.Restore(selectedRow, comps)
     end, { icon = "arrow_rotate_clockwise" })
     D.applyParts:Dock(TOP)
     gap(D.applyParts, 12)
@@ -422,10 +422,10 @@ local function buildDetail(host, sel)
     D.reloadTitle:Dock(TOP)
     gap(D.reloadTitle, 4)
     local modes = {}
-    for _, m in ipairs(MODES) do modes[#modes + 1] = { id = m, label = L("mode." .. m) } end
+    for _, modeId in ipairs(MODES) do modes[#modes + 1] = { id = modeId, label = L("mode." .. modeId) } end
     local function mode() return State.history.reload.mode or MODES[1] end
-    D.mode = UI.Dropdown(host, nil, modes, mode, function(m)
-        State.history.reload.mode = m
+    D.mode = UI.Dropdown(host, nil, modes, mode, function(modeId)
+        State.history.reload.mode = modeId
         Timeline.SendReloadConfig()
     end)
     D.mode:Dock(TOP)
@@ -445,37 +445,37 @@ end
 local DETAIL_PARTS = { "header", "stats", "rows", "status", "banner", "setActive", "note", "actions", "partTitle",
     "parts", "exact", "applyParts", "reloadTitle", "mode", "reloadHelp" }
 
-local function updateDetail(D, r)
-    for _, k in ipairs(DETAIL_PARTS) do D[k]:SetVisible(r ~= nil) end
-    D.tools:SetVisible(r ~= nil)
+local function updateDetail(D, selectedRow)
+    for _, part in ipairs(DETAIL_PARTS) do D[part]:SetVisible(selectedRow ~= nil) end
+    D.tools:SetVisible(selectedRow ~= nil)
     local me = LocalPlayer()
     D.export:SetVisible(RARELOAD.Can(me, "rareload_export"))
     D.share:SetVisible(RARELOAD.Can(me, "rareload_share"))
-    D.place:SetVisible(RARELOAD.Can(me, "rareload_save") and r ~= nil and r.info.pos ~= nil)
-    D.shareTools:SetVisible(r ~= nil and (D.place:IsVisible() or D.export:IsVisible() or D.share:IsVisible()))
+    D.place:SetVisible(RARELOAD.Can(me, "rareload_save") and selectedRow ~= nil and selectedRow.info.pos ~= nil)
+    D.shareTools:SetVisible(selectedRow ~= nil and (D.place:IsVisible() or D.export:IsVisible() or D.share:IsVisible()))
     D.shareTools:InvalidateLayout()
-    D.empty:SetVisible(r == nil)
-    if not r then return end
+    D.empty:SetVisible(selectedRow == nil)
+    if not selectedRow then return end
     D.inventory:SetVisible(RARELOAD.InventoryManager.CanUse())
     D.tools:InvalidateLayout()
 
-    D.model:ShowModel(r.info.model or LocalPlayer():GetModel())
-    D.banner:SetVisible(r.active == true)
-    D.setActive:SetVisible(not r.active)
-    D.pin:SetLabel(r.pinned and L("timeline.unpin") or L("timeline.pin"))
-    D.teleport:SetVisible(RARELOAD.Can(LocalPlayer(), "rareload_teleport") and r.info.pos ~= nil)
-    local n = objectsOf(r)
-    D.objects:SetLabel(n > 0 and L("timeline.objects", n) or L("timeline.objects_none"))
-    D.objects:SetEnabled(n > 0)
+    D.model:ShowModel(selectedRow.info.model or LocalPlayer():GetModel())
+    D.banner:SetVisible(selectedRow.active == true)
+    D.setActive:SetVisible(not selectedRow.active)
+    D.pin:SetLabel(selectedRow.pinned and L("timeline.unpin") or L("timeline.pin"))
+    D.teleport:SetVisible(RARELOAD.Can(LocalPlayer(), "rareload_teleport") and selectedRow.info.pos ~= nil)
+    local objectCount = objectsOf(selectedRow)
+    D.objects:SetLabel(objectCount > 0 and L("timeline.objects", objectCount) or L("timeline.objects_none"))
+    D.objects:SetEnabled(objectCount > 0)
     D.reloadTitle:SetText(string.upper(L("timeline.reload_key", input.LookupBinding("+reload") or "R"))) -- G81
     D.reloadTitle:SizeToContents()
-    if not D.note:HasFocus() then D.note:SetValue(r.note or "") end
+    if not D.note:HasFocus() then D.note:SetValue(selectedRow.note or "") end
     local comps = State.history.reload.comps or {}
     for comp, check in pairs(D.checks) do check:SetValue(comps[comp] == true) end
     D.actions:InvalidateLayout()
 
     -- A preview of another save doesn't linger when the selection moves on.
-    if RARELOAD.World.preview and Timeline.previewId ~= r.id then Timeline.Preview(nil) end
+    if RARELOAD.World.preview and Timeline.previewId ~= selectedRow.id then Timeline.Preview(nil) end
 end
 
 -- Actions shared by buttons and keys ----------------------------------------------------------------
@@ -499,12 +499,12 @@ end
 
 -- comps: the ticked parts ("position,world"), or nil for everything. An exact restore that includes
 -- the world removes objects, so it asks first (undo still brings them back).
-function Timeline.Restore(r, comps)
-    if not r then return end
+function Timeline.Restore(selectedRow, comps)
+    if not selectedRow then return end
     local exact = Timeline.D and Timeline.D.exact.value == true
     local send = function()
         -- the server's toast says when it's done
-        request("history.restore", { id = r.id, comps = comps, exact = exact or nil })
+        request("history.restore", { id = selectedRow.id, comps = comps, exact = exact or nil })
     end
     if exact and (comps == nil or string.find("," .. comps .. ",", ",world,", 1, true)) then
         UI.Confirm(L("timeline.exact"), L("timeline.exact_confirm"), send)
@@ -513,10 +513,10 @@ function Timeline.Restore(r, comps)
     end
 end
 
-function Timeline.Delete(r)
-    if not r then return end
+function Timeline.Delete(selectedRow)
+    if not selectedRow then return end
     UI.Confirm(L("timeline.delete"), L("timeline.delete_confirm"), function()
-        request("history.delete", { id = r.id })
+        request("history.delete", { id = selectedRow.id })
     end, L("timeline.delete"))
 end
 
@@ -542,12 +542,12 @@ local function pickPlayer(onPick)
             if entry.sid == me then continue end
             local label = entry.nick .. "  ·  " .. L("timeline.count", entry.saves)
                 .. (entry.online and "" or "  ·  " .. L("timeline.offline"))
-            local b = UI.Button(scroll, label, function()
+            local button = UI.Button(scroll, label, function()
                 onPick(entry)
                 frame:Close()
             end, { style = entry.online and "info" or "ghost", icon = entry.online and "user_green" or "user_gray" })
-            b:Dock(TOP)
-            b:DockMargin(0, 0, sc(4), sc(6))
+            button:Dock(TOP)
+            button:DockMargin(0, 0, sc(4), sc(6))
         end
     end)
 end
@@ -599,16 +599,17 @@ function Timeline.Open()
     side:Dock(LEFT)
     side:SetWide(sc(370))
     side:DockPadding(0, 0, sc(12), 0)
-    side.Paint = function(_, w, h)
+    side.Paint = function(_, width, height)
         surface.SetDrawColor(C.line)
-        surface.DrawLine(w - 1, 0, w - 1, h)
+        surface.DrawLine(width - 1, 0, width - 1, height)
     end
 
     local searchBox = UI.Search(side, L("timeline.search"), nil)
     searchBox:Dock(TOP)
     local sorts, filters = {}, {}
-    for _, s in ipairs(SORTS) do sorts[#sorts + 1] = { id = s, label = L("timeline.sort." .. s) } end
-    for _, f in ipairs(FILTERS) do filters[#filters + 1] = { id = f, label = L("timeline.filter." .. f) } end
+    for _, sortId in ipairs(SORTS) do sorts[#sorts + 1] = { id = sortId, label = L("timeline.sort." .. sortId) } end
+    for _, filterId in ipairs(FILTERS) do filters[#filters + 1] = { id = filterId,
+        label = L("timeline.filter." .. filterId) } end
     local sortBox = UI.Dropdown(side, L("timeline.sort"), sorts, function() return sort end, nil)
     sortBox:Dock(TOP)
     sortBox:DockMargin(0, sc(8), 0, 0)
@@ -642,13 +643,13 @@ function Timeline.Open()
         list:Clear()
         rows = view(filter, sort, search)
         if not State.history.loaded then
-            local e = UI.Empty(list, "hourglass", L("timeline.loading"))
-            e:Dock(TOP)
-            e:SetTall(sc(160))
+            local empty = UI.Empty(list, "hourglass", L("timeline.loading"))
+            empty:Dock(TOP)
+            empty:SetTall(sc(160))
         elseif #rows == 0 then
-            local e = UI.Empty(list, "time", L("timeline.empty"), L("timeline.empty_hint"))
-            e:Dock(TOP)
-            e:SetTall(sc(160))
+            local empty = UI.Empty(list, "time", L("timeline.empty"), L("timeline.empty_hint"))
+            empty:Dock(TOP)
+            empty:SetTall(sc(160))
         end
         local isSelected = function(id) return id == selected end
         for _, row in ipairs(rows) do buildRow(list, row, isSelected, select) end
@@ -663,15 +664,15 @@ function Timeline.Open()
         select(selected)
     end
 
-    searchBox.OnValueChange = function(_, v)
-        search = string.lower(v)
+    searchBox.OnValueChange = function(_, text)
+        search = string.lower(text)
         refresh()
     end
     sortBox.DoClick = function()
         local items = {}
-        for i, s in ipairs(sorts) do
-            items[i] = { label = s.label, checked = s.id == sort, fn = function()
-                sort = s.id
+        for i, sortOption in ipairs(sorts) do
+            items[i] = { label = sortOption.label, checked = sortOption.id == sort, fn = function()
+                sort = sortOption.id
                 refresh()
             end }
         end
@@ -696,9 +697,9 @@ function Timeline.Open()
         end
         local function move(step)
             local index = 1
-            for i, r in ipairs(rows) do if r.id == selected then index = i end end
-            local r = rows[math.Clamp(index + step, 1, math.max(#rows, 1))]
-            if r then select(r.id) end
+            for i, timelineRow in ipairs(rows) do if timelineRow.id == selected then index = i end end
+            local nextRow = rows[math.Clamp(index + step, 1, math.max(#rows, 1))]
+            if nextRow then select(nextRow.id) end
         end
         pressed(KEY_UP, function() move(-1) end)
         pressed(KEY_DOWN, function() move(1) end)

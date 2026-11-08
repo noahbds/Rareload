@@ -51,13 +51,14 @@ RARELOAD.Net.On("death.choice", function(payload)
         { "map", L("death.choice_map"), "world", "info" },
     }
     if payload.death then options[#options + 1] = { "death", L("death.choice_death"), "heart", "warn" } end
-    for _, o in ipairs(options) do
-        local b = UI.Button(frame, o[2], function() choose(o[1]) end, { style = o[4], icon = o[3] })
-        b:Dock(TOP)
-        b:SetTall(sc(44))
-        b:DockMargin(0, 0, 0, sc(8))
+    for _, option in ipairs(options) do
+        local button = UI.Button(frame, option[2], function() choose(option[1]) end,
+            { style = option[4], icon = option[3] })
+        button:Dock(TOP)
+        button:SetTall(sc(44))
+        button:DockMargin(0, 0, 0, sc(8))
     end
-    local check = UI.Check(frame, L("death.always"), false, function(v) always = v end)
+    local check = UI.Check(frame, L("death.always"), false, function(checked) always = checked end)
     check:Dock(TOP)
     check:DockMargin(0, sc(4), 0, 0)
     -- Gone once the player is alive again (a server can respawn them by itself). The message arrives

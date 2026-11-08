@@ -13,13 +13,13 @@ local recorded = Ownership.recorded
 -- Fields some vehicle bases and prop protections use to store the spawning player.
 local FIELDS = { "dOwnerEntLFS", "LFSOwner", "SpawnerPlayer", "OwnerEnt", "SPPOwner", "Founder" }
 
-local function toSid64(v)
-    if isentity(v) then
-        return IsValid(v) and v:IsPlayer() and v:SteamID64() or nil
+local function toSid64(value)
+    if isentity(value) then
+        return IsValid(value) and value:IsPlayer() and value:SteamID64() or nil
     end
-    if isstring(v) then
-        if v:match("^7656119%d+$") then return v end
-        if v:match("^STEAM_%d:%d:%d+$") then return util.SteamIDTo64(v) end
+    if isstring(value) then
+        if value:match("^7656119%d+$") then return value end
+        if value:match("^STEAM_%d:%d:%d+$") then return util.SteamIDTo64(value) end
     end
 end
 
@@ -96,9 +96,9 @@ local function ownerOf(ent, lists)
     sid = toSid64(tab.m_PlayerCreator) -- what Sandbox's GetCreator returns
     if sid then return sid end
     for _, field in ipairs(FIELDS) do
-        local v = tab[field]
-        if v ~= nil then
-            sid = toSid64(v)
+        local value = tab[field]
+        if value ~= nil then
+            sid = toSid64(value)
             if sid then return sid end
         end
     end

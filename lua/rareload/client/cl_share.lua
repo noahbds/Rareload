@@ -73,12 +73,12 @@ function Share.OpenImport()
         row:DockMargin(0, 0, sc(4), sc(6))
         local when = os.date("%Y-%m-%d %H:%M", file.Time(DIR .. name, "DATA"))
         local size = sizeText(file.Size(DIR .. name, "DATA") or 0)
-        row.Paint = function(self, w, h)
-            draw.RoundedBox(sc(8), 0, 0, w, h, self:IsHovered() and C.surfaceHi or C.surface)
-            UI.DrawIcon("page_white_get", sc(12), (h - sc(16)) / 2, sc(16))
-            draw.SimpleText(UI.Clip(string.StripExtension(name), "Rareload.BodyB", w - sc(200)), "Rareload.BodyB",
-                sc(38), h / 2, C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-            draw.SimpleText(when .. "  ·  " .. size, "Rareload.Small", w - sc(12), h / 2, C.text3,
+        row.Paint = function(self, width, height)
+            draw.RoundedBox(sc(8), 0, 0, width, height, self:IsHovered() and C.surfaceHi or C.surface)
+            UI.DrawIcon("page_white_get", sc(12), (height - sc(16)) / 2, sc(16))
+            draw.SimpleText(UI.Clip(string.StripExtension(name), "Rareload.BodyB", width - sc(200)), "Rareload.BodyB",
+                sc(38), height / 2, C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+            draw.SimpleText(when .. "  ·  " .. size, "Rareload.Small", width - sc(12), height / 2, C.text3,
                 TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
         end
         row.DoClick = function()
@@ -104,12 +104,12 @@ function Share.Pick(id)
     local scroll = UI.Scroll(frame)
     scroll:Dock(FILL)
     for _, other in ipairs(others) do
-        local b = UI.Button(scroll, other:Nick(), function()
+        local button = UI.Button(scroll, other:Nick(), function()
             if IsValid(other) then request("share.send", { id = id, sid = other:SteamID64() }) end
             frame:Close()
         end, { style = "info", icon = "user" })
-        b:Dock(TOP)
-        b:DockMargin(0, 0, sc(4), sc(6))
+        button:Dock(TOP)
+        button:DockMargin(0, 0, sc(4), sc(6))
     end
 end
 

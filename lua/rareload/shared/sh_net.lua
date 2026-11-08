@@ -23,8 +23,8 @@ function Net.Split(data, size)
     return chunks
 end
 
-local function finite(n)
-    return isnumber(n) and n == n and n ~= math.huge and n ~= -math.huge
+local function finite(value)
+    return isnumber(value) and value == value and value ~= math.huge and value ~= -math.huge
 end
 
 -- Schema types: "bool", "number", "uint", "string" or "string:<max length>". A trailing "?" makes a
@@ -35,21 +35,21 @@ function Net.Validate(schema, args)
     for key, spec in pairs(schema) do
         local optional = spec:sub(-1) == "?"
         local kind, limit = (optional and spec:sub(1, -2) or spec):match("^(%a+):?(%d*)$")
-        local v = args[key]
+        local value = args[key]
         local ok
-        if v == nil then
+        if value == nil then
             ok = optional
         elseif kind == "bool" then
-            ok = isbool(v)
+            ok = isbool(value)
         elseif kind == "number" then
-            ok = finite(v)
+            ok = finite(value)
         elseif kind == "uint" then
-            ok = finite(v) and v >= 0 and v == math.floor(v)
+            ok = finite(value) and value >= 0 and value == math.floor(value)
         elseif kind == "string" then
-            ok = isstring(v) and (limit == "" or #v <= tonumber(limit))
+            ok = isstring(value) and (limit == "" or #value <= tonumber(limit))
         end
         if not ok then return nil, "bad field " .. key end
-        clean[key] = v
+        clean[key] = value
     end
     return clean
 end
@@ -86,19 +86,19 @@ if SERVER then
         local queue = queues[ply] or {}
         queues[ply] = queue
         -- A newer push of the same key replaces one that hasn't started sending.
-        for _, t in ipairs(queue) do
-            if t.key == key and t.next == 1 then
-                t.topic, t.chunks = topic, chunks
+        for _, message in ipairs(queue) do
+            if message.key == key and message.next == 1 then
+                message.topic, message.chunks = topic, chunks
                 return
             end
         end
         nextId = nextId % 2147483647 + 1
         Net._state.nextId = nextId
-        local t = { id = nextId, topic = topic, key = key, chunks = chunks, next = 1 }
+        local message = { id = nextId, topic = topic, key = key, chunks = chunks, next = 1 }
         -- An urgent push (a toast) goes ahead of everything that hasn't started sending.
         local at = #queue + 1
         if urgent then at = (queue[1] and queue[1].next > 1) and 2 or 1 end
-        table.insert(queue, math.min(at, #queue + 1), t)
+        table.insert(queue, math.min(at, #queue + 1), message)
     end
 
     -- target: a player, a list of players, or nil for every ready player.
@@ -132,21 +132,21 @@ if SERVER then
                 end
                 local budget = CHUNK
                 while queue[1] and pending < MAX_INFLIGHT and budget > 0 do
-                    local t = queue[1]
-                    local chunk = t.chunks[t.next]
+                    local message = queue[1]
+                    local chunk = message.chunks[message.next]
                     if #chunk > budget and budget < CHUNK then break end
                     net.Start(SYNC)
-                    net.WriteUInt(t.id, 32)
-                    net.WriteString(t.topic)
-                    net.WriteUInt(t.next, 16)
-                    net.WriteUInt(#t.chunks, 16)
+                    net.WriteUInt(message.id, 32)
+                    net.WriteString(message.topic)
+                    net.WriteUInt(message.next, 16)
+                    net.WriteUInt(#message.chunks, 16)
                     net.WriteUInt(#chunk, 16)
                     net.WriteData(chunk, #chunk)
                     net.Send(ply)
-                    sent[t.id .. ":" .. t.next] = { bytes = #chunk, t = now }
+                    sent[message.id .. ":" .. message.next] = { bytes = #chunk, t = now }
                     pending, budget = pending + #chunk, budget - #chunk
-                    t.next = t.next + 1
-                    if t.next > #t.chunks then table.remove(queue, 1) end
+                    message.next = message.next + 1
+                    if message.next > #message.chunks then table.remove(queue, 1) end
                 end
             end
         end
@@ -155,8 +155,8 @@ if SERVER then
     net.Receive(REQ, function(len, ply)
         if len > MAX_REQUEST * 8 then return end
         local op, raw = net.ReadString(), net.ReadString()
-        local h = handlers[op]
-        if not h then
+        local handler = handlers[op]
+        if not handler then
             RARELOAD.Log("net", ply):warn("%s sent unknown request %q", ply:Nick(), op)
             return
         end
@@ -164,17 +164,17 @@ if SERVER then
         local calls = lastCall[ply] or {}
         lastCall[ply] = calls
         local now = CurTime()
-        if h.rate and calls[op] and now - calls[op] < h.rate then return end
+        if handler.rate and calls[op] and now - calls[op] < handler.rate then return end
         calls[op] = now
 
-        if h.priv and not RARELOAD.Can(ply, h.priv) then return end
+        if handler.priv and not RARELOAD.Can(ply, handler.priv) then return end
 
-        local args, err = Net.Validate(h.args or {}, util.JSONToTable(raw) or {}) -- default limits (S12)
+        local args, err = Net.Validate(handler.args or {}, util.JSONToTable(raw) or {}) -- default limits (S12)
         if not args then
             RARELOAD.Log("net", ply):warn("%s sent a bad %q request: %s", ply:Nick(), op, err)
             return
         end
-        ProtectedCall(h.fn, ply, args)
+        ProtectedCall(handler.fn, ply, args)
     end)
 
     Net.Handle("ready", {
@@ -187,8 +187,8 @@ if SERVER then
 
     Net.Handle("ack", {
         args = { id = "uint", part = "uint" },
-        fn = function(ply, a)
-            if inflight[ply] then inflight[ply][a.id .. ":" .. a.part] = nil end
+        fn = function(ply, args)
+            if inflight[ply] then inflight[ply][args.id .. ":" .. args.part] = nil end
         end,
     })
 
@@ -211,29 +211,31 @@ if SERVER then
 
     Net.Handle("upload.part", {
         args = { op = "string:64", id = "uint", part = "uint", total = "uint", data = "string:60000" },
-        fn = function(ply, a)
-            local h = uploadHandlers[a.op]
-            if not h or h.priv and not RARELOAD.Can(ply, h.priv) then return end
-            local max = h.maxBytes()
-            local u = uploads[ply]
-            if a.part == 1 then
-                if a.total < 1 or (a.total - 1) * UPLOAD_PART >= max then return refuseUpload(ply, "too big") end
-                u = { op = a.op, id = a.id, total = a.total, parts = {}, bytes = 0 }
-                uploads[ply] = u
-            elseif not u or u.id ~= a.id or u.op ~= a.op or CurTime() - u.t > UPLOAD_TIMEOUT then
+        fn = function(ply, args)
+            local handler = uploadHandlers[args.op]
+            if not handler or handler.priv and not RARELOAD.Can(ply, handler.priv) then return end
+            local max = handler.maxBytes()
+            local upload = uploads[ply]
+            if args.part == 1 then
+                if args.total < 1 or (args.total - 1) * UPLOAD_PART >= max then return refuseUpload(ply, "too big") end
+                upload = { op = args.op, id = args.id, total = args.total, parts = {}, bytes = 0 }
+                uploads[ply] = upload
+            elseif not upload or upload.id ~= args.id or upload.op ~= args.op
+                or CurTime() - upload.t > UPLOAD_TIMEOUT then
                 return
             end
-            u.t = CurTime()
-            local raw = util.Base64Decode(a.data)
-            if not raw or a.part > u.total or u.parts[a.part] then return refuseUpload(ply, "bad part") end
-            u.parts[a.part], u.bytes = raw, u.bytes + #raw
-            if u.bytes > max then return refuseUpload(ply, "too big") end
-            if table.Count(u.parts) < u.total then return end
+            upload.t = CurTime()
+            local raw = util.Base64Decode(args.data)
+            if not raw or args.part > upload.total or upload.parts[args.part] then return refuseUpload(ply,
+                "bad part") end
+            upload.parts[args.part], upload.bytes = raw, upload.bytes + #raw
+            if upload.bytes > max then return refuseUpload(ply, "too big") end
+            if table.Count(upload.parts) < upload.total then return end
 
             uploads[ply] = nil
-            local text = util.Decompress(table.concat(u.parts), MAX_TRANSFER)
+            local text = util.Decompress(table.concat(upload.parts), MAX_TRANSFER)
             if not text then return refuseUpload(ply, "could not be read") end
-            ProtectedCall(h.fn, ply, text)
+            ProtectedCall(handler.fn, ply, text)
         end,
     })
 

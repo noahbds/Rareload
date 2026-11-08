@@ -113,10 +113,11 @@ local RANGES = {
 
 local function inRange(id, value)
     for key, range in pairs(RANGES[id] or {}) do
-        local v = value[key]
-        if v ~= nil then
-            v = tonumber(v)
-            if not v or v ~= v or v < range[1] or v > range[2] then return false end
+        local fieldValue = value[key]
+        if fieldValue ~= nil then
+            fieldValue = tonumber(fieldValue)
+            if not fieldValue or fieldValue ~= fieldValue or fieldValue < range[1]
+                or fieldValue > range[2] then return false end
         end
     end
     return true
@@ -150,10 +151,10 @@ local function checkModule(id, value)
 end
 
 -- An imported save keeps the time it was made (5.4 plan, A2); a missing or future time is now.
-local function originalTime(t)
-    t = tonumber(t)
-    if not t or t <= 0 or t > os.time() then return os.time() end
-    return math.floor(t)
+local function originalTime(time)
+    time = tonumber(time)
+    if not time or time <= 0 or time > os.time() then return os.time() end
+    return math.floor(time)
 end
 
 -- Adds an export document to the player's timeline as a new save (not their respawn point). The
@@ -257,12 +258,12 @@ RARELOAD.Net.Handle("export.get", {
     priv = "rareload_export",
     rate = 2,
     args = { id = "uint" },
-    fn = function(ply, a)
-        local entry = RARELOAD.History.Get(ply, a.id)
+    fn = function(ply, args)
+        local entry = RARELOAD.History.Get(ply, args.id)
         if not entry then return end
-        log(ply):info("%s downloaded save No. %d as a file", ply:Nick(), a.id)
+        log(ply):info("%s downloaded save No. %d as a file", ply:Nick(), args.id)
         RARELOAD.Net.Push(ply, "export.file", { name = Share.FileName(entry), doc = Share.Export(ply, entry) },
-            { key = "export:" .. a.id })
+            { key = "export:" .. args.id })
     end,
 })
 
@@ -300,10 +301,10 @@ RARELOAD.Net.Handle("share.send", {
     priv = "rareload_share",
     rate = 3,
     args = { id = "uint", sid = "string:20" },
-    fn = function(ply, a)
-        local ok, why = Share.Offer(ply, a.id, player.GetBySteamID64(a.sid))
+    fn = function(ply, args)
+        local ok, why = Share.Offer(ply, args.id, player.GetBySteamID64(args.sid))
         if ok then
-            RARELOAD.Toast(ply, "toast.share_sent", { a.id })
+            RARELOAD.Toast(ply, "toast.share_sent", { args.id })
         else
             RARELOAD.Toast(ply, "toast.share_failed", { why }, "error")
         end
@@ -313,13 +314,13 @@ RARELOAD.Net.Handle("share.send", {
 RARELOAD.Net.Handle("share.answer", {
     rate = 0.5,
     args = { token = "string:16", accept = "bool" },
-    fn = function(ply, a)
+    fn = function(ply, args)
         local offer = offers[ply]
-        if not offer or offer.token ~= a.token then return end
+        if not offer or offer.token ~= args.token then return end
         offers[ply] = nil
         local from = offer.from
         if CurTime() > offer.expires then return RARELOAD.Toast(ply, "toast.share_expired", nil, "error") end
-        if not a.accept then
+        if not args.accept then
             if IsValid(from) then RARELOAD.Toast(from, "toast.share_declined", { ply:Nick() }) end
             return
         end

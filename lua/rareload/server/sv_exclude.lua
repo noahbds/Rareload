@@ -83,10 +83,11 @@ RARELOAD.Net.Handle("blocked.set", {
     priv = PRIV,
     rate = 0.1,
     args = { add = "bool", class = "string:64" },
-    fn = function(ply, a)
-        local ok, what = (a.add and Blocked.Add or Blocked.Remove)(a.class)
+    fn = function(ply, args)
+        local ok, what = (args.add and Blocked.Add or Blocked.Remove)(args.class)
         if ok then
-            RARELOAD.Log("exclude", ply):info("%s %s the class %s", ply:Nick(), a.add and "blocked" or "unblocked", what)
+            RARELOAD.Log("exclude", ply):info("%s %s the class %s", ply:Nick(), args.add and "blocked" or "unblocked",
+                what)
         else
             RARELOAD.Toast(ply, "toast.block_failed", { what }, "error")
         end
@@ -100,17 +101,17 @@ RARELOAD.Net.Handle("object.exclude", {
     priv = "rareload_save_entities",
     rate = 0.2,
     args = { ent = "uint", on = "bool" },
-    fn = function(ply, a)
-        local ent = Entity(a.ent)
+    fn = function(ply, args)
+        local ent = Entity(args.ent)
         if not IsValid(ent) or ent:IsPlayer() or ent:IsWorld() then return end
         -- Your own objects; admins who manage saved objects may mark anyone's.
         local mine = RARELOAD.Ownership.OwnerOf(ent) == ply:SteamID64()
         if not mine and not RARELOAD.Can(ply, "rareload_manage_objects") then
             return RARELOAD.Toast(ply, "toast.exclude_denied", nil, "error")
         end
-        RARELOAD.Exclude.Set(ent, a.on)
-        RARELOAD.Toast(ply, a.on and "toast.excluded" or "toast.included", nil, "ok")
-        RARELOAD.Log("exclude", ply):info("%s %s %s from saves", ply:Nick(), a.on and "left out" or "put back",
+        RARELOAD.Exclude.Set(ent, args.on)
+        RARELOAD.Toast(ply, args.on and "toast.excluded" or "toast.included", nil, "ok")
+        RARELOAD.Log("exclude", ply):info("%s %s %s from saves", ply:Nick(), args.on and "left out" or "put back",
             tostring(ent))
         -- The next autosave of its owner drops it (or takes it again).
         local owner = player.GetBySteamID64(RARELOAD.Ownership.OwnerOf(ent) or "")

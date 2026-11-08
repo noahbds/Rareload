@@ -13,12 +13,13 @@ local PRIV = "rareload_manage_inventory"
 local function emptyAmmo() return { reserve = {}, clips = {} } end
 local function emptyInventory() return { weapons = {}, ammo = emptyAmmo() } end
 
-local function isClass(s)
-    return isstring(s) and #s > 0 and #s <= 96 and string.match(s, "^[%w_%-%.]+$") ~= nil
+local function isClass(text)
+    return isstring(text) and #text > 0 and #text <= 96 and string.match(text, "^[%w_%-%.]+$") ~= nil
 end
 
-local function whole(n, min)
-    return isnumber(n) and n == n and n ~= math.huge and n ~= -math.huge and n >= min and n == math.floor(n)
+local function whole(value, min)
+    return isnumber(value) and value == value and value ~= math.huge and value ~= -math.huge and value >= min
+        and value == math.floor(value)
 end
 
 -- An ammo name as the game knows it. Accepts the ammo's ID too ("3" for Pistol), but a name wins:
@@ -34,9 +35,9 @@ end
 
 -- Checks an inventory from the JSON editor or a file. Returns the clean inventory and a list of
 -- warnings, or nil and what is wrong (shown to the player, in English like other server messages).
-function Inventory.Clean(t)
-    if not istable(t) then return nil, "the inventory must be a JSON object" end
-    local weapons = t.weapons == nil and {} or t.weapons
+function Inventory.Clean(input)
+    if not istable(input) then return nil, "the inventory must be a JSON object" end
+    local weapons = input.weapons == nil and {} or input.weapons
     if not istable(weapons) or table.Count(weapons) ~= #weapons then
         return nil, "\"weapons\" must be a list of weapon classes"
     end
@@ -51,13 +52,13 @@ function Inventory.Clean(t)
     end
     table.sort(out.weapons)
 
-    if t.activeWeapon ~= nil then
-        if not isstring(t.activeWeapon) then return nil, "\"activeWeapon\" must be a weapon class" end
-        if not seen[t.activeWeapon] then return nil, "\"activeWeapon\" is not one of the weapons" end
-        out.activeWeapon = t.activeWeapon
+    if input.activeWeapon ~= nil then
+        if not isstring(input.activeWeapon) then return nil, "\"activeWeapon\" must be a weapon class" end
+        if not seen[input.activeWeapon] then return nil, "\"activeWeapon\" is not one of the weapons" end
+        out.activeWeapon = input.activeWeapon
     end
 
-    local ammo = t.ammo == nil and emptyAmmo() or t.ammo
+    local ammo = input.ammo == nil and emptyAmmo() or input.ammo
     if not istable(ammo) then return nil, "\"ammo\" must be an object with \"reserve\" and \"clips\"" end
     local reserve, clips = ammo.reserve or {}, ammo.clips or {}
     if not istable(reserve) then return nil, "\"ammo.reserve\" must be an object of ammo name: count" end
@@ -78,11 +79,11 @@ function Inventory.Clean(t)
     end
     -- Weapon attachments (modules/weapon_state.lua) are kept as they are; weapons no longer in the
     -- list are dropped from them.
-    if t.extras ~= nil then
-        if not istable(t.extras) then return nil, "\"extras\" must be an object" end
-        local extras = { weapons = {}, owned = istable(t.extras.owned) and t.extras.owned or {} }
-        for class, w in pairs(istable(t.extras.weapons) and t.extras.weapons or {}) do
-            if seen[tostring(class)] and istable(w) then extras.weapons[tostring(class)] = w end
+    if input.extras ~= nil then
+        if not istable(input.extras) then return nil, "\"extras\" must be an object" end
+        local extras = { weapons = {}, owned = istable(input.extras.owned) and input.extras.owned or {} }
+        for class, weaponExtras in pairs(istable(input.extras.weapons) and input.extras.weapons or {}) do
+            if seen[tostring(class)] and istable(weaponExtras) then extras.weapons[tostring(class)] = weaponExtras end
         end
         if next(extras.weapons) or next(extras.owned) then out.extras = extras end
     end
@@ -146,8 +147,9 @@ Inventory.Empty = emptyInventory
 function Inventory.Push(ply, save)
     local inv, versions, exists = Inventory.Read(ply, save)
     local list = {}
-    for i, v in ipairs(versions) do
-        list[i] = { time = v.time, reason = v.reason, weapons = #(istable(v.data) and v.data.weapons or {}) }
+    for i, version in ipairs(versions) do
+        list[i] = { time = version.time, reason = version.reason,
+            weapons = #(istable(version.data) and version.data.weapons or {}) }
     end
     RARELOAD.Net.Push(ply, "inventory", {
         save = save,
@@ -211,32 +213,32 @@ end
 
 -- Network ----------------------------------------------------------------------------------------------
 
-local function handle(op, args, fn)
+local function handle(op, schema, fn)
     RARELOAD.Net.Handle(op, {
         priv = PRIV,
         rate = 0.3,
-        args = args,
-        fn = function(ply, a)
-            local key, targs, ok = fn(ply, a)
+        args = schema,
+        fn = function(ply, args)
+            local key, targs, ok = fn(ply, args)
             if key then RARELOAD.Toast(ply, key, targs, ok == false and "error" or "ok") end
-            Inventory.Push(ply, a.save)
+            Inventory.Push(ply, args.save)
         end,
     })
 end
 
 handle("inventory.get", { save = "uint?" }, function() end)
 -- The JSON is decoded with the default size limits (S12).
-handle("inventory.set", { save = "uint?", json = "string:60000" }, function(ply, a)
-    return Inventory.SetFrom(ply, a.save, util.JSONToTable(a.json), "edit")
+handle("inventory.set", { save = "uint?", json = "string:60000" }, function(ply, args)
+    return Inventory.SetFrom(ply, args.save, util.JSONToTable(args.json), "edit")
 end)
-handle("inventory.copy", { save = "uint?", from = "uint?" }, function(ply, a)
-    return Inventory.Copy(ply, a.save, a.from)
+handle("inventory.copy", { save = "uint?", from = "uint?" }, function(ply, args)
+    return Inventory.Copy(ply, args.save, args.from)
 end)
-handle("inventory.rollback", { save = "uint?", version = "uint" }, function(ply, a)
-    return Inventory.Rollback(ply, a.save, a.version)
+handle("inventory.rollback", { save = "uint?", version = "uint" }, function(ply, args)
+    return Inventory.Rollback(ply, args.save, args.version)
 end)
-handle("inventory.give", { save = "uint?" }, function(ply, a)
-    return Inventory.GiveTarget(ply, a.save)
+handle("inventory.give", { save = "uint?" }, function(ply, args)
+    return Inventory.GiveTarget(ply, args.save)
 end)
 
 -- Activity log: every change to an inventory, and every inventory given.

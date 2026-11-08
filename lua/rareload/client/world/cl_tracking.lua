@@ -36,22 +36,22 @@ function World.SetPreview(preview)
 end
 
 -- Bodygroups as { [index] = value }: the appearance module saves a list, the duplicator a map.
-local function bodygroups(t, isList)
-    if not istable(t) then return nil end
+local function bodygroups(groups, isList)
+    if not istable(groups) then return nil end
     local out = {}
     if isList then
-        for i, v in ipairs(t) do out[i - 1] = v end
+        for i, value in ipairs(groups) do out[i - 1] = value end
     else
-        for k, v in pairs(t) do out[tonumber(k) or k] = v end
+        for key, value in pairs(groups) do out[tonumber(key) or key] = value end
     end
     return out
 end
 
 local function playerRecord(key, save, extra)
-    local t, look = save.data.transform, save.data.appearance or {}
-    local pos = t and Util.ToVector(t.pos)
+    local transform, look = save.data.transform, save.data.appearance or {}
+    local pos = transform and Util.ToVector(transform.pos)
     if not pos then return end
-    local ang = Util.ToAngle(t.ang) or Angle()
+    local ang = Util.ToAngle(transform.ang) or Angle()
     local rec = {
         key = key,
         kind = "player",
@@ -67,29 +67,29 @@ local function playerRecord(key, save, extra)
         seated = save.seated,
         objects = save.objects or {},
     }
-    for k, v in pairs(extra) do rec[k] = v end
+    for field, value in pairs(extra) do rec[field] = value end
     return rec
 end
 
-local function objectRecord(key, o, save, extra)
-    local pos = Util.ToVector(o.pos)
-    if not pos or not o.id then return end
+local function objectRecord(key, object, save, extra)
+    local pos = Util.ToVector(object.pos)
+    if not pos or not object.id then return end
     local rec = {
         key = key,
         kind = "object",
         pos = pos,
-        ang = Util.ToAngle(o.ang) or Angle(),
-        model = o.model,
-        skin = o.skin,
-        bodygroups = bodygroups(o.bodygroups, false),
-        material = o.material,
-        scale = o.scale,
-        parts = o.parts,
-        title = UI.ObjectLabel(o),
-        obj = o,
+        ang = Util.ToAngle(object.ang) or Angle(),
+        model = object.model,
+        skin = object.skin,
+        bodygroups = bodygroups(object.bodygroups, false),
+        material = object.material,
+        scale = object.scale,
+        parts = object.parts,
+        title = UI.ObjectLabel(object),
+        obj = object,
         ownerNick = save.nick,
     }
-    for k, v in pairs(extra) do rec[k] = v end
+    for field, value in pairs(extra) do rec[field] = value end
     return rec
 end
 
@@ -98,8 +98,8 @@ local function rebuild()
     local out = {}
     local function add(prefix, save, extra)
         out[#out + 1] = playerRecord(prefix, save, extra)
-        for _, o in ipairs(save.objects or {}) do
-            out[#out + 1] = objectRecord(prefix .. ":" .. o.id, o, save, extra)
+        for _, object in ipairs(save.objects or {}) do
+            out[#out + 1] = objectRecord(prefix .. ":" .. object.id, object, save, extra)
         end
     end
     if World.preview then
@@ -199,7 +199,7 @@ timer.Create("Rareload.World.Update", 0.2, 0, function()
         local show, tint = phantomState(rec, origin)
         rec.phantomShown = show
         if show then
-            local w = {
+            local phantom = {
                 model = rec.model,
                 pos = rec.pos,
                 ang = rec.ang,
@@ -214,9 +214,9 @@ timer.Create("Rareload.World.Update", 0.2, 0, function()
                 playerColor = rec.playerColor
             }
             -- records are rebuilt when their data changes
-            rec.phantomSig = rec.phantomSig or RARELOAD.Phantoms.Signature(w)
-            w.sig = rec.phantomSig
-            wanted[rec.key] = w
+            rec.phantomSig = rec.phantomSig or RARELOAD.Phantoms.Signature(phantom)
+            phantom.sig = rec.phantomSig
+            wanted[rec.key] = phantom
         end
     end
     RARELOAD.Phantoms.Sync(wanted)
@@ -229,11 +229,12 @@ hook.Add("HUDPaint", "Rareload.World.PreviewBanner", function()
     local text = L("world.preview_banner", World.preview.id, #(World.preview.objects or {}))
     surface.SetFont("Rareload.BodyB")
     local tw = surface.GetTextSize(text)
-    local w, h = tw + sc(36), sc(30)
-    local x, y = (ScrW() - w) / 2, sc(18)
-    draw.RoundedBox(sc(8), x, y, w, h, ColorAlpha(C.bgDark, 230))
+    local width, height = tw + sc(36), sc(30)
+    local posX, posY = (ScrW() - width) / 2, sc(18)
+    draw.RoundedBox(sc(8), posX, posY, width, height, ColorAlpha(C.bgDark, 230))
     surface.SetDrawColor(C.ok)
-    surface.DrawOutlinedRect(x, y, w, h, 1)
-    draw.RoundedBox(sc(4), x + sc(12), y + h / 2 - sc(4), sc(8), sc(8), C.ok)
-    draw.SimpleText(text, "Rareload.BodyB", x + sc(26), y + h / 2, C.text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    surface.DrawOutlinedRect(posX, posY, width, height, 1)
+    draw.RoundedBox(sc(4), posX + sc(12), posY + height / 2 - sc(4), sc(8), sc(8), C.ok)
+    draw.SimpleText(text, "Rareload.BodyB", posX + sc(26), posY + height / 2, C.text, TEXT_ALIGN_LEFT,
+        TEXT_ALIGN_CENTER)
 end)

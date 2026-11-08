@@ -34,7 +34,7 @@ end
 
 function Inventory.Weapons(ply)
     local classes = {}
-    for _, w in ipairs(ply:GetWeapons()) do classes[#classes + 1] = w:GetClass() end
+    for _, weapon in ipairs(ply:GetWeapons()) do classes[#classes + 1] = weapon:GetClass() end
     table.sort(classes) -- stable order, so an unchanged inventory compares equal (L35)
     return classes
 end
@@ -47,16 +47,16 @@ function Inventory.Ammo(ply)
         local name = game.GetAmmoName(id)
         if name and count > 0 then reserve[name] = count end
     end
-    for _, w in ipairs(ply:GetWeapons()) do
-        local c1, c2 = w:Clip1(), w:Clip2()
-        if c1 >= 0 or c2 >= 0 then clips[w:GetClass()] = { c1, c2 } end
+    for _, weapon in ipairs(ply:GetWeapons()) do
+        local c1, c2 = weapon:Clip1(), weapon:Clip2()
+        if c1 >= 0 or c2 >= 0 then clips[weapon:GetClass()] = { c1, c2 } end
     end
     return { reserve = reserve, clips = clips }
 end
 
 function Inventory.Held(ply)
-    local w = ply:GetActiveWeapon()
-    return IsValid(w) and w:GetClass() or nil
+    local weapon = ply:GetActiveWeapon()
+    return IsValid(weapon) and weapon:GetClass() or nil
 end
 
 function Inventory.SetAmmo(ply, ammo)
@@ -69,10 +69,10 @@ function Inventory.SetAmmo(ply, ammo)
         end
     end
     for class, clip in pairs(ammo.clips or {}) do
-        local w = ply:GetWeapon(class)
-        if IsValid(w) then
-            if clip[1] >= 0 then w:SetClip1(clip[1]) end
-            if clip[2] >= 0 then w:SetClip2(clip[2]) end
+        local weapon = ply:GetWeapon(class)
+        if IsValid(weapon) then
+            if clip[1] >= 0 then weapon:SetClip1(clip[1]) end
+            if clip[2] >= 0 then weapon:SetClip2(clip[2]) end
         end
     end
 end
@@ -88,8 +88,8 @@ hook.Add("StartCommand", "Rareload.Inventory.SelectWeapon", function(ply, cmd)
     local class = pendingSelect[ply]
     if not class then return end
     pendingSelect[ply] = nil
-    local w = ply:GetWeapon(class)
-    if IsValid(w) then cmd:SelectWeapon(w) end
+    local weapon = ply:GetWeapon(class)
+    if IsValid(weapon) then cmd:SelectWeapon(weapon) end
 end)
 
 -- Whether this restore also restores ammo. Weapons are then given empty, since the ammo module

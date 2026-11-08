@@ -77,9 +77,10 @@ hook.Add("HUDPaint", "Rareload.Place", function()
     local text = L(PlaceUI.ok and "place.hint" or "place.hint_bad", PlaceUI.id or 0)
     surface.SetFont("Rareload.BodyB")
     local tw, th = surface.GetTextSize(text)
-    local w, h = tw + sc(32), th + sc(16)
-    local x, y = (ScrW() - w) / 2, ScrH() * 0.78
-    draw.RoundedBox(sc(8), x, y, w, h, ColorAlpha(C.surface, 230))
-    draw.SimpleText(text, "Rareload.BodyB", ScrW() / 2, y + h / 2, PlaceUI.ok and C.text or C.bad, TEXT_ALIGN_CENTER,
+    local width, height = tw + sc(32), th + sc(16)
+    local posX, posY = (ScrW() - width) / 2, ScrH() * 0.78
+    draw.RoundedBox(sc(8), posX, posY, width, height, ColorAlpha(C.surface, 230))
+    draw.SimpleText(text, "Rareload.BodyB", ScrW() / 2, posY + height / 2, PlaceUI.ok and C.text or C.bad,
+        TEXT_ALIGN_CENTER,
         TEXT_ALIGN_CENTER)
 end)

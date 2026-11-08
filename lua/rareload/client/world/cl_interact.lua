@@ -54,11 +54,11 @@ hook.Add("PlayerBindPress", "Rareload.Interact", function(_, bind, down)
             unlock()
             return true
         end
-        local g = Panels.focus
+        local pile = Panels.focus
         local wep = lp():GetActiveWeapon()
         local grabbing = IsValid(wep) and wep:GetClass() == "weapon_physgun" and lp():KeyDown(IN_ATTACK)
-        if g and not grabbing then
-            Panels.lock, lockAng = { pile = g.key, rec = g.active.key }, lp():EyeAngles()
+        if pile and not grabbing then
+            Panels.lock, lockAng = { pile = pile.key, rec = pile.active.key }, lp():EyeAngles()
             lp():DrawViewModel(false)
             return true
         end
