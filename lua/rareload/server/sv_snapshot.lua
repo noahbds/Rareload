@@ -704,7 +704,7 @@ end
 
 local function prepare(snap, ply, opts)
     -- Another player's object is never one of this save's objects, even with the same id (an edited
-    -- or imported save, S-01): it is left alone, and the saved object is created as a new one.
+    -- or imported save): it is left alone, and the saved object is created as a new one.
     local live, sid = {}, IsValid(ply) and ply:SteamID64()
     local ownerOf = sid and RARELOAD.Ownership.Resolver()
     for _, ent in ents.Iterator() do
@@ -964,7 +964,7 @@ function Snapshot.RestoreBatched(snap, ply, opts, ctx, onDone)
     -- One batch per tick, through the pipeline's tick queue. Each object takes its id at once, so a
     -- newer restore of the same save sees it as already there. When this restore was replaced, it
     -- creates nothing more (the newer one creates the rest) and finishes what it made, never leaving
-    -- it half-made (B-14).
+    -- it half-made.
     local function step()
         ticks = ticks + 1
         for _ = 1, ctx:isCurrent() and batch or 0 do

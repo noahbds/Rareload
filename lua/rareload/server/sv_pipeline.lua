@@ -185,7 +185,7 @@ function Pipeline.Save(ply, opts)
     if not Pipeline.Enabled() then return false, "gamemode" end
     if not RARELOAD.Util.PlayerKey(ply) then return refuse(ply, opts, "no steamid") end                      -- E24
     -- A capture stores nothing (a server snapshot, the state an undo goes back to): the player's own
-    -- rules for saving don't apply, or a dead or disabled player's objects would be left out (B-13).
+    -- rules for saving don't apply, or a dead or disabled player's objects would be left out.
     if not opts.captureOnly then
         if not RARELOAD.Get(ply, "enabled") then return refuse(ply, opts, "disabled") end
         if not RARELOAD.Can(ply, "rareload_save") then return refuse(ply, opts, "permission") end

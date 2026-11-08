@@ -1,6 +1,6 @@
 # Rareload State Ownership
 
-Who owns each piece of state, as of the end of 5.5 (branch `v5.5`, Phase 5 audit, 2026-11-08): **55 Lua files, 16,436 lines**. The Phase 0 baseline (55 files, 16,616 lines) listed nine leaks; all of them are fixed, and each fix is listed under §5. The plan's line numbers come from another copy of the code, so this file names functions instead.
+Who owns each piece of state in Rareload 5.5 (55 Lua files). Functions are named instead of line numbers, which drift.
 
 Every state store has exactly one **owner**: it decides what the store means and is the only writer. Other files may read it, store it on the owner's behalf, send it or show it.
 
@@ -38,7 +38,7 @@ Every state store has exactly one **owner**: it decides what the store means and
 | Death state (`Death.State(ply)`, weak; `beforeHit`, weak) | `Death` | `sv_spawn.lua` sets `died` / reads `choice` through `Death.State` |
 | Crash-recovery flags (`crashCheck`, `recovered`, weak) | `Snapshots` | — |
 | PvP timestamps (`lastCombat`/`lastSpawn`/`lastRestore`, weak) | `PvP` | — |
-| Entity owners (`recorded[ent]`, weak, plus the `RareloadOwner` NW2 value) | `Ownership` | Cleanup and undo lists are mapped through their UniqueID (B-06) |
+| Entity owners (`recorded[ent]`, weak, plus the `RareloadOwner` NW2 value) | `Ownership` | Cleanup and undo lists are mapped through their UniqueID, so ownership survives a reconnect |
 | Excluded entities (`RareloadExclude` NW2Bool, plus `EntityMods.rareload.exclude`) | `Exclude` (`sh_exclude.lua`) | The client tracks them through `EntityNetworkedVarChanged` |
 | Net handlers (50 request ops), upload handlers, send queues, `ready` set | `Net` | `ready` is once per connection: a client that asks again is ignored |
 
@@ -48,11 +48,11 @@ No Rareload state lives on the `Player` entity: no `ply.rareload*` fields are le
 
 | Store | Owner | Notes |
 | :--- | :--- | :--- |
-| `RARELOAD.State` (`history`, `objects`, `entryData`, `saves`, `savesRev`, `details`, `antistuck`, `players`, `snapshots`, `usage`, `blocked`, `checkpoints`, `death`, `inventory`) | `cl_state.lua` (14 `Net.On` receivers). It fires `RareloadStateChanged(what, key)`. | Every topic exists from load, so readers don't guard against nil. A reconnect rebuilds it fully (checked in game, Phase 5). |
+| `RARELOAD.State` (`history`, `objects`, `entryData`, `saves`, `savesRev`, `details`, `antistuck`, `players`, `snapshots`, `usage`, `blocked`, `checkpoints`, `death`, `inventory`) | `cl_state.lua` (14 `Net.On` receivers). It fires `RareloadStateChanged(what, key)`. | Every topic exists from load, so readers don't guard against nil. A reconnect rebuilds it fully. |
 | `death.choice`, `export.file`, `share.offer`, `debug`, `toast`, `cmd`, `tool.apply`, `dev.reload` | The UI file that handles the event | These are events, not state. |
 | Widget state (search, tab, scroll, place ghost), phantoms, world cards, panel fields (`panel.rareload*`, `ent.rareloadSig`) | The UI file | Presentation only |
 
-## 4. Invariants (all hold at the end of 5.5)
+## 4. Invariants
 
 1. Only `sv_history.lua` decides what changes in `<mapdir>/<sid64>.json`. Its `save()` is the only writer during play; `Store.Prune` writes what `History.PruneDoc` decided.
 2. `activeId`, `quickId` and `deathId` either name an existing entry or are nil, after an append (with the cap), delete, clear or prune. This is enforced by `kept()` and `forgetMissing()` (tests `history_ids_sv`, `regression_sv` 5/8).
@@ -66,16 +66,3 @@ How to re-check them:
 - 3: `grep -rnE "\._cache|\._defs|\._queue" lua`
 - 4: `grep -rnE "\.rareload[A-Z]" lua/rareload/server`
 - 5: `grep -rn "Net.On(" lua/rareload/client`
-
-## 5. What 5.5 changed (the baseline leaks)
-
-| Baseline leak | Fixed by |
-| :--- | :--- |
-| `sv_checkpoints` saved the document itself (3 places) | `History.UpdateCheckpoints` (Phase 1) |
-| `sv_death` wrote the document a second time | `Append{death}` / `History.SetDeath`, one write (B-16) |
-| `Store.Prune` chose the entries itself and dropped the quick and death saves | `History.PruneDoc` with the `kept()` rule (N-01) |
-| `sv_commands` wrote the reload-key PData directly | `History.SetReloadConfig` |
-| `_cache[rel] = nil` from `sv_share` and `sv_commands` | `Store.Forget` (Phase 2) |
-| `_defs` read from 3 files, `_queue` appended from 2 | `Pipeline.Def/Defs/Defer` (Phase 2) |
-| 9 `ply.rareload*` fields | `Death.State`, weak tables in `sv_snapshots` (Phase 1) |
-| Client checkpoints and death info outside `State` | `State.checkpoints`, `State.death` (Phase 3) |

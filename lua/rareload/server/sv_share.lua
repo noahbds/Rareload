@@ -101,7 +101,7 @@ end
 -- type would break the timeline that shows it.
 local STRING_MODULES = { activeWeapon = true }
 
--- Imported numbers a save made in game never holds (a file edited by hand, S-02): the module is
+-- Imported numbers a save made in game never holds (a file edited by hand): the module is
 -- left out rather than giving a player a 1e30 walk speed or the server a frozen physics clock.
 local RANGES = {
     body = { walk = { 0, 10000 }, run = { 0, 10000 }, slowWalk = { 0, 10000 }, crouchWalk = { 0, 10000 },

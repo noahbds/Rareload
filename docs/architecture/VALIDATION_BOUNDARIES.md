@@ -1,8 +1,8 @@
 # Rareload Validation Boundaries
 
-Rule (plan §7.2): **parse and normalize once where data enters, then trust internal contracts.** This file lists every place untrusted or uncertain data enters Rareload, what checks it there today, and what code behind it may therefore assume. Phase 4 removes internal re-checks only behind a boundary listed here.
+Rule: **parse and normalize once where data enters, then trust internal contracts.** This file lists every place untrusted or uncertain data enters Rareload, what checks it there today, and what code behind it may therefore assume. Internal re-checks are removed only behind a boundary listed here.
 
-Written at the Phase 0 baseline and checked against the code at the end of 5.5 (Phase 5 audit, 2026-11-08). The op list below was compared with the live `Net._handlers` (50 ops, 1 upload handler). Line numbers have drifted, so functions are named instead.
+Checked against the code for 5.5. The op list below was compared with the live `Net._handlers` (50 ops, 1 upload handler). Functions are named instead of line numbers, which drift.
 
 ## 1. Client → server requests (`sh_net.lua`)
 
@@ -17,7 +17,7 @@ Entry: `net.Receive("rareload.req")` (`sh_net.lua:154-177`). Every request passe
 
 **Handlers may assume:** `ply` is a valid connected player, `args` has exactly the schema keys with the declared types, and the privilege check passed. They must still check **meaning**: that an id/entry exists, that `sid` names a player they may act on, that a JSON string field parses to the expected shape.
 
-**50 registered ops** (the plan says 36; it predates several 5.4 features), plus 1 upload handler (`import`). Unchanged by 5.5. Live inventory (`Net._handlers` at runtime):
+**50 registered ops**, plus 1 upload handler (`import`). Live inventory (`Net._handlers` at runtime):
 
 | Op | Privilege | Rate (s) | Args |
 | :--- | :--- | :--- | :--- |
@@ -50,17 +50,17 @@ Ops with **no** schema-level privilege (`ready`, `ack`, `upload.part`, `object.d
 
 These ops carry a JSON string that the handler parses itself, so the schema only bounds its length:
 
-| Op | Parse | Validator | Status |
+| Op | Parse | Validator | Notes |
 | :--- | :--- | :--- | :--- |
-| `object.edit` | `util.JSONToTable(a.json)` | `History.ValidateEdit(entityDef, edit, isAdmin)`: known keys, same types, `Class`/`Model` only for `rareload_admin` | **S-01 fixed**: an edited id can no longer make a restore move another player's object (`object_owner_sv`); edits are copy-on-write (`regression_sv` 16) |
-| `inventory.set` | `util.JSONToTable(a.json)` | `Inventory.SetFrom` → `Inventory.Clean` | covered by `regression_sv` 15 |
+| `object.edit` | `util.JSONToTable(a.json)` | `History.ValidateEdit(entityDef, edit, isAdmin)`: known keys, same types, `Class`/`Model` only for `rareload_admin` | an edited id can never make a restore move another player's object (`object_owner_sv`); edits are copy-on-write (`regression_sv`) |
+| `inventory.set` | `util.JSONToTable(a.json)` | `Inventory.SetFrom` → `Inventory.Clean` | covered by `regression_sv` |
 
 Note: `util.JSONToTable` turns `"[1 2 3]"`-shaped strings into `Vector`/`Angle` userdata; validators must not assume strings stay strings (see `Util.AsText`).
 
 ### Uploads (`upload.part` → `Net._uploadHandlers.import` → `Share.Import`)
 
 Checks at the boundary (`sh_net.lua:212-236`): handler exists and its privilege; part 1 opens the upload and `total` is bounded by `maxBytes()`; later parts must match op/id and arrive within 30 s; base64 must decode; `part ≤ total`, no duplicate part; running byte total ≤ `maxBytes()`; final text decompressed with a `MAX_TRANSFER` (16 MB) cap.
-**S-05: false positive.** Part 1 is needed to open an upload, and a stray part 0 can only make the concat stop early, so decompression fails and the upload is refused. There is no bypass. The part counter is now a plain count (`upload.got`).
+Part 1 is needed to open an upload; a stray part 0 can only make the concat stop early, so decompression fails and the upload is refused. The part counter is a plain count (`upload.got`).
 
 ## 2. Files read from disk (`sv_storage.lua`)
 
@@ -68,23 +68,23 @@ Entry: `Store.Load(rel)` → `decodeJson()`: empty → nil; `util.JSONToTable(ra
 
 **Callers may assume:** a table or nil, never a string. They may **not** assume shape: a document can be from an older schema, hand-edited, or from a newer build. Shape normalization belongs in the owner's load function, and happens there once. `History.Doc` normalizes a player document once (`entries`, `checkpoints`, each `entry.data`); `Snapshots`, `Blocked` and `AntiStuck` replace a wrong-shaped document in their `loadDoc`. A saved object's optional parts are read through `Snapshot.Mods/Rareload/Bones`. Saved snapshots themselves are never rewritten: that would change their blob hashes.
 
-JSON numeric-key coercion: `util.JSONToTable` turns number-like string keys into numbers, the root of the `t[id] or t[tonumber(id)]` probing (plan §7.4). Keys that must survive are prefixed (`"k_"` in `_objects.json`, string ids in snapshots).
+JSON numeric-key coercion: `util.JSONToTable` turns number-like string keys into numbers, the root of the `t[id] or t[tonumber(id)]` probing. Keys that must survive are prefixed (`"k_"` in `_objects.json`, string ids in snapshots).
 
 PData (`Store.PData`): same `decode()`; same assumptions.
 
 ## 3. Imports (`sv_share.lua`)
 
-Entries: `Share.Import` (upload from a client, privilege `rareload_import`), `rareload import` console command, and share offers between players (`share.send` / `share.answer`). `Share.ReadFile` loads through `Store.Load`, then calls `Store.Forget` (**S-06 fixed**, Phase 2).
-**S-02 fixed:** `body` and `worldSettings` are checked against per-field ranges (`RANGES` in `sv_share.lua`). Parts out of range are left out and listed (`import_ranges_sv`). Ids in imported objects never make a restore take over another player's object (S-01).
+Entries: `Share.Import` (upload from a client, privilege `rareload_import`), `rareload import` console command, and share offers between players (`share.send` / `share.answer`). `Share.ReadFile` loads through `Store.Load`, then calls `Store.Forget`.
+`body` and `worldSettings` are checked against per-field ranges (`RANGES` in `sv_share.lua`). Parts out of range are left out and listed (`import_ranges_sv`). Ids in imported objects never make a restore take over another player's object.
 
 ## 4. Console commands (`sv_commands.lua`)
 
-Entry: `concommand.Add("rareload", …)` → `Cmd.Run(ply, args)`. Each command declares its privilege, and whether it needs a `player`, a living (`alive`) one, a `target` (an online or offline player, resolved and logged by `Cmd.Target`) or a save `id` (`Cmd.SaveID`). `Cmd.Run` enforces all of them in one place (Phase 7). The server console (`ply == NULL`) may run everything that doesn't need a player. Other command: `gmod_admin_cleanup` is wrapped in `sv_spawn.lua` (it passes through to the original).
+Entry: `concommand.Add("rareload", …)` → `Cmd.Run(ply, args)`. Each command declares its privilege, and whether it needs a `player`, a living (`alive`) one, a `target` (an online or offline player, resolved and logged by `Cmd.Target`) or a save `id` (`Cmd.SaveID`). `Cmd.Run` enforces all of them in one place. The server console (`ply == NULL`) may run everything that doesn't need a player. Other command: `gmod_admin_cleanup` is wrapped in `sv_spawn.lua` (it passes through to the original).
 Client-only: `rareload_checkpoints` opens a window.
 
 ## 5. Third-party addons and engine calls (keep the guards)
 
-Code calling into other addons, or into engine functions that can error on odd entities, stays `pcall`-guarded (or uses `Util.Call` / `ProtectedCall`). `pcall` count per file at the end of 5.5:
+Code calling into other addons, or into engine functions that can error on odd entities, stays `pcall`-guarded (or uses `Util.Call` / `ProtectedCall`). `pcall` count per file:
 
 | File | `pcall` | Reason |
 | :--- | :--- | :--- |
@@ -98,11 +98,11 @@ Code calling into other addons, or into engine functions that can error on odd e
 | `sh_util.lua` | 2 | `Util.Call` (other addons' functions), JSON check |
 | `modules/entity_state.lua`, `sv_spawn.lua`, `sv_status.lua`, `cl_ui.lua` | 1 each | entity methods, cleanup wrapper, addon probes, UI |
 
-Module isolation in `sv_pipeline.lua` uses `xpcall` (`runProtectedTimed`). PAC3 calls in `modules/player.lua` run inside that protected module call. Built-in Player methods are called directly (Phase 4 rule 5). Phase 4 reviewed the internal ones: the `sv_commands.lua` self-test and the `sv_status.lua` probes are diagnostics that must not crash, so they stay.
+Module isolation in `sv_pipeline.lua` uses `xpcall` (`runProtectedTimed`). PAC3 calls in `modules/player.lua` run inside that protected module call. Built-in Player methods are called directly. Of the internal ones, the `sv_commands.lua` self-test and the `sv_status.lua` probes are diagnostics that must not crash, so they stay.
 
 ## 6. What internal code may trust (contracts)
 
 - A **save entry** returned by `History.Get/Active/Quick` is a table with numeric `id`, `time`, `data` (module id → saved data or `{["$blob"]=sha}`).
 - **Module data** handed to a module's `restore` is what that same module's `capture` produced (or an older schema of it — modules own their migration).
 - **`RARELOAD.Get(ply, key)`** always returns the declared type within range (tested by `util_spec.lua`).
-- **Client `RARELOAD.State`**: every topic exists from file load (`history`, `objects`, `entryData`, `saves`, `savesRev`, `details`, `antistuck`, `players`, `snapshots`, `usage`, `blocked`, `checkpoints`, `death`), so readers don't guard against nil (Phase 3). `row.info` and inventory `versions` are always sent (Phase 4). The `inventory` payload itself can be absent or old, and stays guarded.
+- **Client `RARELOAD.State`**: every topic exists from file load (`history`, `objects`, `entryData`, `saves`, `savesRev`, `details`, `antistuck`, `players`, `snapshots`, `usage`, `blocked`, `checkpoints`, `death`), so readers don't guard against nil. `row.info` and inventory `versions` are always sent. The `inventory` payload itself can be absent or old, and stays guarded.

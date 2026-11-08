@@ -23,7 +23,7 @@ function AntiStuck.IsStuck(pos, ply, crouched)
     -- IsInWorld only checks one point (G70), so test the middle of the hull, not the feet.
     if not util.IsInWorld(pos + Vector(0, 0, maxs.z * 0.5)) then return true, "outside the map" end
     -- With the player's collision group: what the player walks through (a dropped weapon, debris)
-    -- doesn't block the spot (B-17).
+    -- doesn't block the spot.
     local tr = util.TraceHull({ start = pos, endpos = pos, mins = mins, maxs = maxs, mask = MASK_PLAYERSOLID,
         filter = ply, collisiongroup = ply:GetCollisionGroup() })
     if tr.StartSolid or tr.AllSolid then return true, "blocked" end
@@ -87,7 +87,7 @@ end
 
 -- After a restore, a spawn position becomes "known safe" once the player walks 64 units away from
 -- it within 5 seconds. Only walking counts: a spot in the air, or leaving it by noclip, in a vehicle
--- or by a teleport (further than TELEPORT in one move) proves nothing (B-05). One SetupMove hook for
+-- or by a teleport (further than TELEPORT in one move) proves nothing. One SetupMove hook for
 -- everyone (L2).
 local watching = setmetatable({}, { __mode = "k" })
 local TELEPORT = 64

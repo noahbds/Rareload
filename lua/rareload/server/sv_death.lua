@@ -48,7 +48,7 @@ hook.Add("DoPlayerDeath", "Rareload.Death", function(ply)
         deathHealth = beforeHit[ply] or { hp = 1, armor = ply:Armor() },
     })
     if not ok then return end
-    -- Nothing changed since the respawn point: that save is the death save (B-16: one write either way).
+    -- Nothing changed since the respawn point: that save is the death save (one write either way).
     if result == "unchanged" then
         local active = RARELOAD.History.Active(ply)
         if not (active and RARELOAD.History.SetDeath(ply, active.id)) then return end

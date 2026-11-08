@@ -50,7 +50,7 @@ hook.Add("PlayerDroppedWeapon", "Rareload.Ownership", record)
 
 -- Reverse indexes of every player's cleanup list and the undo table, built once per scan (L19).
 -- GMod keys both by the player's UniqueID and keeps them across a reconnect, when an undo entry's
--- Owner is no longer a valid player: the key names the player then (B-06).
+-- Owner is no longer a valid player: the key names the player then.
 local function buildLists()
     local owners, byUid = {}, {}
     for _, ply in player.Iterator() do byUid[tostring(ply:UniqueID())] = ply:SteamID64() end
