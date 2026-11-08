@@ -250,7 +250,7 @@ function Manager.Open(key)
             { L("field.weapons"),        inv and #(inv.weapons or {}),         C.text },
             { L("inventory.ammo_types"), inv and table.Count(reserve),         C.info },
             { L("inventory.rounds"),     inv and rounds,                       C.info },
-            { L("inventory.versions"),   data and #(data.versions or {}) or 0, C.warn },
+            { L("inventory.versions"),   data and #data.versions or 0, C.warn },
         }
     end)
     stats:Dock(TOP)
@@ -389,7 +389,7 @@ function Manager.Open(key)
         end
         canvas:SetLines(contentLines(inv or emptyInventory()))
         for _, b in ipairs(buttons) do b:SetEnabled(exists == true) end
-        local versions = exists and #(data.versions or {}) or 0
+        local versions = exists and #data.versions or 0
         history:SetLabel(L("inventory.history") .. (versions > 0 and "  (" .. versions .. ")" or ""))
         sizeButtons()
         detail:InvalidateLayout()

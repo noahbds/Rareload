@@ -22,7 +22,7 @@ local function request(op, args)
 end
 
 local function objectsOf(row)
-    local i = row.info or {}
+    local i = row.info
     return (i.entities or 0) + (i.npcs or 0) + (i.vehicles or 0)
 end
 
@@ -36,7 +36,7 @@ end
 
 -- Everything a search can match: note, type, held weapon, model, vehicle, position, dates.
 local function searchText(row)
-    local i = row.info or {}
+    local i = row.info
     return string.lower(table.concat(
         { "#" .. row.id, L("save_no", row.id), row.note or "", L("reason." .. row.reason), i.active or "",
             i.active and UI.WeaponName(i.active) or "", i.model or "", i.vehicle or "", UI.Pos(i.pos),
@@ -70,7 +70,7 @@ end
 function Timeline.Preview(row)
     Timeline.previewId = row and row.id or nil
     if not row then return RARELOAD.World.SetPreview(nil) end
-    local info = row.info or {}
+    local info = row.info
     local function show()
         local look = info.look or {}
         RARELOAD.World.SetPreview({
@@ -167,7 +167,7 @@ local function buildRow(parent, row, isSelected, onClick)
             draw.RoundedBox(sc(4), x - sc(8), sc(14), sc(8), sc(8), C.ok)
         end
 
-        local info, rx, iy = row.info or {}, w - sc(12), sc(34)
+        local info, rx, iy = row.info, w - sc(12), sc(34)
         local function badge(iconName, n, col)
             if (n or 0) <= 0 then return end
             local text = tostring(n)
@@ -209,7 +209,7 @@ local function buildDetail(host, sel)
         if r.pinned then bx = bx + UI.DrawBadge(L("timeline.pinned"), bx, sc(64), C.warn) + sc(6) end
         UI.DrawBadge(L("reason." .. r.reason), bx, sc(64), C.info)
 
-        local i = r.info or {}
+        local i = r.info
         local barX, barY, barW = x, h - sc(22), w - x - sc(16)
         draw.RoundedBox(sc(4), barX, barY, barW, sc(8), C.bgDark)
         if i.hp then
@@ -246,7 +246,7 @@ local function buildDetail(host, sel)
     D.rows = UI.Rows(host, function()
         local r = row()
         if not r then return {} end
-        local i = r.info or {}
+        local i = r.info
         local a = RARELOAD.Util.ToAngle(i.ang)
         local list = {
             { L("field.position"), UI.Pos(i.pos) },
