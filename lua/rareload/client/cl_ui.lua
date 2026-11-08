@@ -50,8 +50,11 @@ local C = UI.C
 
 UI.KIND_COLORS = { entities = C.prop, npcs = C.npc, vehicles = C.vehicle, player = C.player }
 
+-- A blend of two colours. At either end it is that colour itself (no new Color for the many widgets
+-- that are not hovered or animating): treat the result as read-only.
 function UI.Mix(a, b, t)
-    t = math.Clamp(t, 0, 1)
+    if t <= 0 then return a end
+    if t >= 1 then return b end
     return Color(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t,
         (a.a or 255) + ((b.a or 255) - (a.a or 255)) * t)
 end

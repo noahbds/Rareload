@@ -132,19 +132,28 @@ local function buildRow(parent, row, isSelected, onClick)
     b:Dock(TOP)
     b:DockMargin(0, 0, sc(4), sc(6))
     b:SetTall(sc(62))
+    -- The texts change at most once a second ("8 min ago"); the list can hold hundreds of rows.
+    local texts, textsAt = nil, 0
     b.Paint = function(self, w, h)
+        -- Only the rows inside the list's visible part are drawn (the scroll panel draws them all).
+        local viewport = self:GetParent():GetParent()
+        local _, y = self:LocalToScreen(0, 0)
+        local _, vy = viewport:LocalToScreen(0, 0)
+        if y + h < vy or y > vy + viewport:GetTall() then return end
+        if RealTime() - textsAt > 1 then
+            texts = texts or { line = UI.Date(row.time, "short") .. "  ·  " .. L("reason." .. row.reason) }
+            texts.ago, textsAt = UI.TimeAgo(row.time), RealTime()
+        end
         local selected = isSelected(row.id)
         self.anim = Lerp(FrameTime() * 12, self.anim or 0, (self:IsHovered() or selected) and 1 or 0)
-        draw.RoundedBox(sc(9), 0, 0, w, h,
-            UI.Mix(C.surface, ColorAlpha(C.accent, 255), selected and 0.18 or self.anim * 0.08))
+        draw.RoundedBox(sc(9), 0, 0, w, h, UI.Mix(C.surface, C.accent, selected and 0.18 or self.anim * 0.08))
         local bar = row.active and C.ok or selected and C.accent
         if bar then draw.RoundedBox(sc(3), 0, sc(9), sc(3), h - sc(18), bar) end
 
         local pad, isz = sc(14), UI.IconSize(sc(16))
         local nw = drawNumber(row.id, "Rareload.BodyB", pad, sc(10))
-        draw.SimpleText(UI.TimeAgo(row.time), "Rareload.BodyB", pad + nw + sc(8), sc(10), C.text)
-        draw.SimpleText(UI.Date(row.time, "short") .. "  ·  " .. L("reason." .. row.reason), "Rareload.Small", pad,
-            sc(33), C.text3)
+        draw.SimpleText(texts.ago, "Rareload.BodyB", pad + nw + sc(8), sc(10), C.text)
+        draw.SimpleText(texts.line, "Rareload.Small", pad, sc(33), C.text3)
 
         local x = w - sc(12)
         local function icon(name, cond)

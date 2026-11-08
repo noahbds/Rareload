@@ -42,17 +42,28 @@ property("rareload_include", 2101, "icon16/database_add.png", true)
 
 if SERVER then return end
 
--- The world display shows objects left out of saves with a crossed-out disk.
+-- The world display shows objects left out of saves with a crossed-out disk. The client keeps the
+-- set of excluded objects as their flag changes, instead of searching around the player every frame.
 local RANGE = 1500
+local excluded = setmetatable({}, { __mode = "k" })
 
+hook.Add("EntityNetworkedVarChanged", "Rareload.Exclude", function(ent, name, _, value)
+    if name == FLAG then excluded[ent] = value == true or nil end
+end)
+for _, ent in ents.Iterator() do -- what arrived before this file loaded
+    if Exclude.Is(ent) then excluded[ent] = true end
+end
+
+local above = Vector()
 hook.Add("HUDPaint", "Rareload.Exclude", function()
+    if not next(excluded) then return end
     local World = RARELOAD.World
     if not World or not World.Active() then return end
     local eye = EyePos()
-    for _, ent in ipairs(ents.FindInSphere(eye, RANGE)) do
-        if Exclude.Is(ent) then
-            local above = ent:OBBMaxs().z - ent:OBBCenter().z + 12
-            local pos = (ent:WorldSpaceCenter() + Vector(0, 0, above)):ToScreen()
+    for ent in pairs(excluded) do
+        if Exclude.Is(ent) and ent:GetPos():DistToSqr(eye) < RANGE * RANGE then
+            above:SetUnpacked(0, 0, ent:OBBMaxs().z - ent:OBBCenter().z + 12)
+            local pos = (ent:WorldSpaceCenter() + above):ToScreen()
             if pos.visible then
                 local size = RARELOAD.UI.sc(32)
                 RARELOAD.UI.DrawIcon("disk", pos.x - size / 2, pos.y - size, size)
